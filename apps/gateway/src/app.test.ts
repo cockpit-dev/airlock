@@ -65,6 +65,81 @@ interface DurableObjectNamespaceLike {
   idFromName(name: string): { name: string };
 }
 
+function createTokenQuotaNamespace() {
+  const state = new Map<
+    string,
+    {
+      windowStartedAt: number;
+      usedTokens: number;
+    }
+  >();
+
+  const namespace: DurableObjectNamespaceLike = {
+    idFromName(name: string) {
+      return { name };
+    },
+    get(id: { name: string }) {
+      return {
+        async fetch(request: Request) {
+          const body = (await request.json()) as
+            | {
+                kind: "precheck";
+                limit: number;
+                windowSeconds: number;
+              }
+            | {
+                kind: "charge";
+                limit: number;
+                windowSeconds: number;
+                tokens: number;
+              };
+          const now = Date.now();
+          const windowMs = body.windowSeconds * 1000;
+          const windowStartedAt = now - (now % windowMs);
+          const existing = state.get(id.name);
+          const current =
+            existing && existing.windowStartedAt === windowStartedAt
+              ? existing
+              : {
+                  windowStartedAt,
+                  usedTokens: 0
+                };
+          const resetAt = new Date(windowStartedAt + windowMs).toISOString();
+          const retryAfterSeconds = Math.max(
+            0,
+            Math.ceil((windowStartedAt + windowMs - now) / 1000)
+          );
+
+          if (body.kind === "precheck") {
+            return Response.json({
+              allowed: current.usedTokens < body.limit,
+              limit: body.limit,
+              remaining: Math.max(0, body.limit - current.usedTokens),
+              used: current.usedTokens,
+              resetAt,
+              retryAfterSeconds
+            });
+          }
+
+          current.usedTokens += body.tokens;
+          state.set(id.name, current);
+
+          return Response.json({
+            allowed: true,
+            limit: body.limit,
+            remaining: Math.max(0, body.limit - current.usedTokens),
+            used: current.usedTokens,
+            resetAt,
+            retryAfterSeconds
+          });
+        }
+      };
+    }
+  };
+
+  return namespace;
+}
+
 function createQuotaNamespace() {
   const state = new Map<
     string,
@@ -946,6 +1021,34 @@ describe("gateway app", () => {
     });
   });
 
+  it("returns not ready from /readyz when a structured gateway key enables token quota without its binding", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            tokenQuota: {
+              limit: 20,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ])
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
   it("returns not ready from /readyz when internal revocation admin is configured without a revocation binding", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -1707,6 +1810,418 @@ describe("gateway app", () => {
 
     expect(thirdResponse.status).toBe(200);
     await expect(readText(thirdResponse)).resolves.toContain("data: [DONE]");
+  });
+
+  it("charges buffered token usage and blocks later requests when the token window is exhausted", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_123",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "hello there"
+                }
+              }
+            ],
+            usage: {
+              prompt_tokens: 12,
+              completion_tokens: 8,
+              total_tokens: 20
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_456",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "should not be reached"
+                }
+              }
+            ],
+            usage: {
+              prompt_tokens: 1,
+              completion_tokens: 1,
+              total_tokens: 2
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_token_quota",
+          label: "Token Quota Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            tokenQuota: {
+              limit: 20,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA: createTokenQuotaNamespace()
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "second" }]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    expect(secondResponse.headers.get("x-ratelimit-limit")).toBe("20");
+    expect(secondResponse.headers.get("x-ratelimit-remaining")).toBe("0");
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      error: {
+        code: "quota_tokens_exceeded"
+      }
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when token quota is configured but a successful buffered response does not provide usage", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_token_quota",
+          label: "Token Quota Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            tokenQuota: {
+              limit: 20,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA: createTokenQuotaNamespace()
+    };
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "gateway_key_token_quota_usage_unavailable"
+      }
+    });
+  });
+
+  it("does not consume token quota for malformed chat completions request bodies", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ],
+          usage: {
+            prompt_tokens: 12,
+            completion_tokens: 8,
+            total_tokens: 20
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_token_quota",
+          label: "Token Quota Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            tokenQuota: {
+              limit: 20,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA: createTokenQuotaNamespace()
+    };
+
+    const invalidResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini"
+        })
+      },
+      bindings
+    );
+
+    expect(invalidResponse.status).toBe(500);
+
+    const validResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi after invalid" }]
+        })
+      },
+      bindings
+    );
+
+    expect(validResponse.status).toBe(200);
+  });
+
+  it("charges streaming token usage and blocks later requests when the token window is exhausted", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                    'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"done"},"finish_reason":null}]}\n\n',
+                    'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}\n\n',
+                    "data: [DONE]\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'data: {"id":"chatcmpl_456","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                    'data: {"id":"chatcmpl_456","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n',
+                    "data: [DONE]\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_token_quota",
+          label: "Token Quota Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            tokenQuota: {
+              limit: 20,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA: createTokenQuotaNamespace()
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          messages: [{ role: "user", content: "first stream" }]
+        })
+      },
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+    await expect(readText(firstResponse)).resolves.toContain("data: [DONE]");
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          messages: [{ role: "user", content: "second stream" }]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      error: {
+        code: "quota_tokens_exceeded"
+      }
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("rejects missing admin auth on internal key revocation routes", async () => {

@@ -5,6 +5,7 @@ import { gatewayEnvSchema } from "./env.js";
 import { GatewayKeyConcurrencyDurableObject } from "./gateway-key-concurrency.js";
 import { GatewayKeyQuotaDurableObject } from "./gateway-key-quota.js";
 import { GatewayKeyRevocationDurableObject } from "./gateway-key-revocation.js";
+import { GatewayKeyTokenQuotaDurableObject } from "./gateway-key-token-quota.js";
 import {
   createGatewayTelemetrySink,
   processTelemetryQueueBatch
@@ -63,4 +64,5 @@ export {
   GatewayKeyQuotaDurableObject,
   GatewayKeyRevocationDurableObject
 };
+export { GatewayKeyTokenQuotaDurableObject };
 export { ProviderCircuitBreakerDurableObject };

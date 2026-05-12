@@ -247,7 +247,10 @@ describe("OpenAIProviderAdapter", () => {
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
 
     expect(JSON.parse(init.body as string)).toMatchObject({
-      stream: true
+      stream: true,
+      stream_options: {
+        include_usage: true
+      }
     });
     expect(events).toEqual([
       {

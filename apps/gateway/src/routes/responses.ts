@@ -24,6 +24,11 @@ import {
 } from "../gateway-key-concurrency.js";
 import { enforceGatewayKeyRequestQuota } from "../gateway-key-quota.js";
 import {
+  assertGatewayKeyTokenUsageAvailable,
+  chargeGatewayKeyTokenQuota,
+  enforceGatewayKeyTokenQuotaPrecheck
+} from "../gateway-key-token-quota.js";
+import {
   executeRoutedRequest,
   executeRoutedStreamRequest
 } from "../provider-execution.js";
@@ -73,6 +78,7 @@ export async function handleResponses(
   const requestShaping = parseRequestShapingExtension(
     parsed.airlock?.requestShaping
   );
+  await enforceGatewayKeyTokenQuotaPrecheck(context.env, gatewayApiKey, requestId);
   await enforceGatewayKeyRequestQuota(context.env, gatewayApiKey, requestId);
   const concurrencyLeaseId = await acquireGatewayKeyConcurrencyLease(
     context.env,
@@ -116,6 +122,24 @@ export async function handleResponses(
               ...(fetcher ? { fetcher } : {})
             }
           )) {
+            if (event.type === "response_completed") {
+              assertGatewayKeyTokenUsageAvailable(
+                gatewayApiKey,
+                event.usage,
+                requestId
+              );
+
+              if (event.usage) {
+                await chargeGatewayKeyTokenQuota(
+                  context.env,
+                  gatewayApiKey,
+                  requestId,
+                  event.usage.totalTokens
+                );
+                streamUsage = event.usage;
+              }
+            }
+
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify(
@@ -123,10 +147,6 @@ export async function handleResponses(
                 )}\n\n`
               )
             );
-
-            if (event.type === "response_completed" && event.usage) {
-              streamUsage = event.usage;
-            }
           }
 
           await emitGatewayRequestSuccessTelemetry({
@@ -240,6 +260,20 @@ export async function handleResponses(
       gatewayApiKey,
       concurrencyLeaseId,
       requestId
+    );
+  }
+
+  assertGatewayKeyTokenUsageAvailable(
+    gatewayApiKey,
+    canonicalResponse.usage,
+    requestId
+  );
+  if (canonicalResponse.usage) {
+    await chargeGatewayKeyTokenQuota(
+      context.env,
+      gatewayApiKey,
+      requestId,
+      canonicalResponse.usage.totalTokens
     );
   }
 

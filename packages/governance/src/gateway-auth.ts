@@ -11,6 +11,11 @@ export interface GatewayApiKeyConcurrencyQuotaPolicy {
   limit: number;
 }
 
+export interface GatewayApiKeyTokenQuotaPolicy {
+  limit: number;
+  windowSeconds: number;
+}
+
 export interface GatewayApiKeyPolicy {
   tier?: string;
   tags?: string[];
@@ -18,6 +23,7 @@ export interface GatewayApiKeyPolicy {
   allowedProviders?: ProviderId[];
   allowedModelGroups?: string[];
   requestQuota?: GatewayApiKeyRequestQuotaPolicy;
+  tokenQuota?: GatewayApiKeyTokenQuotaPolicy;
   concurrencyQuota?: GatewayApiKeyConcurrencyQuotaPolicy;
 }
 
@@ -236,6 +242,38 @@ function parseGatewayApiKeyPolicy(value: unknown): GatewayApiKeyPolicy | undefin
 
     policy.concurrencyQuota = {
       limit
+    };
+  }
+
+  if (value.tokenQuota !== undefined) {
+    if (!isRecord(value.tokenQuota)) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy tokenQuota must be an object"
+      );
+    }
+
+    const limit = value.tokenQuota.limit;
+    const windowSeconds = value.tokenQuota.windowSeconds;
+
+    if (typeof limit !== "number" || !Number.isInteger(limit) || limit <= 0) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy tokenQuota limit must be a positive integer"
+      );
+    }
+
+    if (
+      typeof windowSeconds !== "number" ||
+      !Number.isInteger(windowSeconds) ||
+      windowSeconds <= 0
+    ) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy tokenQuota windowSeconds must be a positive integer"
+      );
+    }
+
+    policy.tokenQuota = {
+      limit,
+      windowSeconds
     };
   }
 

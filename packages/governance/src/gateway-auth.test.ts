@@ -218,6 +218,10 @@ describe("parseGatewayApiKeys", () => {
                 limit: 1000,
                 windowSeconds: 3600
               },
+              tokenQuota: {
+                limit: 100000,
+                windowSeconds: 3600
+              },
               concurrencyQuota: {
                 limit: 2
               }
@@ -245,6 +249,10 @@ describe("parseGatewayApiKeys", () => {
           allowedModelGroups: ["default-chat"],
           requestQuota: {
             limit: 1000,
+            windowSeconds: 3600
+          },
+          tokenQuota: {
+            limit: 100000,
             windowSeconds: 3600
           },
           concurrencyQuota: {
@@ -369,6 +377,46 @@ describe("parseGatewayApiKeys", () => {
             policy: {
               concurrencyQuota: {
                 limit: 1.5
+              }
+            }
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects invalid token quota policy values", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              tokenQuota: {
+                limit: 0,
+                windowSeconds: 3600
+              }
+            }
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              tokenQuota: {
+                limit: 10,
+                windowSeconds: -1
               }
             }
           }

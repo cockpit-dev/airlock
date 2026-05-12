@@ -180,7 +180,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
           jsonBody: {
             model: request.model,
             stream: true,
-            messages: request.messages
+            messages: request.messages,
+            stream_options: {
+              include_usage: true
+            }
           }
         },
         authStrategy,
