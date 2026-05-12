@@ -2,6 +2,16 @@ import { z } from "zod";
 
 export const gatewayEnvSchema = z.object({
   AIRLOCK_MODE: z.enum(["free", "scale"]).default("free"),
+  AIRLOCK_TELEMETRY_SUCCESS_SAMPLE_RATE_FREE: z.coerce
+    .number()
+    .min(0)
+    .max(1)
+    .default(0.1),
+  AIRLOCK_TELEMETRY_SUCCESS_SAMPLE_RATE_SCALE: z.coerce
+    .number()
+    .min(0)
+    .max(1)
+    .default(1),
   AIRLOCK_GATEWAY_API_KEYS: z.string().min(1),
   AIRLOCK_MODEL_GROUPS: z.string().min(1).optional(),
   AIRLOCK_MODEL_ALIASES: z.string().min(1).optional(),
@@ -21,7 +31,21 @@ export const gatewayEnvSchema = z.object({
   GEMINI_BASE_URL: z.url().optional(),
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_BASE_URL: z.url(),
-  OPENAI_DEFAULT_MODEL: z.string().min(1)
+  OPENAI_DEFAULT_MODEL: z.string().min(1),
+  AIRLOCK_TELEMETRY: z
+    .custom<{
+      send(message: unknown): Promise<void>;
+    }>()
+    .optional(),
+  AIRLOCK_TELEMETRY_DATASET: z
+    .custom<{
+      writeDataPoint(dataPoint: {
+        indexes: string[];
+        blobs: string[];
+        doubles: number[];
+      }): void;
+    }>()
+    .optional()
 });
 
 export type GatewayBindings = z.infer<typeof gatewayEnvSchema>;

@@ -1,5 +1,27 @@
 {
   "name": "airlock-gateway",
   "main": "src/index.ts",
-  "compatibility_date": "2026-05-12"
+  "compatibility_date": "2026-05-12",
+  "queues": {
+    "producers": [
+      {
+        "binding": "AIRLOCK_TELEMETRY",
+        "queue": "airlock-telemetry"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "airlock-telemetry",
+        "dead_letter_queue": "airlock-telemetry-dlq",
+        "max_batch_size": 50,
+        "max_batch_timeout": 5
+      }
+    ]
+  },
+  "analytics_engine_datasets": [
+    {
+      "binding": "AIRLOCK_TELEMETRY_DATASET",
+      "dataset": "airlock_telemetry"
+    }
+  ]
 }

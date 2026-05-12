@@ -1,8 +1,13 @@
 import type { GatewayError, RuntimeMode } from "@airlock/shared";
 import {
+  createAnalyticsEngineTelemetryDataPoint,
+  createQueueTelemetrySink,
   emitTelemetryEvent,
+  gatewayRequestTelemetryEventSchema,
   type GatewayRequestTelemetryEvent,
   type TelemetrySink,
+  type TelemetryQueueProducer,
+  type TelemetrySamplingPolicy,
   type TokenUsage
 } from "@airlock/telemetry";
 import type { GatewayApiKeyRecord } from "@airlock/governance";
@@ -74,4 +79,40 @@ export async function emitGatewayRequestErrorTelemetry(
     errorCategory: error.category,
     retryable: error.retryable
   });
+}
+
+export function createGatewayTelemetrySink(
+  producer: TelemetryQueueProducer,
+  sampling: TelemetrySamplingPolicy
+): TelemetrySink {
+  return createQueueTelemetrySink(producer, sampling);
+}
+
+export async function processTelemetryQueueBatch(
+  batch: {
+    messages: Array<{
+      body: unknown;
+      ack(): void;
+      retry(): void;
+    }>;
+  },
+  dataset: {
+    writeDataPoint(dataPoint: {
+      indexes: string[];
+      blobs: string[];
+      doubles: number[];
+    }): void;
+  }
+): Promise<void> {
+  for (const message of batch.messages) {
+    try {
+      const event = gatewayRequestTelemetryEventSchema.parse(message.body);
+      const dataPoint = createAnalyticsEngineTelemetryDataPoint(event);
+      await Promise.resolve();
+      dataset.writeDataPoint(dataPoint);
+      message.ack();
+    } catch {
+      message.retry();
+    }
+  }
 }
