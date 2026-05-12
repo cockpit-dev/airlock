@@ -1,4 +1,8 @@
-import type { CanonicalRequest, CanonicalResponse } from "@airlock/canonical";
+import type {
+  CanonicalRequest,
+  CanonicalResponse,
+  CanonicalStreamEvent
+} from "@airlock/canonical";
 import {
   applyAuthStrategy,
   applyRequestShaping,
@@ -36,19 +40,7 @@ export class GeminiProviderAdapter implements ProviderAdapter {
     request: CanonicalRequest,
     context: ProviderRequestContext
   ): Promise<CanonicalResponse> {
-    const systemMessages = request.messages.filter((message) => {
-      return message.role === "system";
-    });
-    const contents = request.messages
-      .filter((message) => message.role !== "system")
-      .map((message) => ({
-        role: message.role === "assistant" ? "model" : "user",
-        parts: [
-          {
-            text: message.content
-          }
-        ]
-      }));
+    const requestBody = buildGeminiRequestBody(request);
 
     const authStrategy: OutboundAuthStrategy = {
       type: "header_value",
@@ -66,18 +58,7 @@ export class GeminiProviderAdapter implements ProviderAdapter {
             "content-type": "application/json"
           },
           query: {},
-          jsonBody: {
-            ...(systemMessages.length > 0
-              ? {
-                  system_instruction: {
-                    parts: systemMessages.map((message) => ({
-                      text: message.content
-                    }))
-                  }
-                }
-              : {}),
-            contents
-          }
+          jsonBody: requestBody
         },
         authStrategy,
         {
@@ -163,4 +144,269 @@ export class GeminiProviderAdapter implements ProviderAdapter {
       finishReason: "stop"
     };
   }
+
+  async *stream(
+    request: CanonicalRequest,
+    context: ProviderRequestContext
+  ): AsyncIterable<CanonicalStreamEvent> {
+    const requestBody = buildGeminiRequestBody(request);
+    const authStrategy: OutboundAuthStrategy = {
+      type: "header_value",
+      headerName: "x-goog-api-key",
+      credential: {
+        secretRef: "gemini-api-key"
+      }
+    };
+    const outboundRequest = applyRequestShaping(
+      applyAuthStrategy(
+        {
+          path: `/models/${request.model}:streamGenerateContent`,
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          query: {
+            alt: "sse"
+          },
+          jsonBody: requestBody
+        },
+        authStrategy,
+        {
+          "gemini-api-key": this.#apiKey
+        }
+      ),
+      mergeRequestShapingProfiles(this.#shaping, context.requestShaping)
+    );
+    const abortController = new AbortController();
+    const timeoutHandle =
+      context.timeoutMs !== undefined
+        ? setTimeout(() => {
+            abortController.abort();
+          }, context.timeoutMs)
+        : undefined;
+
+    let response: Response;
+
+    try {
+      response = await this.#fetcher(buildRequestUrl(this.#baseUrl, outboundRequest), {
+        method: outboundRequest.method,
+        headers: outboundRequest.headers,
+        body: JSON.stringify(outboundRequest.jsonBody),
+        signal: abortController.signal
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new GatewayError("Upstream provider timed out", {
+          code: "provider_timeout",
+          category: "provider",
+          httpStatus: 504,
+          retryable: true,
+          provider: "gemini",
+          requestId: context.requestId,
+          cause: error
+        });
+      }
+
+      throw error;
+    }
+
+    if (!response.ok) {
+      const payload = (await response.json()) as {
+        error?: { message?: string };
+      };
+
+      if (timeoutHandle !== undefined) {
+        clearTimeout(timeoutHandle);
+      }
+
+      throw new GatewayError(payload.error?.message ?? "Upstream provider error", {
+        code: "provider_upstream_error",
+        category: "provider",
+        httpStatus: response.status,
+        retryable: response.status >= 500 || response.status === 429,
+        provider: "gemini",
+        requestId: context.requestId
+      });
+    }
+
+    if (!response.body) {
+      if (timeoutHandle !== undefined) {
+        clearTimeout(timeoutHandle);
+      }
+
+      throw new GatewayError("Upstream provider returned an empty stream body", {
+        code: "provider_upstream_error",
+        category: "provider",
+        httpStatus: 502,
+        retryable: true,
+        provider: "gemini",
+        requestId: context.requestId
+      });
+    }
+
+    const responseBody = response.body as ReadableStream<Uint8Array>;
+    const reader = responseBody.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let activeResponseId = `gemini_${context.requestId}`;
+    let activeModel = request.model;
+    let hasStarted = false;
+
+    try {
+      while (true) {
+        const readResult = await reader.read();
+
+        if (readResult.done) {
+          break;
+        }
+
+        const chunk = readResult.value;
+
+        if (!chunk) {
+          continue;
+        }
+
+        buffer += decoder.decode(chunk, { stream: true });
+
+        while (true) {
+          const separatorIndex = buffer.indexOf("\n\n");
+
+          if (separatorIndex < 0) {
+            break;
+          }
+
+          const frame = buffer.slice(0, separatorIndex);
+          buffer = buffer.slice(separatorIndex + 2);
+
+          for (const rawLine of frame.split("\n")) {
+            const line = rawLine.trim();
+
+            if (!line.startsWith("data:")) {
+              continue;
+            }
+
+            const data = line.slice("data:".length).trim();
+
+            if (data === "[DONE]" || data.length === 0) {
+              continue;
+            }
+
+            const payload = JSON.parse(data) as GeminiGenerateContentResponse;
+            const responseId = payload.responseId ?? activeResponseId;
+            const model = payload.modelVersion ?? activeModel;
+            const candidate = payload.candidates?.[0];
+            const deltaText =
+              candidate?.content?.parts
+                ?.map((part) => part.text ?? "")
+                .join("") ?? "";
+
+            activeResponseId = responseId;
+            activeModel = model;
+
+            if (!hasStarted) {
+              hasStarted = true;
+              yield {
+                type: "response_started",
+                responseId,
+                model
+              };
+            }
+
+            if (deltaText.length > 0) {
+              yield {
+                type: "output_text_delta",
+                responseId,
+                model,
+                delta: deltaText
+              };
+            }
+
+            if (normalizeGeminiFinishReason(candidate?.finishReason) === "stop") {
+              yield {
+                type: "response_completed",
+                responseId,
+                model,
+                finishReason: "stop"
+              };
+            }
+          }
+        }
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new GatewayError("Upstream provider timed out", {
+          code: "provider_timeout",
+          category: "provider",
+          httpStatus: 504,
+          retryable: true,
+          provider: "gemini",
+          requestId: context.requestId,
+          cause: error
+        });
+      }
+
+      throw error;
+    } finally {
+      if (timeoutHandle !== undefined) {
+        clearTimeout(timeoutHandle);
+      }
+      reader.releaseLock();
+    }
+  }
+}
+
+interface GeminiContentPart {
+  text?: string;
+}
+
+interface GeminiCandidate {
+  finishReason?: string;
+  content?: {
+    parts?: GeminiContentPart[];
+  };
+}
+
+interface GeminiGenerateContentResponse {
+  responseId?: string;
+  modelVersion?: string;
+  candidates?: GeminiCandidate[];
+}
+
+function buildGeminiRequestBody(request: CanonicalRequest) {
+  const systemMessages = request.messages.filter((message) => {
+    return message.role === "system";
+  });
+  const contents = request.messages
+    .filter((message) => message.role !== "system")
+    .map((message) => ({
+      role: message.role === "assistant" ? "model" : "user",
+      parts: [
+        {
+          text: message.content
+        }
+      ]
+    }));
+
+  return {
+    ...(systemMessages.length > 0
+      ? {
+          system_instruction: {
+            parts: systemMessages.map((message) => ({
+              text: message.content
+            }))
+          }
+        }
+      : {}),
+    contents
+  };
+}
+
+function normalizeGeminiFinishReason(
+  finishReason: string | undefined
+): "stop" | undefined {
+  if (!finishReason) {
+    return undefined;
+  }
+
+  return finishReason.toUpperCase() === "STOP" ? "stop" : undefined;
 }

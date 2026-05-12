@@ -28,7 +28,7 @@ const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
   {
     provider: "gemini",
     displayName: "Gemini",
-    supportsStreaming: false,
+    supportsStreaming: true,
     supportsTools: false,
     supportsMultimodalInput: false,
     supportsSystemMessages: true,

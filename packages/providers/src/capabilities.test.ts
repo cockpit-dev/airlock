@@ -31,7 +31,7 @@ describe("provider capability descriptors", () => {
       {
         provider: "gemini",
         displayName: "Gemini",
-        supportsStreaming: false,
+        supportsStreaming: true,
         supportsTools: false,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
@@ -45,7 +45,7 @@ describe("provider capability descriptors", () => {
     expect(getProviderCapabilityDescriptor("gemini")).toEqual({
       provider: "gemini",
       displayName: "Gemini",
-      supportsStreaming: false,
+      supportsStreaming: true,
       supportsTools: false,
       supportsMultimodalInput: false,
       supportsSystemMessages: true,

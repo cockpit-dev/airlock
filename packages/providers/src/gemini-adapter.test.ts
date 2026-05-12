@@ -290,4 +290,98 @@ describe("GeminiProviderAdapter", () => {
       retryable: true
     });
   });
+
+  it("parses upstream gemini SSE into canonical stream events", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"role":"model","parts":[{"text":"hel"}]}}]}\n\n',
+              'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"role":"model","parts":[{"text":"lo"}]}}]}\n\n',
+              'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[]}}]}\n\n'
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true
+      },
+      {
+        requestId: "req_stream_123"
+      }
+    )) {
+      events.push(event);
+    }
+
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
+    );
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      system_instruction: {
+        parts: [
+          {
+            text: "You are precise."
+          }
+        ]
+      },
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: "Say hi."
+            }
+          ]
+        }
+      ]
+    });
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash",
+        delta: "hel"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash",
+        delta: "lo"
+      },
+      {
+        type: "response_completed",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash",
+        finishReason: "stop"
+      }
+    ]);
+  });
 });

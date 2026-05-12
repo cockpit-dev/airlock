@@ -8,7 +8,8 @@ import { GatewayError } from "@airlock/shared";
 
 import {
   assertProviderSupportsCanonicalRequest,
-  executeRoutedRequest
+  executeRoutedRequest,
+  executeRoutedStreamRequest
 } from "./provider-execution.js";
 
 describe("assertProviderSupportsCanonicalRequest", () => {
@@ -981,6 +982,119 @@ describe("executeRoutedRequest", () => {
         type: "response_completed",
         responseId: "msg_123",
         model: "claude-haiku-4-5",
+        finishReason: "stop"
+      }
+    ]);
+  });
+
+  it("starts streaming from a weighted gemini target when it is the first eligible streaming target", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "gemini",
+          providerModel: "gemini-2.5-flash"
+        }
+      ],
+      targetSelection: {
+        strategy: "weighted",
+        weights: {
+          "openai:gpt-4.1-mini": 1,
+          "gemini:gemini-2.5-flash": 10000
+        }
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: true,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"role":"model","parts":[{"text":"hello"}]}}]}\n\n',
+                  'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[]}}]}\n\n'
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const events: Array<unknown> = [];
+
+    for await (const event of executeRoutedStreamRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 3,
+        providerRetryBackoffMs: 0,
+        modelGroups: {},
+        gatewayApiKeys: [],
+        modelAliases: [],
+        gemini: {
+          apiKey: "gemini-secret",
+          baseUrl: "https://generativelanguage.googleapis.com/v1beta"
+        },
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_stream_gemini_123",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher
+    })) {
+      events.push(event);
+    }
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
+    );
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash",
+        delta: "hello"
+      },
+      {
+        type: "response_completed",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash",
         finishReason: "stop"
       }
     ]);
