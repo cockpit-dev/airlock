@@ -7,6 +7,7 @@ import type { GatewayBindings } from "./env.js";
 import {
   assertInternalAdminAuthorization,
   clearGatewayKeyRevocation,
+  getGatewayApiKeyStatus,
   getGatewayKeyRevocationStatus,
   resolveGatewayApiKeyById,
   revokeGatewayKey
@@ -104,6 +105,29 @@ export function createApp(options: CreateAppOptions = {}) {
 
     return context.json(
       await getGatewayKeyRevocationStatus(
+        context.env,
+        gatewayApiKey,
+        requestId
+      )
+    );
+  });
+  app.get("/_airlock/keys/:keyId/status", async (context) => {
+    const requestId = context.get("requestId");
+    assertInternalAdminAuthorization(
+      context.req.header("authorization"),
+      context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      requestId
+    );
+
+    const config = resolveGatewayConfig(context.env);
+    const gatewayApiKey = resolveGatewayApiKeyById(
+      config.gatewayApiKeys,
+      context.req.param("keyId"),
+      requestId
+    );
+
+    return context.json(
+      await getGatewayApiKeyStatus(
         context.env,
         gatewayApiKey,
         requestId

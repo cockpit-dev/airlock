@@ -104,6 +104,38 @@ describe("validateGatewayApiKey", () => {
       ])
     ).rejects.toThrow(GatewayError);
   });
+
+  it("rejects a not-yet-active key", async () => {
+    await expect(
+      validateGatewayApiKey("gateway-secret", [
+        {
+          id: "gak_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active",
+          notBefore: "2099-01-01T00:00:00.000Z"
+        }
+      ])
+    ).rejects.toMatchObject({
+      code: "auth_api_key_not_yet_active"
+    });
+  });
+
+  it("rejects an expired key", async () => {
+    await expect(
+      validateGatewayApiKey("gateway-secret", [
+        {
+          id: "gak_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active",
+          expiresAt: "2000-01-01T00:00:00.000Z"
+        }
+      ])
+    ).rejects.toMatchObject({
+      code: "auth_api_key_expired"
+    });
+  });
 });
 
 describe("requireGatewayAuthorization", () => {
@@ -208,6 +240,8 @@ describe("parseGatewayApiKeys", () => {
             label: "Production Key",
             value: "gateway-secret",
             status: "active",
+            notBefore: "2026-05-01T00:00:00.000Z",
+            expiresAt: "2026-06-01T00:00:00.000Z",
             policy: {
               tier: "prod",
               tags: ["internal", "critical"],
@@ -241,6 +275,8 @@ describe("parseGatewayApiKeys", () => {
         label: "Production Key",
         value: "gateway-secret",
         status: "active",
+        notBefore: "2026-05-01T00:00:00.000Z",
+        expiresAt: "2026-06-01T00:00:00.000Z",
         policy: {
           tier: "prod",
           tags: ["internal", "critical"],
@@ -419,6 +455,53 @@ describe("parseGatewayApiKeys", () => {
                 windowSeconds: -1
               }
             }
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects invalid lifecycle timestamp values", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            notBefore: "not-a-date"
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            expiresAt: "not-a-date"
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects lifecycle windows where expiresAt is not after notBefore", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            notBefore: "2026-05-13T00:00:00.000Z",
+            expiresAt: "2026-05-13T00:00:00.000Z"
           }
         ])
       )

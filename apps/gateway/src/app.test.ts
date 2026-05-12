@@ -923,6 +923,30 @@ describe("gateway app", () => {
     });
   });
 
+  it("returns not ready from /readyz when structured gateway key lifecycle config is invalid", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active",
+          notBefore: "2026-05-13T00:00:00.000Z",
+          expiresAt: "2026-05-13T00:00:00.000Z"
+        }
+      ])
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
   it("returns not ready from /readyz when model group config is malformed", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -2399,6 +2423,123 @@ describe("gateway app", () => {
       error: {
         code: "gateway_key_not_found"
       }
+    });
+  });
+
+  it("rejects a not-yet-active structured gateway key on the request path", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            notBefore: "2099-01-01T00:00:00.000Z"
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(401);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_api_key_not_yet_active"
+      }
+    });
+  });
+
+  it("rejects an expired structured gateway key on the request path", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            expiresAt: "2000-01-01T00:00:00.000Z"
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(401);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_api_key_expired"
+      }
+    });
+  });
+
+  it("returns effective key lifecycle status from the internal admin route", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active",
+          notBefore: "2099-01-01T00:00:00.000Z"
+        }
+      ])
+    };
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys/key_1/status",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson(response)).resolves.toMatchObject({
+      keyId: "key_1",
+      configuredStatus: "active",
+      lifecycleStatus: "not_yet_active",
+      overlayRevoked: false,
+      effectiveStatus: "not_yet_active",
+      acceptedNow: false
     });
   });
 

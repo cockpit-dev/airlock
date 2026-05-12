@@ -1,4 +1,8 @@
-import type { GatewayApiKeyRecord } from "@airlock/governance";
+import {
+  evaluateGatewayApiKeyLifecycle,
+  type GatewayApiKeyLifecycleStatus,
+  type GatewayApiKeyRecord
+} from "@airlock/governance";
 import { GatewayError } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
@@ -193,6 +197,43 @@ export async function getGatewayKeyRevocationStatus(
     keyId: gatewayApiKey.id,
     revoked: state.revoked,
     updatedAt: state.updatedAt
+  };
+}
+
+export async function getGatewayApiKeyStatus(
+  env: GatewayBindings,
+  gatewayApiKey: GatewayApiKeyRecord,
+  requestId: string
+): Promise<{
+  keyId: string;
+  configuredStatus: GatewayApiKeyRecord["status"];
+  notBefore?: string;
+  expiresAt?: string;
+  lifecycleStatus: GatewayApiKeyLifecycleStatus;
+  overlayRevoked: boolean;
+  overlayUpdatedAt: string;
+  effectiveStatus: GatewayApiKeyLifecycleStatus;
+  acceptedNow: boolean;
+}> {
+  const lifecycleStatus = evaluateGatewayApiKeyLifecycle(gatewayApiKey);
+  const overlayState = env.AIRLOCK_GATEWAY_KEY_REVOCATION
+    ? await readGatewayKeyRevocationStateForKey(env, gatewayApiKey, requestId)
+    : DEFAULT_REVOCATION_STATE;
+  const effectiveStatus =
+    overlayState.revoked || lifecycleStatus === "revoked"
+      ? "revoked"
+      : lifecycleStatus;
+
+  return {
+    keyId: gatewayApiKey.id,
+    configuredStatus: gatewayApiKey.status,
+    ...(gatewayApiKey.notBefore ? { notBefore: gatewayApiKey.notBefore } : {}),
+    ...(gatewayApiKey.expiresAt ? { expiresAt: gatewayApiKey.expiresAt } : {}),
+    lifecycleStatus,
+    overlayRevoked: overlayState.revoked,
+    overlayUpdatedAt: overlayState.updatedAt,
+    effectiveStatus,
+    acceptedNow: effectiveStatus === "active"
   };
 }
 

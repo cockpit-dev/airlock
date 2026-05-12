@@ -1,6 +1,11 @@
 import { GatewayError, isProviderId, type ProviderId } from "@airlock/shared";
 
 export type GatewayApiKeyStatus = "active" | "revoked";
+export type GatewayApiKeyLifecycleStatus =
+  | "active"
+  | "revoked"
+  | "not_yet_active"
+  | "expired";
 
 export interface GatewayApiKeyRequestQuotaPolicy {
   limit: number;
@@ -33,12 +38,34 @@ export interface GatewayApiKeyRecord {
   value?: string;
   valueHash?: string;
   status: GatewayApiKeyStatus;
+  notBefore?: string;
+  expiresAt?: string;
   policy?: GatewayApiKeyPolicy;
 }
 
 function createUnauthorizedError(requestId: string): GatewayError {
   return new GatewayError("Unauthorized", {
     code: "auth_invalid_api_key",
+    category: "authentication",
+    httpStatus: 401,
+    retryable: false,
+    requestId
+  });
+}
+
+function createGatewayApiKeyNotYetActiveError(requestId: string): GatewayError {
+  return new GatewayError("Gateway API key is not yet active", {
+    code: "auth_api_key_not_yet_active",
+    category: "authentication",
+    httpStatus: 401,
+    retryable: false,
+    requestId
+  });
+}
+
+function createGatewayApiKeyExpiredError(requestId: string): GatewayError {
+  return new GatewayError("Gateway API key has expired", {
+    code: "auth_api_key_expired",
     category: "authentication",
     httpStatus: 401,
     retryable: false,
@@ -61,6 +88,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isSha256Hex(value: string): boolean {
   return /^[a-f0-9]{64}$/u.test(value);
+}
+
+function isValidTimestamp(value: string): boolean {
+  return !Number.isNaN(Date.parse(value));
 }
 
 function parseGatewayApiKeyPolicy(value: unknown): GatewayApiKeyPolicy | undefined {
@@ -314,6 +345,10 @@ function parseStructuredGatewayApiKeys(value: string): GatewayApiKeyRecord[] | u
     const rawValueHash =
       typeof entry.valueHash === "string" ? entry.valueHash.trim().toLowerCase() : "";
     const status = entry.status;
+    const notBefore =
+      typeof entry.notBefore === "string" ? entry.notBefore.trim() : undefined;
+    const expiresAt =
+      typeof entry.expiresAt === "string" ? entry.expiresAt.trim() : undefined;
 
     if (id.length === 0 || label.length === 0) {
       throw createInvalidGatewayKeyConfigError(
@@ -336,6 +371,28 @@ function parseStructuredGatewayApiKeys(value: string): GatewayApiKeyRecord[] | u
       );
     }
 
+    if (notBefore !== undefined && !isValidTimestamp(notBefore)) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key record notBefore must be a valid timestamp"
+      );
+    }
+
+    if (expiresAt !== undefined && !isValidTimestamp(expiresAt)) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key record expiresAt must be a valid timestamp"
+      );
+    }
+
+    if (
+      notBefore !== undefined &&
+      expiresAt !== undefined &&
+      Date.parse(expiresAt) <= Date.parse(notBefore)
+    ) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key record expiresAt must be later than notBefore"
+      );
+    }
+
     if (status !== "active" && status !== "revoked") {
       throw createInvalidGatewayKeyConfigError(
         "Gateway API key records must use a valid status"
@@ -350,6 +407,8 @@ function parseStructuredGatewayApiKeys(value: string): GatewayApiKeyRecord[] | u
       ...(hasValue ? { value: rawValue } : {}),
       ...(hasValueHash ? { valueHash: rawValueHash } : {}),
       status,
+      ...(notBefore !== undefined ? { notBefore } : {}),
+      ...(expiresAt !== undefined ? { expiresAt } : {}),
       ...(policy !== undefined ? { policy } : {})
     };
   });
@@ -453,8 +512,18 @@ export function validateGatewayApiKey(
       throw createUnauthorizedError(requestId);
     }
 
-    if (matchedKey.status !== "active") {
+    const lifecycleStatus = evaluateGatewayApiKeyLifecycle(matchedKey);
+
+    if (lifecycleStatus === "revoked") {
       throw createUnauthorizedError(requestId);
+    }
+
+    if (lifecycleStatus === "not_yet_active") {
+      throw createGatewayApiKeyNotYetActiveError(requestId);
+    }
+
+    if (lifecycleStatus === "expired") {
+      throw createGatewayApiKeyExpiredError(requestId);
     }
 
     return matchedKey;
@@ -468,4 +537,38 @@ export function requireGatewayAuthorization(
 ): Promise<GatewayApiKeyRecord> {
   const bearerToken = extractBearerToken(authorization, requestId);
   return validateGatewayApiKey(bearerToken, gatewayApiKeys, requestId);
+}
+
+export function evaluateGatewayApiKeyLifecycle(
+  gatewayApiKey: GatewayApiKeyRecord,
+  now?: number
+): GatewayApiKeyLifecycleStatus {
+  if (gatewayApiKey.status === "revoked") {
+    return "revoked";
+  }
+
+  if (
+    gatewayApiKey.notBefore === undefined &&
+    gatewayApiKey.expiresAt === undefined
+  ) {
+    return "active";
+  }
+
+  const effectiveNow = now ?? Date.now();
+
+  if (
+    gatewayApiKey.notBefore !== undefined &&
+    effectiveNow < Date.parse(gatewayApiKey.notBefore)
+  ) {
+    return "not_yet_active";
+  }
+
+  if (
+    gatewayApiKey.expiresAt !== undefined &&
+    effectiveNow >= Date.parse(gatewayApiKey.expiresAt)
+  ) {
+    return "expired";
+  }
+
+  return "active";
 }
