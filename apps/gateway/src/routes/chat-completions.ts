@@ -6,6 +6,7 @@ import { resolveModelRoute } from "@airlock/routing";
 
 import {
   assertGatewayKeyAllowsModel,
+  assertGatewayKeyAllowsProvider,
   requireGatewayAuthorization
 } from "../auth.js";
 import { resolveGatewayConfig } from "../config.js";
@@ -22,6 +23,7 @@ export async function handleChatCompletions(context: Context) {
   const parsed = openAIChatCompletionRequestSchema.parse(json);
   const route = resolveModelRoute(parsed.model, config.modelAliases, requestId);
   assertGatewayKeyAllowsModel(gatewayApiKey, route.externalModel, requestId);
+  assertGatewayKeyAllowsProvider(gatewayApiKey, route.target.provider, requestId);
   const canonicalRequest = normalizeOpenAIChatRequest({
     ...parsed,
     model: route.target.providerModel
@@ -35,6 +37,7 @@ export async function handleChatCompletions(context: Context) {
     canonicalRequest,
     {
       config,
+      gatewayApiKey,
       requestId,
       ...(requestShaping ? { requestShaping } : {}),
       ...(fetcher ? { fetcher } : {})

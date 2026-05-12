@@ -246,6 +246,31 @@ describe("gateway app", () => {
     });
   });
 
+  it("returns not ready from /readyz when structured gateway key allowed-provider policy is invalid", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            allowedProviders: ["openai", "invalid-provider"]
+          }
+        }
+      ])
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
   it("returns not ready from /readyz when model alias config is invalid", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -630,6 +655,97 @@ describe("gateway app", () => {
       error: {
         type: "authorization",
         message: "Gateway API key is not allowed to access this model"
+      }
+    });
+    expect(response.headers.get("request-id")).toBeTruthy();
+  });
+
+  it("returns an OpenAI-compatible authorization error for denied primary provider access", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedProviders: ["anthropic"]
+            }
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(403);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_provider_not_allowed",
+        type: "authorization"
+      }
+    });
+  });
+
+  it("returns an Anthropic-compatible authorization error for denied primary provider access", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedProviders: ["openai"]
+            }
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(403);
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "error",
+      error: {
+        type: "authorization",
+        message: "Gateway API key is not allowed to access this provider"
       }
     });
     expect(response.headers.get("request-id")).toBeTruthy();
@@ -1163,6 +1279,71 @@ describe("gateway app", () => {
     expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
     await expect(readJson(response)).resolves.toMatchObject({
       model: "claude-haiku-4-5"
+    });
+  });
+
+  it("does not fail over into a provider disallowed by the authenticated key", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "rate limited"
+          }
+        }),
+        {
+          status: 429,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedProviders: ["openai"]
+            }
+          }
+        ]),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(403);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_provider_not_allowed",
+        type: "authorization"
+      }
     });
   });
 

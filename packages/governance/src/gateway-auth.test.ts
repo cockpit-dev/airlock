@@ -155,7 +155,8 @@ describe("parseGatewayApiKeys", () => {
             policy: {
               tier: "prod",
               tags: ["internal", "critical"],
-              allowedExternalModels: ["gpt-4.1-mini", "claude-sonnet-4-5"]
+              allowedExternalModels: ["gpt-4.1-mini", "claude-sonnet-4-5"],
+              allowedProviders: ["openai", "anthropic"]
             }
           },
           {
@@ -175,7 +176,8 @@ describe("parseGatewayApiKeys", () => {
         policy: {
           tier: "prod",
           tags: ["internal", "critical"],
-          allowedExternalModels: ["gpt-4.1-mini", "claude-sonnet-4-5"]
+          allowedExternalModels: ["gpt-4.1-mini", "claude-sonnet-4-5"],
+          allowedProviders: ["openai", "anthropic"]
         }
       },
       {
@@ -276,6 +278,42 @@ describe("parseGatewayApiKeys", () => {
             status: "active",
             policy: {
               allowedExternalModels: ["gpt-4.1-mini", "gpt-4.1-mini"]
+            }
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects invalid allowed provider policy values", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedProviders: ["openai", "invalid-provider"]
+            }
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects duplicate allowed provider policy values", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedProviders: ["openai", "openai"]
             }
           }
         ])

@@ -11,10 +11,12 @@ import {
   OpenAIProviderAdapter,
   type ProviderAdapter
 } from "@airlock/providers";
+import type { GatewayApiKeyRecord } from "@airlock/governance";
 import type { RequestShapingProfile } from "@airlock/request-shaping";
 import type { ModelRoute, ProviderTarget } from "@airlock/routing";
 import { GatewayError } from "@airlock/shared";
 
+import { assertGatewayKeyAllowsProvider } from "./auth.js";
 import type { GatewayConfig } from "./config.js";
 
 function createUnsupportedCapabilityError(
@@ -131,12 +133,13 @@ export async function executeRoutedRequest(
   request: CanonicalRequest,
   options: {
     config: GatewayConfig;
+    gatewayApiKey: GatewayApiKeyRecord;
     requestId: string;
     requestShaping?: RequestShapingProfile;
     fetcher?: typeof fetch;
   }
 ): Promise<CanonicalResponse> {
-  const { config, requestId, requestShaping, fetcher } = options;
+  const { config, gatewayApiKey, requestId, requestShaping, fetcher } = options;
   const targets = [route.target, ...(route.fallbacks ?? [])];
   let lastError: unknown;
 
@@ -145,6 +148,9 @@ export async function executeRoutedRequest(
     if (!target) {
       throw new Error("Provider target is required for route execution");
     }
+
+    assertGatewayKeyAllowsProvider(gatewayApiKey, target.provider, requestId);
+
     const attemptRequest = createAttemptRequest(request, target);
     const adapter = createProviderAdapter(
       route,

@@ -4,7 +4,7 @@ import {
   requireGatewayAuthorization as requireAuthorization,
   type GatewayApiKeyRecord
 } from "@airlock/governance";
-import { GatewayError } from "@airlock/shared";
+import { GatewayError, type ProviderId } from "@airlock/shared";
 
 import type { GatewayConfig } from "./config.js";
 
@@ -34,6 +34,28 @@ export function assertGatewayKeyAllowsModel(
   if (!allowedExternalModels.includes(externalModel)) {
     throw new GatewayError("Gateway API key is not allowed to access this model", {
       code: "auth_model_not_allowed",
+      category: "authorization",
+      httpStatus: 403,
+      retryable: false,
+      requestId
+    });
+  }
+}
+
+export function assertGatewayKeyAllowsProvider(
+  gatewayApiKey: GatewayApiKeyRecord,
+  provider: ProviderId,
+  requestId: string
+) {
+  const allowedProviders = gatewayApiKey.policy?.allowedProviders;
+
+  if (!allowedProviders) {
+    return;
+  }
+
+  if (!allowedProviders.includes(provider)) {
+    throw new GatewayError("Gateway API key is not allowed to access this provider", {
+      code: "auth_provider_not_allowed",
       category: "authorization",
       httpStatus: 403,
       retryable: false,

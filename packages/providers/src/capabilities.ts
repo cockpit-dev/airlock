@@ -1,6 +1,8 @@
 import { GatewayError } from "@airlock/shared";
 
-import type { ProviderCapabilityDescriptor, ProviderId } from "./types.js";
+import type { ProviderId } from "@airlock/shared";
+
+import type { ProviderCapabilityDescriptor } from "./types.js";
 
 const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
   {

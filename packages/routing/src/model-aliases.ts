@@ -1,5 +1,5 @@
 import { GatewayError } from "@airlock/shared";
-import type { ProviderId } from "@airlock/providers";
+import type { ProviderId } from "@airlock/shared";
 import type {
   RequestShapingProfile,
   RouteRequestShapingMap

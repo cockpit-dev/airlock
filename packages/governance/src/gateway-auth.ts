@@ -1,4 +1,4 @@
-import { GatewayError } from "@airlock/shared";
+import { GatewayError, isProviderId, type ProviderId } from "@airlock/shared";
 
 export type GatewayApiKeyStatus = "active" | "revoked";
 
@@ -6,6 +6,7 @@ export interface GatewayApiKeyPolicy {
   tier?: string;
   tags?: string[];
   allowedExternalModels?: string[];
+  allowedProviders?: ProviderId[];
 }
 
 export interface GatewayApiKeyRecord {
@@ -112,6 +113,35 @@ function parseGatewayApiKeyPolicy(value: unknown): GatewayApiKeyPolicy | undefin
     }
 
     policy.allowedExternalModels = allowedExternalModels;
+  }
+
+  if (value.allowedProviders !== undefined) {
+    if (!Array.isArray(value.allowedProviders)) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy allowedProviders must be an array"
+      );
+    }
+
+    const allowedProviders = value.allowedProviders.map((provider) => {
+      const normalizedProvider =
+        typeof provider === "string" ? provider.trim() : undefined;
+
+      if (!normalizedProvider || !isProviderId(normalizedProvider)) {
+        throw createInvalidGatewayKeyConfigError(
+          "Gateway API key policy allowedProviders must contain supported provider ids"
+        );
+      }
+
+      return normalizedProvider;
+    });
+
+    if (new Set(allowedProviders).size !== allowedProviders.length) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy allowedProviders must be unique"
+      );
+    }
+
+    policy.allowedProviders = allowedProviders;
   }
 
   return Object.keys(policy).length > 0 ? policy : {};
