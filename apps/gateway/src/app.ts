@@ -4,6 +4,13 @@ import { GatewayError } from "@airlock/shared";
 
 import { toErrorResponse } from "./errors.js";
 import type { GatewayBindings } from "./env.js";
+import {
+  assertInternalAdminAuthorization,
+  clearGatewayKeyRevocation,
+  getGatewayKeyRevocationStatus,
+  resolveGatewayApiKeyById,
+  revokeGatewayKey
+} from "./gateway-key-revocation.js";
 import { createRequestId } from "./request-id.js";
 import { handleChatCompletions } from "./routes/chat-completions.js";
 import { handleHealth } from "./routes/health.js";
@@ -12,6 +19,7 @@ import { handleModelById, handleModels } from "./routes/models.js";
 import { handleReady } from "./routes/ready.js";
 import { handleResponses } from "./routes/responses.js";
 import { emitGatewayRequestErrorTelemetry } from "./telemetry.js";
+import { resolveGatewayConfig } from "./config.js";
 
 export interface CreateAppOptions {
   fetcher?: typeof fetch;
@@ -79,6 +87,75 @@ export function createApp(options: CreateAppOptions = {}) {
 
   app.get("/healthz", handleHealth);
   app.get("/readyz", handleReady);
+  app.get("/_airlock/keys/:keyId/revocation", async (context) => {
+    const requestId = context.get("requestId");
+    assertInternalAdminAuthorization(
+      context.req.header("authorization"),
+      context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      requestId
+    );
+
+    const config = resolveGatewayConfig(context.env);
+    const gatewayApiKey = resolveGatewayApiKeyById(
+      config.gatewayApiKeys,
+      context.req.param("keyId"),
+      requestId
+    );
+
+    return context.json(
+      await getGatewayKeyRevocationStatus(
+        context.env,
+        gatewayApiKey,
+        requestId
+      )
+    );
+  });
+  app.post("/_airlock/keys/:keyId/revocation", async (context) => {
+    const requestId = context.get("requestId");
+    assertInternalAdminAuthorization(
+      context.req.header("authorization"),
+      context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      requestId
+    );
+
+    const config = resolveGatewayConfig(context.env);
+    const gatewayApiKey = resolveGatewayApiKeyById(
+      config.gatewayApiKeys,
+      context.req.param("keyId"),
+      requestId
+    );
+
+    return context.json(
+      await revokeGatewayKey(
+        context.env,
+        gatewayApiKey,
+        requestId
+      )
+    );
+  });
+  app.delete("/_airlock/keys/:keyId/revocation", async (context) => {
+    const requestId = context.get("requestId");
+    assertInternalAdminAuthorization(
+      context.req.header("authorization"),
+      context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      requestId
+    );
+
+    const config = resolveGatewayConfig(context.env);
+    const gatewayApiKey = resolveGatewayApiKeyById(
+      config.gatewayApiKeys,
+      context.req.param("keyId"),
+      requestId
+    );
+
+    return context.json(
+      await clearGatewayKeyRevocation(
+        context.env,
+        gatewayApiKey,
+        requestId
+      )
+    );
+  });
   app.get("/v1/models", handleModels);
   app.get("/v1/models/:model", handleModelById);
   app.post("/v1/chat/completions", handleChatCompletions);

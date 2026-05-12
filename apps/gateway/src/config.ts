@@ -206,6 +206,15 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
     });
   }
 
+  if (env.AIRLOCK_INTERNAL_ADMIN_TOKEN && !env.AIRLOCK_GATEWAY_KEY_REVOCATION) {
+    throw new GatewayError("Gateway key revocation binding is required", {
+      code: "config_missing_gateway_key_revocation",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false
+    });
+  }
+
   const usedProviders = new Set(
     modelAliases.flatMap((route) => {
       return [route.target, ...(route.fallbacks ?? [])].map((target) => {

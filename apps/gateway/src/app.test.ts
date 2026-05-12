@@ -135,6 +135,61 @@ function createQuotaNamespace() {
   return namespace;
 }
 
+function createRevocationNamespace() {
+  const state = new Map<
+    string,
+    {
+      revoked: boolean;
+      updatedAt: string;
+    }
+  >();
+
+  const namespace: DurableObjectNamespaceLike = {
+    idFromName(name: string) {
+      return { name };
+    },
+    get(id: { name: string }) {
+      return {
+        async fetch(request: Request) {
+          await Promise.resolve();
+          const method = request.method;
+          const current =
+            state.get(id.name) ?? {
+              revoked: false,
+              updatedAt: new Date(0).toISOString()
+            };
+
+          if (method === "GET") {
+            return Response.json(current);
+          }
+
+          if (method === "POST") {
+            const next = {
+              revoked: true,
+              updatedAt: new Date().toISOString()
+            };
+            state.set(id.name, next);
+            return Response.json(next);
+          }
+
+          if (method === "DELETE") {
+            const next = {
+              revoked: false,
+              updatedAt: new Date().toISOString()
+            };
+            state.set(id.name, next);
+            return Response.json(next);
+          }
+
+          return new Response("Method not allowed", { status: 405 });
+        }
+      };
+    }
+  };
+
+  return namespace;
+}
+
 const gatewaySecretHash =
   "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6";
 
@@ -652,6 +707,21 @@ describe("gateway app", () => {
     });
   });
 
+  it("returns not ready from /readyz when internal revocation admin is configured without a revocation binding", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret"
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
   it("returns not ready from /readyz when model alias config is invalid", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -1084,6 +1154,184 @@ describe("gateway app", () => {
     );
 
     expect(validResponse.status).toBe(200);
+  });
+
+  it("rejects missing admin auth on internal key revocation routes", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys/gak_1/revocation",
+      {
+        method: "GET"
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(401);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_invalid_admin_token"
+      }
+    });
+  });
+
+  it("can persistently revoke and clear a configured key through internal admin routes", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    const initialStatus = await app.request(
+      "http://localhost/_airlock/keys/gak_1/revocation",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(initialStatus.status).toBe(200);
+    await expect(readJson(initialStatus)).resolves.toMatchObject({
+      keyId: "gak_1",
+      revoked: false
+    });
+
+    const revokeResponse = await app.request(
+      "http://localhost/_airlock/keys/gak_1/revocation",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(revokeResponse.status).toBe(200);
+    await expect(readJson(revokeResponse)).resolves.toMatchObject({
+      keyId: "gak_1",
+      revoked: true
+    });
+
+    const blockedResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi while revoked" }]
+        })
+      },
+      bindings
+    );
+
+    expect(blockedResponse.status).toBe(401);
+    await expect(readJson(blockedResponse)).resolves.toMatchObject({
+      error: {
+        code: "auth_invalid_api_key"
+      }
+    });
+
+    const clearResponse = await app.request(
+      "http://localhost/_airlock/keys/gak_1/revocation",
+      {
+        method: "DELETE",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(clearResponse.status).toBe(200);
+    await expect(readJson(clearResponse)).resolves.toMatchObject({
+      keyId: "gak_1",
+      revoked: false
+    });
+
+    const allowedResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi after clear" }]
+        })
+      },
+      bindings
+    );
+
+    expect(allowedResponse.status).toBe(200);
+  });
+
+  it("rejects internal revocation operations for unknown key ids", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys/unknown-key/revocation",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(404);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "gateway_key_not_found"
+      }
+    });
   });
 
   it("authorizes hashed structured gateway keys on chat completions requests", async () => {

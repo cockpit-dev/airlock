@@ -7,6 +7,10 @@
       {
         "name": "AIRLOCK_GATEWAY_KEY_QUOTA",
         "class_name": "GatewayKeyQuotaDurableObject"
+      },
+      {
+        "name": "AIRLOCK_GATEWAY_KEY_REVOCATION",
+        "class_name": "GatewayKeyRevocationDurableObject"
       }
     ]
   },
@@ -14,6 +18,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["GatewayKeyQuotaDurableObject"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["GatewayKeyRevocationDurableObject"]
     }
   ],
   "queues": {

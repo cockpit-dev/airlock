@@ -8,17 +8,25 @@ import { GatewayError, type ProviderId } from "@airlock/shared";
 import type { ModelRoute } from "@airlock/routing";
 
 import type { GatewayConfig } from "./config.js";
+import type { GatewayBindings } from "./env.js";
+import { assertGatewayKeyNotRevoked } from "./gateway-key-revocation.js";
 
 export async function requireGatewayAuthorization(
-  context: Context,
+  context: Context<{
+    Bindings: GatewayBindings;
+  }>,
   config: GatewayConfig,
   requestId: string
 ) {
-  return requireAuthorization(
+  const gatewayApiKey = await requireAuthorization(
     context.req.header("authorization"),
     config.gatewayApiKeys,
     requestId
   );
+
+  await assertGatewayKeyNotRevoked(context.env, gatewayApiKey, requestId);
+
+  return gatewayApiKey;
 }
 
 export function assertGatewayKeyAllowsModel(

@@ -30,10 +30,12 @@ import {
 } from "../telemetry.js";
 
 export async function handleChatCompletions(
-  context: Context
+  context: Context<{
+    Bindings: GatewayBindings;
+  }>
 ): Promise<Response> {
   const requestId = context.get("requestId") as string;
-  const config = resolveGatewayConfig(context.env as GatewayBindings);
+  const config = resolveGatewayConfig(context.env);
   const requestStartedAt = context.get("requestStartedAt") as number;
   const telemetrySink = context.get("telemetrySink") as TelemetrySink | undefined;
   const gatewayApiKey = await requireGatewayAuthorization(
@@ -59,7 +61,7 @@ export async function handleChatCompletions(
   const requestShaping = parseRequestShapingExtension(
     parsed.airlock?.requestShaping
   );
-  await enforceGatewayKeyRequestQuota(context.env as GatewayBindings, gatewayApiKey, requestId);
+  await enforceGatewayKeyRequestQuota(context.env, gatewayApiKey, requestId);
   const fetcher = context.get("fetcher") as typeof fetch | undefined;
   let attemptedTarget: ProviderTarget | undefined;
 

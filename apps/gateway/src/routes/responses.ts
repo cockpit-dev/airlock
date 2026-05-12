@@ -28,9 +28,13 @@ import {
   emitGatewayRequestSuccessTelemetry
 } from "../telemetry.js";
 
-export async function handleResponses(context: Context): Promise<Response> {
+export async function handleResponses(
+  context: Context<{
+    Bindings: GatewayBindings;
+  }>
+): Promise<Response> {
   const requestId = context.get("requestId") as string;
-  const config = resolveGatewayConfig(context.env as GatewayBindings);
+  const config = resolveGatewayConfig(context.env);
   const requestStartedAt = context.get("requestStartedAt") as number;
   const telemetrySink = context.get("telemetrySink") as TelemetrySink | undefined;
   const gatewayApiKey = await requireGatewayAuthorization(
@@ -56,7 +60,7 @@ export async function handleResponses(context: Context): Promise<Response> {
   const requestShaping = parseRequestShapingExtension(
     parsed.airlock?.requestShaping
   );
-  await enforceGatewayKeyRequestQuota(context.env as GatewayBindings, gatewayApiKey, requestId);
+  await enforceGatewayKeyRequestQuota(context.env, gatewayApiKey, requestId);
   const fetcher = context.get("fetcher") as typeof fetch | undefined;
   let attemptedTarget: ProviderTarget | undefined;
 

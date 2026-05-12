@@ -2,6 +2,7 @@ import { createApp } from "./app.js";
 import type { GatewayBindings } from "./env.js";
 import { gatewayEnvSchema } from "./env.js";
 import { GatewayKeyQuotaDurableObject } from "./gateway-key-quota.js";
+import { GatewayKeyRevocationDurableObject } from "./gateway-key-revocation.js";
 import {
   createGatewayTelemetrySink,
   processTelemetryQueueBatch
@@ -55,4 +56,4 @@ export default {
   }
 };
 
-export { GatewayKeyQuotaDurableObject };
+export { GatewayKeyQuotaDurableObject, GatewayKeyRevocationDurableObject };
