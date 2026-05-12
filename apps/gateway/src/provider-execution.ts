@@ -1,7 +1,8 @@
 import {
   getCanonicalRequestCapabilityRequirements,
   type CanonicalRequest,
-  type CanonicalResponse
+  type CanonicalResponse,
+  type CanonicalStreamEvent
 } from "@airlock/canonical";
 import {
   AnthropicProviderAdapter,
@@ -400,4 +401,63 @@ export async function executeRoutedRequest(
   }
 
   throw lastError instanceof Error ? lastError : new Error("Provider execution failed");
+}
+
+export async function* executeRoutedStreamRequest(
+  route: ModelRoute,
+  request: CanonicalRequest,
+  options: {
+    config: GatewayConfig;
+    gatewayApiKey: GatewayApiKeyRecord;
+    requestId: string;
+    requestShaping?: RequestShapingProfile;
+    fetcher?: typeof fetch;
+    getProviderDescriptor?: ProviderCapabilityDescriptorResolver;
+  }
+): AsyncIterable<CanonicalStreamEvent> {
+  const {
+    config,
+    gatewayApiKey,
+    requestId,
+    requestShaping,
+    fetcher,
+    getProviderDescriptor = getProviderCapabilityDescriptor
+  } = options;
+  const targets = selectEligibleTargets(
+    route,
+    request,
+    gatewayApiKey,
+    requestId,
+    getProviderDescriptor
+  ).filter((target) => {
+    return getProviderDescriptor(target.provider).supportsStreaming;
+  });
+  const target = targets[0];
+
+  if (!target) {
+    throw createUnsupportedCapabilityError(route.target.provider, "streaming", requestId);
+  }
+
+  const currentAttemptRequest = createAttemptRequest(request, target);
+  const adapter = createProviderAdapter(
+    route,
+    target,
+    config,
+    currentAttemptRequest,
+    requestId,
+    getProviderDescriptor,
+    fetcher
+  );
+
+  if (!adapter.stream) {
+    throw createUnsupportedCapabilityError(target.provider, "streaming", requestId);
+  }
+
+  for await (const event of adapter.stream(currentAttemptRequest, {
+    requestId,
+    timeoutMs: config.providerTimeoutMs,
+    ...(requestShaping ? { requestShaping } : {})
+  })) {
+    yield event;
+  }
 }

@@ -188,6 +188,84 @@ describe("OpenAIProviderAdapter", () => {
     ).rejects.toBeInstanceOf(GatewayError);
   });
 
+  it("parses upstream chat completion SSE into canonical stream events", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+              'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"hel"},"finish_reason":null}]}\n\n',
+              'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"lo"},"finish_reason":null}]}\n\n',
+              'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+              "data: [DONE]\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true
+      },
+      {
+        requestId: "req_stream_123"
+      }
+    )) {
+      events.push(event);
+    }
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stream: true
+    });
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini",
+        delta: "hel"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini",
+        delta: "lo"
+      },
+      {
+        type: "response_completed",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini",
+        finishReason: "stop"
+      }
+    ]);
+  });
+
   it("applies request-scoped shaping on top of route-level shaping", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

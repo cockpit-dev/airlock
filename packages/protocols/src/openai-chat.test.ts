@@ -70,6 +70,21 @@ describe("openAIChatCompletionRequestSchema", () => {
       }
     });
   });
+
+  it("accepts a streaming chat completions request", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: true,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.stream).toBe(true);
+  });
 });
 
 describe("openAIResponsesRequestSchema", () => {

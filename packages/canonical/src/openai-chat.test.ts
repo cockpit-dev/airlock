@@ -21,6 +21,21 @@ describe("normalizeOpenAIChatRequest", () => {
     expect(canonical.messages).toHaveLength(2);
     expect(canonical.messages[0]?.role).toBe("system");
   });
+
+  it("preserves streaming intent while normalizing an OpenAI chat request", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: true,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.stream).toBe(true);
+  });
 });
 
 describe("encodeCanonicalToOpenAIChatResponse", () => {
@@ -35,6 +50,101 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
     expect(encoded.object).toBe("chat.completion");
     expect(encoded.model).toBe("gpt-4.1-mini");
     expect(encoded.choices[0]?.message.content).toBe("hello there");
+  });
+});
+
+describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
+  it("encodes a response_started event into an assistant role chunk", async () => {
+    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIChatStreamChunk(
+        {
+          type: "response_started",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini"
+        },
+        "chatcmpl-stream-123"
+      )
+    ).toEqual({
+      id: "chatcmpl-stream-123",
+      object: "chat.completion.chunk",
+      created: 0,
+      model: "gpt-4.1-mini",
+      choices: [
+        {
+          index: 0,
+          delta: {
+            role: "assistant"
+          },
+          finish_reason: null
+        }
+      ]
+    });
+  });
+
+  it("encodes an output_text_delta event into a content delta chunk", async () => {
+    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIChatStreamChunk(
+        {
+          type: "output_text_delta",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          delta: "hel"
+        },
+        "chatcmpl-stream-123"
+      )
+    ).toEqual({
+      id: "chatcmpl-stream-123",
+      object: "chat.completion.chunk",
+      created: 0,
+      model: "gpt-4.1-mini",
+      choices: [
+        {
+          index: 0,
+          delta: {
+            content: "hel"
+          },
+          finish_reason: null
+        }
+      ]
+    });
+  });
+
+  it("encodes a response_completed event into a finish chunk", async () => {
+    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIChatStreamChunk(
+        {
+          type: "response_completed",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          finishReason: "stop"
+        },
+        "chatcmpl-stream-123"
+      )
+    ).toEqual({
+      id: "chatcmpl-stream-123",
+      object: "chat.completion.chunk",
+      created: 0,
+      model: "gpt-4.1-mini",
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: "stop"
+        }
+      ]
+    });
   });
 });
 

@@ -4,14 +4,18 @@ import type {
   OpenAIResponsesRequest
 } from "@airlock/protocols";
 
-import type { CanonicalRequest, CanonicalResponse } from "./models.js";
+import type {
+  CanonicalRequest,
+  CanonicalResponse,
+  CanonicalStreamEvent
+} from "./models.js";
 
 export function normalizeOpenAIChatRequest(
   request: OpenAIChatCompletionRequest
 ): CanonicalRequest {
   return {
     model: request.model,
-    stream: false,
+    stream: request.stream,
     messages: request.messages.map((message) => ({
       role: message.role,
       content: message.content
@@ -32,7 +36,7 @@ export function normalizeOpenAIResponsesRequest(
 
   return {
     model: request.model,
-    stream: false,
+    stream: request.stream,
     messages
   };
 }
@@ -58,6 +62,61 @@ export function normalizeAnthropicMessagesRequest(
     model: request.model,
     stream: false,
     messages: [...systemMessages, ...messages]
+  };
+}
+
+export function encodeCanonicalToOpenAIChatStreamChunk(
+  event: CanonicalStreamEvent,
+  streamId: string
+) {
+  if (event.type === "response_started") {
+    return {
+      id: streamId,
+      object: "chat.completion.chunk" as const,
+      created: 0,
+      model: event.model,
+      choices: [
+        {
+          index: 0,
+          delta: {
+            role: "assistant" as const
+          },
+          finish_reason: null
+        }
+      ]
+    };
+  }
+
+  if (event.type === "output_text_delta") {
+    return {
+      id: streamId,
+      object: "chat.completion.chunk" as const,
+      created: 0,
+      model: event.model,
+      choices: [
+        {
+          index: 0,
+          delta: {
+            content: event.delta
+          },
+          finish_reason: null
+        }
+      ]
+    };
+  }
+
+  return {
+    id: streamId,
+    object: "chat.completion.chunk" as const,
+    created: 0,
+    model: event.model,
+    choices: [
+      {
+        index: 0,
+        delta: {},
+        finish_reason: event.finishReason
+      }
+    ]
   };
 }
 

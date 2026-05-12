@@ -11,7 +11,7 @@ describe("provider capability descriptors", () => {
       {
         provider: "openai",
         displayName: "OpenAI",
-        supportsStreaming: false,
+        supportsStreaming: true,
         supportsTools: false,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,

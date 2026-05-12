@@ -6,7 +6,10 @@ import { getProviderCapabilityDescriptor } from "@airlock/providers";
 import type { ModelRoute } from "@airlock/routing";
 import { GatewayError } from "@airlock/shared";
 
-import { assertProviderSupportsCanonicalRequest, executeRoutedRequest } from "./provider-execution.js";
+import {
+  assertProviderSupportsCanonicalRequest,
+  executeRoutedRequest
+} from "./provider-execution.js";
 
 describe("assertProviderSupportsCanonicalRequest", () => {
   it("allows canonical requests that fit the provider descriptor", () => {
@@ -865,6 +868,124 @@ describe("executeRoutedRequest", () => {
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     );
     expect(response.model).toBe("gemini-2.5-flash");
+  });
+
+  it("skips streaming-ineligible weighted targets and starts from the first eligible target", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ],
+      targetSelection: {
+        strategy: "weighted",
+        weights: {
+          "openai:gpt-4.1-mini": 1,
+          "anthropic:claude-haiku-4-5": 10000
+        }
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: true,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+
+    const { executeRoutedStreamRequest } = await import("./provider-execution.js");
+    const events: Array<unknown> = [];
+
+    for await (const event of executeRoutedStreamRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 3,
+        providerRetryBackoffMs: 0,
+        modelGroups: {},
+        gatewayApiKeys: [],
+        modelAliases: [],
+        anthropic: {
+          apiKey: "anthropic-secret",
+          baseUrl: "https://api.anthropic.com/v1",
+          defaultMaxTokens: 256
+        },
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_stream_123",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher
+    })) {
+      events.push(event);
+    }
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini",
+        delta: "hello"
+      },
+      {
+        type: "response_completed",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini",
+        finishReason: "stop"
+      }
+    ]);
   });
 
   it("retries a retryable provider failure on the same target before falling through to fallback", async () => {

@@ -9,7 +9,7 @@ export const openAIChatMessageSchema = z.object({
 
 export const openAIChatCompletionRequestSchema = z.object({
   model: z.string().min(1),
-  stream: z.literal(false).default(false),
+  stream: z.boolean().default(false),
   messages: z.array(openAIChatMessageSchema).min(1),
   airlock: airlockRequestExtensionsSchema.optional()
 });

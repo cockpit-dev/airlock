@@ -1,6 +1,10 @@
 import type { Context } from "hono";
 
-import { encodeCanonicalToOpenAIChatResponse, normalizeOpenAIChatRequest } from "@airlock/canonical";
+import {
+  encodeCanonicalToOpenAIChatResponse,
+  encodeCanonicalToOpenAIChatStreamChunk,
+  normalizeOpenAIChatRequest
+} from "@airlock/canonical";
 import { openAIChatCompletionRequestSchema } from "@airlock/protocols";
 import { resolveModelRoute } from "@airlock/routing";
 
@@ -10,10 +14,15 @@ import {
 } from "../auth.js";
 import { resolveGatewayConfig } from "../config.js";
 import type { GatewayBindings } from "../env.js";
-import { executeRoutedRequest } from "../provider-execution.js";
+import {
+  executeRoutedRequest,
+  executeRoutedStreamRequest
+} from "../provider-execution.js";
 import { parseRequestShapingExtension } from "../request-extensions.js";
 
-export async function handleChatCompletions(context: Context) {
+export async function handleChatCompletions(
+  context: Context
+): Promise<Response> {
   const requestId = context.get("requestId") as string;
   const config = resolveGatewayConfig(context.env as GatewayBindings);
   const gatewayApiKey = requireGatewayAuthorization(context, config, requestId);
@@ -35,6 +44,48 @@ export async function handleChatCompletions(context: Context) {
     parsed.airlock?.requestShaping
   );
   const fetcher = context.get("fetcher") as typeof fetch | undefined;
+
+  if (canonicalRequest.stream) {
+    const streamId = `chatcmpl_${requestId}`;
+    const encoder = new TextEncoder();
+    const responseStream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        for await (const event of executeRoutedStreamRequest(
+          route,
+          canonicalRequest,
+          {
+            config,
+            gatewayApiKey,
+            requestId,
+            ...(requestShaping ? { requestShaping } : {}),
+            ...(fetcher ? { fetcher } : {})
+          }
+        )) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify(
+                encodeCanonicalToOpenAIChatStreamChunk(event, streamId)
+              )}\n\n`
+            )
+          );
+        }
+
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      }
+    });
+
+    return new Response(responseStream, {
+      status: 200,
+      headers: {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+        "x-request-id": requestId
+      }
+    });
+  }
+
   const canonicalResponse = await executeRoutedRequest(
     route,
     canonicalRequest,

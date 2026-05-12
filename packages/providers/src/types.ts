@@ -1,4 +1,8 @@
-import type { CanonicalRequest, CanonicalResponse } from "@airlock/canonical";
+import type {
+  CanonicalRequest,
+  CanonicalResponse,
+  CanonicalStreamEvent
+} from "@airlock/canonical";
 import type { RequestShapingProfile } from "@airlock/request-shaping";
 import type { ProviderId } from "@airlock/shared";
 
@@ -26,4 +30,8 @@ export interface ProviderAdapter {
     request: CanonicalRequest,
     context: ProviderRequestContext
   ): Promise<CanonicalResponse>;
+  stream?(
+    request: CanonicalRequest,
+    context: ProviderRequestContext
+  ): AsyncIterable<CanonicalStreamEvent>;
 }
