@@ -1,0 +1,23 @@
+{
+  "name": "@airlock/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "wrangler deploy --dry-run",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run",
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@airlock/canonical": "workspace:*",
+    "@airlock/governance": "workspace:*",
+    "@airlock/protocols": "workspace:*",
+    "@airlock/providers": "workspace:*",
+    "@airlock/request-shaping": "workspace:*",
+    "@airlock/routing": "workspace:*",
+    "@airlock/shared": "workspace:*",
+    "hono": "^4.12.18",
+    "zod": "^4.4.3"
+  }
+}

@@ -1,0 +1,16 @@
+packages:
+  - apps/*
+  - packages/*
+
+minimumReleaseAge: 1440
+minimumReleaseAgeStrict: true
+minimumReleaseAgeExclude:
+  - "@types/node"
+trustPolicy: no-downgrade
+blockExoticSubdeps: true
+preferFrozenLockfile: true
+strictPeerDependencies: true
+allowBuilds:
+  esbuild: true
+  workerd: true
+  sharp: false

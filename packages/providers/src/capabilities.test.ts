@@ -1,0 +1,56 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  getProviderCapabilityDescriptor,
+  listProviderCapabilityDescriptors
+} from "./capabilities.js";
+
+describe("provider capability descriptors", () => {
+  it("lists descriptors for all currently supported providers", () => {
+    expect(listProviderCapabilityDescriptors()).toEqual([
+      {
+        provider: "openai",
+        displayName: "OpenAI",
+        supportsStreaming: false,
+        supportsTools: false,
+        supportsMultimodalInput: false,
+        supportsSystemMessages: true,
+        supportsRouteScopedShaping: true,
+        supportsStaticFallbackSameProvider: true
+      },
+      {
+        provider: "anthropic",
+        displayName: "Anthropic",
+        supportsStreaming: false,
+        supportsTools: false,
+        supportsMultimodalInput: false,
+        supportsSystemMessages: true,
+        supportsRouteScopedShaping: true,
+        supportsStaticFallbackSameProvider: true
+      },
+      {
+        provider: "gemini",
+        displayName: "Gemini",
+        supportsStreaming: false,
+        supportsTools: false,
+        supportsMultimodalInput: false,
+        supportsSystemMessages: true,
+        supportsRouteScopedShaping: true,
+        supportsStaticFallbackSameProvider: true
+      }
+    ]);
+  });
+
+  it("returns the descriptor for a supported provider", () => {
+    expect(getProviderCapabilityDescriptor("gemini")).toEqual({
+      provider: "gemini",
+      displayName: "Gemini",
+      supportsStreaming: false,
+      supportsTools: false,
+      supportsMultimodalInput: false,
+      supportsSystemMessages: true,
+      supportsRouteScopedShaping: true,
+      supportsStaticFallbackSameProvider: true
+    });
+  });
+});

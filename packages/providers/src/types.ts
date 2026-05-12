@@ -1,0 +1,28 @@
+import type { CanonicalRequest, CanonicalResponse } from "@airlock/canonical";
+import type { RequestShapingProfile } from "@airlock/request-shaping";
+
+export type ProviderId = "openai" | "anthropic" | "gemini";
+
+export interface ProviderCapabilityDescriptor {
+  provider: ProviderId;
+  displayName: string;
+  supportsStreaming: boolean;
+  supportsTools: boolean;
+  supportsMultimodalInput: boolean;
+  supportsSystemMessages: boolean;
+  supportsRouteScopedShaping: boolean;
+  supportsStaticFallbackSameProvider: boolean;
+}
+
+export interface ProviderRequestContext {
+  requestId: string;
+  timeoutMs?: number;
+  requestShaping?: RequestShapingProfile;
+}
+
+export interface ProviderAdapter {
+  complete(
+    request: CanonicalRequest,
+    context: ProviderRequestContext
+  ): Promise<CanonicalResponse>;
+}

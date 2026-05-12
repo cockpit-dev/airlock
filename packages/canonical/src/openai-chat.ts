@@ -1,0 +1,114 @@
+import type {
+  AnthropicMessagesRequest,
+  OpenAIChatCompletionRequest,
+  OpenAIResponsesRequest
+} from "@airlock/protocols";
+
+import type { CanonicalRequest, CanonicalResponse } from "./models.js";
+
+export function normalizeOpenAIChatRequest(
+  request: OpenAIChatCompletionRequest
+): CanonicalRequest {
+  return {
+    model: request.model,
+    stream: false,
+    messages: request.messages.map((message) => ({
+      role: message.role,
+      content: message.content
+    }))
+  };
+}
+
+export function normalizeOpenAIResponsesRequest(
+  request: OpenAIResponsesRequest
+): CanonicalRequest {
+  const messages =
+    typeof request.input === "string"
+      ? [{ role: "user" as const, content: request.input }]
+      : request.input.map((message) => ({
+          role: message.role,
+          content: message.content
+        }));
+
+  return {
+    model: request.model,
+    stream: false,
+    messages
+  };
+}
+
+export function normalizeAnthropicMessagesRequest(
+  request: AnthropicMessagesRequest
+): CanonicalRequest {
+  const systemMessages = request.system
+    ? [{ role: "system" as const, content: request.system }]
+    : [];
+  const messages = request.messages.map((message) => ({
+    role: message.role,
+    content:
+      typeof message.content === "string"
+        ? message.content
+        : message.content
+            .filter((block) => block.type === "text")
+            .map((block) => block.text)
+            .join("\n")
+  }));
+
+  return {
+    model: request.model,
+    stream: false,
+    messages: [...systemMessages, ...messages]
+  };
+}
+
+export function encodeCanonicalToOpenAIChatResponse(
+  response: CanonicalResponse
+) {
+  return {
+    id: response.id,
+    object: "chat.completion",
+    created: 0,
+    model: response.model,
+    choices: [
+      {
+        index: 0,
+        finish_reason: response.finishReason,
+        message: {
+          role: "assistant",
+          content: response.outputText
+        }
+      }
+    ]
+  };
+}
+
+export function encodeCanonicalToOpenAIResponsesResponse(
+  response: CanonicalResponse
+) {
+  return {
+    id: response.id,
+    object: "response",
+    model: response.model,
+    status: "completed",
+    output: [],
+    output_text: response.outputText
+  };
+}
+
+export function encodeCanonicalToAnthropicMessagesResponse(
+  response: CanonicalResponse
+) {
+  return {
+    id: response.id,
+    type: "message",
+    role: "assistant",
+    model: response.model,
+    stop_reason: "end_turn",
+    content: [
+      {
+        type: "text",
+        text: response.outputText
+      }
+    ]
+  };
+}

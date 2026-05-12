@@ -1,0 +1,89 @@
+import { GatewayError } from "@airlock/shared";
+
+type ErrorProtocol = "openai" | "anthropic";
+
+function detectErrorProtocol(pathname: string): ErrorProtocol {
+  return pathname.startsWith("/v1/messages") ? "anthropic" : "openai";
+}
+
+export function toErrorResponse(
+  error: unknown,
+  requestId: string,
+  pathname: string
+): Response {
+  const protocol = detectErrorProtocol(pathname);
+
+  if (error instanceof GatewayError) {
+    if (protocol === "anthropic") {
+      return Response.json(
+        {
+          type: "error",
+          error: {
+            type: error.category,
+            message: error.message
+          },
+          request_id: requestId
+        },
+        {
+          status: error.httpStatus,
+          headers: {
+            "request-id": requestId,
+            "x-request-id": requestId
+          }
+        }
+      );
+    }
+
+    return Response.json(
+      {
+        error: {
+          message: error.message,
+          type: error.category,
+          code: error.code
+        }
+      },
+      {
+        status: error.httpStatus,
+        headers: {
+          "x-request-id": requestId
+        }
+      }
+    );
+  }
+
+  if (protocol === "anthropic") {
+    return Response.json(
+      {
+        type: "error",
+        error: {
+          type: "internal_error",
+          message: "Internal server error"
+        },
+        request_id: requestId
+      },
+      {
+        status: 500,
+        headers: {
+          "request-id": requestId,
+          "x-request-id": requestId
+        }
+      }
+    );
+  }
+
+  return Response.json(
+    {
+      error: {
+        message: "Internal server error",
+        type: "internal_error",
+        code: "internal_error"
+      }
+    },
+    {
+      status: 500,
+      headers: {
+        "x-request-id": requestId
+      }
+    }
+  );
+}

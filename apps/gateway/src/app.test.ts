@@ -1,0 +1,1426 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { createApp } from "./app.js";
+
+async function readJson(response: Response): Promise<unknown> {
+  return response.json();
+}
+
+interface ModelDirectoryPayload {
+  object: "list";
+  data: Array<{
+    id: string;
+    object: "model";
+  }>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isModelDirectoryPayload(
+  value: unknown
+): value is ModelDirectoryPayload {
+  if (!isRecord(value) || value.object !== "list" || !Array.isArray(value.data)) {
+    return false;
+  }
+
+  return value.data.every(
+    (entry) =>
+      isRecord(entry) &&
+      entry.object === "model" &&
+      typeof entry.id === "string"
+  );
+}
+
+function createBindings() {
+  return {
+    AIRLOCK_MODE: "free",
+    AIRLOCK_GATEWAY_API_KEYS: "gateway-secret",
+    ANTHROPIC_API_KEY: "anthropic-secret",
+    ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+    ANTHROPIC_DEFAULT_MAX_TOKENS: "256",
+    AIRLOCK_PROVIDER_TIMEOUT_MS: "1000",
+    OPENAI_API_KEY: "openai-secret",
+    OPENAI_BASE_URL: "https://api.openai.com/v1",
+    OPENAI_DEFAULT_MODEL: "gpt-4.1-mini",
+    AIRLOCK_MODEL_ALIASES:
+      "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5"
+  };
+}
+
+describe("gateway app", () => {
+  it("returns ok from /healthz", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/healthz",
+      undefined,
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson(response)).resolves.toEqual({ ok: true });
+  });
+
+  it("returns ready from /readyz when required config is present", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/readyz",
+      undefined,
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson(response)).resolves.toEqual({ ok: true, ready: true });
+  });
+
+  it("returns ready from /readyz when structured gateway key config is valid", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_active",
+          label: "Active Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            tier: "prod",
+            tags: ["internal"]
+          }
+        },
+        {
+          id: "key_revoked",
+          label: "Revoked Key",
+          value: "revoked-secret",
+          status: "revoked"
+        }
+      ])
+    });
+
+    expect(response.status).toBe(200);
+    await expect(readJson(response)).resolves.toEqual({ ok: true, ready: true });
+  });
+
+  it("lists the configured model directory from /v1/models", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/models",
+      undefined,
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await readJson(response);
+
+    expect(isModelDirectoryPayload(payload)).toBe(true);
+    if (!isModelDirectoryPayload(payload)) {
+      throw new Error("Expected a model directory payload");
+    }
+
+    expect(payload.data.map((model) => model.id)).toEqual(
+      expect.arrayContaining(["gpt-4.1-mini", "claude-sonnet-4-5"])
+    );
+  });
+
+  it("returns a configured model from /v1/models/:model", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/models/gpt-4.1-mini",
+      undefined,
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson(response)).resolves.toMatchObject({
+      id: "gpt-4.1-mini",
+      object: "model"
+    });
+  });
+
+  it("returns 404 for an unknown model from /v1/models/:model", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/models/unknown-model",
+      undefined,
+      createBindings()
+    );
+
+    expect(response.status).toBe(404);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "model_not_found"
+      }
+    });
+  });
+
+  it("returns not ready from /readyz when required config is missing", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      AIRLOCK_MODE: "free",
+      AIRLOCK_GATEWAY_API_KEYS: "gateway-secret",
+      OPENAI_API_KEY: "openai-secret",
+      OPENAI_BASE_URL: "https://api.openai.com/v1",
+      OPENAI_DEFAULT_MODEL: ""
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when gateway api key config is invalid", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      AIRLOCK_MODE: "free",
+      AIRLOCK_GATEWAY_API_KEYS: "gateway-secret, gateway-secret ",
+      OPENAI_API_KEY: "openai-secret",
+      OPENAI_BASE_URL: "https://api.openai.com/v1",
+      OPENAI_DEFAULT_MODEL: "gpt-4.1-mini"
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when structured gateway key config is invalid", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            tags: ["internal", "internal"]
+          }
+        }
+      ])
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when model alias config is invalid", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      AIRLOCK_MODE: "free",
+      AIRLOCK_GATEWAY_API_KEYS: "gateway-secret",
+      AIRLOCK_MODEL_ALIASES:
+        "gpt-4.1-mini=gpt-4.1-mini,gpt-4.1-mini=other-model",
+      OPENAI_API_KEY: "openai-secret",
+      OPENAI_BASE_URL: "https://api.openai.com/v1",
+      OPENAI_DEFAULT_MODEL: "gpt-4.1-mini"
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when anthropic routes exist but anthropic config is missing", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      AIRLOCK_MODE: "free",
+      AIRLOCK_GATEWAY_API_KEYS: "gateway-secret",
+      OPENAI_API_KEY: "openai-secret",
+      OPENAI_BASE_URL: "https://api.openai.com/v1",
+      OPENAI_DEFAULT_MODEL: "gpt-4.1-mini",
+      AIRLOCK_MODEL_ALIASES:
+        "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5"
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when provider timeout config is invalid", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_PROVIDER_TIMEOUT_MS: "0"
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when gemini routes exist but gemini config is missing", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      AIRLOCK_MODE: "free",
+      AIRLOCK_GATEWAY_API_KEYS: "gateway-secret",
+      OPENAI_API_KEY: "openai-secret",
+      OPENAI_BASE_URL: "https://api.openai.com/v1",
+      OPENAI_DEFAULT_MODEL: "gpt-4.1-mini",
+      AIRLOCK_MODEL_ALIASES:
+        "gpt-4.1-mini=openai:gpt-4.1-mini,gemini-2.5-flash=gemini:gemini-2.5-flash"
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when model shaping json is malformed", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_MODEL_SHAPING: "{not-json"
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when model shaping targets an unknown route", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_MODEL_SHAPING: JSON.stringify({
+        unknown: {
+          headers: {
+            "openai-beta": "responses=v1"
+          }
+        }
+      })
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when fallback json is malformed", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_MODEL_FALLBACKS: "{not-json"
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("rejects unauthorized chat completions requests", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects revoked structured gateway keys on chat completions requests", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer revoked-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_active",
+            label: "Active Key",
+            value: "gateway-secret",
+            status: "active"
+          },
+          {
+            id: "key_revoked",
+            label: "Revoked Key",
+            value: "revoked-secret",
+            status: "revoked"
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(401);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_invalid_api_key"
+      }
+    });
+  });
+
+  it("returns an OpenAI-compatible chat completions response when authorized", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_SHAPING: JSON.stringify({
+          "gpt-4.1-mini": {
+            headers: {
+              "openai-beta": "responses=v1"
+            },
+            query: {
+              "api-version": "2025-01-01"
+            },
+            jsonBody: {
+              temperature: 0.2
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-request-id")).toBeTruthy();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe(
+      "https://api.openai.com/v1/chat/completions?api-version=2025-01-01"
+    );
+    expect(init.headers).toMatchObject({
+      "openai-beta": "responses=v1"
+    });
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [{ role: "user", content: "hi" }],
+      temperature: 0.2
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "chat.completion",
+      model: "gpt-4.1-mini"
+    });
+  });
+
+  it("applies request-scoped shaping to chat completions requests", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }],
+          airlock: {
+            requestShaping: {
+              headers: {
+                "openai-beta": "responses=v1"
+              },
+              query: {
+                "api-version": "2025-01-01"
+              },
+              jsonBody: {
+                temperature: 0.2
+              }
+            }
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe(
+      "https://api.openai.com/v1/chat/completions?api-version=2025-01-01"
+    );
+    expect(init.headers).toMatchObject({
+      "openai-beta": "responses=v1"
+    });
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [{ role: "user", content: "hi" }],
+      temperature: 0.2
+    });
+  });
+
+  it("lets request-scoped shaping override route-level shaping for chat completions", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }],
+          airlock: {
+            requestShaping: {
+              headers: {
+                "openai-beta": "responses=v2"
+              },
+              query: {
+                "api-version": "2025-02-02"
+              },
+              jsonBody: {
+                temperature: 0.8
+              }
+            }
+          }
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_SHAPING: JSON.stringify({
+          "gpt-4.1-mini": {
+            headers: {
+              "openai-beta": "responses=v1"
+            },
+            query: {
+              "api-version": "2025-01-01"
+            },
+            jsonBody: {
+              temperature: 0.2
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe(
+      "https://api.openai.com/v1/chat/completions?api-version=2025-02-02"
+    );
+    expect(init.headers).toMatchObject({
+      "openai-beta": "responses=v2"
+    });
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [{ role: "user", content: "hi" }],
+      temperature: 0.8
+    });
+  });
+
+  it("fails over to the configured OpenAI fallback target on retryable upstream error", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_fallback",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-nano",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "fallback hello"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "gpt-4.1-mini": ["openai:gpt-4.1-nano"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-nano"
+      });
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "gpt-4.1-nano"
+    });
+  });
+
+  it("does not fail over on non-retryable upstream errors", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "bad request"
+          }
+        }),
+        {
+          status: 400,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "gpt-4.1-mini": ["openai:gpt-4.1-nano"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails over when the primary provider attempt times out", async () => {
+    const fetcher = vi
+      .fn()
+      .mockImplementationOnce(async (_input, init?: RequestInit) => {
+        const signal = init?.signal;
+
+        return await new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        });
+      })
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_fallback",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-nano",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "fallback hello"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_PROVIDER_TIMEOUT_MS: "1",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "gpt-4.1-mini": ["openai:gpt-4.1-nano"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "gpt-4.1-nano"
+    });
+  });
+
+  it("fails over across providers when an unshaped route has a retryable primary failure", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_123",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "fallback hello"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "claude-haiku-4-5"
+    });
+  });
+
+  it("returns not ready when a shaped route configures cross-provider fallback", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_MODEL_ALIASES: "assistant-default=openai:gpt-4.1-mini",
+      AIRLOCK_MODEL_SHAPING: JSON.stringify({
+        "assistant-default": {
+          headers: {
+            "openai-beta": "responses=v1"
+          }
+        }
+      }),
+      AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+        "assistant-default": ["anthropic:claude-haiku-4-5"]
+      })
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("routes authorized chat completions requests to Gemini when configured", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "hello from gemini"
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    );
+    expect(init.headers).toMatchObject({
+      "x-goog-api-key": "gemini-secret"
+    });
+    expect(JSON.parse(init.body as string)).toEqual({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: "hi"
+            }
+          ]
+        }
+      ]
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "chat.completion",
+      model: "gemini-2.5-flash"
+    });
+  });
+
+  it("returns an OpenAI-compatible responses payload when authorized", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi",
+          stream: false
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "response",
+      model: "gpt-4.1-mini",
+      output_text: "hello there"
+    });
+  });
+
+  it("applies request-scoped shaping to responses requests", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi",
+          stream: false,
+          airlock: {
+            requestShaping: {
+              query: {
+                "api-version": "2025-01-01"
+              },
+              jsonBody: {
+                temperature: 0.2
+              }
+            }
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe(
+      "https://api.openai.com/v1/chat/completions?api-version=2025-01-01"
+    );
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [{ role: "user", content: "hi" }],
+      temperature: 0.2
+    });
+  });
+
+  it("returns an Anthropic-compatible messages payload when authorized", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_SHAPING: JSON.stringify({
+          "claude-sonnet-4-5": {
+            headers: {
+              "anthropic-beta": "tools-2024-04-04"
+            },
+            query: {
+              trace: "1"
+            },
+            jsonBody: {
+              metadata: {
+                source: "airlock"
+              }
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe("https://api.anthropic.com/v1/messages?trace=1");
+    expect(init.headers).toMatchObject({
+      "anthropic-beta": "tools-2024-04-04"
+    });
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      metadata: {
+        source: "airlock"
+      },
+      messages: [{ role: "user", content: "hi" }]
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "message",
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "hello there"
+        }
+      ]
+    });
+  });
+
+  it("applies request-scoped shaping to anthropic messages requests", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          system: "You are precise.",
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ],
+          airlock: {
+            requestShaping: {
+              headers: {
+                "anthropic-beta": "prompt-caching-2024-07-31"
+              },
+              query: {
+                trace: "1"
+              },
+              jsonBody: {
+                metadata: {
+                  source: "request"
+                }
+              }
+            }
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe("https://api.anthropic.com/v1/messages?trace=1");
+    expect(init.headers).toMatchObject({
+      "anthropic-beta": "prompt-caching-2024-07-31"
+    });
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      system: "You are precise.",
+      metadata: {
+        source: "request"
+      },
+      messages: [{ role: "user", content: "hi" }]
+    });
+  });
+
+  it("rejects reserved request-scoped shaping headers as a request error", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }],
+          airlock: {
+            requestShaping: {
+              headers: {
+                authorization: "Bearer override"
+              }
+            }
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "request_invalid_request_shaping",
+        type: "request"
+      }
+    });
+  });
+
+  it("returns an Anthropic-compatible error payload for unauthorized /v1/messages", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(401);
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "error",
+      error: {
+        type: "authentication",
+        message: "Unauthorized"
+      }
+    });
+    expect(response.headers.get("request-id")).toBeTruthy();
+  });
+});
