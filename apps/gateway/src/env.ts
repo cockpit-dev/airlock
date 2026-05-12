@@ -55,6 +55,14 @@ export const gatewayEnvSchema = z.object({
       };
     }>()
     .optional(),
+  AIRLOCK_GATEWAY_KEY_CONCURRENCY: z
+    .custom<{
+      idFromName(name: string): unknown;
+      get(id: unknown): {
+        fetch(request: Request): Promise<Response>;
+      };
+    }>()
+    .optional(),
   AIRLOCK_INTERNAL_ADMIN_TOKEN: z.string().min(1).optional(),
   AIRLOCK_GATEWAY_KEY_REVOCATION: z
     .custom<{

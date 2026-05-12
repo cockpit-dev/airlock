@@ -9,6 +9,10 @@
         "class_name": "GatewayKeyQuotaDurableObject"
       },
       {
+        "name": "AIRLOCK_GATEWAY_KEY_CONCURRENCY",
+        "class_name": "GatewayKeyConcurrencyDurableObject"
+      },
+      {
         "name": "AIRLOCK_GATEWAY_KEY_REVOCATION",
         "class_name": "GatewayKeyRevocationDurableObject"
       },
@@ -25,10 +29,14 @@
     },
     {
       "tag": "v2",
-      "new_sqlite_classes": ["GatewayKeyRevocationDurableObject"]
+      "new_sqlite_classes": ["GatewayKeyConcurrencyDurableObject"]
     },
     {
       "tag": "v3",
+      "new_sqlite_classes": ["GatewayKeyRevocationDurableObject"]
+    },
+    {
+      "tag": "v4",
       "new_sqlite_classes": ["ProviderCircuitBreakerDurableObject"]
     }
   ],

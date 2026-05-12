@@ -16,10 +16,14 @@ import {
   assertGatewayKeyAllowsRoute,
   requireGatewayAuthorization
 } from "../auth.js";
+import { createPersistentCircuitBreakerBackend } from "../circuit-breaker.js";
 import { resolveGatewayConfig } from "../config.js";
 import type { GatewayBindings } from "../env.js";
+import {
+  acquireGatewayKeyConcurrencyLease,
+  releaseGatewayKeyConcurrencyLease
+} from "../gateway-key-concurrency.js";
 import { enforceGatewayKeyRequestQuota } from "../gateway-key-quota.js";
-import { createPersistentCircuitBreakerBackend } from "../circuit-breaker.js";
 import {
   executeRoutedRequest,
   executeRoutedStreamRequest
@@ -71,6 +75,12 @@ export async function handleChatCompletions(
     parsed.airlock?.requestShaping
   );
   await enforceGatewayKeyRequestQuota(context.env, gatewayApiKey, requestId);
+  const concurrencyLeaseId = await acquireGatewayKeyConcurrencyLease(
+    context.env,
+    gatewayApiKey,
+    requestId,
+    config.providerTimeoutMs
+  );
   const circuitBreakerBackend =
     config.providerCircuitBreakerPersistent && context.env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER
       ? createPersistentCircuitBreakerBackend(
@@ -150,6 +160,13 @@ export async function handleChatCompletions(
           }
 
           throw error;
+        } finally {
+          await releaseGatewayKeyConcurrencyLease(
+            context.env,
+            gatewayApiKey,
+            concurrencyLeaseId,
+            requestId
+          );
         }
 
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -207,6 +224,13 @@ export async function handleChatCompletions(
     }
 
     throw error;
+  } finally {
+    await releaseGatewayKeyConcurrencyLease(
+      context.env,
+      gatewayApiKey,
+      concurrencyLeaseId,
+      requestId
+    );
   }
 
   await emitGatewayRequestSuccessTelemetry({

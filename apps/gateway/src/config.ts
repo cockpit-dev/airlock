@@ -197,10 +197,25 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
   const requiresGatewayKeyQuota = gatewayApiKeys.some((gatewayApiKey) => {
     return gatewayApiKey.policy?.requestQuota !== undefined;
   });
+  const requiresGatewayKeyConcurrency = gatewayApiKeys.some((gatewayApiKey) => {
+    return gatewayApiKey.policy?.concurrencyQuota !== undefined;
+  });
 
   if (requiresGatewayKeyQuota && !env.AIRLOCK_GATEWAY_KEY_QUOTA) {
     throw new GatewayError("Gateway key quota binding is required", {
       code: "config_missing_gateway_key_quota",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false
+    });
+  }
+
+  if (
+    requiresGatewayKeyConcurrency &&
+    !env.AIRLOCK_GATEWAY_KEY_CONCURRENCY
+  ) {
+    throw new GatewayError("Gateway key concurrency binding is required", {
+      code: "config_missing_gateway_key_concurrency",
       category: "configuration",
       httpStatus: 500,
       retryable: false

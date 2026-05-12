@@ -217,6 +217,9 @@ describe("parseGatewayApiKeys", () => {
               requestQuota: {
                 limit: 1000,
                 windowSeconds: 3600
+              },
+              concurrencyQuota: {
+                limit: 2
               }
             }
           },
@@ -243,6 +246,9 @@ describe("parseGatewayApiKeys", () => {
           requestQuota: {
             limit: 1000,
             windowSeconds: 3600
+          },
+          concurrencyQuota: {
+            limit: 2
           }
         }
       },
@@ -325,6 +331,44 @@ describe("parseGatewayApiKeys", () => {
               requestQuota: {
                 limit: 10,
                 windowSeconds: -1
+              }
+            }
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects invalid concurrency quota policy values", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              concurrencyQuota: {
+                limit: 0
+              }
+            }
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              concurrencyQuota: {
+                limit: 1.5
               }
             }
           }

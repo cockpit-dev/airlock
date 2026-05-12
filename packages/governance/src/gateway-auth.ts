@@ -7,6 +7,10 @@ export interface GatewayApiKeyRequestQuotaPolicy {
   windowSeconds: number;
 }
 
+export interface GatewayApiKeyConcurrencyQuotaPolicy {
+  limit: number;
+}
+
 export interface GatewayApiKeyPolicy {
   tier?: string;
   tags?: string[];
@@ -14,6 +18,7 @@ export interface GatewayApiKeyPolicy {
   allowedProviders?: ProviderId[];
   allowedModelGroups?: string[];
   requestQuota?: GatewayApiKeyRequestQuotaPolicy;
+  concurrencyQuota?: GatewayApiKeyConcurrencyQuotaPolicy;
 }
 
 export interface GatewayApiKeyRecord {
@@ -211,6 +216,26 @@ function parseGatewayApiKeyPolicy(value: unknown): GatewayApiKeyPolicy | undefin
     policy.requestQuota = {
       limit,
       windowSeconds
+    };
+  }
+
+  if (value.concurrencyQuota !== undefined) {
+    if (!isRecord(value.concurrencyQuota)) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy concurrencyQuota must be an object"
+      );
+    }
+
+    const limit = value.concurrencyQuota.limit;
+
+    if (typeof limit !== "number" || !Number.isInteger(limit) || limit <= 0) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy concurrencyQuota limit must be a positive integer"
+      );
+    }
+
+    policy.concurrencyQuota = {
+      limit
     };
   }
 

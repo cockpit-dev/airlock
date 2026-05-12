@@ -135,6 +135,91 @@ function createQuotaNamespace() {
   return namespace;
 }
 
+function createConcurrencyNamespace() {
+  const state = new Map<
+    string,
+    Array<{
+      leaseId: string;
+      expiresAt: number;
+    }>
+  >();
+
+  const namespace: DurableObjectNamespaceLike = {
+    idFromName(name: string) {
+      return { name };
+    },
+    get(id: { name: string }) {
+      return {
+        async fetch(request: Request) {
+          const now = Date.now();
+          const existing = (state.get(id.name) ?? []).filter((lease) => {
+            return lease.expiresAt > now;
+          });
+          state.set(id.name, existing);
+
+          if (request.method === "POST") {
+            const body = (await request.json()) as {
+              kind: "acquire";
+              limit: number;
+              leaseId: string;
+              ttlMs: number;
+            };
+
+            if (existing.length >= body.limit) {
+              const nextResetAt =
+                existing.reduce((min, lease) => {
+                  return Math.min(min, lease.expiresAt);
+                }, Number.POSITIVE_INFINITY) || now;
+
+              return Response.json({
+                allowed: false,
+                limit: body.limit,
+                remaining: 0,
+                resetAt: new Date(nextResetAt).toISOString(),
+                retryAfterSeconds: Math.max(
+                  0,
+                  Math.ceil((nextResetAt - now) / 1000)
+                )
+              });
+            }
+
+            existing.push({
+              leaseId: body.leaseId,
+              expiresAt: now + body.ttlMs
+            });
+            state.set(id.name, existing);
+
+            return Response.json({
+              allowed: true,
+              limit: body.limit,
+              remaining: Math.max(0, body.limit - existing.length),
+              resetAt: new Date(now + body.ttlMs).toISOString(),
+              retryAfterSeconds: Math.max(0, Math.ceil(body.ttlMs / 1000))
+            });
+          }
+
+          if (request.method === "DELETE") {
+            const body = (await request.json()) as {
+              leaseId: string;
+            };
+            state.set(
+              id.name,
+              existing.filter((lease) => {
+                return lease.leaseId !== body.leaseId;
+              })
+            );
+            return new Response(null, { status: 204 });
+          }
+
+          return new Response("Method not allowed", { status: 405 });
+        }
+      };
+    }
+  };
+
+  return namespace;
+}
+
 function createRevocationNamespace() {
   const state = new Map<
     string,
@@ -766,6 +851,33 @@ describe("gateway app", () => {
     });
   });
 
+  it("returns not ready from /readyz when a structured gateway key enables concurrency quota without its binding", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            concurrencyQuota: {
+              limit: 1
+            }
+          }
+        }
+      ])
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
   it("returns not ready from /readyz when internal revocation admin is configured without a revocation binding", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -1230,6 +1342,303 @@ describe("gateway app", () => {
     );
 
     expect(validResponse.status).toBe(200);
+  });
+
+  it("rejects a second in-flight buffered request when a key concurrency quota is exhausted", async () => {
+    let resolveFirstRequest: ((response: Response) => void) | undefined;
+    const fetcher = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        return await new Promise<Response>((resolve) => {
+          resolveFirstRequest = resolve;
+        });
+      })
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_after_release",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "hello after release"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_concurrency",
+          label: "Concurrency Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            concurrencyQuota: {
+              limit: 1
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_CONCURRENCY: createConcurrencyNamespace()
+    };
+
+    const firstResponsePromise = app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "first" }]
+        })
+      },
+      bindings
+    );
+
+    await Promise.resolve();
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "second" }]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      error: {
+        code: "quota_concurrency_exceeded"
+      }
+    });
+
+    resolveFirstRequest?.(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_held",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello from held request"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const firstResponse = await firstResponsePromise;
+    expect(firstResponse.status).toBe(200);
+
+    const thirdResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "third" }]
+        })
+      },
+      bindings
+    );
+
+    expect(thirdResponse.status).toBe(200);
+  });
+
+  it("rejects a second in-flight streaming request when a key concurrency quota is exhausted and releases the slot after stream completion", async () => {
+    let releaseFirstStream: (() => void) | undefined;
+    const encoder = new TextEncoder();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n'
+                )
+              );
+              releaseFirstStream = () => {
+                controller.enqueue(
+                  encoder.encode(
+                    [
+                      'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"done"},"finish_reason":null}]}\n\n',
+                      'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+                      "data: [DONE]\n\n"
+                    ].join("")
+                  )
+                );
+                controller.close();
+              };
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'data: {"id":"chatcmpl_456","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                    'data: {"id":"chatcmpl_456","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"after"},"finish_reason":null}]}\n\n',
+                    'data: {"id":"chatcmpl_456","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+                    "data: [DONE]\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_concurrency",
+          label: "Concurrency Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            concurrencyQuota: {
+              limit: 1
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_CONCURRENCY: createConcurrencyNamespace()
+    };
+
+    const firstResponsePromise = app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          messages: [{ role: "user", content: "first stream" }]
+        })
+      },
+      bindings
+    );
+
+    await Promise.resolve();
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          messages: [{ role: "user", content: "second stream" }]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      error: {
+        code: "quota_concurrency_exceeded"
+      }
+    });
+
+    releaseFirstStream?.();
+
+    const firstResponse = await firstResponsePromise;
+    expect(firstResponse.status).toBe(200);
+    await expect(readText(firstResponse)).resolves.toContain("data: [DONE]");
+
+    const thirdResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          messages: [{ role: "user", content: "third stream" }]
+        })
+      },
+      bindings
+    );
+
+    expect(thirdResponse.status).toBe(200);
+    await expect(readText(thirdResponse)).resolves.toContain("data: [DONE]");
   });
 
   it("rejects missing admin auth on internal key revocation routes", async () => {
