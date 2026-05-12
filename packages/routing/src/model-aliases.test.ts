@@ -271,6 +271,22 @@ describe("parseRouteTargetSelection", () => {
     });
   });
 
+  it("parses health-priority target selection keyed by external model", () => {
+    expect(
+      parseRouteTargetSelection(
+        JSON.stringify({
+          "assistant-default": {
+            strategy: "health_priority"
+          }
+        })
+      )
+    ).toEqual({
+      "assistant-default": {
+        strategy: "health_priority"
+      }
+    });
+  });
+
   it("rejects malformed target selection json", () => {
     expect(() => parseRouteTargetSelection("{not-json")).toThrow(GatewayError);
   });

@@ -227,6 +227,28 @@ export async function isProviderTargetCircuitOpen(
   return true;
 }
 
+export async function getProviderTargetCircuitState(
+  target: ProviderTarget,
+  policy: ProviderCircuitBreakerPolicy,
+  now: () => number,
+  backend: ProviderCircuitBreakerBackend
+): Promise<ProviderCircuitState | undefined> {
+  const state = await backend.getState(target);
+
+  if (!state || state.openedAt === undefined) {
+    return state;
+  }
+
+  if (now() - state.openedAt >= policy.cooldownMs) {
+    await backend.recordSuccess(target);
+    return {
+      consecutiveRetryableFailures: 0
+    };
+  }
+
+  return state;
+}
+
 export function resetProviderCircuitBreakerState() {
   providerCircuitStates.clear();
 }

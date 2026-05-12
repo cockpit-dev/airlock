@@ -20,9 +20,14 @@ export interface LowestCostRouteTargetSelection {
   costs: Record<string, number>;
 }
 
+export interface HealthPriorityRouteTargetSelection {
+  strategy: "health_priority";
+}
+
 export type RouteTargetSelection =
   | WeightedRouteTargetSelection
-  | LowestCostRouteTargetSelection;
+  | LowestCostRouteTargetSelection
+  | HealthPriorityRouteTargetSelection;
 
 export interface ModelRoute {
   externalModel: string;
@@ -379,6 +384,13 @@ export function parseRouteTargetSelection(
       continue;
     }
 
+    if (strategy === "health_priority") {
+      targetSelectionByRoute[externalModel] = {
+        strategy: "health_priority"
+      };
+      continue;
+    }
+
     throw createInvalidRouteTargetSelectionError(
       "Route target selection strategy must be supported"
     );
@@ -472,7 +484,11 @@ function listTargetSelectionKeys(targetSelection: RouteTargetSelection): string[
     return Object.keys(targetSelection.weights);
   }
 
-  return Object.keys(targetSelection.costs);
+  if (targetSelection.strategy === "lowest_cost") {
+    return Object.keys(targetSelection.costs);
+  }
+
+  return [];
 }
 
 export function attachRouteRequestShaping(

@@ -190,6 +190,65 @@ function createRevocationNamespace() {
   return namespace;
 }
 
+function createPersistentBreakerNamespace() {
+  const state = new Map<
+    string,
+    {
+      consecutiveRetryableFailures: number;
+      openedAt?: number;
+    }
+  >();
+
+  const namespace: DurableObjectNamespaceLike = {
+    idFromName(name: string) {
+      return { name };
+    },
+    get(id: { name: string }) {
+      return {
+        async fetch(request: Request) {
+          const current = state.get(id.name) ?? {
+            consecutiveRetryableFailures: 0
+          };
+
+          if (request.method === "GET") {
+            return Response.json(current);
+          }
+
+          if (request.method === "POST") {
+            const body = (await request.json()) as {
+              kind: "success" | "retryable_failure";
+              threshold?: number;
+              now?: number;
+            };
+
+            if (body.kind === "success") {
+              const next = {
+                consecutiveRetryableFailures: 0
+              };
+              state.set(id.name, next);
+              return Response.json(next);
+            }
+
+            const nextFailures = current.consecutiveRetryableFailures + 1;
+            const next = {
+              consecutiveRetryableFailures: nextFailures,
+              ...(nextFailures >= (body.threshold ?? 1)
+                ? { openedAt: body.now ?? 0 }
+                : {})
+            };
+            state.set(id.name, next);
+            return Response.json(next);
+          }
+
+          return new Response("Method not allowed", { status: 405 });
+        }
+      };
+    }
+  };
+
+  return namespace;
+}
+
 const gatewaySecretHash =
   "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6";
 
@@ -2980,32 +3039,34 @@ describe("gateway app", () => {
   });
 
   it("routes directly to the first provider-allowed fallback target without calling a disallowed primary target", async () => {
-    const fetcher = vi.fn().mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          id: "chatcmpl_123",
-          object: "chat.completion",
-          created: 1,
-          model: "gpt-4.1-mini",
-          choices: [
-            {
-              index: 0,
-              finish_reason: "stop",
-              message: {
-                role: "assistant",
-                content: "hello from openai"
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_123",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "hello from openai"
+                }
               }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
             }
-          ]
-        }),
-        {
-          status: 200,
-          headers: {
-            "content-type": "application/json"
           }
-        }
-      )
-    );
+        )
+      );
 
     const app = createApp({ fetcher });
 
@@ -3184,6 +3245,136 @@ describe("gateway app", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
     await expect(readJson(response)).resolves.toMatchObject({
+      model: "claude-haiku-4-5"
+    });
+  });
+
+  it("prefers a healthier closed fallback target on a later request when health-priority selection is configured", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_123",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "healthy fallback"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_124",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "healthy fallback again"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+    const app = createApp({ fetcher });
+
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER: createPersistentBreakerNamespace(),
+      AIRLOCK_MODEL_ALIASES:
+        "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+      AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+        "assistant-default": ["anthropic:claude-haiku-4-5"]
+      }),
+      AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+        "assistant-default": {
+          strategy: "health_priority"
+        }
+      })
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi again" }]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
       model: "claude-haiku-4-5"
     });
   });

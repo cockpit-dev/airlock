@@ -24,7 +24,7 @@ import { GatewayError } from "@airlock/shared";
 import { assertGatewayKeyAllowsProvider } from "./auth.js";
 import {
   createInMemoryCircuitBreakerBackend,
-  isProviderTargetCircuitOpen,
+  getProviderTargetCircuitState,
   type ProviderCircuitBreakerBackend,
   type ProviderCircuitBreakerPolicy
 } from "./circuit-breaker.js";
@@ -219,12 +219,48 @@ function scoreWeightedTarget(
 function reorderTargetsForRoute(
   route: ModelRoute,
   targets: ProviderTarget[],
-  requestId: string
+  requestId: string,
+  healthByTarget?: Map<
+    string,
+    {
+      isOpen: boolean;
+      consecutiveRetryableFailures: number;
+    }
+  >
 ): ProviderTarget[] {
   const targetSelection = route.targetSelection;
 
   if (!targetSelection) {
     return targets;
+  }
+
+  if (targetSelection.strategy === "health_priority") {
+    return [...targets].sort((left, right) => {
+      const leftHealth = healthByTarget?.get(serializeProviderTarget(left)) ?? {
+        isOpen: false,
+        consecutiveRetryableFailures: 0
+      };
+      const rightHealth = healthByTarget?.get(serializeProviderTarget(right)) ?? {
+        isOpen: false,
+        consecutiveRetryableFailures: 0
+      };
+
+      if (leftHealth.isOpen !== rightHealth.isOpen) {
+        return leftHealth.isOpen ? 1 : -1;
+      }
+
+      if (
+        leftHealth.consecutiveRetryableFailures !==
+        rightHealth.consecutiveRetryableFailures
+      ) {
+        return (
+          leftHealth.consecutiveRetryableFailures -
+          rightHealth.consecutiveRetryableFailures
+        );
+      }
+
+      return 0;
+    });
   }
 
   if (targetSelection.strategy === "lowest_cost") {
@@ -278,55 +314,73 @@ function selectEligibleTargets(
   let skippedOpenCircuitCount = 0;
 
   return (async () => {
+    const healthByTarget = new Map<
+      string,
+      {
+        isOpen: boolean;
+        consecutiveRetryableFailures: number;
+      }
+    >();
+
     for (const target of candidates) {
-    if (!target) {
-      continue;
-    }
-
-    try {
-      assertGatewayKeyAllowsProvider(gatewayApiKey, target.provider, requestId);
-    } catch (error) {
-      if (error instanceof GatewayError) {
-        lastAuthorizationError = error;
+      if (!target) {
         continue;
       }
 
-      throw error;
-    }
+      try {
+        assertGatewayKeyAllowsProvider(gatewayApiKey, target.provider, requestId);
+      } catch (error) {
+        if (error instanceof GatewayError) {
+          lastAuthorizationError = error;
+          continue;
+        }
 
-    try {
-      const descriptor = getProviderDescriptor(target.provider);
-      assertProviderSupportsCanonicalRequest(
-        descriptor,
-        buildAttemptRequest(request, target),
-        requestId
+        throw error;
+      }
+
+      try {
+        const descriptor = getProviderDescriptor(target.provider);
+        assertProviderSupportsCanonicalRequest(
+          descriptor,
+          buildAttemptRequest(request, target),
+          requestId
+        );
+      } catch (error) {
+        if (error instanceof GatewayError) {
+          lastCapabilityError = error;
+          continue;
+        }
+
+        throw error;
+      }
+
+      const circuitState = await getProviderTargetCircuitState(
+        target,
+        circuitBreakerPolicy,
+        now,
+        circuitBreakerBackend
       );
-    } catch (error) {
-      if (error instanceof GatewayError) {
-        lastCapabilityError = error;
+      const isOpen = circuitState?.openedAt !== undefined;
+      healthByTarget.set(serializeProviderTarget(target), {
+        isOpen,
+        consecutiveRetryableFailures: circuitState?.consecutiveRetryableFailures ?? 0
+      });
+
+      if (isOpen) {
+        skippedOpenCircuitCount += 1;
         continue;
       }
 
-      throw error;
+      eligibleTargets.push(target);
     }
-
-      if (
-        await isProviderTargetCircuitOpen(
-          target,
-          circuitBreakerPolicy,
-          now,
-          circuitBreakerBackend
-        )
-      ) {
-      skippedOpenCircuitCount += 1;
-      continue;
-    }
-
-    eligibleTargets.push(target);
-  }
 
     if (eligibleTargets.length > 0) {
-      return reorderTargetsForRoute(route, eligibleTargets, requestId);
+      return reorderTargetsForRoute(
+        route,
+        eligibleTargets,
+        requestId,
+        healthByTarget
+      );
     }
 
     if (lastAuthorizationError) {

@@ -800,6 +800,165 @@ describe("executeRoutedRequest", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it("prefers a healthier closed fallback target on a later request when health-priority selection is configured", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ],
+      targetSelection: {
+        strategy: "health_priority"
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "assistant-default",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const backend = createPersistentCircuitBreakerBackend(
+      createPersistentBreakerNamespace()
+    );
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_123",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "healthy fallback"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_124",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "healthy fallback again"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+    const config = {
+      mode: "free" as const,
+      providerTimeoutMs: 1000,
+      providerMaxRetries: 0,
+      providerRetryBackoffMs: 0,
+      providerCircuitBreakerThreshold: 3,
+      providerCircuitBreakerCooldownMs: 60_000,
+      providerCircuitBreakerPersistent: true,
+      modelGroups: {},
+      gatewayApiKeys: [],
+      modelAliases: [],
+      anthropic: {
+        apiKey: "anthropic-secret",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultMaxTokens: 256
+      },
+      openAI: {
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    };
+
+    const firstResponse = await executeRoutedRequest(route, request, {
+      config,
+      requestId: "req_health_open_primary",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1000,
+      circuitBreakerBackend: backend
+    });
+
+    expect(firstResponse.model).toBe("claude-haiku-4-5");
+
+    const response = await executeRoutedRequest(route, request, {
+      config,
+      requestId: "req_health_priority_second",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 2000,
+      circuitBreakerBackend: backend
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
+    expect(fetcher.mock.calls[2]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
+    expect(response.model).toBe("claude-haiku-4-5");
+  });
+
   it("skips a provider-disallowed primary target and starts from the first allowed fallback target", async () => {
     const route: ModelRoute = {
       externalModel: "assistant-default",
