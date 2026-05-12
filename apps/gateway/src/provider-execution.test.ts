@@ -149,6 +149,8 @@ describe("executeRoutedRequest", () => {
       config: {
         mode: "free",
         providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
         gatewayApiKeys: [],
         modelAliases: [],
         anthropic: {
@@ -224,6 +226,8 @@ describe("executeRoutedRequest", () => {
         config: {
           mode: "free",
           providerTimeoutMs: 1000,
+          providerMaxRetries: 0,
+          providerRetryBackoffMs: 0,
           gatewayApiKeys: [],
           modelAliases: [],
           anthropic: {
@@ -306,6 +310,8 @@ describe("executeRoutedRequest", () => {
       config: {
         mode: "free",
         providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
         gatewayApiKeys: [],
         modelAliases: [],
         anthropic: {
@@ -388,6 +394,8 @@ describe("executeRoutedRequest", () => {
       config: {
         mode: "free",
         providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
         gatewayApiKeys: [],
         modelAliases: [],
         gemini: {
@@ -490,6 +498,8 @@ describe("executeRoutedRequest", () => {
       config: {
         mode: "free",
         providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
         gatewayApiKeys: [],
         modelAliases: [],
         anthropic: {
@@ -602,6 +612,8 @@ describe("executeRoutedRequest", () => {
       config: {
         mode: "free",
         providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
         gatewayApiKeys: [],
         modelAliases: [],
         anthropic: {
@@ -635,6 +647,361 @@ describe("executeRoutedRequest", () => {
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     );
     expect(response.model).toBe("gemini-2.5-flash");
+  });
+
+  it("retries a retryable provider failure on the same target before falling through to fallback", async () => {
+    const route: ModelRoute = {
+      externalModel: "gpt-4.1-mini",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "openai",
+          providerModel: "gpt-4.1-nano"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_123",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "hello after retry"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const response = await executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 1,
+        providerRetryBackoffMs: 10,
+        gatewayApiKeys: [],
+        modelAliases: [],
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_retry_same_target",
+      gatewayApiKey: allowedOpenAIOnlyKey,
+      fetcher
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    expect(response.model).toBe("gpt-4.1-mini");
+  });
+
+  it("does not retry a non-retryable provider failure on the same target", async () => {
+    const route: ModelRoute = {
+      externalModel: "gpt-4.1-mini",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "openai",
+          providerModel: "gpt-4.1-nano"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "bad request"
+          }
+        }),
+        {
+          status: 400,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    await expect(
+      executeRoutedRequest(route, request, {
+        config: {
+          mode: "free",
+          providerTimeoutMs: 1000,
+          providerMaxRetries: 2,
+          providerRetryBackoffMs: 10,
+          gatewayApiKeys: [],
+          modelAliases: [],
+          openAI: {
+            apiKey: "openai-secret",
+            baseUrl: "https://api.openai.com/v1",
+            defaultModel: "gpt-4.1-mini"
+          }
+        },
+        requestId: "req_no_retry_bad_request",
+        gatewayApiKey: allowedOpenAIOnlyKey,
+        fetcher
+      })
+    ).rejects.toMatchObject({
+      code: "provider_upstream_error",
+      category: "provider",
+      httpStatus: 400,
+      retryable: false
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls through to fallback only after same-target retries are exhausted", async () => {
+    const route: ModelRoute = {
+      externalModel: "gpt-4.1-mini",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "openai",
+          providerModel: "gpt-4.1-nano"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "still rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_fallback",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-nano",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "fallback hello"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const response = await executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 1,
+        providerRetryBackoffMs: 10,
+        gatewayApiKeys: [],
+        modelAliases: [],
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_retry_then_fallback",
+      gatewayApiKey: allowedOpenAIOnlyKey,
+      fetcher
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    expect(JSON.parse((fetcher.mock.calls[2] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-nano"
+      });
+    expect(response.model).toBe("gpt-4.1-nano");
+  });
+
+  it("stops same-target retries when retry backoff would exhaust the shared timeout budget", async () => {
+    const route: ModelRoute = {
+      externalModel: "gpt-4.1-mini",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    vi.useFakeTimers();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "rate limited"
+          }
+        }),
+        {
+          status: 429,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const now = vi
+      .fn<() => number>()
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(980);
+
+    const execution = executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 1,
+        providerRetryBackoffMs: 50,
+        gatewayApiKeys: [],
+        modelAliases: [],
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_retry_budget_exhausted",
+      gatewayApiKey: allowedOpenAIOnlyKey,
+      fetcher,
+      now
+    });
+
+    await expect(execution).rejects.toMatchObject({
+      code: "provider_timeout",
+      category: "provider",
+      httpStatus: 504
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 
   it("passes only the remaining timeout budget to a later fallback attempt", async () => {
@@ -698,6 +1065,8 @@ describe("executeRoutedRequest", () => {
       config: {
         mode: "free",
         providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
         gatewayApiKeys: [],
         modelAliases: [],
         openAI: {
@@ -775,6 +1144,8 @@ describe("executeRoutedRequest", () => {
         config: {
           mode: "free",
           providerTimeoutMs: 1000,
+          providerMaxRetries: 0,
+          providerRetryBackoffMs: 0,
           gatewayApiKeys: [],
           modelAliases: [],
           openAI: {

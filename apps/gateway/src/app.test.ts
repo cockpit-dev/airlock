@@ -1089,6 +1089,194 @@ describe("gateway app", () => {
     });
   });
 
+  it("retries a retryable provider failure on the same target before succeeding", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_retry",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "retry recovered"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_PROVIDER_MAX_RETRIES: "1",
+        AIRLOCK_PROVIDER_RETRY_BACKOFF_MS: "10"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+  });
+
+  it("fails over only after same-target retries are exhausted", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "still rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_fallback",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-nano",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "fallback hello"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_PROVIDER_MAX_RETRIES: "1",
+        AIRLOCK_PROVIDER_RETRY_BACKOFF_MS: "10",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "gpt-4.1-mini": ["openai:gpt-4.1-nano"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    expect(JSON.parse((fetcher.mock.calls[2] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-nano"
+      });
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "gpt-4.1-nano"
+    });
+  });
+
   it("does not fail over on non-retryable upstream errors", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

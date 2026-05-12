@@ -55,6 +55,12 @@ function createProviderTimeoutError(requestId: string): GatewayError {
   });
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 function buildAttemptRequest(
   request: CanonicalRequest,
   target: ProviderTarget
@@ -306,40 +312,73 @@ export async function executeRoutedRequest(
       throw new Error("Provider target is required for route execution");
     }
 
-    const remainingTimeoutMs = deadline - now();
+    let targetAttempt = 0;
 
-    if (remainingTimeoutMs <= 0) {
-      throw createProviderTimeoutError(requestId);
-    }
+    while (true) {
+      const currentAttemptRequest = createAttemptRequest(request, target);
+      const currentRemainingTimeoutMs = deadline - now();
 
-    const attemptRequest = createAttemptRequest(request, target);
-    const adapter = createProviderAdapter(
-      route,
-      target,
-      config,
-      attemptRequest,
-      requestId,
-      getProviderDescriptor,
-      fetcher
-    );
+      if (currentRemainingTimeoutMs <= 0) {
+        throw createProviderTimeoutError(requestId);
+      }
 
-    try {
-      return await adapter.complete(attemptRequest, {
+      const adapter = createProviderAdapter(
+        route,
+        target,
+        config,
+        currentAttemptRequest,
         requestId,
-        timeoutMs: remainingTimeoutMs,
-        ...(requestShaping ? { requestShaping } : {})
-      });
-    } catch (error) {
-      lastError = error;
+        getProviderDescriptor,
+        fetcher
+      );
 
-      const shouldFailOver =
-        error instanceof GatewayError &&
-        error.category === "provider" &&
-        error.retryable &&
-        index < targets.length - 1;
+      try {
+        return await adapter.complete(currentAttemptRequest, {
+          requestId,
+          timeoutMs: currentRemainingTimeoutMs,
+          ...(requestShaping ? { requestShaping } : {})
+        });
+      } catch (error) {
+        lastError = error;
 
-      if (!shouldFailOver) {
-        throw error;
+        const shouldRetrySameTarget =
+          error instanceof GatewayError &&
+          error.category === "provider" &&
+          error.retryable &&
+          targetAttempt < config.providerMaxRetries;
+
+        if (shouldRetrySameTarget) {
+          const remainingBeforeBackoff = deadline - now();
+
+          if (remainingBeforeBackoff <= 0) {
+            throw createProviderTimeoutError(requestId);
+          }
+
+          const retryBackoffMs = config.providerRetryBackoffMs;
+
+          if (retryBackoffMs > 0) {
+            if (remainingBeforeBackoff < retryBackoffMs) {
+              throw createProviderTimeoutError(requestId);
+            }
+
+            await sleep(retryBackoffMs);
+          }
+
+          targetAttempt += 1;
+          continue;
+        }
+
+        const shouldFailOver =
+          error instanceof GatewayError &&
+          error.category === "provider" &&
+          error.retryable &&
+          index < targets.length - 1;
+
+        if (!shouldFailOver) {
+          throw error;
+        }
+
+        break;
       }
     }
   }

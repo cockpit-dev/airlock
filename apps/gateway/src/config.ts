@@ -18,6 +18,8 @@ import { gatewayEnvSchema } from "./env.js";
 export interface GatewayConfig {
   mode: "free" | "scale";
   providerTimeoutMs: number;
+  providerMaxRetries: number;
+  providerRetryBackoffMs: number;
   gatewayApiKeys: GatewayApiKeyRecord[];
   modelAliases: ModelRouteDirectory;
   anthropic?: {
@@ -84,6 +86,8 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
   return {
     mode: env.AIRLOCK_MODE,
     providerTimeoutMs: env.AIRLOCK_PROVIDER_TIMEOUT_MS,
+    providerMaxRetries: env.AIRLOCK_PROVIDER_MAX_RETRIES,
+    providerRetryBackoffMs: env.AIRLOCK_PROVIDER_RETRY_BACKOFF_MS,
     gatewayApiKeys: parseGatewayApiKeys(env.AIRLOCK_GATEWAY_API_KEYS),
     modelAliases,
     ...(usesAnthropic

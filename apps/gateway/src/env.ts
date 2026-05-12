@@ -8,6 +8,8 @@ export const gatewayEnvSchema = z.object({
   AIRLOCK_MODEL_TARGET_SELECTION: z.string().min(1).optional(),
   AIRLOCK_MODEL_SHAPING: z.string().min(1).optional(),
   AIRLOCK_PROVIDER_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  AIRLOCK_PROVIDER_MAX_RETRIES: z.coerce.number().int().min(0).default(0),
+  AIRLOCK_PROVIDER_RETRY_BACKOFF_MS: z.coerce.number().int().min(0).default(0),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_BASE_URL: z.url().optional(),
   ANTHROPIC_DEFAULT_MAX_TOKENS: z.coerce.number().int().positive().optional(),
