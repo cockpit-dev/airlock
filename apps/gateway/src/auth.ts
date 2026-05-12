@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import type { TelemetrySink } from "@airlock/telemetry";
 
 import {
   requireGatewayAuthorization as requireAuthorization,
@@ -8,12 +9,20 @@ import { GatewayError, type ProviderId } from "@airlock/shared";
 import type { ModelRoute } from "@airlock/routing";
 
 import type { GatewayConfig } from "./config.js";
+import type { CreateAppOptions } from "./app.js";
 import type { GatewayBindings } from "./env.js";
 import { assertGatewayKeyNotRevoked } from "./gateway-key-revocation.js";
 
 export async function requireGatewayAuthorization(
   context: Context<{
     Bindings: GatewayBindings;
+    Variables: {
+      requestId: string;
+      fetcher?: CreateAppOptions["fetcher"];
+      requestStartedAt: number;
+      telemetrySink?: TelemetrySink;
+      telemetryErrorEmitted?: boolean;
+    };
   }>,
   config: GatewayConfig,
   requestId: string

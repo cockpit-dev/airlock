@@ -26,6 +26,7 @@ export interface GatewayConfig {
   providerRetryBackoffMs: number;
   providerCircuitBreakerThreshold?: number;
   providerCircuitBreakerCooldownMs?: number;
+  providerCircuitBreakerPersistent?: boolean;
   gatewayApiKeys: GatewayApiKeyRecord[];
   modelGroups: ModelGroupMap;
   modelAliases: ModelRouteDirectory;
@@ -215,6 +216,18 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
     });
   }
 
+  if (
+    env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT &&
+    !env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER
+  ) {
+    throw new GatewayError("Provider circuit breaker binding is required", {
+      code: "config_missing_provider_circuit_breaker",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false
+    });
+  }
+
   const usedProviders = new Set(
     modelAliases.flatMap((route) => {
       return [route.target, ...(route.fallbacks ?? [])].map((target) => {
@@ -255,6 +268,7 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
     providerRetryBackoffMs: env.AIRLOCK_PROVIDER_RETRY_BACKOFF_MS,
     providerCircuitBreakerThreshold: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD,
     providerCircuitBreakerCooldownMs: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS,
+    providerCircuitBreakerPersistent: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT,
     gatewayApiKeys,
     modelGroups,
     modelAliases,

@@ -23,9 +23,9 @@ import { GatewayError } from "@airlock/shared";
 
 import { assertGatewayKeyAllowsProvider } from "./auth.js";
 import {
+  createInMemoryCircuitBreakerBackend,
   isProviderTargetCircuitOpen,
-  recordProviderTargetRetryableFailure,
-  recordProviderTargetSuccess,
+  type ProviderCircuitBreakerBackend,
   type ProviderCircuitBreakerPolicy
 } from "./circuit-breaker.js";
 import type { GatewayConfig } from "./config.js";
@@ -268,15 +268,17 @@ function selectEligibleTargets(
   requestId: string,
   getProviderDescriptor: ProviderCapabilityDescriptorResolver,
   circuitBreakerPolicy: ProviderCircuitBreakerPolicy,
-  now: () => number
-): ProviderTarget[] {
+  now: () => number,
+  circuitBreakerBackend: ProviderCircuitBreakerBackend
+): Promise<ProviderTarget[]> {
   const candidates = [route.target, ...(route.fallbacks ?? [])];
   const eligibleTargets: ProviderTarget[] = [];
   let lastAuthorizationError: GatewayError | undefined;
   let lastCapabilityError: GatewayError | undefined;
   let skippedOpenCircuitCount = 0;
 
-  for (const target of candidates) {
+  return (async () => {
+    for (const target of candidates) {
     if (!target) {
       continue;
     }
@@ -308,7 +310,14 @@ function selectEligibleTargets(
       throw error;
     }
 
-    if (isProviderTargetCircuitOpen(target, circuitBreakerPolicy, now)) {
+      if (
+        await isProviderTargetCircuitOpen(
+          target,
+          circuitBreakerPolicy,
+          now,
+          circuitBreakerBackend
+        )
+      ) {
       skippedOpenCircuitCount += 1;
       continue;
     }
@@ -316,23 +325,24 @@ function selectEligibleTargets(
     eligibleTargets.push(target);
   }
 
-  if (eligibleTargets.length > 0) {
-    return reorderTargetsForRoute(route, eligibleTargets, requestId);
-  }
+    if (eligibleTargets.length > 0) {
+      return reorderTargetsForRoute(route, eligibleTargets, requestId);
+    }
 
-  if (lastAuthorizationError) {
-    throw lastAuthorizationError;
-  }
+    if (lastAuthorizationError) {
+      throw lastAuthorizationError;
+    }
 
-  if (lastCapabilityError) {
-    throw lastCapabilityError;
-  }
+    if (lastCapabilityError) {
+      throw lastCapabilityError;
+    }
 
-  if (skippedOpenCircuitCount > 0) {
-    throw createProviderCircuitOpenError(requestId);
-  }
+    if (skippedOpenCircuitCount > 0) {
+      throw createProviderCircuitOpenError(requestId);
+    }
 
-  throw new Error("At least one provider target is required for route execution");
+    throw new Error("At least one provider target is required for route execution");
+  })();
 }
 
 export async function executeRoutedRequest(
@@ -347,6 +357,7 @@ export async function executeRoutedRequest(
     now?: () => number;
     getProviderDescriptor?: ProviderCapabilityDescriptorResolver;
     onAttemptTarget?: (target: ProviderTarget) => void;
+    circuitBreakerBackend?: ProviderCircuitBreakerBackend;
   }
 ): Promise<CanonicalResponse> {
   const {
@@ -357,17 +368,19 @@ export async function executeRoutedRequest(
     fetcher,
     now = Date.now,
     getProviderDescriptor = getProviderCapabilityDescriptor,
-    onAttemptTarget
+    onAttemptTarget,
+    circuitBreakerBackend = createInMemoryCircuitBreakerBackend()
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
-  const targets = selectEligibleTargets(
+  const targets = await selectEligibleTargets(
     route,
     request,
     gatewayApiKey,
     requestId,
     getProviderDescriptor,
     circuitBreakerPolicy,
-    now
+    now,
+    circuitBreakerBackend
   );
   const deadline = now() + config.providerTimeoutMs;
   let lastError: unknown;
@@ -406,7 +419,7 @@ export async function executeRoutedRequest(
           timeoutMs: currentRemainingTimeoutMs,
           ...(requestShaping ? { requestShaping } : {})
         });
-        recordProviderTargetSuccess(target);
+        await circuitBreakerBackend.recordSuccess(target);
 
         return response;
       } catch (error) {
@@ -417,7 +430,7 @@ export async function executeRoutedRequest(
           error.category === "provider" &&
           error.retryable
         ) {
-          recordProviderTargetRetryableFailure(
+          await circuitBreakerBackend.recordRetryableFailure(
             target,
             circuitBreakerPolicy,
             currentAttemptStartedAt
@@ -481,6 +494,7 @@ export async function* executeRoutedStreamRequest(
     now?: () => number;
     getProviderDescriptor?: ProviderCapabilityDescriptorResolver;
     onAttemptTarget?: (target: ProviderTarget) => void;
+    circuitBreakerBackend?: ProviderCircuitBreakerBackend;
   }
 ): AsyncIterable<CanonicalStreamEvent> {
   const {
@@ -491,17 +505,21 @@ export async function* executeRoutedStreamRequest(
     fetcher,
     now = Date.now,
     getProviderDescriptor = getProviderCapabilityDescriptor,
-    onAttemptTarget
+    onAttemptTarget,
+    circuitBreakerBackend = createInMemoryCircuitBreakerBackend()
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
-  const targets = selectEligibleTargets(
+  const targets = (
+    await selectEligibleTargets(
     route,
     request,
     gatewayApiKey,
     requestId,
     getProviderDescriptor,
     circuitBreakerPolicy,
-    now
+    now,
+    circuitBreakerBackend
+  )
   ).filter((target) => {
     return getProviderDescriptor(target.provider).supportsStreaming;
   });
@@ -536,14 +554,18 @@ export async function* executeRoutedStreamRequest(
       yield event;
     }
 
-    recordProviderTargetSuccess(target);
+    await circuitBreakerBackend.recordSuccess(target);
   } catch (error) {
     if (
       error instanceof GatewayError &&
       error.category === "provider" &&
       error.retryable
     ) {
-      recordProviderTargetRetryableFailure(target, circuitBreakerPolicy, now());
+      await circuitBreakerBackend.recordRetryableFailure(
+        target,
+        circuitBreakerPolicy,
+        now()
+      );
     }
 
     throw error;

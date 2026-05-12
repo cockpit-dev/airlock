@@ -11,11 +11,71 @@ import {
   executeRoutedRequest,
   executeRoutedStreamRequest
 } from "./provider-execution.js";
-import { resetProviderCircuitBreakerState } from "./circuit-breaker.js";
+import {
+  createPersistentCircuitBreakerBackend,
+  resetProviderCircuitBreakerState
+} from "./circuit-breaker.js";
 
 beforeEach(() => {
   resetProviderCircuitBreakerState();
 });
+
+function createPersistentBreakerNamespace() {
+  const state = new Map<
+    string,
+    {
+      consecutiveRetryableFailures: number;
+      openedAt?: number;
+    }
+  >();
+
+  return {
+    idFromName(name: string) {
+      return { name };
+    },
+    get(id: { name: string }) {
+      return {
+        async fetch(request: Request) {
+          const current = state.get(id.name) ?? {
+            consecutiveRetryableFailures: 0
+          };
+
+          if (request.method === "GET") {
+            return Response.json(current);
+          }
+
+          if (request.method === "POST") {
+            const body = (await request.json()) as {
+              kind: "success" | "retryable_failure";
+              threshold?: number;
+              now?: number;
+            };
+
+            if (body.kind === "success") {
+              const next = {
+                consecutiveRetryableFailures: 0
+              };
+              state.set(id.name, next);
+              return Response.json(next);
+            }
+
+            const nextFailures = current.consecutiveRetryableFailures + 1;
+            const next = {
+              consecutiveRetryableFailures: nextFailures,
+              ...(nextFailures >= (body.threshold ?? 1)
+                ? { openedAt: body.now ?? 0 }
+                : {})
+            };
+            state.set(id.name, next);
+            return Response.json(next);
+          }
+
+          return new Response("Method not allowed", { status: 405 });
+        }
+      };
+    }
+  };
+}
 
 describe("assertProviderSupportsCanonicalRequest", () => {
   it("allows canonical requests that fit the provider descriptor", () => {
@@ -641,6 +701,100 @@ describe("executeRoutedRequest", () => {
       category: "routing",
       httpStatus: 503,
       retryable: true
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the circuit across later executions when using the persistent breaker backend", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "rate limited"
+          }
+        }),
+        {
+          status: 429,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const backend = createPersistentCircuitBreakerBackend(
+      createPersistentBreakerNamespace()
+    );
+    const config = {
+      mode: "free" as const,
+      providerTimeoutMs: 1000,
+      providerMaxRetries: 0,
+      providerRetryBackoffMs: 0,
+      providerCircuitBreakerThreshold: 1,
+      providerCircuitBreakerCooldownMs: 60_000,
+      modelGroups: {},
+      gatewayApiKeys: [],
+      modelAliases: [],
+      openAI: {
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    };
+
+    await expect(
+      executeRoutedRequest(route, request, {
+        config,
+        requestId: "req_persistent_breaker_first",
+        gatewayApiKey: {
+          id: "key_any",
+          label: "Any Provider",
+          value: "gateway-secret",
+          status: "active"
+        },
+        fetcher,
+        now: () => 1000,
+        circuitBreakerBackend: backend
+      })
+    ).rejects.toMatchObject({
+      code: "provider_upstream_error",
+      httpStatus: 429
+    });
+
+    await expect(
+      executeRoutedRequest(route, request, {
+        config,
+        requestId: "req_persistent_breaker_second",
+        gatewayApiKey: {
+          id: "key_any",
+          label: "Any Provider",
+          value: "gateway-secret",
+          status: "active"
+        },
+        fetcher,
+        now: () => 2000,
+        circuitBreakerBackend: backend
+      })
+    ).rejects.toMatchObject({
+      code: "provider_circuit_open",
+      httpStatus: 503
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);

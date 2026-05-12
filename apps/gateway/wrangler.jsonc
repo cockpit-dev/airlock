@@ -11,6 +11,10 @@
       {
         "name": "AIRLOCK_GATEWAY_KEY_REVOCATION",
         "class_name": "GatewayKeyRevocationDurableObject"
+      },
+      {
+        "name": "AIRLOCK_PROVIDER_CIRCUIT_BREAKER",
+        "class_name": "ProviderCircuitBreakerDurableObject"
       }
     ]
   },
@@ -22,6 +26,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["GatewayKeyRevocationDurableObject"]
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["ProviderCircuitBreakerDurableObject"]
     }
   ],
   "queues": {

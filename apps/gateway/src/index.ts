@@ -1,4 +1,5 @@
 import { createApp } from "./app.js";
+import { ProviderCircuitBreakerDurableObject } from "./circuit-breaker.js";
 import type { GatewayBindings } from "./env.js";
 import { gatewayEnvSchema } from "./env.js";
 import { GatewayKeyQuotaDurableObject } from "./gateway-key-quota.js";
@@ -57,3 +58,4 @@ export default {
 };
 
 export { GatewayKeyQuotaDurableObject, GatewayKeyRevocationDurableObject };
+export { ProviderCircuitBreakerDurableObject };

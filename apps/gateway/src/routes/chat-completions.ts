@@ -19,6 +19,7 @@ import {
 import { resolveGatewayConfig } from "../config.js";
 import type { GatewayBindings } from "../env.js";
 import { enforceGatewayKeyRequestQuota } from "../gateway-key-quota.js";
+import { createPersistentCircuitBreakerBackend } from "../circuit-breaker.js";
 import {
   executeRoutedRequest,
   executeRoutedStreamRequest
@@ -28,16 +29,24 @@ import {
   emitGatewayRequestSuccessTelemetry,
   emitGatewayRequestErrorTelemetry
 } from "../telemetry.js";
+import type { CreateAppOptions } from "../app.js";
 
 export async function handleChatCompletions(
   context: Context<{
     Bindings: GatewayBindings;
+    Variables: {
+      requestId: string;
+      fetcher?: CreateAppOptions["fetcher"];
+      requestStartedAt: number;
+      telemetrySink?: TelemetrySink;
+      telemetryErrorEmitted?: boolean;
+    };
   }>
 ): Promise<Response> {
-  const requestId = context.get("requestId") as string;
+  const requestId = context.get("requestId");
   const config = resolveGatewayConfig(context.env);
-  const requestStartedAt = context.get("requestStartedAt") as number;
-  const telemetrySink = context.get("telemetrySink") as TelemetrySink | undefined;
+  const requestStartedAt = context.get("requestStartedAt");
+  const telemetrySink = context.get("telemetrySink");
   const gatewayApiKey = await requireGatewayAuthorization(
     context,
     config,
@@ -62,7 +71,13 @@ export async function handleChatCompletions(
     parsed.airlock?.requestShaping
   );
   await enforceGatewayKeyRequestQuota(context.env, gatewayApiKey, requestId);
-  const fetcher = context.get("fetcher") as typeof fetch | undefined;
+  const circuitBreakerBackend =
+    config.providerCircuitBreakerPersistent && context.env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER
+      ? createPersistentCircuitBreakerBackend(
+          context.env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER
+        )
+      : undefined;
+  const fetcher = context.get("fetcher");
   let attemptedTarget: ProviderTarget | undefined;
 
   if (canonicalRequest.stream) {
@@ -78,6 +93,7 @@ export async function handleChatCompletions(
               config,
               gatewayApiKey,
               requestId,
+              ...(circuitBreakerBackend ? { circuitBreakerBackend } : {}),
               onAttemptTarget(target) {
                 attemptedTarget = target;
               },
@@ -159,6 +175,7 @@ export async function handleChatCompletions(
       config,
       gatewayApiKey,
       requestId,
+      ...(circuitBreakerBackend ? { circuitBreakerBackend } : {}),
       onAttemptTarget(target) {
         attemptedTarget = target;
       },

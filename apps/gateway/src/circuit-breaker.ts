@@ -5,9 +5,19 @@ export interface ProviderCircuitBreakerPolicy {
   cooldownMs: number;
 }
 
-interface ProviderCircuitState {
+export interface ProviderCircuitState {
   consecutiveRetryableFailures: number;
   openedAt?: number;
+}
+
+export interface ProviderCircuitBreakerBackend {
+  getState(target: ProviderTarget): Promise<ProviderCircuitState | undefined>;
+  recordSuccess(target: ProviderTarget): Promise<void>;
+  recordRetryableFailure(
+    target: ProviderTarget,
+    policy: ProviderCircuitBreakerPolicy,
+    now: number
+  ): Promise<void>;
 }
 
 const providerCircuitStates = new Map<string, ProviderCircuitState>();
@@ -32,45 +42,189 @@ function getOrCreateCircuitState(target: ProviderTarget): ProviderCircuitState {
   return created;
 }
 
-export function isProviderTargetCircuitOpen(
+export function createInMemoryCircuitBreakerBackend(): ProviderCircuitBreakerBackend {
+  return {
+    getState(target) {
+      return Promise.resolve(providerCircuitStates.get(getCircuitKey(target)));
+    },
+    recordSuccess(target) {
+      providerCircuitStates.set(getCircuitKey(target), {
+        consecutiveRetryableFailures: 0
+      });
+      return Promise.resolve();
+    },
+    recordRetryableFailure(target, policy, now) {
+      const state = getOrCreateCircuitState(target);
+      const nextFailures = state.consecutiveRetryableFailures + 1;
+
+      state.consecutiveRetryableFailures = nextFailures;
+
+      if (nextFailures >= policy.threshold) {
+        state.openedAt = now;
+      }
+
+      return Promise.resolve();
+    }
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parseProviderCircuitState(value: unknown): ProviderCircuitState {
+  if (!isRecord(value)) {
+    throw new Error("Provider circuit state must be an object");
+  }
+
+  const { consecutiveRetryableFailures, openedAt } = value;
+
+  if (
+    typeof consecutiveRetryableFailures !== "number" ||
+    !Number.isInteger(consecutiveRetryableFailures) ||
+    consecutiveRetryableFailures < 0
+  ) {
+    throw new Error("Provider circuit state failure count is invalid");
+  }
+
+  if (
+    openedAt !== undefined &&
+    (typeof openedAt !== "number" || !Number.isInteger(openedAt))
+  ) {
+    throw new Error("Provider circuit state openedAt is invalid");
+  }
+
+  return {
+    consecutiveRetryableFailures,
+    ...(openedAt !== undefined ? { openedAt } : {})
+  };
+}
+
+export class ProviderCircuitBreakerDurableObject {
+  constructor(
+    private readonly state: {
+      storage: {
+        get<T>(key: string): Promise<T | undefined>;
+        put<T>(key: string, value: T): Promise<void>;
+      };
+    }
+  ) {}
+
+  async fetch(request: Request): Promise<Response> {
+    if (request.method === "GET") {
+      const state = await this.state.storage.get<ProviderCircuitState>("state");
+      return Response.json(
+        state ?? {
+          consecutiveRetryableFailures: 0
+        }
+      );
+    }
+
+    if (request.method === "POST") {
+      const body = (await request.json()) as {
+        kind: "success" | "retryable_failure";
+        threshold?: number;
+        now?: number;
+      };
+      const current =
+        (await this.state.storage.get<ProviderCircuitState>("state")) ?? {
+          consecutiveRetryableFailures: 0
+        };
+
+      if (body.kind === "success") {
+        const next = {
+          consecutiveRetryableFailures: 0
+        };
+        await this.state.storage.put("state", next);
+        return Response.json(next);
+      }
+
+      const nextFailures = current.consecutiveRetryableFailures + 1;
+      const next: ProviderCircuitState = {
+        consecutiveRetryableFailures: nextFailures,
+        ...(nextFailures >= (body.threshold ?? 1) && body.now !== undefined
+          ? { openedAt: body.now }
+          : {})
+      };
+      await this.state.storage.put("state", next);
+      return Response.json(next);
+    }
+
+    return new Response("Method not allowed", { status: 405 });
+  }
+}
+
+export function createPersistentCircuitBreakerBackend(namespace: {
+  idFromName(name: string): unknown;
+  get(id: unknown): {
+    fetch(request: Request): Promise<Response>;
+  };
+}): ProviderCircuitBreakerBackend {
+  return {
+    async getState(target) {
+      const response = await namespace
+        .get(namespace.idFromName(getCircuitKey(target)))
+        .fetch(
+          new Request("https://airlock.internal/provider-circuit-breaker", {
+            method: "GET"
+          })
+        );
+
+      return parseProviderCircuitState(await response.json());
+    },
+    async recordSuccess(target) {
+      await namespace
+        .get(namespace.idFromName(getCircuitKey(target)))
+        .fetch(
+          new Request("https://airlock.internal/provider-circuit-breaker", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              kind: "success"
+            })
+          })
+        );
+    },
+    async recordRetryableFailure(target, policy, now) {
+      await namespace
+        .get(namespace.idFromName(getCircuitKey(target)))
+        .fetch(
+          new Request("https://airlock.internal/provider-circuit-breaker", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              kind: "retryable_failure",
+              threshold: policy.threshold,
+              now
+            })
+          })
+        );
+    }
+  };
+}
+
+export async function isProviderTargetCircuitOpen(
   target: ProviderTarget,
   policy: ProviderCircuitBreakerPolicy,
-  now: () => number
-): boolean {
-  const state = providerCircuitStates.get(getCircuitKey(target));
+  now: () => number,
+  backend: ProviderCircuitBreakerBackend
+): Promise<boolean> {
+  const state = await backend.getState(target);
 
   if (!state || state.openedAt === undefined) {
     return false;
   }
 
   if (now() - state.openedAt >= policy.cooldownMs) {
-    delete state.openedAt;
-    state.consecutiveRetryableFailures = 0;
+    await backend.recordSuccess(target);
     return false;
   }
 
   return true;
-}
-
-export function recordProviderTargetSuccess(target: ProviderTarget) {
-  providerCircuitStates.set(getCircuitKey(target), {
-    consecutiveRetryableFailures: 0
-  });
-}
-
-export function recordProviderTargetRetryableFailure(
-  target: ProviderTarget,
-  policy: ProviderCircuitBreakerPolicy,
-  now: number
-) {
-  const state = getOrCreateCircuitState(target);
-  const nextFailures = state.consecutiveRetryableFailures + 1;
-
-  state.consecutiveRetryableFailures = nextFailures;
-
-  if (nextFailures >= policy.threshold) {
-    state.openedAt = now;
-  }
 }
 
 export function resetProviderCircuitBreakerState() {

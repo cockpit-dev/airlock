@@ -807,6 +807,23 @@ describe("gateway app", () => {
     });
   });
 
+  it("returns not ready from /readyz when persistent provider circuit breaker config is enabled without its binding", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "1",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true"
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
   it("returns not ready from /readyz when gemini routes exist but gemini config is missing", async () => {
     const app = createApp({ fetcher: vi.fn() });
 

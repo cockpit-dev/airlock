@@ -24,6 +24,7 @@ export const gatewayEnvSchema = z.object({
   AIRLOCK_PROVIDER_RETRY_BACKOFF_MS: z.coerce.number().int().min(0).default(0),
   AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: z.coerce.number().int().positive().default(3),
   AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: z.coerce.number().int().min(0).default(30_000),
+  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: z.coerce.boolean().default(false),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_BASE_URL: z.url().optional(),
   ANTHROPIC_DEFAULT_MAX_TOKENS: z.coerce.number().int().positive().optional(),
@@ -56,6 +57,14 @@ export const gatewayEnvSchema = z.object({
     .optional(),
   AIRLOCK_INTERNAL_ADMIN_TOKEN: z.string().min(1).optional(),
   AIRLOCK_GATEWAY_KEY_REVOCATION: z
+    .custom<{
+      idFromName(name: string): unknown;
+      get(id: unknown): {
+        fetch(request: Request): Promise<Response>;
+      };
+    }>()
+    .optional(),
+  AIRLOCK_PROVIDER_CIRCUIT_BREAKER: z
     .custom<{
       idFromName(name: string): unknown;
       get(id: unknown): {
