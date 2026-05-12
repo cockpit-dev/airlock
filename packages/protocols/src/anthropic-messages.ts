@@ -18,6 +18,7 @@ const anthropicMessageInputSchema = z.object({
 export const anthropicMessagesRequestSchema = z.object({
   model: z.string().min(1),
   max_tokens: z.number().int().positive(),
+  stream: z.boolean().default(false),
   system: z.string().min(1).optional(),
   messages: z.array(anthropicMessageInputSchema).min(1),
   airlock: airlockRequestExtensionsSchema.optional()

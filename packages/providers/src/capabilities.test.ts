@@ -21,7 +21,7 @@ describe("provider capability descriptors", () => {
       {
         provider: "anthropic",
         displayName: "Anthropic",
-        supportsStreaming: false,
+        supportsStreaming: true,
         supportsTools: false,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,

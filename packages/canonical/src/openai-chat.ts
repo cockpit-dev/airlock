@@ -60,7 +60,7 @@ export function normalizeAnthropicMessagesRequest(
 
   return {
     model: request.model,
-    stream: false,
+    stream: request.stream,
     messages: [...systemMessages, ...messages]
   };
 }
@@ -203,4 +203,53 @@ export function encodeCanonicalToAnthropicMessagesResponse(
       }
     ]
   };
+}
+
+export function encodeCanonicalToAnthropicMessagesStreamEvents(
+  event: CanonicalStreamEvent
+) {
+  if (event.type === "response_started") {
+    return [
+      {
+        type: "message_start" as const,
+        message: {
+          id: event.responseId,
+          type: "message" as const,
+          role: "assistant" as const,
+          model: event.model
+        }
+      },
+      {
+        type: "content_block_start" as const,
+        index: 0,
+        content_block: {
+          type: "text" as const,
+          text: ""
+        }
+      }
+    ];
+  }
+
+  if (event.type === "output_text_delta") {
+    return [
+      {
+        type: "content_block_delta" as const,
+        index: 0,
+        delta: {
+          type: "text_delta" as const,
+          text: event.delta
+        }
+      }
+    ];
+  }
+
+  return [
+    {
+      type: "content_block_stop" as const,
+      index: 0
+    },
+    {
+      type: "message_stop" as const
+    }
+  ];
 }

@@ -255,6 +255,7 @@ describe("normalizeAnthropicMessagesRequest", () => {
     const canonical = normalizeAnthropicMessagesRequest({
       model: "claude-sonnet-4-5",
       max_tokens: 256,
+      stream: false,
       system: "You are precise.",
       messages: [
         {
@@ -269,6 +270,22 @@ describe("normalizeAnthropicMessagesRequest", () => {
       { role: "user", content: "hello" }
     ]);
   });
+
+  it("preserves streaming intent for anthropic messages requests", () => {
+    const canonical = normalizeAnthropicMessagesRequest({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: true,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.stream).toBe(true);
+  });
 });
 
 describe("encodeCanonicalToAnthropicMessagesResponse", () => {
@@ -282,5 +299,86 @@ describe("encodeCanonicalToAnthropicMessagesResponse", () => {
 
     expect(encoded.type).toBe("message");
     expect(encoded.content[0]?.text).toBe("hello there");
+  });
+});
+
+describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
+  it("encodes a response_started event into message_start and content_block_start events", async () => {
+    const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToAnthropicMessagesStreamEvents({
+        type: "response_started",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5"
+      })
+    ).toEqual([
+      {
+        type: "message_start",
+        message: {
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5"
+        }
+      },
+      {
+        type: "content_block_start",
+        index: 0,
+        content_block: {
+          type: "text",
+          text: ""
+        }
+      }
+    ]);
+  });
+
+  it("encodes an output_text_delta event into a content_block_delta event", async () => {
+    const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToAnthropicMessagesStreamEvents({
+        type: "output_text_delta",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        delta: "hel"
+      })
+    ).toEqual([
+      {
+        type: "content_block_delta",
+        index: 0,
+        delta: {
+          type: "text_delta",
+          text: "hel"
+        }
+      }
+    ]);
+  });
+
+  it("encodes a response_completed event into content_block_stop and message_stop events", async () => {
+    const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToAnthropicMessagesStreamEvents({
+        type: "response_completed",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        finishReason: "stop"
+      })
+    ).toEqual([
+      {
+        type: "content_block_stop",
+        index: 0
+      },
+      {
+        type: "message_stop"
+      }
+    ]);
   });
 });

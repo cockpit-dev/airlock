@@ -2457,6 +2457,70 @@ describe("gateway app", () => {
     });
   });
 
+  it("streams anthropic messages events for /v1/messages", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-sonnet-4-5"}}\n\n',
+                  'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"hel"}}\n\n',
+                  'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"lo"}}\n\n',
+                  "event: message_stop\ndata: {}\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          stream: true,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const body = await readText(response);
+
+    expect(body).toContain("event: message_start");
+    expect(body).toContain("event: content_block_start");
+    expect(body).toContain("event: content_block_delta");
+    expect(body).toContain("event: content_block_stop");
+    expect(body).toContain("event: message_stop");
+  });
+
   it("applies request-scoped shaping to anthropic messages requests", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

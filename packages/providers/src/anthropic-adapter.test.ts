@@ -303,4 +303,81 @@ describe("AnthropicProviderAdapter", () => {
       retryable: true
     });
   });
+
+  it("parses upstream anthropic SSE into canonical stream events", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-sonnet-4-5"}}\n\n',
+              'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"hel"}}\n\n',
+              'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"lo"}}\n\n',
+              "event: message_stop\ndata: {}\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new AnthropicProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultMaxTokens: 256,
+      fetcher
+    });
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true
+      },
+      {
+        requestId: "req_stream_123"
+      }
+    )) {
+      events.push(event);
+    }
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stream: true
+    });
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        delta: "hel"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        delta: "lo"
+      },
+      {
+        type: "response_completed",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        finishReason: "stop"
+      }
+    ]);
+  });
 });

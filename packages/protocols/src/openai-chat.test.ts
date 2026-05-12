@@ -176,6 +176,22 @@ describe("anthropicMessagesRequestSchema", () => {
     expect(parsed.messages).toHaveLength(1);
   });
 
+  it("accepts a streaming anthropic messages request", () => {
+    const parsed = anthropicMessagesRequestSchema.parse({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: true,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.stream).toBe(true);
+  });
+
   it("accepts an optional airlock request shaping extension", () => {
     const parsed = anthropicMessagesRequestSchema.parse({
       model: "claude-sonnet-4-5",

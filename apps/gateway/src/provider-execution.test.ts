@@ -870,7 +870,7 @@ describe("executeRoutedRequest", () => {
     expect(response.model).toBe("gemini-2.5-flash");
   });
 
-  it("skips streaming-ineligible weighted targets and starts from the first eligible target", async () => {
+  it("starts streaming from the first weighted eligible target", async () => {
     const route: ModelRoute = {
       externalModel: "assistant-default",
       target: {
@@ -909,9 +909,9 @@ describe("executeRoutedRequest", () => {
             controller.enqueue(
               encoder.encode(
                 [
-                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
-                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}\n\n',
-                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+                  'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-haiku-4-5"}}\n\n',
+                  'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"hello"}}\n\n',
+                  "event: message_stop\ndata: {}\n\n",
                   "data: [DONE]\n\n"
                 ].join("")
               )
@@ -964,25 +964,23 @@ describe("executeRoutedRequest", () => {
     }
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe(
-      "https://api.openai.com/v1/chat/completions"
-    );
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
     expect(events).toEqual([
       {
         type: "response_started",
-        responseId: "chatcmpl_123",
-        model: "gpt-4.1-mini"
+        responseId: "msg_123",
+        model: "claude-haiku-4-5"
       },
       {
         type: "output_text_delta",
-        responseId: "chatcmpl_123",
-        model: "gpt-4.1-mini",
+        responseId: "msg_123",
+        model: "claude-haiku-4-5",
         delta: "hello"
       },
       {
         type: "response_completed",
-        responseId: "chatcmpl_123",
-        model: "gpt-4.1-mini",
+        responseId: "msg_123",
+        model: "claude-haiku-4-5",
         finishReason: "stop"
       }
     ]);
