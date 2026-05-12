@@ -237,6 +237,58 @@ export async function getGatewayApiKeyStatus(
   };
 }
 
+export async function listGatewayApiKeyStatuses(
+  env: GatewayBindings,
+  gatewayApiKeys: readonly GatewayApiKeyRecord[],
+  requestId: string,
+  filters?: {
+    acceptedNow?: boolean;
+    effectiveStatus?: GatewayApiKeyLifecycleStatus;
+  }
+): Promise<
+  Array<{
+    keyId: string;
+    label: string;
+    configuredStatus: GatewayApiKeyRecord["status"];
+    notBefore?: string;
+    expiresAt?: string;
+    lifecycleStatus: GatewayApiKeyLifecycleStatus;
+    overlayRevoked: boolean;
+    overlayUpdatedAt: string;
+    effectiveStatus: GatewayApiKeyLifecycleStatus;
+    acceptedNow: boolean;
+  }>
+> {
+  const entries = await Promise.all(
+    gatewayApiKeys.map(async (gatewayApiKey) => {
+      const status = await getGatewayApiKeyStatus(env, gatewayApiKey, requestId);
+
+      return {
+        ...status,
+        label: gatewayApiKey.label
+      };
+    })
+  );
+
+  return entries.filter((entry) => {
+    if (
+      filters?.acceptedNow !== undefined &&
+      entry.acceptedNow !== filters.acceptedNow
+    ) {
+      return false;
+    }
+
+    if (
+      filters?.effectiveStatus !== undefined &&
+      entry.effectiveStatus !== filters.effectiveStatus
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
 export async function revokeGatewayKey(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,

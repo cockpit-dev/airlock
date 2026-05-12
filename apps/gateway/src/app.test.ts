@@ -2543,6 +2543,195 @@ describe("gateway app", () => {
     });
   });
 
+  it("lists configured gateway keys with effective current status from the internal admin inventory route", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_active",
+          label: "Active Key",
+          value: "gateway-secret",
+          status: "active"
+        },
+        {
+          id: "key_future",
+          label: "Future Key",
+          value: "future-secret",
+          status: "active",
+          notBefore: "2099-01-01T00:00:00.000Z"
+        },
+        {
+          id: "key_expired",
+          label: "Expired Key",
+          value: "expired-secret",
+          status: "active",
+          expiresAt: "2000-01-01T00:00:00.000Z"
+        }
+      ])
+    };
+
+    const revokeResponse = await app.request(
+      "http://localhost/_airlock/keys/key_active/revocation",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(revokeResponse.status).toBe(200);
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson(response)).resolves.toMatchObject({
+      keys: [
+        {
+          keyId: "key_active",
+          effectiveStatus: "revoked",
+          acceptedNow: false
+        },
+        {
+          keyId: "key_future",
+          effectiveStatus: "not_yet_active",
+          acceptedNow: false
+        },
+        {
+          keyId: "key_expired",
+          effectiveStatus: "expired",
+          acceptedNow: false
+        }
+      ]
+    });
+  });
+
+  it("filters the internal key inventory by acceptedNow", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_active",
+          label: "Active Key",
+          value: "gateway-secret",
+          status: "active"
+        },
+        {
+          id: "key_future",
+          label: "Future Key",
+          value: "future-secret",
+          status: "active",
+          notBefore: "2099-01-01T00:00:00.000Z"
+        }
+      ])
+    };
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys?acceptedNow=true",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson(response)).resolves.toMatchObject({
+      keys: [
+        {
+          keyId: "key_active",
+          acceptedNow: true
+        }
+      ]
+    });
+  });
+
+  it("filters the internal key inventory by effectiveStatus", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_active",
+          label: "Active Key",
+          value: "gateway-secret",
+          status: "active"
+        },
+        {
+          id: "key_future",
+          label: "Future Key",
+          value: "future-secret",
+          status: "active",
+          notBefore: "2099-01-01T00:00:00.000Z"
+        }
+      ])
+    };
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys?effectiveStatus=not_yet_active",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson(response)).resolves.toMatchObject({
+      keys: [
+        {
+          keyId: "key_future",
+          effectiveStatus: "not_yet_active"
+        }
+      ]
+    });
+  });
+
+  it("rejects missing admin auth on the internal key inventory route", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys",
+      {
+        method: "GET"
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(401);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_invalid_admin_token"
+      }
+    });
+  });
+
   it("authorizes hashed structured gateway keys on chat completions requests", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

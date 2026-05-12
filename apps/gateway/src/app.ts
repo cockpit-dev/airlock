@@ -9,6 +9,7 @@ import {
   clearGatewayKeyRevocation,
   getGatewayApiKeyStatus,
   getGatewayKeyRevocationStatus,
+  listGatewayApiKeyStatuses,
   resolveGatewayApiKeyById,
   revokeGatewayKey
 } from "./gateway-key-revocation.js";
@@ -88,6 +89,45 @@ export function createApp(options: CreateAppOptions = {}) {
 
   app.get("/healthz", handleHealth);
   app.get("/readyz", handleReady);
+  app.get("/_airlock/keys", async (context) => {
+    const requestId = context.get("requestId");
+    assertInternalAdminAuthorization(
+      context.req.header("authorization"),
+      context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      requestId
+    );
+
+    const config = resolveGatewayConfig(context.env);
+    const acceptedNowParam = context.req.query("acceptedNow");
+    const effectiveStatusParam = context.req.query("effectiveStatus");
+    const acceptedNow =
+      acceptedNowParam === undefined
+        ? undefined
+        : acceptedNowParam === "true"
+          ? true
+          : acceptedNowParam === "false"
+            ? false
+            : undefined;
+    const effectiveStatus =
+      effectiveStatusParam === "active" ||
+      effectiveStatusParam === "revoked" ||
+      effectiveStatusParam === "not_yet_active" ||
+      effectiveStatusParam === "expired"
+        ? effectiveStatusParam
+        : undefined;
+
+    return context.json({
+      keys: await listGatewayApiKeyStatuses(
+        context.env,
+        config.gatewayApiKeys,
+        requestId,
+        {
+          ...(acceptedNow !== undefined ? { acceptedNow } : {}),
+          ...(effectiveStatus !== undefined ? { effectiveStatus } : {})
+        }
+      )
+    });
+  });
   app.get("/_airlock/keys/:keyId/revocation", async (context) => {
     const requestId = context.get("requestId");
     assertInternalAdminAuthorization(
