@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { GatewayError } from "@airlock/shared";
 
 import {
+  applyAuthStrategy,
   applyRequestShaping,
   buildRequestUrl,
   mergeRequestShapingProfiles,
@@ -78,6 +79,91 @@ describe("applyRequestShaping", () => {
           "x-goog-api-key": "override"
         }
       })
+    ).toThrow(GatewayError);
+  });
+});
+
+describe("applyAuthStrategy", () => {
+  it("applies a bearer auth strategy using a resolved secret ref", () => {
+    expect(
+      applyAuthStrategy(
+        createOutboundRequestShape(),
+        {
+          type: "header_bearer",
+          headerName: "authorization",
+          credential: {
+            secretRef: "openai-api-key"
+          }
+        },
+        {
+          "openai-api-key": "test-secret"
+        }
+      )
+    ).toEqual({
+      path: "/chat/completions",
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-secret",
+        "content-type": "application/json"
+      },
+      query: {
+        existing: "1"
+      },
+      jsonBody: {
+        model: "gpt-4.1-mini"
+      }
+    });
+  });
+
+  it("applies a raw header-value auth strategy using a resolved secret ref", () => {
+    expect(
+      applyAuthStrategy(
+        {
+          ...createOutboundRequestShape(),
+          headers: {
+            "content-type": "application/json"
+          }
+        },
+        {
+          type: "header_value",
+          headerName: "x-api-key",
+          credential: {
+            secretRef: "anthropic-api-key"
+          }
+        },
+        {
+          "anthropic-api-key": "anthropic-secret"
+        }
+      )
+    ).toEqual({
+      path: "/chat/completions",
+      method: "POST",
+      headers: {
+        "x-api-key": "anthropic-secret",
+        "content-type": "application/json"
+      },
+      query: {
+        existing: "1"
+      },
+      jsonBody: {
+        model: "gpt-4.1-mini"
+      }
+    });
+  });
+
+  it("rejects unresolved auth secret refs", () => {
+    expect(() =>
+      applyAuthStrategy(
+        createOutboundRequestShape(),
+        {
+          type: "header_bearer",
+          headerName: "authorization",
+          credential: {
+            secretRef: "missing-secret"
+          }
+        },
+        {}
+      )
     ).toThrow(GatewayError);
   });
 });

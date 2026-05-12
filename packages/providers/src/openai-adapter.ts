@@ -1,8 +1,10 @@
 import type { CanonicalRequest, CanonicalResponse } from "@airlock/canonical";
 import {
+  applyAuthStrategy,
   applyRequestShaping,
   buildRequestUrl,
   mergeRequestShapingProfiles,
+  type OutboundAuthStrategy,
   type RequestShapingProfile
 } from "@airlock/request-shaping";
 
@@ -34,21 +36,33 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     request: CanonicalRequest,
     context: ProviderRequestContext
   ): Promise<CanonicalResponse> {
+    const authStrategy: OutboundAuthStrategy = {
+      type: "header_bearer",
+      headerName: "authorization",
+      credential: {
+        secretRef: "openai-api-key"
+      }
+    };
     const outboundRequest = applyRequestShaping(
-      {
-        path: "/chat/completions",
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${this.#apiKey}`,
-          "content-type": "application/json"
+      applyAuthStrategy(
+        {
+          path: "/chat/completions",
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          query: {},
+          jsonBody: {
+            model: request.model,
+            stream: false,
+            messages: request.messages
+          }
         },
-        query: {},
-        jsonBody: {
-          model: request.model,
-          stream: false,
-          messages: request.messages
+        authStrategy,
+        {
+          "openai-api-key": this.#apiKey
         }
-      },
+      ),
       mergeRequestShapingProfiles(this.#shaping, context.requestShaping)
     );
     const abortController = new AbortController();

@@ -14,6 +14,26 @@ export interface RequestShapingProfile {
   jsonBody?: Record<string, unknown>;
 }
 
+export interface SecretRef {
+  secretRef: string;
+}
+
+export interface HeaderBearerAuthStrategy {
+  type: "header_bearer";
+  headerName: string;
+  credential: SecretRef;
+}
+
+export interface HeaderValueAuthStrategy {
+  type: "header_value";
+  headerName: string;
+  credential: SecretRef;
+}
+
+export type OutboundAuthStrategy =
+  | HeaderBearerAuthStrategy
+  | HeaderValueAuthStrategy;
+
 export type RouteRequestShapingMap = Record<string, RequestShapingProfile>;
 
 const RESERVED_HEADER_NAMES = new Set([
@@ -38,6 +58,15 @@ function createInvalidRequestShapingError(message: string): GatewayError {
     code: "request_invalid_request_shaping",
     category: "request",
     httpStatus: 400,
+    retryable: false
+  });
+}
+
+function createInvalidAuthStrategyError(message: string): GatewayError {
+  return new GatewayError(message, {
+    code: "config_invalid_auth_strategy",
+    category: "configuration",
+    httpStatus: 500,
     retryable: false
   });
 }
@@ -228,6 +257,33 @@ export function applyRequestShaping(
     jsonBody: {
       ...request.jsonBody,
       ...(shaping.jsonBody ?? {})
+    }
+  };
+}
+
+export function applyAuthStrategy(
+  request: OutboundRequestShape,
+  strategy: OutboundAuthStrategy,
+  secrets: Record<string, string>
+): OutboundRequestShape {
+  const secretValue = secrets[strategy.credential.secretRef];
+
+  if (!secretValue) {
+    throw createInvalidAuthStrategyError(
+      `Auth strategy references an unknown secret ref: ${strategy.credential.secretRef}`
+    );
+  }
+
+  const headerValue =
+    strategy.type === "header_bearer"
+      ? `Bearer ${secretValue}`
+      : secretValue;
+
+  return {
+    ...request,
+    headers: {
+      ...request.headers,
+      [strategy.headerName]: headerValue
     }
   };
 }

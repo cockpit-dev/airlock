@@ -1,8 +1,10 @@
 import type { CanonicalRequest, CanonicalResponse } from "@airlock/canonical";
 import {
+  applyAuthStrategy,
   applyRequestShaping,
   buildRequestUrl,
   mergeRequestShapingProfiles,
+  type OutboundAuthStrategy,
   type RequestShapingProfile
 } from "@airlock/request-shaping";
 
@@ -47,23 +49,35 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
         content: message.content
       }));
 
+    const authStrategy: OutboundAuthStrategy = {
+      type: "header_value",
+      headerName: "x-api-key",
+      credential: {
+        secretRef: "anthropic-api-key"
+      }
+    };
     const outboundRequest = applyRequestShaping(
-      {
-        path: "/messages",
-        method: "POST",
-        headers: {
-          "x-api-key": this.#apiKey,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json"
+      applyAuthStrategy(
+        {
+          path: "/messages",
+          method: "POST",
+          headers: {
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+          },
+          query: {},
+          jsonBody: {
+            model: request.model,
+            max_tokens: this.#defaultMaxTokens,
+            ...(systemMessage ? { system: systemMessage.content } : {}),
+            messages
+          }
         },
-        query: {},
-        jsonBody: {
-          model: request.model,
-          max_tokens: this.#defaultMaxTokens,
-          ...(systemMessage ? { system: systemMessage.content } : {}),
-          messages
+        authStrategy,
+        {
+          "anthropic-api-key": this.#apiKey
         }
-      },
+      ),
       mergeRequestShapingProfiles(this.#shaping, context.requestShaping)
     );
     const abortController = new AbortController();

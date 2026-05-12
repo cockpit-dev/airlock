@@ -1,8 +1,10 @@
 import type { CanonicalRequest, CanonicalResponse } from "@airlock/canonical";
 import {
+  applyAuthStrategy,
   applyRequestShaping,
   buildRequestUrl,
   mergeRequestShapingProfiles,
+  type OutboundAuthStrategy,
   type RequestShapingProfile
 } from "@airlock/request-shaping";
 
@@ -48,28 +50,40 @@ export class GeminiProviderAdapter implements ProviderAdapter {
         ]
       }));
 
+    const authStrategy: OutboundAuthStrategy = {
+      type: "header_value",
+      headerName: "x-goog-api-key",
+      credential: {
+        secretRef: "gemini-api-key"
+      }
+    };
     const outboundRequest = applyRequestShaping(
-      {
-        path: `/models/${request.model}:generateContent`,
-        method: "POST",
-        headers: {
-          "x-goog-api-key": this.#apiKey,
-          "content-type": "application/json"
-        },
-        query: {},
-        jsonBody: {
-          ...(systemMessages.length > 0
-            ? {
-                system_instruction: {
-                  parts: systemMessages.map((message) => ({
-                    text: message.content
-                  }))
+      applyAuthStrategy(
+        {
+          path: `/models/${request.model}:generateContent`,
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          query: {},
+          jsonBody: {
+            ...(systemMessages.length > 0
+              ? {
+                  system_instruction: {
+                    parts: systemMessages.map((message) => ({
+                      text: message.content
+                    }))
+                  }
                 }
-              }
-            : {}),
-          contents
+              : {}),
+            contents
+          }
+        },
+        authStrategy,
+        {
+          "gemini-api-key": this.#apiKey
         }
-      },
+      ),
       mergeRequestShapingProfiles(this.#shaping, context.requestShaping)
     );
     const abortController = new AbortController();
