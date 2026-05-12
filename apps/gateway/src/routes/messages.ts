@@ -24,7 +24,12 @@ export async function handleMessages(context: Context) {
   const json = (await context.req.json()) as unknown;
   const parsed = anthropicMessagesRequestSchema.parse(json);
   const route = resolveModelRoute(parsed.model, config.modelAliases, requestId);
-  assertGatewayKeyAllowsModel(gatewayApiKey, route.externalModel, requestId);
+  assertGatewayKeyAllowsModel(
+    gatewayApiKey,
+    route.externalModel,
+    requestId,
+    config.modelGroups
+  );
   const canonicalRequest = normalizeAnthropicMessagesRequest({
     ...parsed,
     model: route.target.providerModel

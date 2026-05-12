@@ -21,7 +21,12 @@ export async function handleChatCompletions(context: Context) {
   const json = (await context.req.json()) as unknown;
   const parsed = openAIChatCompletionRequestSchema.parse(json);
   const route = resolveModelRoute(parsed.model, config.modelAliases, requestId);
-  assertGatewayKeyAllowsModel(gatewayApiKey, route.externalModel, requestId);
+  assertGatewayKeyAllowsModel(
+    gatewayApiKey,
+    route.externalModel,
+    requestId,
+    config.modelGroups
+  );
   const canonicalRequest = normalizeOpenAIChatRequest({
     ...parsed,
     model: route.target.providerModel

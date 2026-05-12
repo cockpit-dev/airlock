@@ -151,6 +151,7 @@ describe("executeRoutedRequest", () => {
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
         providerRetryBackoffMs: 0,
+        modelGroups: {},
         gatewayApiKeys: [],
         modelAliases: [],
         anthropic: {
@@ -228,6 +229,7 @@ describe("executeRoutedRequest", () => {
           providerTimeoutMs: 1000,
           providerMaxRetries: 0,
           providerRetryBackoffMs: 0,
+          modelGroups: {},
           gatewayApiKeys: [],
           modelAliases: [],
           anthropic: {
@@ -312,6 +314,7 @@ describe("executeRoutedRequest", () => {
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
         providerRetryBackoffMs: 0,
+        modelGroups: {},
         gatewayApiKeys: [],
         modelAliases: [],
         anthropic: {
@@ -396,6 +399,7 @@ describe("executeRoutedRequest", () => {
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
         providerRetryBackoffMs: 0,
+        modelGroups: {},
         gatewayApiKeys: [],
         modelAliases: [],
         gemini: {
@@ -500,6 +504,7 @@ describe("executeRoutedRequest", () => {
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
         providerRetryBackoffMs: 0,
+        modelGroups: {},
         gatewayApiKeys: [],
         modelAliases: [],
         anthropic: {
@@ -614,6 +619,7 @@ describe("executeRoutedRequest", () => {
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
         providerRetryBackoffMs: 0,
+        modelGroups: {},
         gatewayApiKeys: [],
         modelAliases: [],
         anthropic: {
@@ -723,6 +729,7 @@ describe("executeRoutedRequest", () => {
         providerTimeoutMs: 1000,
         providerMaxRetries: 1,
         providerRetryBackoffMs: 10,
+        modelGroups: {},
         gatewayApiKeys: [],
         modelAliases: [],
         openAI: {
@@ -795,6 +802,7 @@ describe("executeRoutedRequest", () => {
           providerTimeoutMs: 1000,
           providerMaxRetries: 2,
           providerRetryBackoffMs: 10,
+          modelGroups: {},
           gatewayApiKeys: [],
           modelAliases: [],
           openAI: {
@@ -906,6 +914,7 @@ describe("executeRoutedRequest", () => {
         providerTimeoutMs: 1000,
         providerMaxRetries: 1,
         providerRetryBackoffMs: 10,
+        modelGroups: {},
         gatewayApiKeys: [],
         modelAliases: [],
         openAI: {
@@ -981,6 +990,7 @@ describe("executeRoutedRequest", () => {
         providerTimeoutMs: 1000,
         providerMaxRetries: 1,
         providerRetryBackoffMs: 50,
+        modelGroups: {},
         gatewayApiKeys: [],
         modelAliases: [],
         openAI: {
@@ -1067,6 +1077,7 @@ describe("executeRoutedRequest", () => {
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
         providerRetryBackoffMs: 0,
+        modelGroups: {},
         gatewayApiKeys: [],
         modelAliases: [],
         openAI: {
@@ -1146,6 +1157,7 @@ describe("executeRoutedRequest", () => {
           providerTimeoutMs: 1000,
           providerMaxRetries: 0,
           providerRetryBackoffMs: 0,
+          modelGroups: {},
           gatewayApiKeys: [],
           modelAliases: [],
           openAI: {

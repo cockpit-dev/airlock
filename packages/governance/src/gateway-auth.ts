@@ -7,6 +7,7 @@ export interface GatewayApiKeyPolicy {
   tags?: string[];
   allowedExternalModels?: string[];
   allowedProviders?: ProviderId[];
+  allowedModelGroups?: string[];
 }
 
 export interface GatewayApiKeyRecord {
@@ -142,6 +143,32 @@ function parseGatewayApiKeyPolicy(value: unknown): GatewayApiKeyPolicy | undefin
     }
 
     policy.allowedProviders = allowedProviders;
+  }
+
+  if (value.allowedModelGroups !== undefined) {
+    if (!Array.isArray(value.allowedModelGroups)) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy allowedModelGroups must be an array"
+      );
+    }
+
+    const allowedModelGroups = value.allowedModelGroups.map((group) => {
+      if (typeof group !== "string" || group.trim().length === 0) {
+        throw createInvalidGatewayKeyConfigError(
+          "Gateway API key policy allowedModelGroups must contain non-empty strings"
+        );
+      }
+
+      return group.trim();
+    });
+
+    if (new Set(allowedModelGroups).size !== allowedModelGroups.length) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy allowedModelGroups must be unique"
+      );
+    }
+
+    policy.allowedModelGroups = allowedModelGroups;
   }
 
   return Object.keys(policy).length > 0 ? policy : {};

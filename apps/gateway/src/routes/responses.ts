@@ -24,7 +24,12 @@ export async function handleResponses(context: Context) {
   const json = (await context.req.json()) as unknown;
   const parsed = openAIResponsesRequestSchema.parse(json);
   const route = resolveModelRoute(parsed.model, config.modelAliases, requestId);
-  assertGatewayKeyAllowsModel(gatewayApiKey, route.externalModel, requestId);
+  assertGatewayKeyAllowsModel(
+    gatewayApiKey,
+    route.externalModel,
+    requestId,
+    config.modelGroups
+  );
   const canonicalRequest = normalizeOpenAIResponsesRequest({
     ...parsed,
     model: route.target.providerModel

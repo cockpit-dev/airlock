@@ -3,6 +3,7 @@ import { z } from "zod";
 export const gatewayEnvSchema = z.object({
   AIRLOCK_MODE: z.enum(["free", "scale"]).default("free"),
   AIRLOCK_GATEWAY_API_KEYS: z.string().min(1),
+  AIRLOCK_MODEL_GROUPS: z.string().min(1).optional(),
   AIRLOCK_MODEL_ALIASES: z.string().min(1).optional(),
   AIRLOCK_MODEL_FALLBACKS: z.string().min(1).optional(),
   AIRLOCK_MODEL_TARGET_SELECTION: z.string().min(1).optional(),

@@ -156,7 +156,8 @@ describe("parseGatewayApiKeys", () => {
               tier: "prod",
               tags: ["internal", "critical"],
               allowedExternalModels: ["gpt-4.1-mini", "claude-sonnet-4-5"],
-              allowedProviders: ["openai", "anthropic"]
+              allowedProviders: ["openai", "anthropic"],
+              allowedModelGroups: ["default-chat"]
             }
           },
           {
@@ -177,7 +178,8 @@ describe("parseGatewayApiKeys", () => {
           tier: "prod",
           tags: ["internal", "critical"],
           allowedExternalModels: ["gpt-4.1-mini", "claude-sonnet-4-5"],
-          allowedProviders: ["openai", "anthropic"]
+          allowedProviders: ["openai", "anthropic"],
+          allowedModelGroups: ["default-chat"]
         }
       },
       {
@@ -314,6 +316,42 @@ describe("parseGatewayApiKeys", () => {
             status: "active",
             policy: {
               allowedProviders: ["openai", "openai"]
+            }
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects invalid allowed model group policy values", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedModelGroups: ["default-chat", ""]
+            }
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects duplicate allowed model group policy values", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedModelGroups: ["default-chat", "default-chat"]
             }
           }
         ])

@@ -23,15 +23,22 @@ export function requireGatewayAuthorization(
 export function assertGatewayKeyAllowsModel(
   gatewayApiKey: GatewayApiKeyRecord,
   externalModel: string,
-  requestId: string
+  requestId: string,
+  modelGroups: Record<string, string[]>
 ) {
   const allowedExternalModels = gatewayApiKey.policy?.allowedExternalModels;
+  const allowedModelGroups = gatewayApiKey.policy?.allowedModelGroups;
 
-  if (!allowedExternalModels) {
+  if (!allowedExternalModels && !allowedModelGroups) {
     return;
   }
 
-  if (!allowedExternalModels.includes(externalModel)) {
+  const isExplicitlyAllowed = allowedExternalModels?.includes(externalModel);
+  const isAllowedByGroup = allowedModelGroups?.some((groupName) => {
+    return modelGroups[groupName]?.includes(externalModel);
+  });
+
+  if (!isExplicitlyAllowed && !isAllowedByGroup) {
     throw new GatewayError("Gateway API key is not allowed to access this model", {
       code: "auth_model_not_allowed",
       category: "authorization",
