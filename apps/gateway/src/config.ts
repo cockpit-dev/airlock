@@ -3,8 +3,10 @@ import { parseRouteRequestShaping } from "@airlock/request-shaping";
 import {
   attachRouteFallbacks,
   attachRouteRequestShaping,
+  attachRouteTargetSelection,
   parseModelAliases,
   parseRouteFallbacks,
+  parseRouteTargetSelection,
   type ModelRouteDirectory
 } from "@airlock/routing";
 import { GatewayError } from "@airlock/shared";
@@ -36,12 +38,15 @@ export interface GatewayConfig {
 
 export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
   const env = gatewayEnvSchema.parse(bindings);
-  const modelAliases = attachRouteFallbacks(
-    attachRouteRequestShaping(
-      parseModelAliases(env.AIRLOCK_MODEL_ALIASES, env.OPENAI_DEFAULT_MODEL),
-      parseRouteRequestShaping(env.AIRLOCK_MODEL_SHAPING)
+  const modelAliases = attachRouteTargetSelection(
+    attachRouteFallbacks(
+      attachRouteRequestShaping(
+        parseModelAliases(env.AIRLOCK_MODEL_ALIASES, env.OPENAI_DEFAULT_MODEL),
+        parseRouteRequestShaping(env.AIRLOCK_MODEL_SHAPING)
+      ),
+      parseRouteFallbacks(env.AIRLOCK_MODEL_FALLBACKS)
     ),
-    parseRouteFallbacks(env.AIRLOCK_MODEL_FALLBACKS)
+    parseRouteTargetSelection(env.AIRLOCK_MODEL_TARGET_SELECTION)
   );
   const usedProviders = new Set(
     modelAliases.flatMap((route) => {

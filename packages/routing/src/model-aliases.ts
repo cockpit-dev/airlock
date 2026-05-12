@@ -10,15 +10,24 @@ export interface ProviderTarget {
   providerModel: string;
 }
 
+export interface WeightedRouteTargetSelection {
+  strategy: "weighted";
+  weights: Record<string, number>;
+}
+
+export type RouteTargetSelection = WeightedRouteTargetSelection;
+
 export interface ModelRoute {
   externalModel: string;
   target: ProviderTarget;
   shaping?: RequestShapingProfile;
   fallbacks?: ProviderTarget[];
+  targetSelection?: RouteTargetSelection;
 }
 
 export type ModelRouteDirectory = ModelRoute[];
 export type RouteFallbackMap = Record<string, string[]>;
+export type RouteTargetSelectionMap = Record<string, RouteTargetSelection>;
 
 function createInvalidModelAliasError(message: string): GatewayError {
   return new GatewayError(message, {
@@ -41,6 +50,15 @@ function createInvalidRouteShapingError(message: string): GatewayError {
 function createInvalidRouteFallbackError(message: string): GatewayError {
   return new GatewayError(message, {
     code: "config_invalid_model_fallbacks",
+    category: "configuration",
+    httpStatus: 500,
+    retryable: false
+  });
+}
+
+function createInvalidRouteTargetSelectionError(message: string): GatewayError {
+  return new GatewayError(message, {
+    code: "config_invalid_model_target_selection",
     category: "configuration",
     httpStatus: 500,
     retryable: false
@@ -86,6 +104,23 @@ function parseProviderTarget(
     provider,
     providerModel
   };
+}
+
+function parseExplicitProviderTarget(
+  value: string,
+  createError: (message: string) => GatewayError
+): ProviderTarget {
+  if (!value.includes(":")) {
+    throw createError(
+      "Target selection weights must use explicit provider target keys"
+    );
+  }
+
+  return parseProviderTarget(value, "openai", createError);
+}
+
+export function serializeProviderTarget(target: ProviderTarget): string {
+  return `${target.provider}:${target.providerModel}`;
 }
 
 export function parseModelAliases(
@@ -190,6 +225,91 @@ export function parseRouteFallbacks(value: string | undefined): RouteFallbackMap
   return fallbackMap;
 }
 
+export function parseRouteTargetSelection(
+  value: string | undefined
+): RouteTargetSelectionMap {
+  if (!value) {
+    return {};
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw createInvalidRouteTargetSelectionError(
+      "Route target selection config must be valid JSON"
+    );
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw createInvalidRouteTargetSelectionError(
+      "Route target selection config must be a JSON object"
+    );
+  }
+
+  const targetSelectionByRoute: RouteTargetSelectionMap = {};
+
+  for (const [externalModel, selection] of Object.entries(parsed)) {
+    if (typeof selection !== "object" || selection === null || Array.isArray(selection)) {
+      throw createInvalidRouteTargetSelectionError(
+        "Route target selection entries must be objects"
+      );
+    }
+
+    const strategy = (selection as Record<string, unknown>).strategy;
+    const weightsValue = (selection as Record<string, unknown>).weights;
+
+    if (strategy !== "weighted") {
+      throw createInvalidRouteTargetSelectionError(
+        "Route target selection strategy must be supported"
+      );
+    }
+
+    if (
+      typeof weightsValue !== "object" ||
+      weightsValue === null ||
+      Array.isArray(weightsValue)
+    ) {
+      throw createInvalidRouteTargetSelectionError(
+        "Weighted target selection must define a weights object"
+      );
+    }
+
+    const normalizedWeights: Record<string, number> = {};
+
+    for (const [targetKey, weight] of Object.entries(weightsValue)) {
+      if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) {
+        throw createInvalidRouteTargetSelectionError(
+          "Target selection weights must be positive finite numbers"
+        );
+      }
+
+      normalizedWeights[
+        serializeProviderTarget(
+          parseExplicitProviderTarget(
+            targetKey,
+            createInvalidRouteTargetSelectionError
+          )
+        )
+      ] = weight;
+    }
+
+    if (Object.keys(normalizedWeights).length === 0) {
+      throw createInvalidRouteTargetSelectionError(
+        "Weighted target selection must define at least one target weight"
+      );
+    }
+
+    targetSelectionByRoute[externalModel] = {
+      strategy: "weighted",
+      weights: normalizedWeights
+    };
+  }
+
+  return targetSelectionByRoute;
+}
+
 export function attachRouteRequestShaping(
   routes: ModelRouteDirectory,
   shapingByRoute: RouteRequestShapingMap
@@ -279,6 +399,50 @@ export function attachRouteFallbacks(
     return {
       ...route,
       fallbacks: normalizedFallbacks
+    };
+  });
+}
+
+export function attachRouteTargetSelection(
+  routes: ModelRouteDirectory,
+  targetSelectionByRoute: RouteTargetSelectionMap
+): ModelRouteDirectory {
+  const configuredExternalModels = new Set(
+    routes.map((route) => route.externalModel)
+  );
+
+  for (const externalModel of Object.keys(targetSelectionByRoute)) {
+    if (!configuredExternalModels.has(externalModel)) {
+      throw createInvalidRouteTargetSelectionError(
+        `Route target selection references an unknown external model: ${externalModel}`
+      );
+    }
+  }
+
+  return routes.map((route) => {
+    const targetSelection = targetSelectionByRoute[route.externalModel];
+
+    if (!targetSelection) {
+      return route;
+    }
+
+    const routeTargetKeys = new Set(
+      [route.target, ...(route.fallbacks ?? [])].map((target) => {
+        return serializeProviderTarget(target);
+      })
+    );
+
+    for (const targetKey of Object.keys(targetSelection.weights)) {
+      if (!routeTargetKeys.has(targetKey)) {
+        throw createInvalidRouteTargetSelectionError(
+          `Route target selection references an unknown route target: ${targetKey}`
+        );
+      }
+    }
+
+    return {
+      ...route,
+      targetSelection
     };
   });
 }

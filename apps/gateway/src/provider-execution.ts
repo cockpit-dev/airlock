@@ -13,7 +13,11 @@ import {
 } from "@airlock/providers";
 import type { GatewayApiKeyRecord } from "@airlock/governance";
 import type { RequestShapingProfile } from "@airlock/request-shaping";
-import type { ModelRoute, ProviderTarget } from "@airlock/routing";
+import {
+  serializeProviderTarget,
+  type ModelRoute,
+  type ProviderTarget
+} from "@airlock/routing";
 import { GatewayError } from "@airlock/shared";
 
 import { assertGatewayKeyAllowsProvider } from "./auth.js";
@@ -150,6 +154,58 @@ function createAttemptRequest(
   return buildAttemptRequest(request, target);
 }
 
+function hashString(value: string): number {
+  let hash = 2166136261;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
+function scoreWeightedTarget(
+  route: ModelRoute,
+  target: ProviderTarget,
+  requestId: string,
+  weight: number
+): number {
+  const seed = `${requestId}:${route.externalModel}:${serializeProviderTarget(target)}`;
+  const hash = hashString(seed);
+
+  return hash * weight;
+}
+
+function reorderTargetsForRoute(
+  route: ModelRoute,
+  targets: ProviderTarget[],
+  requestId: string
+): ProviderTarget[] {
+  const targetSelection = route.targetSelection;
+
+  if (!targetSelection || targetSelection.strategy !== "weighted") {
+    return targets;
+  }
+
+  return [...targets].sort((left, right) => {
+    const leftWeight =
+      targetSelection.weights[serializeProviderTarget(left)] ?? 1;
+    const rightWeight =
+      targetSelection.weights[serializeProviderTarget(right)] ?? 1;
+    const rightScore = scoreWeightedTarget(route, right, requestId, rightWeight);
+    const leftScore = scoreWeightedTarget(route, left, requestId, leftWeight);
+
+    if (rightScore !== leftScore) {
+      return rightScore - leftScore;
+    }
+
+    return serializeProviderTarget(left).localeCompare(
+      serializeProviderTarget(right)
+    );
+  });
+}
+
 function selectEligibleTargets(
   route: ModelRoute,
   request: CanonicalRequest,
@@ -198,7 +254,7 @@ function selectEligibleTargets(
   }
 
   if (eligibleTargets.length > 0) {
-    return eligibleTargets;
+    return reorderTargetsForRoute(route, eligibleTargets, requestId);
   }
 
   if (lastAuthorizationError) {

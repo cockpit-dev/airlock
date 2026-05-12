@@ -1488,6 +1488,74 @@ describe("gateway app", () => {
     });
   });
 
+  it("can start from a weighted fallback target before the configured primary target", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello from anthropic"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "weighted",
+            weights: {
+              "openai:gpt-4.1-mini": 1,
+              "anthropic:claude-haiku-4-5": 10000
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "claude-haiku-4-5"
+    });
+  });
+
   it("returns not ready when a shaped route configures cross-provider fallback", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -1503,6 +1571,29 @@ describe("gateway app", () => {
       }),
       AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
         "assistant-default": ["anthropic:claude-haiku-4-5"]
+      })
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready when target selection references a target outside the route chain", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_MODEL_ALIASES: "assistant-default=openai:gpt-4.1-mini",
+      AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+        "assistant-default": {
+          strategy: "weighted",
+          weights: {
+            "anthropic:claude-haiku-4-5": 1
+          }
+        }
       })
     });
 

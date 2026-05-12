@@ -5,7 +5,9 @@ import { GatewayError } from "@airlock/shared";
 import {
   attachRouteRequestShaping,
   attachRouteFallbacks,
+  attachRouteTargetSelection,
   listExternalModels,
+  parseRouteTargetSelection,
   parseRouteFallbacks,
   parseModelAliases,
   resolveModelRoute
@@ -242,6 +244,36 @@ describe("parseRouteFallbacks", () => {
   });
 });
 
+describe("parseRouteTargetSelection", () => {
+  it("parses weighted target selection keyed by external model", () => {
+    expect(
+      parseRouteTargetSelection(
+        JSON.stringify({
+          "assistant-default": {
+            strategy: "weighted",
+            weights: {
+              "openai:gpt-4.1-mini": 1,
+              "anthropic:claude-haiku-4-5": 4
+            }
+          }
+        })
+      )
+    ).toEqual({
+      "assistant-default": {
+        strategy: "weighted",
+        weights: {
+          "openai:gpt-4.1-mini": 1,
+          "anthropic:claude-haiku-4-5": 4
+        }
+      }
+    });
+  });
+
+  it("rejects malformed target selection json", () => {
+    expect(() => parseRouteTargetSelection("{not-json")).toThrow(GatewayError);
+  });
+});
+
 describe("attachRouteFallbacks", () => {
   it("attaches fallback targets to matching routes", () => {
     expect(
@@ -340,6 +372,93 @@ describe("attachRouteFallbacks", () => {
         parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini", "gpt-4.1-mini"),
         {
           "gpt-4.1-mini": ["openai:gpt-4.1-nano", "openai:gpt-4.1-nano"]
+        }
+      )
+    ).toThrow(GatewayError);
+  });
+});
+
+describe("attachRouteTargetSelection", () => {
+  it("attaches weighted selection to a matching route", () => {
+    expect(
+      attachRouteTargetSelection(
+        attachRouteFallbacks(
+          parseModelAliases(
+            "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+            "gpt-4.1-mini"
+          ),
+          {
+            "assistant-default": ["anthropic:claude-haiku-4-5"]
+          }
+        ),
+        {
+          "assistant-default": {
+            strategy: "weighted",
+            weights: {
+              "openai:gpt-4.1-mini": 1,
+              "anthropic:claude-haiku-4-5": 4
+            }
+          }
+        }
+      )
+    ).toEqual([
+      {
+        externalModel: "assistant-default",
+        target: {
+          provider: "openai",
+          providerModel: "gpt-4.1-mini"
+        },
+        fallbacks: [
+          {
+            provider: "anthropic",
+            providerModel: "claude-haiku-4-5"
+          }
+        ],
+        targetSelection: {
+          strategy: "weighted",
+          weights: {
+            "openai:gpt-4.1-mini": 1,
+            "anthropic:claude-haiku-4-5": 4
+          }
+        }
+      },
+      {
+        externalModel: "claude-haiku-4-5",
+        target: {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      }
+    ]);
+  });
+
+  it("rejects target selection keys that do not match configured routes", () => {
+    expect(() =>
+      attachRouteTargetSelection(
+        parseModelAliases("gpt-4.1-mini=gpt-4.1-mini", "gpt-4.1-mini"),
+        {
+          unknown: {
+            strategy: "weighted",
+            weights: {
+              "openai:gpt-4.1-mini": 1
+            }
+          }
+        }
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects weighted targets that do not exist in the route chain", () => {
+    expect(() =>
+      attachRouteTargetSelection(
+        parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini", "gpt-4.1-mini"),
+        {
+          "gpt-4.1-mini": {
+            strategy: "weighted",
+            weights: {
+              "openai:gpt-4.1-nano": 1
+            }
+          }
         }
       )
     ).toThrow(GatewayError);
