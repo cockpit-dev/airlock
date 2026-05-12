@@ -9,7 +9,7 @@ const openAIResponsesInputMessageSchema = z.object({
 
 export const openAIResponsesRequestSchema = z.object({
   model: z.string().min(1),
-  stream: z.literal(false).default(false),
+  stream: z.boolean().default(false),
   input: z.union([
     z.string().min(1),
     z.array(openAIResponsesInputMessageSchema).min(1)

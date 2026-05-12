@@ -133,6 +133,16 @@ describe("openAIResponsesRequestSchema", () => {
       }
     });
   });
+
+  it("accepts a streaming responses request", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: true
+    });
+
+    expect(parsed.stream).toBe(true);
+  });
 });
 
 describe("openAIResponsesResponseSchema", () => {

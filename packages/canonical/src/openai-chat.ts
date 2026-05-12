@@ -154,6 +154,39 @@ export function encodeCanonicalToOpenAIResponsesResponse(
   };
 }
 
+export function encodeCanonicalToOpenAIResponsesStreamEvent(
+  event: CanonicalStreamEvent
+) {
+  if (event.type === "response_started") {
+    return {
+      type: "response.created" as const,
+      response: {
+        id: event.responseId,
+        object: "response" as const,
+        model: event.model
+      }
+    };
+  }
+
+  if (event.type === "output_text_delta") {
+    return {
+      type: "response.output_text.delta" as const,
+      response_id: event.responseId,
+      delta: event.delta
+    };
+  }
+
+  return {
+    type: "response.completed" as const,
+    response: {
+      id: event.responseId,
+      object: "response" as const,
+      model: event.model,
+      status: "completed" as const
+    }
+  };
+}
+
 export function encodeCanonicalToAnthropicMessagesResponse(
   response: CanonicalResponse
 ) {

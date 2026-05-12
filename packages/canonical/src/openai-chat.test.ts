@@ -159,6 +159,16 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.model).toBe("gpt-4.1-mini");
     expect(canonical.messages).toEqual([{ role: "user", content: "hello" }]);
   });
+
+  it("preserves streaming intent for a responses request", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: true
+    });
+
+    expect(canonical.stream).toBe(true);
+  });
 });
 
 describe("encodeCanonicalToOpenAIResponsesResponse", () => {
@@ -172,6 +182,71 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
 
     expect(encoded.object).toBe("response");
     expect(encoded.output_text).toBe("hello there");
+  });
+});
+
+describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
+  it("encodes a response_started event into a response.created event", async () => {
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIResponsesStreamEvent({
+        type: "response_started",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini"
+      })
+    ).toEqual({
+      type: "response.created",
+      response: {
+        id: "resp_123",
+        object: "response",
+        model: "gpt-4.1-mini"
+      }
+    });
+  });
+
+  it("encodes an output_text_delta event into a responses delta event", async () => {
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIResponsesStreamEvent({
+        type: "output_text_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        delta: "hel"
+      })
+    ).toEqual({
+      type: "response.output_text.delta",
+      response_id: "resp_123",
+      delta: "hel"
+    });
+  });
+
+  it("encodes a response_completed event into a response.completed event", async () => {
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIResponsesStreamEvent({
+        type: "response_completed",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        finishReason: "stop"
+      })
+    ).toEqual({
+      type: "response.completed",
+      response: {
+        id: "resp_123",
+        object: "response",
+        model: "gpt-4.1-mini",
+        status: "completed"
+      }
+    });
   });
 });
 
