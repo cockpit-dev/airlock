@@ -41,7 +41,12 @@ describe("OpenAIProviderAdapter", () => {
                 content: "hello there"
               }
             }
-          ]
+          ],
+          usage: {
+            prompt_tokens: 12,
+            completion_tokens: 8,
+            total_tokens: 20
+          }
         }),
         {
           status: 200,
@@ -92,6 +97,11 @@ describe("OpenAIProviderAdapter", () => {
     });
     expect(response.outputText).toBe("hello there");
     expect(response.model).toBe("gpt-4.1-mini");
+    expect(response.usage).toEqual({
+      inputTokens: 12,
+      outputTokens: 8,
+      totalTokens: 20
+    });
   });
 
   it("applies auth through the shared auth strategy layer", async () => {

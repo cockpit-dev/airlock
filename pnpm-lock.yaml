@@ -71,6 +71,9 @@ importers:
       '@airlock/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@airlock/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
       hono:
         specifier: ^4.12.18
         version: 4.12.18
@@ -131,6 +134,15 @@ importers:
 
   packages/shared:
     dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
+  packages/telemetry:
+    dependencies:
+      '@airlock/shared':
+        specifier: workspace:*
+        version: link:../shared
       zod:
         specifier: ^4.4.3
         version: 4.4.3

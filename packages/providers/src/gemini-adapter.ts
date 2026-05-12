@@ -129,6 +129,11 @@ export class GeminiProviderAdapter implements ProviderAdapter {
           }>;
         };
       }>;
+      usageMetadata?: {
+        promptTokenCount?: number;
+        candidatesTokenCount?: number;
+        totalTokenCount?: number;
+      };
     };
 
     const outputText =
@@ -141,7 +146,19 @@ export class GeminiProviderAdapter implements ProviderAdapter {
       id: payload.responseId ?? `gemini_${context.requestId}`,
       model: payload.modelVersion ?? request.model,
       outputText,
-      finishReason: "stop"
+      finishReason: "stop",
+      ...(payload.usageMetadata
+        ? {
+            usage: {
+              inputTokens: payload.usageMetadata.promptTokenCount ?? 0,
+              outputTokens: payload.usageMetadata.candidatesTokenCount ?? 0,
+              totalTokens:
+                payload.usageMetadata.totalTokenCount ??
+                (payload.usageMetadata.promptTokenCount ?? 0) +
+                  (payload.usageMetadata.candidatesTokenCount ?? 0)
+            }
+          }
+        : {})
     };
   }
 

@@ -130,13 +130,30 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
           content: string;
         };
       }>;
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+      };
     };
 
     return {
       id: payload.id,
       model: payload.model,
       outputText: payload.choices[0]?.message.content ?? "",
-      finishReason: payload.choices[0]?.finish_reason ?? "stop"
+      finishReason: payload.choices[0]?.finish_reason ?? "stop",
+      ...(payload.usage
+        ? {
+            usage: {
+              inputTokens: payload.usage.prompt_tokens ?? 0,
+              outputTokens: payload.usage.completion_tokens ?? 0,
+              totalTokens:
+                payload.usage.total_tokens ??
+                (payload.usage.prompt_tokens ?? 0) +
+                  (payload.usage.completion_tokens ?? 0)
+            }
+          }
+        : {})
     };
   }
 

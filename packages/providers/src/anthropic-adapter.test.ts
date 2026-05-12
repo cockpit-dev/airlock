@@ -38,7 +38,11 @@ describe("AnthropicProviderAdapter", () => {
               type: "text",
               text: "hello there"
             }
-          ]
+          ],
+          usage: {
+            input_tokens: 14,
+            output_tokens: 9
+          }
         }),
         {
           status: 200,
@@ -99,6 +103,11 @@ describe("AnthropicProviderAdapter", () => {
     });
     expect(response.outputText).toBe("hello there");
     expect(response.model).toBe("claude-sonnet-4-5");
+    expect(response.usage).toEqual({
+      inputTokens: 14,
+      outputTokens: 9,
+      totalTokens: 23
+    });
   });
 
   it("applies auth through the shared auth strategy layer", async () => {

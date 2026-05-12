@@ -17,6 +17,7 @@
     "@airlock/request-shaping": "workspace:*",
     "@airlock/routing": "workspace:*",
     "@airlock/shared": "workspace:*",
+    "@airlock/telemetry": "workspace:*",
     "hono": "^4.12.18",
     "zod": "^4.4.3"
   }

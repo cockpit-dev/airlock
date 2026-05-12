@@ -41,7 +41,12 @@ describe("GeminiProviderAdapter", () => {
                 ]
               }
             }
-          ]
+          ],
+          usageMetadata: {
+            promptTokenCount: 10,
+            candidatesTokenCount: 6,
+            totalTokenCount: 16
+          }
         }),
         {
           status: 200,
@@ -95,7 +100,12 @@ describe("GeminiProviderAdapter", () => {
       id: "gemini-response-123",
       model: "gemini-2.5-flash",
       outputText: "hello there",
-      finishReason: "stop"
+      finishReason: "stop",
+      usage: {
+        inputTokens: 10,
+        outputTokens: 6,
+        totalTokens: 16
+      }
     });
   });
 

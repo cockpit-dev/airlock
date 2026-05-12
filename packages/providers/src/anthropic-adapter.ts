@@ -143,6 +143,10 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
         type: "text";
         text: string;
       }>;
+      usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+      };
     };
 
     return {
@@ -152,7 +156,18 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
         .filter((block) => block.type === "text")
         .map((block) => block.text)
         .join("\n"),
-      finishReason: "stop"
+      finishReason: "stop",
+      ...(payload.usage
+        ? {
+            usage: {
+              inputTokens: payload.usage.input_tokens ?? 0,
+              outputTokens: payload.usage.output_tokens ?? 0,
+              totalTokens:
+                (payload.usage.input_tokens ?? 0) +
+                (payload.usage.output_tokens ?? 0)
+            }
+          }
+        : {})
     };
   }
 

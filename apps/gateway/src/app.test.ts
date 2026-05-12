@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { TelemetrySink } from "@airlock/telemetry";
+
 import { createApp } from "./app.js";
 import { resetProviderCircuitBreakerState } from "./circuit-breaker.js";
 
@@ -57,6 +59,18 @@ function createBindings() {
 const gatewaySecretHash =
   "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6";
 
+function createTelemetryRecorder() {
+  const events: unknown[] = [];
+  const sink: TelemetrySink = {
+    async emit(event) {
+      await Promise.resolve();
+      events.push(event);
+    }
+  };
+
+  return { sink, events };
+}
+
 beforeEach(() => {
   resetProviderCircuitBreakerState();
 });
@@ -73,6 +87,163 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     await expect(readJson(response)).resolves.toEqual({ ok: true });
+  });
+
+  it("emits request telemetry for a successful buffered chat completion", async () => {
+    const { sink, events } = createTelemetryRecorder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ],
+          usage: {
+            prompt_tokens: 12,
+            completion_tokens: 8,
+            total_tokens: 20
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher, telemetrySink: sink });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "gateway_request",
+      routePath: "/v1/chat/completions",
+      outcome: "success",
+      statusCode: 200,
+      provider: "openai",
+      providerModel: "gpt-4.1-mini",
+      externalModel: "gpt-4.1-mini",
+      gatewayKeyId: "gak_1",
+      fallbackUsed: false,
+      usage: {
+        inputTokens: 12,
+        outputTokens: 8,
+        totalTokens: 20
+      }
+    });
+  });
+
+  it("emits request telemetry for an authentication failure", async () => {
+    const { sink, events } = createTelemetryRecorder();
+    const app = createApp({ fetcher: vi.fn(), telemetrySink: sink });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer wrong-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(401);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "gateway_request",
+      routePath: "/v1/chat/completions",
+      outcome: "error",
+      statusCode: 401,
+      errorCode: "auth_invalid_api_key",
+      errorCategory: "authentication",
+      retryable: false
+    });
+  });
+
+  it("emits request telemetry for an upstream provider failure with attempted provider metadata", async () => {
+    const { sink, events } = createTelemetryRecorder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "rate limited"
+          }
+        }),
+        {
+          status: 429,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher, telemetrySink: sink });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(429);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "gateway_request",
+      routePath: "/v1/chat/completions",
+      outcome: "error",
+      statusCode: 429,
+      provider: "openai",
+      providerModel: "gpt-4.1-mini",
+      errorCode: "provider_upstream_error",
+      errorCategory: "provider",
+      retryable: true
+    });
   });
 
   it("returns ready from /readyz when required config is present", async () => {

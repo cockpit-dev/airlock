@@ -346,6 +346,7 @@ export async function executeRoutedRequest(
     fetcher?: typeof fetch;
     now?: () => number;
     getProviderDescriptor?: ProviderCapabilityDescriptorResolver;
+    onAttemptTarget?: (target: ProviderTarget) => void;
   }
 ): Promise<CanonicalResponse> {
   const {
@@ -355,7 +356,8 @@ export async function executeRoutedRequest(
     requestShaping,
     fetcher,
     now = Date.now,
-    getProviderDescriptor = getProviderCapabilityDescriptor
+    getProviderDescriptor = getProviderCapabilityDescriptor,
+    onAttemptTarget
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
   const targets = selectEligibleTargets(
@@ -379,6 +381,7 @@ export async function executeRoutedRequest(
     let targetAttempt = 0;
 
     while (true) {
+      onAttemptTarget?.(target);
       const currentAttemptRequest = createAttemptRequest(request, target);
       const currentAttemptStartedAt = now();
       const currentRemainingTimeoutMs = deadline - currentAttemptStartedAt;
@@ -477,6 +480,7 @@ export async function* executeRoutedStreamRequest(
     fetcher?: typeof fetch;
     now?: () => number;
     getProviderDescriptor?: ProviderCapabilityDescriptorResolver;
+    onAttemptTarget?: (target: ProviderTarget) => void;
   }
 ): AsyncIterable<CanonicalStreamEvent> {
   const {
@@ -486,7 +490,8 @@ export async function* executeRoutedStreamRequest(
     requestShaping,
     fetcher,
     now = Date.now,
-    getProviderDescriptor = getProviderCapabilityDescriptor
+    getProviderDescriptor = getProviderCapabilityDescriptor,
+    onAttemptTarget
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
   const targets = selectEligibleTargets(
@@ -507,6 +512,7 @@ export async function* executeRoutedStreamRequest(
   }
 
   const currentAttemptRequest = createAttemptRequest(request, target);
+  onAttemptTarget?.(target);
   const adapter = createProviderAdapter(
     route,
     target,

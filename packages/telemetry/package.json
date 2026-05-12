@@ -1,0 +1,19 @@
+{
+  "name": "@airlock/telemetry",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run",
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@airlock/shared": "workspace:*",
+    "zod": "^4.4.3"
+  }
+}

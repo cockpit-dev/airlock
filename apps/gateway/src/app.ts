@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import type { TelemetrySink } from "@airlock/telemetry";
+import { GatewayError } from "@airlock/shared";
 
 import { toErrorResponse } from "./errors.js";
 import type { GatewayBindings } from "./env.js";
@@ -9,15 +11,24 @@ import { handleMessages } from "./routes/messages.js";
 import { handleModelById, handleModels } from "./routes/models.js";
 import { handleReady } from "./routes/ready.js";
 import { handleResponses } from "./routes/responses.js";
+import { emitGatewayRequestErrorTelemetry } from "./telemetry.js";
 
 export interface CreateAppOptions {
   fetcher?: typeof fetch;
+  telemetrySink?: TelemetrySink;
 }
 
 type AppVariables = {
   requestId: string;
   fetcher?: typeof fetch;
+  requestStartedAt: number;
+  telemetrySink?: TelemetrySink;
+  telemetryErrorEmitted?: boolean;
 };
+
+function getRequestStartTime(): number {
+  return globalThis.performance?.now() ?? Date.now();
+}
 
 export function createApp(options: CreateAppOptions = {}) {
   const app = new Hono<{
@@ -26,9 +37,33 @@ export function createApp(options: CreateAppOptions = {}) {
   }>();
 
   app.onError((error, context) => {
+    const requestId = context.get("requestId") ?? createRequestId();
+    const telemetrySink = context.get("telemetrySink");
+    const requestStartedAt = context.get("requestStartedAt");
+    const telemetryErrorEmitted = context.get("telemetryErrorEmitted");
+
+    if (
+      !telemetryErrorEmitted &&
+      error instanceof GatewayError &&
+      requestStartedAt !== undefined
+    ) {
+      void emitGatewayRequestErrorTelemetry(
+        {
+          telemetrySink,
+          requestId,
+          routePath: new URL(context.req.url).pathname,
+          mode: context.env.AIRLOCK_MODE ?? "free",
+          startedAt: requestStartedAt,
+          stream: false,
+          statusCode: error.httpStatus
+        },
+        error
+      );
+    }
+
     return toErrorResponse(
       error,
-      context.get("requestId") ?? createRequestId(),
+      requestId,
       new URL(context.req.url).pathname
     );
   });
@@ -36,6 +71,9 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use("*", async (context, next) => {
     context.set("requestId", createRequestId());
     context.set("fetcher", options.fetcher);
+    context.set("requestStartedAt", getRequestStartTime());
+    context.set("telemetrySink", options.telemetrySink);
+    context.set("telemetryErrorEmitted", false);
     await next();
   });
 

@@ -16,11 +16,18 @@ export interface CanonicalRequestCapabilityRequirements {
   requiresSystemMessages: boolean;
 }
 
+export interface CanonicalUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
 export interface CanonicalResponse {
   id: string;
   model: string;
   outputText: string;
   finishReason: "stop";
+  usage?: CanonicalUsage;
 }
 
 export type CanonicalStreamEvent =
