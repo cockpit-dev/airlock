@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CanonicalRequest } from "@airlock/canonical";
 import type { GatewayApiKeyRecord } from "@airlock/governance";
@@ -11,6 +11,11 @@ import {
   executeRoutedRequest,
   executeRoutedStreamRequest
 } from "./provider-execution.js";
+import { resetProviderCircuitBreakerState } from "./circuit-breaker.js";
+
+beforeEach(() => {
+  resetProviderCircuitBreakerState();
+});
 
 describe("assertProviderSupportsCanonicalRequest", () => {
   it("allows canonical requests that fit the provider descriptor", () => {
@@ -259,6 +264,386 @@ describe("executeRoutedRequest", () => {
 
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+  });
+
+  it("opens a target circuit after repeated retryable failures and skips it on the next request", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_123",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "hello from fallback"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+    const baseConfig = {
+      mode: "free" as const,
+      providerTimeoutMs: 1000,
+      providerMaxRetries: 0,
+      providerRetryBackoffMs: 0,
+      providerCircuitBreakerThreshold: 1,
+      providerCircuitBreakerCooldownMs: 60_000,
+      modelGroups: {},
+      gatewayApiKeys: [],
+      modelAliases: [],
+      anthropic: {
+        apiKey: "anthropic-secret",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultMaxTokens: 256
+      },
+      openAI: {
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    };
+
+    const firstResponse = await executeRoutedRequest(route, request, {
+      config: baseConfig,
+      requestId: "req_breaker_first",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1000
+    });
+
+    expect(firstResponse.model).toBe("claude-haiku-4-5");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+
+    fetcher.mockClear();
+    fetcher.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "msg_456",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello after breaker skip"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const secondResponse = await executeRoutedRequest(route, request, {
+      config: baseConfig,
+      requestId: "req_breaker_second",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 2000
+    });
+
+    expect(secondResponse.model).toBe("claude-haiku-4-5");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+  });
+
+  it("allows a cooled-down target to recover on a later successful request", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_123",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "fallback"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_789",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "primary recovered"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+    const baseConfig = {
+      mode: "free" as const,
+      providerTimeoutMs: 1000,
+      providerMaxRetries: 0,
+      providerRetryBackoffMs: 0,
+      providerCircuitBreakerThreshold: 1,
+      providerCircuitBreakerCooldownMs: 100,
+      modelGroups: {},
+      gatewayApiKeys: [],
+      modelAliases: [],
+      anthropic: {
+        apiKey: "anthropic-secret",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultMaxTokens: 256
+      },
+      openAI: {
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    };
+
+    await executeRoutedRequest(route, request, {
+      config: baseConfig,
+      requestId: "req_breaker_cooldown_first",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1000
+    });
+
+    const recoveredResponse = await executeRoutedRequest(route, request, {
+      config: baseConfig,
+      requestId: "req_breaker_cooldown_second",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1200
+    });
+
+    expect(recoveredResponse.model).toBe("gpt-4.1-mini");
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+  });
+
+  it("returns a typed routing error when every otherwise-eligible target is open", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "rate limited"
+          }
+        }),
+        {
+          status: 429,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const config = {
+      mode: "free" as const,
+      providerTimeoutMs: 1000,
+      providerMaxRetries: 0,
+      providerRetryBackoffMs: 0,
+      providerCircuitBreakerThreshold: 1,
+      providerCircuitBreakerCooldownMs: 60_000,
+      modelGroups: {},
+      gatewayApiKeys: [],
+      modelAliases: [],
+      openAI: {
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    };
+
+    await expect(
+      executeRoutedRequest(route, request, {
+        config,
+        requestId: "req_breaker_open_first",
+        gatewayApiKey: {
+          id: "key_any",
+          label: "Any Provider",
+          value: "gateway-secret",
+          status: "active"
+        },
+        fetcher,
+        now: () => 1000
+      })
+    ).rejects.toMatchObject({
+      code: "provider_upstream_error",
+      category: "provider",
+      httpStatus: 429
+    });
+
+    await expect(
+      executeRoutedRequest(route, request, {
+        config,
+        requestId: "req_breaker_open_second",
+        gatewayApiKey: {
+          id: "key_any",
+          label: "Any Provider",
+          value: "gateway-secret",
+          status: "active"
+        },
+        fetcher,
+        now: () => 2000
+      })
+    ).rejects.toMatchObject({
+      code: "provider_circuit_open",
+      category: "routing",
+      httpStatus: 503,
+      retryable: true
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("skips a provider-disallowed primary target and starts from the first allowed fallback target", async () => {

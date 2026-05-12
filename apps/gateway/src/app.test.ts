@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApp } from "./app.js";
+import { resetProviderCircuitBreakerState } from "./circuit-breaker.js";
 
 async function readJson(response: Response): Promise<unknown> {
   return response.json();
@@ -52,6 +53,10 @@ function createBindings() {
       "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5"
   };
 }
+
+beforeEach(() => {
+  resetProviderCircuitBreakerState();
+});
 
 describe("gateway app", () => {
   it("returns ok from /healthz", async () => {
@@ -389,6 +394,36 @@ describe("gateway app", () => {
     const response = await app.request("http://localhost/readyz", undefined, {
       ...createBindings(),
       AIRLOCK_PROVIDER_TIMEOUT_MS: "0"
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when provider circuit breaker threshold config is invalid", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "0"
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when provider circuit breaker cooldown config is invalid", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "-1"
     });
 
     expect(response.status).toBe(503);
@@ -1785,6 +1820,66 @@ describe("gateway app", () => {
         type: "provider"
       }
     });
+  });
+
+  it("returns 503 without another upstream fetch when every eligible target is open", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "rate limited"
+          }
+        }),
+        {
+          status: 429,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+    const request = {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer gateway-secret"
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        stream: false,
+        messages: [{ role: "user", content: "hi" }]
+      })
+    };
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "1",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000"
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      request,
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(429);
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      request,
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(503);
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      error: {
+        code: "provider_circuit_open",
+        type: "routing"
+      }
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("routes directly to the first provider-allowed fallback target without calling a disallowed primary target", async () => {

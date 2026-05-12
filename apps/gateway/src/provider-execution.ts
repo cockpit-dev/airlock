@@ -22,7 +22,16 @@ import {
 import { GatewayError } from "@airlock/shared";
 
 import { assertGatewayKeyAllowsProvider } from "./auth.js";
+import {
+  isProviderTargetCircuitOpen,
+  recordProviderTargetRetryableFailure,
+  recordProviderTargetSuccess,
+  type ProviderCircuitBreakerPolicy
+} from "./circuit-breaker.js";
 import type { GatewayConfig } from "./config.js";
+
+const DEFAULT_PROVIDER_CIRCUIT_BREAKER_THRESHOLD = 3;
+const DEFAULT_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS = 30_000;
 
 type ProviderCapabilityDescriptorResolver = (
   provider: ProviderTarget["provider"]
@@ -54,6 +63,29 @@ function createProviderTimeoutError(requestId: string): GatewayError {
     retryable: true,
     requestId
   });
+}
+
+function createProviderCircuitOpenError(requestId: string): GatewayError {
+  return new GatewayError("All eligible provider targets are temporarily unavailable", {
+    code: "provider_circuit_open",
+    category: "routing",
+    httpStatus: 503,
+    retryable: true,
+    requestId
+  });
+}
+
+function getProviderCircuitBreakerPolicy(
+  config: GatewayConfig
+): ProviderCircuitBreakerPolicy {
+  return {
+    threshold:
+      config.providerCircuitBreakerThreshold ??
+      DEFAULT_PROVIDER_CIRCUIT_BREAKER_THRESHOLD,
+    cooldownMs:
+      config.providerCircuitBreakerCooldownMs ??
+      DEFAULT_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS
+  };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -234,12 +266,15 @@ function selectEligibleTargets(
   request: CanonicalRequest,
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string,
-  getProviderDescriptor: ProviderCapabilityDescriptorResolver
+  getProviderDescriptor: ProviderCapabilityDescriptorResolver,
+  circuitBreakerPolicy: ProviderCircuitBreakerPolicy,
+  now: () => number
 ): ProviderTarget[] {
   const candidates = [route.target, ...(route.fallbacks ?? [])];
   const eligibleTargets: ProviderTarget[] = [];
   let lastAuthorizationError: GatewayError | undefined;
   let lastCapabilityError: GatewayError | undefined;
+  let skippedOpenCircuitCount = 0;
 
   for (const target of candidates) {
     if (!target) {
@@ -273,6 +308,11 @@ function selectEligibleTargets(
       throw error;
     }
 
+    if (isProviderTargetCircuitOpen(target, circuitBreakerPolicy, now)) {
+      skippedOpenCircuitCount += 1;
+      continue;
+    }
+
     eligibleTargets.push(target);
   }
 
@@ -286,6 +326,10 @@ function selectEligibleTargets(
 
   if (lastCapabilityError) {
     throw lastCapabilityError;
+  }
+
+  if (skippedOpenCircuitCount > 0) {
+    throw createProviderCircuitOpenError(requestId);
   }
 
   throw new Error("At least one provider target is required for route execution");
@@ -313,12 +357,15 @@ export async function executeRoutedRequest(
     now = Date.now,
     getProviderDescriptor = getProviderCapabilityDescriptor
   } = options;
+  const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
   const targets = selectEligibleTargets(
     route,
     request,
     gatewayApiKey,
     requestId,
-    getProviderDescriptor
+    getProviderDescriptor,
+    circuitBreakerPolicy,
+    now
   );
   const deadline = now() + config.providerTimeoutMs;
   let lastError: unknown;
@@ -333,7 +380,8 @@ export async function executeRoutedRequest(
 
     while (true) {
       const currentAttemptRequest = createAttemptRequest(request, target);
-      const currentRemainingTimeoutMs = deadline - now();
+      const currentAttemptStartedAt = now();
+      const currentRemainingTimeoutMs = deadline - currentAttemptStartedAt;
 
       if (currentRemainingTimeoutMs <= 0) {
         throw createProviderTimeoutError(requestId);
@@ -350,13 +398,28 @@ export async function executeRoutedRequest(
       );
 
       try {
-        return await adapter.complete(currentAttemptRequest, {
+        const response = await adapter.complete(currentAttemptRequest, {
           requestId,
           timeoutMs: currentRemainingTimeoutMs,
           ...(requestShaping ? { requestShaping } : {})
         });
+        recordProviderTargetSuccess(target);
+
+        return response;
       } catch (error) {
         lastError = error;
+
+        if (
+          error instanceof GatewayError &&
+          error.category === "provider" &&
+          error.retryable
+        ) {
+          recordProviderTargetRetryableFailure(
+            target,
+            circuitBreakerPolicy,
+            currentAttemptStartedAt
+          );
+        }
 
         const shouldRetrySameTarget =
           error instanceof GatewayError &&
@@ -412,6 +475,7 @@ export async function* executeRoutedStreamRequest(
     requestId: string;
     requestShaping?: RequestShapingProfile;
     fetcher?: typeof fetch;
+    now?: () => number;
     getProviderDescriptor?: ProviderCapabilityDescriptorResolver;
   }
 ): AsyncIterable<CanonicalStreamEvent> {
@@ -421,14 +485,18 @@ export async function* executeRoutedStreamRequest(
     requestId,
     requestShaping,
     fetcher,
+    now = Date.now,
     getProviderDescriptor = getProviderCapabilityDescriptor
   } = options;
+  const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
   const targets = selectEligibleTargets(
     route,
     request,
     gatewayApiKey,
     requestId,
-    getProviderDescriptor
+    getProviderDescriptor,
+    circuitBreakerPolicy,
+    now
   ).filter((target) => {
     return getProviderDescriptor(target.provider).supportsStreaming;
   });
@@ -453,11 +521,25 @@ export async function* executeRoutedStreamRequest(
     throw createUnsupportedCapabilityError(target.provider, "streaming", requestId);
   }
 
-  for await (const event of adapter.stream(currentAttemptRequest, {
-    requestId,
-    timeoutMs: config.providerTimeoutMs,
-    ...(requestShaping ? { requestShaping } : {})
-  })) {
-    yield event;
+  try {
+    for await (const event of adapter.stream(currentAttemptRequest, {
+      requestId,
+      timeoutMs: config.providerTimeoutMs,
+      ...(requestShaping ? { requestShaping } : {})
+    })) {
+      yield event;
+    }
+
+    recordProviderTargetSuccess(target);
+  } catch (error) {
+    if (
+      error instanceof GatewayError &&
+      error.category === "provider" &&
+      error.retryable
+    ) {
+      recordProviderTargetRetryableFailure(target, circuitBreakerPolicy, now());
+    }
+
+    throw error;
   }
 }

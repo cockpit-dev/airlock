@@ -22,6 +22,8 @@ export interface GatewayConfig {
   providerTimeoutMs: number;
   providerMaxRetries: number;
   providerRetryBackoffMs: number;
+  providerCircuitBreakerThreshold?: number;
+  providerCircuitBreakerCooldownMs?: number;
   gatewayApiKeys: GatewayApiKeyRecord[];
   modelGroups: ModelGroupMap;
   modelAliases: ModelRouteDirectory;
@@ -224,6 +226,8 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
     providerTimeoutMs: env.AIRLOCK_PROVIDER_TIMEOUT_MS,
     providerMaxRetries: env.AIRLOCK_PROVIDER_MAX_RETRIES,
     providerRetryBackoffMs: env.AIRLOCK_PROVIDER_RETRY_BACKOFF_MS,
+    providerCircuitBreakerThreshold: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD,
+    providerCircuitBreakerCooldownMs: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS,
     gatewayApiKeys,
     modelGroups,
     modelAliases,
