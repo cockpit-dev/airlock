@@ -4,7 +4,10 @@ import { encodeCanonicalToOpenAIChatResponse, normalizeOpenAIChatRequest } from 
 import { openAIChatCompletionRequestSchema } from "@airlock/protocols";
 import { resolveModelRoute } from "@airlock/routing";
 
-import { requireGatewayAuthorization } from "../auth.js";
+import {
+  assertGatewayKeyAllowsModel,
+  requireGatewayAuthorization
+} from "../auth.js";
 import { resolveGatewayConfig } from "../config.js";
 import type { GatewayBindings } from "../env.js";
 import { executeRoutedRequest } from "../provider-execution.js";
@@ -13,11 +16,12 @@ import { parseRequestShapingExtension } from "../request-extensions.js";
 export async function handleChatCompletions(context: Context) {
   const requestId = context.get("requestId") as string;
   const config = resolveGatewayConfig(context.env as GatewayBindings);
-  requireGatewayAuthorization(context, config, requestId);
+  const gatewayApiKey = requireGatewayAuthorization(context, config, requestId);
 
   const json = (await context.req.json()) as unknown;
   const parsed = openAIChatCompletionRequestSchema.parse(json);
   const route = resolveModelRoute(parsed.model, config.modelAliases, requestId);
+  assertGatewayKeyAllowsModel(gatewayApiKey, route.externalModel, requestId);
   const canonicalRequest = normalizeOpenAIChatRequest({
     ...parsed,
     model: route.target.providerModel

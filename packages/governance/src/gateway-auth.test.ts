@@ -154,7 +154,8 @@ describe("parseGatewayApiKeys", () => {
             status: "active",
             policy: {
               tier: "prod",
-              tags: ["internal", "critical"]
+              tags: ["internal", "critical"],
+              allowedExternalModels: ["gpt-4.1-mini", "claude-sonnet-4-5"]
             }
           },
           {
@@ -173,7 +174,8 @@ describe("parseGatewayApiKeys", () => {
         status: "active",
         policy: {
           tier: "prod",
-          tags: ["internal", "critical"]
+          tags: ["internal", "critical"],
+          allowedExternalModels: ["gpt-4.1-mini", "claude-sonnet-4-5"]
         }
       },
       {
@@ -238,6 +240,42 @@ describe("parseGatewayApiKeys", () => {
             status: "active",
             policy: {
               tags: ["internal", "internal"]
+            }
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects invalid allowed external model policy values", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedExternalModels: ["gpt-4.1-mini", ""]
+            }
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects duplicate allowed external model policy values", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedExternalModels: ["gpt-4.1-mini", "gpt-4.1-mini"]
             }
           }
         ])

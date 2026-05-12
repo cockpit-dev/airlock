@@ -5,6 +5,7 @@ export type GatewayApiKeyStatus = "active" | "revoked";
 export interface GatewayApiKeyPolicy {
   tier?: string;
   tags?: string[];
+  allowedExternalModels?: string[];
 }
 
 export interface GatewayApiKeyRecord {
@@ -85,6 +86,32 @@ function parseGatewayApiKeyPolicy(value: unknown): GatewayApiKeyPolicy | undefin
     }
 
     policy.tags = tags;
+  }
+
+  if (value.allowedExternalModels !== undefined) {
+    if (!Array.isArray(value.allowedExternalModels)) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy allowedExternalModels must be an array"
+      );
+    }
+
+    const allowedExternalModels = value.allowedExternalModels.map((model) => {
+      if (typeof model !== "string" || model.trim().length === 0) {
+        throw createInvalidGatewayKeyConfigError(
+          "Gateway API key policy allowedExternalModels must contain non-empty strings"
+        );
+      }
+
+      return model.trim();
+    });
+
+    if (new Set(allowedExternalModels).size !== allowedExternalModels.length) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy allowedExternalModels must be unique"
+      );
+    }
+
+    policy.allowedExternalModels = allowedExternalModels;
   }
 
   return Object.keys(policy).length > 0 ? policy : {};

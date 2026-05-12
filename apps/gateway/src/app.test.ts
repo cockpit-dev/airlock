@@ -221,6 +221,31 @@ describe("gateway app", () => {
     });
   });
 
+  it("returns not ready from /readyz when structured gateway key allowed-model policy is invalid", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            allowedExternalModels: ["gpt-4.1-mini", "gpt-4.1-mini"]
+          }
+        }
+      ])
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
   it("returns not ready from /readyz when model alias config is invalid", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -411,6 +436,203 @@ describe("gateway app", () => {
         code: "auth_invalid_api_key"
       }
     });
+  });
+
+  it("rejects authenticated keys that are not allowed to access the requested external model", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedExternalModels: ["gpt-4.1-mini"]
+            }
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(403);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_model_not_allowed",
+        type: "authorization"
+      }
+    });
+  });
+
+  it("allows authenticated keys to access explicitly allowed external models", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedExternalModels: ["gpt-4.1-mini"]
+            }
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns an OpenAI-compatible authorization error for denied /v1/responses model access", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          input: "hi",
+          stream: false
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedExternalModels: ["gpt-4.1-mini"]
+            }
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(403);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_model_not_allowed",
+        type: "authorization"
+      }
+    });
+  });
+
+  it("returns an Anthropic-compatible authorization error for denied /v1/messages model access", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedExternalModels: ["gpt-4.1-mini"]
+            }
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(403);
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "error",
+      error: {
+        type: "authorization",
+        message: "Gateway API key is not allowed to access this model"
+      }
+    });
+    expect(response.headers.get("request-id")).toBeTruthy();
   });
 
   it("returns an OpenAI-compatible chat completions response when authorized", async () => {
