@@ -179,7 +179,7 @@ describe("executeRoutedRequest", () => {
     expect(response.outputText).toBe("hello from anthropic");
   });
 
-  it("rejects a fallback attempt when the key does not allow the fallback provider", async () => {
+  it("returns the primary provider error when later fallback targets are filtered out by key policy", async () => {
     const route: ModelRoute = {
       externalModel: "assistant-default",
       target: {
@@ -242,13 +242,193 @@ describe("executeRoutedRequest", () => {
         fetcher
       })
     ).rejects.toMatchObject({
-      code: "auth_provider_not_allowed",
-      category: "authorization",
-      httpStatus: 403
+      code: "provider_upstream_error",
+      category: "provider",
+      httpStatus: 429
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+  });
+
+  it("skips a provider-disallowed primary target and starts from the first allowed fallback target", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "anthropic",
+        providerModel: "claude-sonnet-4-5"
+      },
+      fallbacks: [
+        {
+          provider: "openai",
+          providerModel: "gpt-4.1-mini"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "claude-sonnet-4-5",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello from openai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const response = await executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        gatewayApiKeys: [],
+        modelAliases: [],
+        anthropic: {
+          apiKey: "anthropic-secret",
+          baseUrl: "https://api.anthropic.com/v1",
+          defaultMaxTokens: 256
+        },
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_123",
+      gatewayApiKey: allowedOpenAIOnlyKey,
+      fetcher
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(response.model).toBe("gpt-4.1-mini");
+  });
+
+  it("skips a capability-incompatible primary target and starts from a compatible fallback target", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "gemini",
+        providerModel: "gemini-2.5-flash"
+      },
+      fallbacks: [
+        {
+          provider: "openai",
+          providerModel: "gpt-4.1-mini"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "gemini-2.5-flash",
+      stream: false,
+      messages: [
+        {
+          role: "system",
+          content: "You are precise."
+        },
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello from openai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const response = await executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        gatewayApiKeys: [],
+        modelAliases: [],
+        gemini: {
+          apiKey: "gemini-secret",
+          baseUrl: "https://generativelanguage.googleapis.com/v1beta"
+        },
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_123",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      getProviderDescriptor: (provider) => {
+        if (provider === "gemini") {
+          return {
+            provider: "gemini",
+            displayName: "Gemini",
+            supportsStreaming: false,
+            supportsTools: false,
+            supportsMultimodalInput: false,
+            supportsSystemMessages: false,
+            supportsRouteScopedShaping: true,
+            supportsStaticFallbackSameProvider: true
+          };
+        }
+
+        return getProviderCapabilityDescriptor(provider);
+      },
+      fetcher
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(response.model).toBe("gpt-4.1-mini");
   });
 
   it("passes only the remaining timeout budget to a later fallback attempt", async () => {

@@ -1350,7 +1350,7 @@ describe("gateway app", () => {
     });
   });
 
-  it("does not fail over into a provider disallowed by the authenticated key", async () => {
+  it("returns the primary upstream error when every later fallback target is filtered out by key policy", async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -1404,14 +1404,87 @@ describe("gateway app", () => {
       }
     );
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(429);
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
     await expect(readJson(response)).resolves.toMatchObject({
       error: {
-        code: "auth_provider_not_allowed",
-        type: "authorization"
+        code: "provider_upstream_error",
+        type: "provider"
       }
+    });
+  });
+
+  it("routes directly to the first provider-allowed fallback target without calling a disallowed primary target", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello from openai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedProviders: ["openai"]
+            }
+          }
+        ]),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=anthropic:claude-sonnet-4-5,gpt-4.1-mini=openai:gpt-4.1-mini",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["openai:gpt-4.1-mini"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "gpt-4.1-mini"
     });
   });
 

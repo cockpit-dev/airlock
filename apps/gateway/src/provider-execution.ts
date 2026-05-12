@@ -19,6 +19,10 @@ import { GatewayError } from "@airlock/shared";
 import { assertGatewayKeyAllowsProvider } from "./auth.js";
 import type { GatewayConfig } from "./config.js";
 
+type ProviderCapabilityDescriptorResolver = (
+  provider: ProviderTarget["provider"]
+) => ProviderCapabilityDescriptor;
+
 function createUnsupportedCapabilityError(
   provider: string,
   capability: string,
@@ -45,6 +49,16 @@ function createProviderTimeoutError(requestId: string): GatewayError {
     retryable: true,
     requestId
   });
+}
+
+function buildAttemptRequest(
+  request: CanonicalRequest,
+  target: ProviderTarget
+): CanonicalRequest {
+  return {
+    ...request,
+    model: target.providerModel
+  };
 }
 
 export function assertProviderSupportsCanonicalRequest(
@@ -96,9 +110,10 @@ function createProviderAdapter(
   config: GatewayConfig,
   request: CanonicalRequest,
   requestId: string,
+  getProviderDescriptor: ProviderCapabilityDescriptorResolver,
   fetcher?: typeof fetch
 ): ProviderAdapter {
-  const descriptor = getProviderCapabilityDescriptor(target.provider);
+  const descriptor = getProviderDescriptor(target.provider);
   assertProviderSupportsCanonicalRequest(descriptor, request, requestId);
 
   if (target.provider === "anthropic") {
@@ -132,10 +147,69 @@ function createAttemptRequest(
   request: CanonicalRequest,
   target: ProviderTarget
 ): CanonicalRequest {
-  return {
-    ...request,
-    model: target.providerModel
-  };
+  return buildAttemptRequest(request, target);
+}
+
+function selectEligibleTargets(
+  route: ModelRoute,
+  request: CanonicalRequest,
+  gatewayApiKey: GatewayApiKeyRecord,
+  requestId: string,
+  getProviderDescriptor: ProviderCapabilityDescriptorResolver
+): ProviderTarget[] {
+  const candidates = [route.target, ...(route.fallbacks ?? [])];
+  const eligibleTargets: ProviderTarget[] = [];
+  let lastAuthorizationError: GatewayError | undefined;
+  let lastCapabilityError: GatewayError | undefined;
+
+  for (const target of candidates) {
+    if (!target) {
+      continue;
+    }
+
+    try {
+      assertGatewayKeyAllowsProvider(gatewayApiKey, target.provider, requestId);
+    } catch (error) {
+      if (error instanceof GatewayError) {
+        lastAuthorizationError = error;
+        continue;
+      }
+
+      throw error;
+    }
+
+    try {
+      const descriptor = getProviderDescriptor(target.provider);
+      assertProviderSupportsCanonicalRequest(
+        descriptor,
+        buildAttemptRequest(request, target),
+        requestId
+      );
+    } catch (error) {
+      if (error instanceof GatewayError) {
+        lastCapabilityError = error;
+        continue;
+      }
+
+      throw error;
+    }
+
+    eligibleTargets.push(target);
+  }
+
+  if (eligibleTargets.length > 0) {
+    return eligibleTargets;
+  }
+
+  if (lastAuthorizationError) {
+    throw lastAuthorizationError;
+  }
+
+  if (lastCapabilityError) {
+    throw lastCapabilityError;
+  }
+
+  throw new Error("At least one provider target is required for route execution");
 }
 
 export async function executeRoutedRequest(
@@ -148,6 +222,7 @@ export async function executeRoutedRequest(
     requestShaping?: RequestShapingProfile;
     fetcher?: typeof fetch;
     now?: () => number;
+    getProviderDescriptor?: ProviderCapabilityDescriptorResolver;
   }
 ): Promise<CanonicalResponse> {
   const {
@@ -156,9 +231,16 @@ export async function executeRoutedRequest(
     requestId,
     requestShaping,
     fetcher,
-    now = Date.now
+    now = Date.now,
+    getProviderDescriptor = getProviderCapabilityDescriptor
   } = options;
-  const targets = [route.target, ...(route.fallbacks ?? [])];
+  const targets = selectEligibleTargets(
+    route,
+    request,
+    gatewayApiKey,
+    requestId,
+    getProviderDescriptor
+  );
   const deadline = now() + config.providerTimeoutMs;
   let lastError: unknown;
 
@@ -174,8 +256,6 @@ export async function executeRoutedRequest(
       throw createProviderTimeoutError(requestId);
     }
 
-    assertGatewayKeyAllowsProvider(gatewayApiKey, target.provider, requestId);
-
     const attemptRequest = createAttemptRequest(request, target);
     const adapter = createProviderAdapter(
       route,
@@ -183,6 +263,7 @@ export async function executeRoutedRequest(
       config,
       attemptRequest,
       requestId,
+      getProviderDescriptor,
       fetcher
     );
 
