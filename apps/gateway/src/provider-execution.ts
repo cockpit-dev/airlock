@@ -37,6 +37,16 @@ function createUnsupportedCapabilityError(
   );
 }
 
+function createProviderTimeoutError(requestId: string): GatewayError {
+  return new GatewayError("Upstream provider timed out", {
+    code: "provider_timeout",
+    category: "provider",
+    httpStatus: 504,
+    retryable: true,
+    requestId
+  });
+}
+
 export function assertProviderSupportsCanonicalRequest(
   descriptor: ProviderCapabilityDescriptor,
   request: CanonicalRequest,
@@ -137,16 +147,31 @@ export async function executeRoutedRequest(
     requestId: string;
     requestShaping?: RequestShapingProfile;
     fetcher?: typeof fetch;
+    now?: () => number;
   }
 ): Promise<CanonicalResponse> {
-  const { config, gatewayApiKey, requestId, requestShaping, fetcher } = options;
+  const {
+    config,
+    gatewayApiKey,
+    requestId,
+    requestShaping,
+    fetcher,
+    now = Date.now
+  } = options;
   const targets = [route.target, ...(route.fallbacks ?? [])];
+  const deadline = now() + config.providerTimeoutMs;
   let lastError: unknown;
 
   for (let index = 0; index < targets.length; index += 1) {
     const target = targets[index];
     if (!target) {
       throw new Error("Provider target is required for route execution");
+    }
+
+    const remainingTimeoutMs = deadline - now();
+
+    if (remainingTimeoutMs <= 0) {
+      throw createProviderTimeoutError(requestId);
     }
 
     assertGatewayKeyAllowsProvider(gatewayApiKey, target.provider, requestId);
@@ -164,7 +189,7 @@ export async function executeRoutedRequest(
     try {
       return await adapter.complete(attemptRequest, {
         requestId,
-        timeoutMs: config.providerTimeoutMs,
+        timeoutMs: remainingTimeoutMs,
         ...(requestShaping ? { requestShaping } : {})
       });
     } catch (error) {

@@ -1175,34 +1175,102 @@ describe("gateway app", () => {
 
     const app = createApp({ fetcher });
 
-    const response = await app.request(
-      "http://localhost/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: "Bearer gateway-secret"
-        },
-        body: JSON.stringify({
-          model: "gpt-4.1-mini",
-          stream: false,
-          messages: [{ role: "user", content: "hi" }]
-        })
-      },
-      {
-        ...createBindings(),
-        AIRLOCK_PROVIDER_TIMEOUT_MS: "1",
-        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
-          "gpt-4.1-mini": ["openai:gpt-4.1-nano"]
-        })
-      }
-    );
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(10);
 
-    expect(response.status).toBe(200);
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    await expect(readJson(response)).resolves.toMatchObject({
-      model: "gpt-4.1-nano"
-    });
+    try {
+      const response = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer gateway-secret"
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            stream: false,
+            messages: [{ role: "user", content: "hi" }]
+          })
+        },
+        {
+          ...createBindings(),
+          AIRLOCK_PROVIDER_TIMEOUT_MS: "50",
+          AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+            "gpt-4.1-mini": ["openai:gpt-4.1-nano"]
+          })
+        }
+      );
+
+      expect(response.status).toBe(200);
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      await expect(readJson(response)).resolves.toMatchObject({
+        model: "gpt-4.1-nano"
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("returns timeout instead of issuing another fallback call when the shared timeout budget is exhausted", async () => {
+    const fetcher = vi
+      .fn()
+      .mockImplementationOnce(async (_input, init?: RequestInit) => {
+        const signal = init?.signal;
+
+        return await new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        });
+      });
+
+    const app = createApp({ fetcher });
+
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(5);
+
+    try {
+      const response = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer gateway-secret"
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            stream: false,
+            messages: [{ role: "user", content: "hi" }]
+          })
+        },
+        {
+          ...createBindings(),
+          AIRLOCK_PROVIDER_TIMEOUT_MS: "1",
+          AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+            "gpt-4.1-mini": ["openai:gpt-4.1-nano", "openai:gpt-4.1-micro"]
+          })
+        }
+      );
+
+      expect(response.status).toBe(504);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      await expect(readJson(response)).resolves.toMatchObject({
+        error: {
+          code: "provider_timeout",
+          type: "provider"
+        }
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it("fails over across providers when an unshaped route has a retryable primary failure", async () => {

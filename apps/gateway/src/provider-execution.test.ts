@@ -250,4 +250,165 @@ describe("executeRoutedRequest", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
   });
+
+  it("passes only the remaining timeout budget to a later fallback attempt", async () => {
+    const route: ModelRoute = {
+      externalModel: "gpt-4.1-mini",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "openai",
+          providerModel: "gpt-4.1-nano"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    vi.useFakeTimers();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockImplementationOnce(async (_input, init?: RequestInit) => {
+        const signal = init?.signal;
+
+        return await new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        });
+      });
+    const now = vi
+      .fn<() => number>()
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(850);
+
+    const execution = executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        gatewayApiKeys: [],
+        modelAliases: [],
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_123",
+      gatewayApiKey: allowedOpenAIOnlyKey,
+      fetcher,
+      now
+    });
+    const executionExpectation = expect(execution).rejects.toMatchObject({
+      code: "provider_timeout",
+      category: "provider",
+      httpStatus: 504
+    });
+
+    await vi.advanceTimersByTimeAsync(149);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await executionExpectation;
+    vi.useRealTimers();
+  });
+
+  it("stops failover when the shared timeout budget is already exhausted", async () => {
+    const route: ModelRoute = {
+      externalModel: "gpt-4.1-mini",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "openai",
+          providerModel: "gpt-4.1-nano"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "rate limited"
+          }
+        }),
+        {
+          status: 429,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const now = vi
+      .fn<() => number>()
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(1200);
+
+    await expect(
+      executeRoutedRequest(route, request, {
+        config: {
+          mode: "free",
+          providerTimeoutMs: 1000,
+          gatewayApiKeys: [],
+          modelAliases: [],
+          openAI: {
+            apiKey: "openai-secret",
+            baseUrl: "https://api.openai.com/v1",
+            defaultModel: "gpt-4.1-mini"
+          }
+        },
+        requestId: "req_123",
+        gatewayApiKey: allowedOpenAIOnlyKey,
+        fetcher,
+        now
+      })
+    ).rejects.toMatchObject({
+      code: "provider_timeout",
+      category: "provider",
+      httpStatus: 504,
+      retryable: true
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
 });
