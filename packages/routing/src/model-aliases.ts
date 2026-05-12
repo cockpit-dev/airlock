@@ -15,7 +15,14 @@ export interface WeightedRouteTargetSelection {
   weights: Record<string, number>;
 }
 
-export type RouteTargetSelection = WeightedRouteTargetSelection;
+export interface LowestCostRouteTargetSelection {
+  strategy: "lowest_cost";
+  costs: Record<string, number>;
+}
+
+export type RouteTargetSelection =
+  | WeightedRouteTargetSelection
+  | LowestCostRouteTargetSelection;
 
 export interface ModelRoute {
   externalModel: string;
@@ -251,63 +258,125 @@ export function parseRouteTargetSelection(
   const targetSelectionByRoute: RouteTargetSelectionMap = {};
 
   for (const [externalModel, selection] of Object.entries(parsed)) {
-    if (typeof selection !== "object" || selection === null || Array.isArray(selection)) {
+    if (
+      typeof selection !== "object" ||
+      selection === null ||
+      Array.isArray(selection)
+    ) {
       throw createInvalidRouteTargetSelectionError(
         "Route target selection entries must be objects"
       );
     }
 
     const strategy = (selection as Record<string, unknown>).strategy;
-    const weightsValue = (selection as Record<string, unknown>).weights;
+    if (strategy === "weighted") {
+      const weightsValue = (selection as Record<string, unknown>).weights;
 
-    if (strategy !== "weighted") {
-      throw createInvalidRouteTargetSelectionError(
-        "Route target selection strategy must be supported"
-      );
-    }
-
-    if (
-      typeof weightsValue !== "object" ||
-      weightsValue === null ||
-      Array.isArray(weightsValue)
-    ) {
-      throw createInvalidRouteTargetSelectionError(
-        "Weighted target selection must define a weights object"
-      );
-    }
-
-    const normalizedWeights: Record<string, number> = {};
-
-    for (const [targetKey, weight] of Object.entries(weightsValue)) {
-      if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) {
+      if (
+        typeof weightsValue !== "object" ||
+        weightsValue === null ||
+        Array.isArray(weightsValue)
+      ) {
         throw createInvalidRouteTargetSelectionError(
-          "Target selection weights must be positive finite numbers"
+          "Weighted target selection must define a weights object"
         );
       }
 
-      normalizedWeights[
-        serializeProviderTarget(
-          parseExplicitProviderTarget(
-            targetKey,
-            createInvalidRouteTargetSelectionError
+      const normalizedWeights: Record<string, number> = {};
+
+      for (const [targetKey, weight] of Object.entries(weightsValue)) {
+        if (
+          typeof weight !== "number" ||
+          !Number.isFinite(weight) ||
+          weight <= 0
+        ) {
+          throw createInvalidRouteTargetSelectionError(
+            "Target selection weights must be positive finite numbers"
+          );
+        }
+
+        normalizedWeights[
+          serializeProviderTarget(
+            parseExplicitProviderTarget(
+              targetKey,
+              createInvalidRouteTargetSelectionError
+            )
           )
-        )
-      ] = weight;
+        ] = weight;
+      }
+
+      if (Object.keys(normalizedWeights).length === 0) {
+        throw createInvalidRouteTargetSelectionError(
+          "Weighted target selection must define at least one target weight"
+        );
+      }
+
+      targetSelectionByRoute[externalModel] = {
+        strategy: "weighted",
+        weights: normalizedWeights
+      };
+      continue;
     }
 
-    if (Object.keys(normalizedWeights).length === 0) {
-      throw createInvalidRouteTargetSelectionError(
-        "Weighted target selection must define at least one target weight"
-      );
+    if (strategy === "lowest_cost") {
+      const costsValue = (selection as Record<string, unknown>).costs;
+
+      if (
+        typeof costsValue !== "object" ||
+        costsValue === null ||
+        Array.isArray(costsValue)
+      ) {
+        throw createInvalidRouteTargetSelectionError(
+          "Lowest-cost target selection must define a costs object"
+        );
+      }
+
+      const normalizedCosts: Record<string, number> = {};
+
+      for (const [targetKey, cost] of Object.entries(costsValue)) {
+        if (typeof cost !== "number" || !Number.isFinite(cost) || cost <= 0) {
+          throw createInvalidRouteTargetSelectionError(
+            "Target selection costs must be positive finite numbers"
+          );
+        }
+
+        normalizedCosts[
+          serializeProviderTarget(
+            parseExplicitProviderTarget(
+              targetKey,
+              createInvalidRouteTargetSelectionError
+            )
+          )
+        ] = cost;
+      }
+
+      if (Object.keys(normalizedCosts).length === 0) {
+        throw createInvalidRouteTargetSelectionError(
+          "Lowest-cost target selection must define at least one target cost"
+        );
+      }
+
+      targetSelectionByRoute[externalModel] = {
+        strategy: "lowest_cost",
+        costs: normalizedCosts
+      };
+      continue;
     }
 
-    targetSelectionByRoute[externalModel] = {
-      strategy: "weighted",
-      weights: normalizedWeights
-    };
+    throw createInvalidRouteTargetSelectionError(
+      "Route target selection strategy must be supported"
+    );
   }
 
   return targetSelectionByRoute;
+}
+
+function listTargetSelectionKeys(targetSelection: RouteTargetSelection): string[] {
+  if (targetSelection.strategy === "weighted") {
+    return Object.keys(targetSelection.weights);
+  }
+
+  return Object.keys(targetSelection.costs);
 }
 
 export function attachRouteRequestShaping(
@@ -432,7 +501,7 @@ export function attachRouteTargetSelection(
       })
     );
 
-    for (const targetKey of Object.keys(targetSelection.weights)) {
+    for (const targetKey of listTargetSelectionKeys(targetSelection)) {
       if (!routeTargetKeys.has(targetKey)) {
         throw createInvalidRouteTargetSelectionError(
           `Route target selection references an unknown route target: ${targetKey}`

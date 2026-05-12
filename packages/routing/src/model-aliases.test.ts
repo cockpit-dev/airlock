@@ -272,6 +272,30 @@ describe("parseRouteTargetSelection", () => {
   it("rejects malformed target selection json", () => {
     expect(() => parseRouteTargetSelection("{not-json")).toThrow(GatewayError);
   });
+
+  it("parses lowest-cost target selection keyed by external model", () => {
+    expect(
+      parseRouteTargetSelection(
+        JSON.stringify({
+          "assistant-default": {
+            strategy: "lowest_cost",
+            costs: {
+              "openai:gpt-4.1-mini": 10,
+              "anthropic:claude-haiku-4-5": 3
+            }
+          }
+        })
+      )
+    ).toEqual({
+      "assistant-default": {
+        strategy: "lowest_cost",
+        costs: {
+          "openai:gpt-4.1-mini": 10,
+          "anthropic:claude-haiku-4-5": 3
+        }
+      }
+    });
+  });
 });
 
 describe("attachRouteFallbacks", () => {
@@ -456,6 +480,75 @@ describe("attachRouteTargetSelection", () => {
           "gpt-4.1-mini": {
             strategy: "weighted",
             weights: {
+              "openai:gpt-4.1-nano": 1
+            }
+          }
+        }
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("attaches lowest-cost selection to a matching route", () => {
+    expect(
+      attachRouteTargetSelection(
+        attachRouteFallbacks(
+          parseModelAliases(
+            "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+            "gpt-4.1-mini"
+          ),
+          {
+            "assistant-default": ["anthropic:claude-haiku-4-5"]
+          }
+        ),
+        {
+          "assistant-default": {
+            strategy: "lowest_cost",
+            costs: {
+              "openai:gpt-4.1-mini": 10,
+              "anthropic:claude-haiku-4-5": 3
+            }
+          }
+        }
+      )
+    ).toEqual([
+      {
+        externalModel: "assistant-default",
+        target: {
+          provider: "openai",
+          providerModel: "gpt-4.1-mini"
+        },
+        fallbacks: [
+          {
+            provider: "anthropic",
+            providerModel: "claude-haiku-4-5"
+          }
+        ],
+        targetSelection: {
+          strategy: "lowest_cost",
+          costs: {
+            "openai:gpt-4.1-mini": 10,
+            "anthropic:claude-haiku-4-5": 3
+          }
+        }
+      },
+      {
+        externalModel: "claude-haiku-4-5",
+        target: {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      }
+    ]);
+  });
+
+  it("rejects lowest-cost targets that do not exist in the route chain", () => {
+    expect(() =>
+      attachRouteTargetSelection(
+        parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini", "gpt-4.1-mini"),
+        {
+          "gpt-4.1-mini": {
+            strategy: "lowest_cost",
+            costs: {
               "openai:gpt-4.1-nano": 1
             }
           }

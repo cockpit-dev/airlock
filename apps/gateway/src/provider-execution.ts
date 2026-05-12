@@ -190,8 +190,24 @@ function reorderTargetsForRoute(
 ): ProviderTarget[] {
   const targetSelection = route.targetSelection;
 
-  if (!targetSelection || targetSelection.strategy !== "weighted") {
+  if (!targetSelection) {
     return targets;
+  }
+
+  if (targetSelection.strategy === "lowest_cost") {
+    return [...targets].sort((left, right) => {
+      const leftCost = targetSelection.costs[serializeProviderTarget(left)] ?? 1;
+      const rightCost =
+        targetSelection.costs[serializeProviderTarget(right)] ?? 1;
+
+      if (leftCost !== rightCost) {
+        return leftCost - rightCost;
+      }
+
+      return serializeProviderTarget(left).localeCompare(
+        serializeProviderTarget(right)
+      );
+    });
   }
 
   return [...targets].sort((left, right) => {
