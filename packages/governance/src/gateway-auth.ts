@@ -13,7 +13,8 @@ export interface GatewayApiKeyPolicy {
 export interface GatewayApiKeyRecord {
   id: string;
   label: string;
-  value: string;
+  value?: string;
+  valueHash?: string;
   status: GatewayApiKeyStatus;
   policy?: GatewayApiKeyPolicy;
 }
@@ -39,6 +40,10 @@ function createInvalidGatewayKeyConfigError(message: string): GatewayError {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSha256Hex(value: string): boolean {
+  return /^[a-f0-9]{64}$/u.test(value);
 }
 
 function parseGatewayApiKeyPolicy(value: unknown): GatewayApiKeyPolicy | undefined {
@@ -204,12 +209,29 @@ function parseStructuredGatewayApiKeys(value: string): GatewayApiKeyRecord[] | u
 
     const id = typeof entry.id === "string" ? entry.id.trim() : "";
     const label = typeof entry.label === "string" ? entry.label.trim() : "";
-    const value = typeof entry.value === "string" ? entry.value.trim() : "";
+    const rawValue = typeof entry.value === "string" ? entry.value.trim() : "";
+    const rawValueHash =
+      typeof entry.valueHash === "string" ? entry.valueHash.trim().toLowerCase() : "";
     const status = entry.status;
 
-    if (id.length === 0 || label.length === 0 || value.length === 0) {
+    if (id.length === 0 || label.length === 0) {
       throw createInvalidGatewayKeyConfigError(
-        "Gateway API key records must include non-empty id, label, and value"
+        "Gateway API key records must include non-empty id and label"
+      );
+    }
+
+    const hasValue = rawValue.length > 0;
+    const hasValueHash = rawValueHash.length > 0;
+
+    if (hasValue === hasValueHash) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key records must define exactly one of value or valueHash"
+      );
+    }
+
+    if (hasValueHash && !isSha256Hex(rawValueHash)) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key record valueHash must be a lowercase 64-character SHA-256 hex digest"
       );
     }
 
@@ -224,7 +246,8 @@ function parseStructuredGatewayApiKeys(value: string): GatewayApiKeyRecord[] | u
     return {
       id,
       label,
-      value,
+      ...(hasValue ? { value: rawValue } : {}),
+      ...(hasValueHash ? { valueHash: rawValueHash } : {}),
       status,
       ...(policy !== undefined ? { policy } : {})
     };
@@ -233,7 +256,7 @@ function parseStructuredGatewayApiKeys(value: string): GatewayApiKeyRecord[] | u
 
 function validateGatewayApiKeyRecords(records: GatewayApiKeyRecord[]) {
   const ids = new Set<string>();
-  const values = new Set<string>();
+  const secretMaterial = new Set<string>();
 
   for (const record of records) {
     if (ids.has(record.id)) {
@@ -242,14 +265,17 @@ function validateGatewayApiKeyRecords(records: GatewayApiKeyRecord[]) {
       );
     }
 
-    if (values.has(record.value)) {
+    const material =
+      record.value !== undefined ? `value:${record.value}` : `valueHash:${record.valueHash}`;
+
+    if (secretMaterial.has(material)) {
       throw createInvalidGatewayKeyConfigError(
         "Gateway API key entries must be unique"
       );
     }
 
     ids.add(record.id);
-    values.add(record.value);
+    secretMaterial.add(material);
   }
 }
 
@@ -280,6 +306,17 @@ export function parseGatewayApiKeys(value: string): GatewayApiKeyRecord[] {
   return records;
 }
 
+async function sha256Hex(value: string): Promise<string> {
+  const encoded = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => {
+      return byte.toString(16).padStart(2, "0");
+    })
+    .join("");
+}
+
 export function extractBearerToken(
   authorization: string | undefined,
   requestId = "unknown_request"
@@ -300,27 +337,34 @@ export function validateGatewayApiKey(
   bearerToken: string,
   gatewayApiKeys: readonly GatewayApiKeyRecord[],
   requestId = "unknown_request"
-): GatewayApiKeyRecord {
-  const matchedKey = gatewayApiKeys.find((gatewayApiKey) => {
-    return gatewayApiKey.value === bearerToken;
-  });
+): Promise<GatewayApiKeyRecord> {
+  return (async () => {
+    const bearerTokenHash = await sha256Hex(bearerToken);
+    const matchedKey = gatewayApiKeys.find((gatewayApiKey) => {
+      if (gatewayApiKey.valueHash) {
+        return gatewayApiKey.valueHash === bearerTokenHash;
+      }
 
-  if (!matchedKey) {
-    throw createUnauthorizedError(requestId);
-  }
+      return gatewayApiKey.value === bearerToken;
+    });
 
-  if (matchedKey.status !== "active") {
-    throw createUnauthorizedError(requestId);
-  }
+    if (!matchedKey) {
+      throw createUnauthorizedError(requestId);
+    }
 
-  return matchedKey;
+    if (matchedKey.status !== "active") {
+      throw createUnauthorizedError(requestId);
+    }
+
+    return matchedKey;
+  })();
 }
 
 export function requireGatewayAuthorization(
   authorization: string | undefined,
   gatewayApiKeys: readonly GatewayApiKeyRecord[],
   requestId: string
-): GatewayApiKeyRecord {
+): Promise<GatewayApiKeyRecord> {
   const bearerToken = extractBearerToken(authorization, requestId);
   return validateGatewayApiKey(bearerToken, gatewayApiKeys, requestId);
 }

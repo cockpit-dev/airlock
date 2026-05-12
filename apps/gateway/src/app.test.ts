@@ -54,6 +54,9 @@ function createBindings() {
   };
 }
 
+const gatewaySecretHash =
+  "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6";
+
 beforeEach(() => {
   resetProviderCircuitBreakerState();
 });
@@ -219,6 +222,29 @@ describe("gateway app", () => {
           policy: {
             tags: ["internal", "internal"]
           }
+        }
+      ])
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when a structured gateway key record defines both value and valueHash", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          valueHash: gatewaySecretHash,
+          status: "active"
         }
       ])
     });
@@ -590,6 +616,104 @@ describe("gateway app", () => {
             id: "key_revoked",
             label: "Revoked Key",
             value: "revoked-secret",
+            status: "revoked"
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(401);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_invalid_api_key"
+      }
+    });
+  });
+
+  it("authorizes hashed structured gateway keys on chat completions requests", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_active",
+            label: "Active Key",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects revoked hashed structured gateway keys on chat completions requests", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_revoked",
+            label: "Revoked Key",
+            valueHash: gatewaySecretHash,
             status: "revoked"
           }
         ])

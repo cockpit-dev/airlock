@@ -9,6 +9,9 @@ import {
   validateGatewayApiKey
 } from "./gateway-auth.js";
 
+const gatewaySecretHash =
+  "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6";
+
 describe("extractBearerToken", () => {
   it("extracts the bearer token from an authorization header", () => {
     expect(extractBearerToken("Bearer gateway-secret")).toBe("gateway-secret");
@@ -21,8 +24,8 @@ describe("extractBearerToken", () => {
 });
 
 describe("validateGatewayApiKey", () => {
-  it("accepts a configured key", () => {
-    expect(
+  it("accepts a configured key", async () => {
+    await expect(
       validateGatewayApiKey("gateway-secret", [
         {
           id: "gak_1",
@@ -37,7 +40,7 @@ describe("validateGatewayApiKey", () => {
           status: "active"
         }
       ])
-    ).toEqual({
+    ).resolves.toEqual({
       id: "gak_1",
       label: "Gateway Key 1",
       value: "gateway-secret",
@@ -45,8 +48,8 @@ describe("validateGatewayApiKey", () => {
     });
   });
 
-  it("rejects an unknown key", () => {
-    expect(() =>
+  it("rejects an unknown key", async () => {
+    await expect(
       validateGatewayApiKey("wrong-secret", [
         {
           id: "gak_1",
@@ -55,11 +58,11 @@ describe("validateGatewayApiKey", () => {
           status: "active"
         }
       ])
-    ).toThrow(GatewayError);
+    ).rejects.toThrow(GatewayError);
   });
 
-  it("rejects a revoked key", () => {
-    expect(() =>
+  it("rejects a revoked key", async () => {
+    await expect(
       validateGatewayApiKey("gateway-secret", [
         {
           id: "gak_1",
@@ -68,13 +71,44 @@ describe("validateGatewayApiKey", () => {
           status: "revoked"
         }
       ])
-    ).toThrow(GatewayError);
+    ).rejects.toThrow(GatewayError);
+  });
+
+  it("accepts a configured hashed key", async () => {
+    await expect(
+      validateGatewayApiKey("gateway-secret", [
+        {
+          id: "gak_1",
+          label: "Gateway Key 1",
+          valueHash: gatewaySecretHash,
+          status: "active"
+        }
+      ])
+    ).resolves.toEqual({
+      id: "gak_1",
+      label: "Gateway Key 1",
+      valueHash: gatewaySecretHash,
+      status: "active"
+    });
+  });
+
+  it("rejects a revoked hashed key", async () => {
+    await expect(
+      validateGatewayApiKey("gateway-secret", [
+        {
+          id: "gak_1",
+          label: "Gateway Key 1",
+          valueHash: gatewaySecretHash,
+          status: "revoked"
+        }
+      ])
+    ).rejects.toThrow(GatewayError);
   });
 });
 
 describe("requireGatewayAuthorization", () => {
-  it("returns the matched key record for a valid authorization header", () => {
-    expect(
+  it("returns the matched key record for a valid authorization header", async () => {
+    await expect(
       requireGatewayAuthorization(
         "Bearer gateway-secret",
         [
@@ -87,7 +121,7 @@ describe("requireGatewayAuthorization", () => {
         ],
         "req_123"
       )
-    ).toEqual({
+    ).resolves.toEqual({
       id: "gak_1",
       label: "Gateway Key 1",
       value: "gateway-secret",
@@ -110,6 +144,28 @@ describe("requireGatewayAuthorization", () => {
         "req_123"
       )
     ).toThrow(GatewayError);
+  });
+
+  it("returns the matched hashed key record for a valid authorization header", async () => {
+    await expect(
+      requireGatewayAuthorization(
+        "Bearer gateway-secret",
+        [
+          {
+            id: "gak_1",
+            label: "Gateway Key 1",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          }
+        ],
+        "req_123"
+      )
+    ).resolves.toEqual({
+      id: "gak_1",
+      label: "Gateway Key 1",
+      valueHash: gatewaySecretHash,
+      status: "active"
+    });
   });
 });
 
@@ -189,6 +245,73 @@ describe("parseGatewayApiKeys", () => {
         status: "revoked"
       }
     ]);
+  });
+
+  it("parses structured json key records with hashed secret material", () => {
+    expect(
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_prod",
+            label: "Production Key",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          }
+        ])
+      )
+    ).toEqual([
+      {
+        id: "key_prod",
+        label: "Production Key",
+        valueHash: gatewaySecretHash,
+        status: "active"
+      }
+    ]);
+  });
+
+  it("rejects structured key records that define both value and valueHash", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects structured key records that define neither value nor valueHash", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            status: "active"
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects malformed structured key value hashes", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            valueHash: "not-a-sha256-hash",
+            status: "active"
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
   });
 
   it("rejects duplicate structured key ids", () => {

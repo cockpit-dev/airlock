@@ -26,7 +26,11 @@ export async function handleChatCompletions(
 ): Promise<Response> {
   const requestId = context.get("requestId") as string;
   const config = resolveGatewayConfig(context.env as GatewayBindings);
-  const gatewayApiKey = requireGatewayAuthorization(context, config, requestId);
+  const gatewayApiKey = await requireGatewayAuthorization(
+    context,
+    config,
+    requestId
+  );
 
   const json = (await context.req.json()) as unknown;
   const parsed = openAIChatCompletionRequestSchema.parse(json);

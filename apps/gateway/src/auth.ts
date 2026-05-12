@@ -9,7 +9,7 @@ import type { ModelRoute } from "@airlock/routing";
 
 import type { GatewayConfig } from "./config.js";
 
-export function requireGatewayAuthorization(
+export async function requireGatewayAuthorization(
   context: Context,
   config: GatewayConfig,
   requestId: string
