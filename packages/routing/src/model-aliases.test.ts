@@ -3,13 +3,15 @@ import { describe, expect, it } from "vitest";
 import { GatewayError } from "@airlock/shared";
 
 import {
-  attachRouteRequestShaping,
   attachRouteFallbacks,
+  attachRouteKeyAccessPolicy,
+  attachRouteRequestShaping,
   attachRouteTargetSelection,
   listExternalModels,
-  parseRouteTargetSelection,
-  parseRouteFallbacks,
   parseModelAliases,
+  parseRouteFallbacks,
+  parseRouteKeyAccessPolicy,
+  parseRouteTargetSelection,
   resolveModelRoute
 } from "./model-aliases.js";
 
@@ -298,6 +300,42 @@ describe("parseRouteTargetSelection", () => {
   });
 });
 
+describe("parseRouteKeyAccessPolicy", () => {
+  it("parses route key access policy keyed by external model", () => {
+    expect(
+      parseRouteKeyAccessPolicy(
+        JSON.stringify({
+          "assistant-default": {
+            requiredKeyTier: "prod",
+            requiredKeyTags: ["internal", "critical"]
+          }
+        })
+      )
+    ).toEqual({
+      "assistant-default": {
+        requiredKeyTier: "prod",
+        requiredKeyTags: ["internal", "critical"]
+      }
+    });
+  });
+
+  it("rejects malformed route key access policy json", () => {
+    expect(() => parseRouteKeyAccessPolicy("{not-json")).toThrow(GatewayError);
+  });
+
+  it("rejects duplicate required route key tags", () => {
+    expect(() =>
+      parseRouteKeyAccessPolicy(
+        JSON.stringify({
+          "assistant-default": {
+            requiredKeyTags: ["internal", "internal"]
+          }
+        })
+      )
+    ).toThrow(GatewayError);
+  });
+});
+
 describe("attachRouteFallbacks", () => {
   it("attaches fallback targets to matching routes", () => {
     expect(
@@ -551,6 +589,55 @@ describe("attachRouteTargetSelection", () => {
             costs: {
               "openai:gpt-4.1-nano": 1
             }
+          }
+        }
+      )
+    ).toThrow(GatewayError);
+  });
+});
+
+describe("attachRouteKeyAccessPolicy", () => {
+  it("attaches key access policy metadata to a matching route", () => {
+    expect(
+      attachRouteKeyAccessPolicy(
+        parseModelAliases(
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+          "gpt-4.1-mini"
+        ),
+        {
+          "assistant-default": {
+            requiredKeyTier: "prod",
+            requiredKeyTags: ["internal"]
+          }
+        }
+      )
+    ).toEqual([
+      {
+        externalModel: "assistant-default",
+        target: {
+          provider: "openai",
+          providerModel: "gpt-4.1-mini"
+        },
+        requiredKeyTier: "prod",
+        requiredKeyTags: ["internal"]
+      },
+      {
+        externalModel: "claude-haiku-4-5",
+        target: {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      }
+    ]);
+  });
+
+  it("rejects route key access policy keys that do not match configured routes", () => {
+    expect(() =>
+      attachRouteKeyAccessPolicy(
+        parseModelAliases("gpt-4.1-mini=gpt-4.1-mini", "gpt-4.1-mini"),
+        {
+          unknown: {
+            requiredKeyTier: "prod"
           }
         }
       )

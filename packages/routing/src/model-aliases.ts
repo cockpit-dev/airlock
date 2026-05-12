@@ -30,11 +30,18 @@ export interface ModelRoute {
   shaping?: RequestShapingProfile;
   fallbacks?: ProviderTarget[];
   targetSelection?: RouteTargetSelection;
+  requiredKeyTier?: string;
+  requiredKeyTags?: string[];
 }
 
 export type ModelRouteDirectory = ModelRoute[];
 export type RouteFallbackMap = Record<string, string[]>;
 export type RouteTargetSelectionMap = Record<string, RouteTargetSelection>;
+export interface RouteKeyAccessPolicy {
+  requiredKeyTier?: string;
+  requiredKeyTags?: string[];
+}
+export type RouteKeyAccessPolicyMap = Record<string, RouteKeyAccessPolicy>;
 
 function createInvalidModelAliasError(message: string): GatewayError {
   return new GatewayError(message, {
@@ -66,6 +73,15 @@ function createInvalidRouteFallbackError(message: string): GatewayError {
 function createInvalidRouteTargetSelectionError(message: string): GatewayError {
   return new GatewayError(message, {
     code: "config_invalid_model_target_selection",
+    category: "configuration",
+    httpStatus: 500,
+    retryable: false
+  });
+}
+
+function createInvalidRouteKeyAccessPolicyError(message: string): GatewayError {
+  return new GatewayError(message, {
+    code: "config_invalid_model_key_policy",
     category: "configuration",
     httpStatus: 500,
     retryable: false
@@ -371,6 +387,86 @@ export function parseRouteTargetSelection(
   return targetSelectionByRoute;
 }
 
+export function parseRouteKeyAccessPolicy(
+  value: string | undefined
+): RouteKeyAccessPolicyMap {
+  if (!value) {
+    return {};
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw createInvalidRouteKeyAccessPolicyError(
+      "Route key access policy config must be valid JSON"
+    );
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw createInvalidRouteKeyAccessPolicyError(
+      "Route key access policy config must be a JSON object"
+    );
+  }
+
+  const routeKeyAccessPolicyByRoute: RouteKeyAccessPolicyMap = {};
+
+  for (const [externalModel, policy] of Object.entries(parsed)) {
+    if (typeof policy !== "object" || policy === null || Array.isArray(policy)) {
+      throw createInvalidRouteKeyAccessPolicyError(
+        "Route key access policy entries must be objects"
+      );
+    }
+
+    const normalizedPolicy: RouteKeyAccessPolicy = {};
+    const policyRecord = policy as Record<string, unknown>;
+
+    if (policyRecord.requiredKeyTier !== undefined) {
+      if (
+        typeof policyRecord.requiredKeyTier !== "string" ||
+        policyRecord.requiredKeyTier.trim().length === 0
+      ) {
+        throw createInvalidRouteKeyAccessPolicyError(
+          "Route key access policy requiredKeyTier must be a non-empty string"
+        );
+      }
+
+      normalizedPolicy.requiredKeyTier = policyRecord.requiredKeyTier.trim();
+    }
+
+    if (policyRecord.requiredKeyTags !== undefined) {
+      if (!Array.isArray(policyRecord.requiredKeyTags)) {
+        throw createInvalidRouteKeyAccessPolicyError(
+          "Route key access policy requiredKeyTags must be an array"
+        );
+      }
+
+      const requiredKeyTags = policyRecord.requiredKeyTags.map((tag) => {
+        if (typeof tag !== "string" || tag.trim().length === 0) {
+          throw createInvalidRouteKeyAccessPolicyError(
+            "Route key access policy requiredKeyTags must contain non-empty strings"
+          );
+        }
+
+        return tag.trim();
+      });
+
+      if (new Set(requiredKeyTags).size !== requiredKeyTags.length) {
+        throw createInvalidRouteKeyAccessPolicyError(
+          "Route key access policy requiredKeyTags must be unique"
+        );
+      }
+
+      normalizedPolicy.requiredKeyTags = requiredKeyTags;
+    }
+
+    routeKeyAccessPolicyByRoute[externalModel] = normalizedPolicy;
+  }
+
+  return routeKeyAccessPolicyByRoute;
+}
+
 function listTargetSelectionKeys(targetSelection: RouteTargetSelection): string[] {
   if (targetSelection.strategy === "weighted") {
     return Object.keys(targetSelection.weights);
@@ -512,6 +608,41 @@ export function attachRouteTargetSelection(
     return {
       ...route,
       targetSelection
+    };
+  });
+}
+
+export function attachRouteKeyAccessPolicy(
+  routes: ModelRouteDirectory,
+  routeKeyAccessPolicyByRoute: RouteKeyAccessPolicyMap
+): ModelRouteDirectory {
+  const configuredExternalModels = new Set(
+    routes.map((route) => route.externalModel)
+  );
+
+  for (const externalModel of Object.keys(routeKeyAccessPolicyByRoute)) {
+    if (!configuredExternalModels.has(externalModel)) {
+      throw createInvalidRouteKeyAccessPolicyError(
+        `Route key access policy references an unknown external model: ${externalModel}`
+      );
+    }
+  }
+
+  return routes.map((route) => {
+    const keyAccessPolicy = routeKeyAccessPolicyByRoute[route.externalModel];
+
+    if (!keyAccessPolicy) {
+      return route;
+    }
+
+    return {
+      ...route,
+      ...(keyAccessPolicy.requiredKeyTier
+        ? { requiredKeyTier: keyAccessPolicy.requiredKeyTier }
+        : {}),
+      ...(keyAccessPolicy.requiredKeyTags
+        ? { requiredKeyTags: keyAccessPolicy.requiredKeyTags }
+        : {})
     };
   });
 }

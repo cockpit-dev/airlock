@@ -10,6 +10,7 @@ import { resolveModelRoute } from "@airlock/routing";
 
 import {
   assertGatewayKeyAllowsModel,
+  assertGatewayKeyAllowsRoute,
   requireGatewayAuthorization
 } from "../auth.js";
 import { resolveGatewayConfig } from "../config.js";
@@ -28,6 +29,7 @@ export async function handleResponses(context: Context): Promise<Response> {
   const json = (await context.req.json()) as unknown;
   const parsed = openAIResponsesRequestSchema.parse(json);
   const route = resolveModelRoute(parsed.model, config.modelAliases, requestId);
+  assertGatewayKeyAllowsRoute(gatewayApiKey, route, requestId);
   assertGatewayKeyAllowsModel(
     gatewayApiKey,
     route.externalModel,

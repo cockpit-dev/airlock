@@ -2,10 +2,12 @@ import { parseGatewayApiKeys, type GatewayApiKeyRecord } from "@airlock/governan
 import { parseRouteRequestShaping } from "@airlock/request-shaping";
 import {
   attachRouteFallbacks,
+  attachRouteKeyAccessPolicy,
   attachRouteRequestShaping,
   attachRouteTargetSelection,
   parseModelAliases,
   parseRouteFallbacks,
+  parseRouteKeyAccessPolicy,
   parseRouteTargetSelection,
   type ModelRouteDirectory
 } from "@airlock/routing";
@@ -179,7 +181,10 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
   const modelAliases = attachRouteTargetSelection(
     attachRouteFallbacks(
       attachRouteRequestShaping(
-        parseModelAliases(env.AIRLOCK_MODEL_ALIASES, env.OPENAI_DEFAULT_MODEL),
+        attachRouteKeyAccessPolicy(
+          parseModelAliases(env.AIRLOCK_MODEL_ALIASES, env.OPENAI_DEFAULT_MODEL),
+          parseRouteKeyAccessPolicy(env.AIRLOCK_MODEL_KEY_POLICY)
+        ),
         parseRouteRequestShaping(env.AIRLOCK_MODEL_SHAPING)
       ),
       parseRouteFallbacks(env.AIRLOCK_MODEL_FALLBACKS)

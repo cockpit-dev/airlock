@@ -5,6 +5,7 @@ import {
   type GatewayApiKeyRecord
 } from "@airlock/governance";
 import { GatewayError, type ProviderId } from "@airlock/shared";
+import type { ModelRoute } from "@airlock/routing";
 
 import type { GatewayConfig } from "./config.js";
 
@@ -41,6 +42,39 @@ export function assertGatewayKeyAllowsModel(
   if (!isExplicitlyAllowed && !isAllowedByGroup) {
     throw new GatewayError("Gateway API key is not allowed to access this model", {
       code: "auth_model_not_allowed",
+      category: "authorization",
+      httpStatus: 403,
+      retryable: false,
+      requestId
+    });
+  }
+}
+
+export function assertGatewayKeyAllowsRoute(
+  gatewayApiKey: GatewayApiKeyRecord,
+  route: ModelRoute,
+  requestId: string
+) {
+  const requiredKeyTier = route.requiredKeyTier;
+  const requiredKeyTags = route.requiredKeyTags;
+
+  if (!requiredKeyTier && !requiredKeyTags) {
+    return;
+  }
+
+  const keyTier = gatewayApiKey.policy?.tier;
+  const keyTags = gatewayApiKey.policy?.tags ?? [];
+  const satisfiesTier =
+    requiredKeyTier === undefined || keyTier === requiredKeyTier;
+  const satisfiesTags =
+    requiredKeyTags === undefined ||
+    requiredKeyTags.every((requiredTag) => {
+      return keyTags.includes(requiredTag);
+    });
+
+  if (!satisfiesTier || !satisfiesTags) {
+    throw new GatewayError("Gateway API key is not allowed to access this route", {
+      code: "auth_route_policy_not_allowed",
       category: "authorization",
       httpStatus: 403,
       retryable: false,

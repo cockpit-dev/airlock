@@ -489,6 +489,40 @@ describe("gateway app", () => {
     });
   });
 
+  it("returns not ready from /readyz when route key access policy json is malformed", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_MODEL_KEY_POLICY: "{not-json"
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when route key access policy targets an unknown route", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_MODEL_KEY_POLICY: JSON.stringify({
+        unknown: {
+          requiredKeyTier: "prod"
+        }
+      })
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
   it("returns not ready from /readyz when fallback json is malformed", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -921,6 +955,171 @@ describe("gateway app", () => {
     });
   });
 
+  it("returns an OpenAI-compatible authorization error when the route requires a higher key tier", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_KEY_POLICY: JSON.stringify({
+          "gpt-4.1-mini": {
+            requiredKeyTier: "prod"
+          }
+        }),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              tier: "dev"
+            }
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(403);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_route_policy_not_allowed",
+        type: "authorization"
+      }
+    });
+  });
+
+  it("returns an OpenAI-compatible authorization error when the route requires missing key tags", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_KEY_POLICY: JSON.stringify({
+          "gpt-4.1-mini": {
+            requiredKeyTags: ["internal", "critical"]
+          }
+        }),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              tags: ["internal"]
+            }
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(403);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_route_policy_not_allowed",
+        type: "authorization"
+      }
+    });
+  });
+
+  it("allows requests when the key satisfies required route tier and tags", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_KEY_POLICY: JSON.stringify({
+          "gpt-4.1-mini": {
+            requiredKeyTier: "prod",
+            requiredKeyTags: ["internal", "critical"]
+          }
+        }),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              tier: "prod",
+              tags: ["internal", "critical", "ops"]
+            }
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("returns an Anthropic-compatible authorization error for denied primary provider access", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -968,6 +1167,59 @@ describe("gateway app", () => {
       }
     });
     expect(response.headers.get("request-id")).toBeTruthy();
+  });
+
+  it("returns an Anthropic-compatible authorization error when the route requires missing key tags", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_KEY_POLICY: JSON.stringify({
+          "claude-sonnet-4-5": {
+            requiredKeyTags: ["internal"]
+          }
+        }),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              tags: ["external"]
+            }
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(403);
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "error",
+      error: {
+        type: "authorization",
+        message: "Gateway API key is not allowed to access this route"
+      }
+    });
   });
 
   it("returns an OpenAI-compatible chat completions response when authorized", async () => {
