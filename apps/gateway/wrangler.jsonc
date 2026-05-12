@@ -2,6 +2,20 @@
   "name": "airlock-gateway",
   "main": "src/index.ts",
   "compatibility_date": "2026-05-12",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "AIRLOCK_GATEWAY_KEY_QUOTA",
+        "class_name": "GatewayKeyQuotaDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["GatewayKeyQuotaDurableObject"]
+    }
+  ],
   "queues": {
     "producers": [
       {

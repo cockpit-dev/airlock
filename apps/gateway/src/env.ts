@@ -45,6 +45,14 @@ export const gatewayEnvSchema = z.object({
         doubles: number[];
       }): void;
     }>()
+    .optional(),
+  AIRLOCK_GATEWAY_KEY_QUOTA: z
+    .custom<{
+      idFromName(name: string): unknown;
+      get(id: unknown): {
+        fetch(request: Request): Promise<Response>;
+      };
+    }>()
     .optional()
 });
 

@@ -56,6 +56,85 @@ function createBindings() {
   };
 }
 
+interface DurableObjectStubLike {
+  fetch(request: Request): Promise<Response>;
+}
+
+interface DurableObjectNamespaceLike {
+  get(id: { name: string }): DurableObjectStubLike;
+  idFromName(name: string): { name: string };
+}
+
+function createQuotaNamespace() {
+  const state = new Map<
+    string,
+    {
+      windowStartedAt: number;
+      count: number;
+    }
+  >();
+
+  const namespace: DurableObjectNamespaceLike = {
+    idFromName(name: string) {
+      return { name };
+    },
+    get(id: { name: string }) {
+      return {
+        async fetch(request: Request) {
+          const body = (await request.json()) as {
+            limit: number;
+            windowSeconds: number;
+          };
+          const now = Date.now();
+          const windowMs = body.windowSeconds * 1000;
+          const windowStartedAt = now - (now % windowMs);
+          const existing = state.get(id.name);
+          const current =
+            existing && existing.windowStartedAt === windowStartedAt
+              ? existing
+              : { windowStartedAt, count: 0 };
+          const remaining = Math.max(0, body.limit - current.count - 1);
+
+          if (current.count >= body.limit) {
+            return Response.json(
+              {
+                allowed: false,
+                limit: body.limit,
+                remaining: 0,
+                resetAt: new Date(windowStartedAt + windowMs).toISOString(),
+                retryAfterSeconds: Math.max(
+                  0,
+                  Math.ceil((windowStartedAt + windowMs - now) / 1000)
+                )
+              },
+              { status: 200 }
+            );
+          }
+
+          current.count += 1;
+          state.set(id.name, current);
+
+          return Response.json(
+            {
+              allowed: true,
+              limit: body.limit,
+              remaining,
+              resetAt: new Date(windowStartedAt + windowMs).toISOString(),
+              retryAfterSeconds: Math.max(
+                0,
+                Math.ceil((windowStartedAt + windowMs - now) / 1000)
+              )
+            },
+            { status: 200 }
+          );
+        }
+      };
+    }
+  };
+
+  return namespace;
+}
+
 const gatewaySecretHash =
   "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6";
 
@@ -545,6 +624,34 @@ describe("gateway app", () => {
     });
   });
 
+  it("returns not ready from /readyz when a structured gateway key enables quota without a quota binding", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            requestQuota: {
+              limit: 1,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ])
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
   it("returns not ready from /readyz when model alias config is invalid", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -799,6 +906,184 @@ describe("gateway app", () => {
         code: "auth_invalid_api_key"
       }
     });
+  });
+
+  it("rejects over-quota structured gateway keys on chat completions requests", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_quota",
+          label: "Quota Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            requestQuota: {
+              limit: 1,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_QUOTA: createQuotaNamespace()
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi again" }]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    expect(secondResponse.headers.get("retry-after")).toBeTruthy();
+    expect(secondResponse.headers.get("x-ratelimit-limit")).toBe("1");
+    expect(secondResponse.headers.get("x-ratelimit-remaining")).toBe("0");
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      error: {
+        code: "quota_requests_exceeded"
+      }
+    });
+  });
+
+  it("does not consume quota for malformed chat completions request bodies", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_quota",
+          label: "Quota Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            requestQuota: {
+              limit: 1,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_QUOTA: createQuotaNamespace()
+    };
+
+    const invalidResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini"
+        })
+      },
+      bindings
+    );
+
+    expect(invalidResponse.status).toBe(500);
+
+    const validResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi after invalid" }]
+        })
+      },
+      bindings
+    );
+
+    expect(validResponse.status).toBe(200);
   });
 
   it("authorizes hashed structured gateway keys on chat completions requests", async () => {

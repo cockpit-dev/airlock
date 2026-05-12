@@ -213,7 +213,11 @@ describe("parseGatewayApiKeys", () => {
               tags: ["internal", "critical"],
               allowedExternalModels: ["gpt-4.1-mini", "claude-sonnet-4-5"],
               allowedProviders: ["openai", "anthropic"],
-              allowedModelGroups: ["default-chat"]
+              allowedModelGroups: ["default-chat"],
+              requestQuota: {
+                limit: 1000,
+                windowSeconds: 3600
+              }
             }
           },
           {
@@ -235,7 +239,11 @@ describe("parseGatewayApiKeys", () => {
           tags: ["internal", "critical"],
           allowedExternalModels: ["gpt-4.1-mini", "claude-sonnet-4-5"],
           allowedProviders: ["openai", "anthropic"],
-          allowedModelGroups: ["default-chat"]
+          allowedModelGroups: ["default-chat"],
+          requestQuota: {
+            limit: 1000,
+            windowSeconds: 3600
+          }
         }
       },
       {
@@ -279,6 +287,46 @@ describe("parseGatewayApiKeys", () => {
             value: "gateway-secret",
             valueHash: gatewaySecretHash,
             status: "active"
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects invalid request quota policy values", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              requestQuota: {
+                limit: 0,
+                windowSeconds: 3600
+              }
+            }
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              requestQuota: {
+                limit: 10,
+                windowSeconds: -1
+              }
+            }
           }
         ])
       )

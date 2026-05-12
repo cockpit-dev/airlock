@@ -193,6 +193,19 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
   );
   const modelGroups = parseModelGroups(env.AIRLOCK_MODEL_GROUPS);
   validateModelGroups(modelGroups, modelAliases, gatewayApiKeys);
+  const requiresGatewayKeyQuota = gatewayApiKeys.some((gatewayApiKey) => {
+    return gatewayApiKey.policy?.requestQuota !== undefined;
+  });
+
+  if (requiresGatewayKeyQuota && !env.AIRLOCK_GATEWAY_KEY_QUOTA) {
+    throw new GatewayError("Gateway key quota binding is required", {
+      code: "config_missing_gateway_key_quota",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false
+    });
+  }
+
   const usedProviders = new Set(
     modelAliases.flatMap((route) => {
       return [route.target, ...(route.fallbacks ?? [])].map((target) => {

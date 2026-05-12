@@ -17,6 +17,7 @@ import {
 } from "../auth.js";
 import { resolveGatewayConfig } from "../config.js";
 import type { GatewayBindings } from "../env.js";
+import { enforceGatewayKeyRequestQuota } from "../gateway-key-quota.js";
 import {
   executeRoutedRequest,
   executeRoutedStreamRequest
@@ -55,6 +56,7 @@ export async function handleMessages(context: Context): Promise<Response> {
   const requestShaping = parseRequestShapingExtension(
     parsed.airlock?.requestShaping
   );
+  await enforceGatewayKeyRequestQuota(context.env as GatewayBindings, gatewayApiKey, requestId);
   const fetcher = context.get("fetcher") as typeof fetch | undefined;
   let attemptedTarget: ProviderTarget | undefined;
 

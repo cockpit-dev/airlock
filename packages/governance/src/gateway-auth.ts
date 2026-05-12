@@ -2,12 +2,18 @@ import { GatewayError, isProviderId, type ProviderId } from "@airlock/shared";
 
 export type GatewayApiKeyStatus = "active" | "revoked";
 
+export interface GatewayApiKeyRequestQuotaPolicy {
+  limit: number;
+  windowSeconds: number;
+}
+
 export interface GatewayApiKeyPolicy {
   tier?: string;
   tags?: string[];
   allowedExternalModels?: string[];
   allowedProviders?: ProviderId[];
   allowedModelGroups?: string[];
+  requestQuota?: GatewayApiKeyRequestQuotaPolicy;
 }
 
 export interface GatewayApiKeyRecord {
@@ -174,6 +180,38 @@ function parseGatewayApiKeyPolicy(value: unknown): GatewayApiKeyPolicy | undefin
     }
 
     policy.allowedModelGroups = allowedModelGroups;
+  }
+
+  if (value.requestQuota !== undefined) {
+    if (!isRecord(value.requestQuota)) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy requestQuota must be an object"
+      );
+    }
+
+    const limit = value.requestQuota.limit;
+    const windowSeconds = value.requestQuota.windowSeconds;
+
+    if (typeof limit !== "number" || !Number.isInteger(limit) || limit <= 0) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy requestQuota limit must be a positive integer"
+      );
+    }
+
+    if (
+      typeof windowSeconds !== "number" ||
+      !Number.isInteger(windowSeconds) ||
+      windowSeconds <= 0
+    ) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy requestQuota windowSeconds must be a positive integer"
+      );
+    }
+
+    policy.requestQuota = {
+      limit,
+      windowSeconds
+    };
   }
 
   return Object.keys(policy).length > 0 ? policy : {};

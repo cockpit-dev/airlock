@@ -1,6 +1,7 @@
 import { createApp } from "./app.js";
 import type { GatewayBindings } from "./env.js";
 import { gatewayEnvSchema } from "./env.js";
+import { GatewayKeyQuotaDurableObject } from "./gateway-key-quota.js";
 import {
   createGatewayTelemetrySink,
   processTelemetryQueueBatch
@@ -53,3 +54,5 @@ export default {
     await processTelemetryQueueBatch(batch, parsedEnv.AIRLOCK_TELEMETRY_DATASET);
   }
 };
+
+export { GatewayKeyQuotaDurableObject };

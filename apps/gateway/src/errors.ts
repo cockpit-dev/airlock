@@ -24,15 +24,16 @@ export function toErrorResponse(
           },
           request_id: requestId
         },
-        {
-          status: error.httpStatus,
-          headers: {
-            "request-id": requestId,
-            "x-request-id": requestId
-          }
+      {
+        status: error.httpStatus,
+        headers: {
+          "request-id": requestId,
+          "x-request-id": requestId,
+          ...(error.headers ?? {})
         }
-      );
-    }
+      }
+    );
+  }
 
     return Response.json(
       {
@@ -45,7 +46,8 @@ export function toErrorResponse(
       {
         status: error.httpStatus,
         headers: {
-          "x-request-id": requestId
+          "x-request-id": requestId,
+          ...(error.headers ?? {})
         }
       }
     );
