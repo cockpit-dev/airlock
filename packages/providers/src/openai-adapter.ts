@@ -312,6 +312,11 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 };
                 finish_reason?: "stop" | null;
               }>;
+              usage?: {
+                prompt_tokens?: number;
+                completion_tokens?: number;
+                total_tokens?: number;
+              };
             };
             const choice = payload.choices?.[0];
             const responseId = payload.id ?? `chatcmpl_${context.requestId}`;
@@ -340,7 +345,19 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 type: "response_completed",
                 responseId,
                 model,
-                finishReason: "stop"
+                finishReason: "stop",
+                ...(payload.usage
+                  ? {
+                      usage: {
+                        inputTokens: payload.usage.prompt_tokens ?? 0,
+                        outputTokens: payload.usage.completion_tokens ?? 0,
+                        totalTokens:
+                          payload.usage.total_tokens ??
+                          (payload.usage.prompt_tokens ?? 0) +
+                            (payload.usage.completion_tokens ?? 0)
+                      }
+                    }
+                  : {})
               };
             }
           }

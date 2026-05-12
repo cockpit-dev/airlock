@@ -310,7 +310,7 @@ describe("GeminiProviderAdapter", () => {
             [
               'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"role":"model","parts":[{"text":"hel"}]}}]}\n\n',
               'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"role":"model","parts":[{"text":"lo"}]}}]}\n\n',
-              'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[]}}]}\n\n'
+              'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":6,"totalTokenCount":16}}\n\n'
             ].join("")
           )
         );
@@ -390,7 +390,12 @@ describe("GeminiProviderAdapter", () => {
         type: "response_completed",
         responseId: "gemini-response-123",
         model: "gemini-2.5-flash",
-        finishReason: "stop"
+        finishReason: "stop",
+        usage: {
+          inputTokens: 10,
+          outputTokens: 6,
+          totalTokens: 16
+        }
       }
     ]);
   });

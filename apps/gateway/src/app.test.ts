@@ -439,6 +439,74 @@ describe("gateway app", () => {
     });
   });
 
+  it("emits request telemetry for a successful streaming chat completion with usage", async () => {
+    const { sink, events } = createTelemetryRecorder();
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher, telemetrySink: sink });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readText(response)).resolves.toContain("data: [DONE]");
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "gateway_request",
+      routePath: "/v1/chat/completions",
+      outcome: "success",
+      statusCode: 200,
+      provider: "openai",
+      providerModel: "gpt-4.1-mini",
+      externalModel: "gpt-4.1-mini",
+      gatewayKeyId: "gak_1",
+      fallbackUsed: false,
+      usage: {
+        inputTokens: 12,
+        outputTokens: 8,
+        totalTokens: 20
+      }
+    });
+  });
+
   it("emits request telemetry for an authentication failure", async () => {
     const { sink, events } = createTelemetryRecorder();
     const app = createApp({ fetcher: vi.fn(), telemetrySink: sink });

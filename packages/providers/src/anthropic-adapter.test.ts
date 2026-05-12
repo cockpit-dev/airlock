@@ -323,6 +323,7 @@ describe("AnthropicProviderAdapter", () => {
               'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-sonnet-4-5"}}\n\n',
               'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"hel"}}\n\n',
               'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"lo"}}\n\n',
+              'event: message_delta\ndata: {"usage":{"input_tokens":14,"output_tokens":9}}\n\n',
               "event: message_stop\ndata: {}\n\n"
             ].join("")
           )
@@ -385,7 +386,12 @@ describe("AnthropicProviderAdapter", () => {
         type: "response_completed",
         responseId: "msg_123",
         model: "claude-sonnet-4-5",
-        finishReason: "stop"
+        finishReason: "stop",
+        usage: {
+          inputTokens: 14,
+          outputTokens: 9,
+          totalTokens: 23
+        }
       }
     ]);
   });

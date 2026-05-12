@@ -208,7 +208,7 @@ describe("OpenAIProviderAdapter", () => {
               'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
               'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"hel"},"finish_reason":null}]}\n\n',
               'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"lo"},"finish_reason":null}]}\n\n',
-              'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+              'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}\n\n',
               "data: [DONE]\n\n"
             ].join("")
           )
@@ -271,7 +271,12 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_completed",
         responseId: "chatcmpl_123",
         model: "gpt-4.1-mini",
-        finishReason: "stop"
+        finishReason: "stop",
+        usage: {
+          inputTokens: 12,
+          outputTokens: 8,
+          totalTokens: 20
+        }
       }
     ]);
   });

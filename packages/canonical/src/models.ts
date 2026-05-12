@@ -47,4 +47,5 @@ export type CanonicalStreamEvent =
       responseId: string;
       model: string;
       finishReason: "stop";
+      usage?: CanonicalUsage;
     };

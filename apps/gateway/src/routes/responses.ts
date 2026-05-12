@@ -91,6 +91,13 @@ export async function handleResponses(
 
   if (canonicalRequest.stream) {
     const encoder = new TextEncoder();
+    let streamUsage:
+      | {
+          inputTokens: number;
+          outputTokens: number;
+          totalTokens: number;
+        }
+      | undefined;
     const responseStream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
@@ -116,6 +123,10 @@ export async function handleResponses(
                 )}\n\n`
               )
             );
+
+            if (event.type === "response_completed" && event.usage) {
+              streamUsage = event.usage;
+            }
           }
 
           await emitGatewayRequestSuccessTelemetry({
@@ -132,7 +143,8 @@ export async function handleResponses(
             fallbackUsed:
               attemptedTarget !== undefined &&
               (attemptedTarget.provider !== route.target.provider ||
-                attemptedTarget.providerModel !== route.target.providerModel)
+                attemptedTarget.providerModel !== route.target.providerModel),
+            ...(streamUsage ? { usage: streamUsage } : {})
           });
         } catch (error) {
           if (error instanceof GatewayError) {

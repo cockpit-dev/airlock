@@ -290,6 +290,13 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     let buffer = "";
     let activeResponseId = `msg_${context.requestId}`;
     let activeModel = request.model;
+    let usage:
+      | {
+          inputTokens: number;
+          outputTokens: number;
+          totalTokens: number;
+        }
+      | undefined;
 
     try {
       while (true) {
@@ -371,12 +378,33 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
             continue;
           }
 
+          if (currentEventType === "message_delta") {
+            const eventUsage = payload.usage as
+              | {
+                  input_tokens?: number;
+                  output_tokens?: number;
+                }
+              | undefined;
+
+            if (eventUsage) {
+              usage = {
+                inputTokens: eventUsage.input_tokens ?? 0,
+                outputTokens: eventUsage.output_tokens ?? 0,
+                totalTokens:
+                  (eventUsage.input_tokens ?? 0) +
+                  (eventUsage.output_tokens ?? 0)
+              };
+            }
+            continue;
+          }
+
           if (currentEventType === "message_stop") {
             yield {
               type: "response_completed",
               responseId: activeResponseId,
               model: activeModel,
-              finishReason: "stop"
+              finishReason: "stop",
+              ...(usage ? { usage } : {})
             };
           }
         }

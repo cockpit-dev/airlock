@@ -343,7 +343,20 @@ export class GeminiProviderAdapter implements ProviderAdapter {
                 type: "response_completed",
                 responseId,
                 model,
-                finishReason: "stop"
+                finishReason: "stop",
+                ...(payload.usageMetadata
+                  ? {
+                      usage: {
+                        inputTokens: payload.usageMetadata.promptTokenCount ?? 0,
+                        outputTokens:
+                          payload.usageMetadata.candidatesTokenCount ?? 0,
+                        totalTokens:
+                          payload.usageMetadata.totalTokenCount ??
+                          (payload.usageMetadata.promptTokenCount ?? 0) +
+                            (payload.usageMetadata.candidatesTokenCount ?? 0)
+                      }
+                    }
+                  : {})
               };
             }
           }
@@ -387,6 +400,11 @@ interface GeminiGenerateContentResponse {
   responseId?: string;
   modelVersion?: string;
   candidates?: GeminiCandidate[];
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
 }
 
 function buildGeminiRequestBody(request: CanonicalRequest) {
