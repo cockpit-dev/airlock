@@ -3,6 +3,8 @@ export type GatewayKeyAuditOwnership = "configured" | "registry";
 export type GatewayKeyAuditEventKind =
   | "created"
   | "rotated"
+  | "rotation_finalized"
+  | "rotation_canceled"
   | "deleted"
   | "revoked"
   | "unrevoked";
@@ -60,6 +62,8 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
   if (
     kind !== "created" &&
     kind !== "rotated" &&
+    kind !== "rotation_finalized" &&
+    kind !== "rotation_canceled" &&
     kind !== "deleted" &&
     kind !== "revoked" &&
     kind !== "unrevoked"

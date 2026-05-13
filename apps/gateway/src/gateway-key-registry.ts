@@ -26,6 +26,8 @@ const REGISTRY_KIND_DYNAMIC = "dynamic";
 const REGISTRY_KIND_DYNAMIC_LIST = "dynamic_list";
 const REGISTRY_KIND_DYNAMIC_LOOKUP = "dynamic_lookup";
 const REGISTRY_KIND_DYNAMIC_ROTATE = "dynamic_rotate";
+const REGISTRY_KIND_DYNAMIC_ROTATE_FINALIZE = "dynamic_rotate_finalize";
+const REGISTRY_KIND_DYNAMIC_ROTATE_CANCEL = "dynamic_rotate_cancel";
 const REGISTRY_KIND_EVENTS = "events";
 const DYNAMIC_KEY_INDEX = "dynamic:index";
 const DYNAMIC_KEY_AUDIT_EVENTS_PREFIX = "dynamic_events:";
@@ -87,6 +89,11 @@ interface GatewayKeyRegistryLookupRequest {
 interface GatewayKeyRegistryRotateRequest {
   valueHash: string;
   overlapSeconds?: number;
+  reason?: string;
+  actor?: string;
+}
+
+interface GatewayKeyRegistryRotationActionRequest {
   reason?: string;
   actor?: string;
 }
@@ -191,6 +198,28 @@ function createGatewayKeyNotFoundError(requestId: string): GatewayError {
     code: "gateway_key_not_found",
     category: "governance",
     httpStatus: 404,
+    retryable: false,
+    requestId
+  });
+}
+
+function createGatewayKeyRotationNotStagedError(requestId: string): GatewayError {
+  return new GatewayError("Gateway API key does not have an active staged rotation", {
+    code: "gateway_key_rotation_not_staged",
+    category: "governance",
+    httpStatus: 409,
+    retryable: false,
+    requestId
+  });
+}
+
+function createGatewayKeyRotationNotCancelableError(
+  requestId: string
+): GatewayError {
+  return new GatewayError("Gateway API key staged rotation can no longer be canceled", {
+    code: "gateway_key_rotation_not_cancelable",
+    category: "governance",
+    httpStatus: 409,
     retryable: false,
     requestId
   });
@@ -462,6 +491,37 @@ function parseDeleteRequest(value: unknown): GatewayKeyRegistryDeleteRequest {
   };
 }
 
+function parseRotationActionRequest(
+  value: unknown,
+  message: string
+): GatewayKeyRegistryRotationActionRequest {
+  if (value === undefined || value === null) {
+    return {};
+  }
+
+  if (!isRecord(value)) {
+    throw new GatewayError(message, {
+      code: "config_invalid_gateway_api_keys",
+      category: "configuration",
+      httpStatus: 400,
+      retryable: false
+    });
+  }
+
+  return {
+    ...(value.reason !== undefined
+      ? {
+          reason: parseReasonPayload(value.reason, message)
+        }
+      : {}),
+    ...(value.actor !== undefined
+      ? {
+          actor: parseActorPayload(value.actor, message)
+        }
+      : {})
+  };
+}
+
 function parseReasonPayload(value: unknown, message: string): string {
   try {
     const reason = parseOptionalGatewayKeyAuditReason(value);
@@ -713,6 +773,103 @@ export class GatewayKeyRegistryDurableObject {
         createGatewayKeyAuditEvent({
           keyId: key.id,
           kind: "rotated",
+          ownership: "registry",
+          occurredAt: key.updatedAt,
+          ...(payload.reason ? { reason: payload.reason } : {}),
+          ...(payload.actor ? { actor: payload.actor } : {})
+        })
+      );
+
+      return Response.json({
+        key: toDynamicKeyView(key)
+      } satisfies GatewayKeyRegistryDynamicKeyResponse);
+    }
+
+    if (kind === REGISTRY_KIND_DYNAMIC_ROTATE_FINALIZE) {
+      if (request.method !== "POST" || !keyId) {
+        return new Response("Method not allowed", { status: keyId ? 405 : 400 });
+      }
+
+      const existingKey = await readStoredDynamicKey(this.state.storage, keyId);
+
+      if (!existingKey) {
+        return new Response("Not found", { status: 404 });
+      }
+
+      if (
+        !existingKey.previousValueHash ||
+        !existingKey.previousValueHashExpiresAt
+      ) {
+        return new Response("Rotation not staged", { status: 409 });
+      }
+
+      const payload = parseRotationActionRequest(
+        await request.json(),
+        "Gateway dynamic key rotation finalize payload is invalid"
+      );
+      const key = await updateStoredDynamicKey(
+        this.state.storage,
+        existingKey,
+        await listStoredDynamicKeys(this.state.storage),
+        { clearPreviousValueHash: true }
+      );
+      await appendStoredDynamicKeyAuditEvent(
+        this.state.storage,
+        createGatewayKeyAuditEvent({
+          keyId: key.id,
+          kind: "rotation_finalized",
+          ownership: "registry",
+          occurredAt: key.updatedAt,
+          ...(payload.reason ? { reason: payload.reason } : {}),
+          ...(payload.actor ? { actor: payload.actor } : {})
+        })
+      );
+
+      return Response.json({
+        key: toDynamicKeyView(key)
+      } satisfies GatewayKeyRegistryDynamicKeyResponse);
+    }
+
+    if (kind === REGISTRY_KIND_DYNAMIC_ROTATE_CANCEL) {
+      if (request.method !== "POST" || !keyId) {
+        return new Response("Method not allowed", { status: keyId ? 405 : 400 });
+      }
+
+      const existingKey = await readStoredDynamicKey(this.state.storage, keyId);
+
+      if (!existingKey) {
+        return new Response("Not found", { status: 404 });
+      }
+
+      if (
+        !existingKey.previousValueHash ||
+        !existingKey.previousValueHashExpiresAt
+      ) {
+        return new Response("Rotation not staged", { status: 409 });
+      }
+
+      if (Date.now() >= Date.parse(existingKey.previousValueHashExpiresAt)) {
+        return new Response("Rotation not cancelable", { status: 409 });
+      }
+
+      const payload = parseRotationActionRequest(
+        await request.json(),
+        "Gateway dynamic key rotation cancel payload is invalid"
+      );
+      const key = await updateStoredDynamicKey(
+        this.state.storage,
+        {
+          ...existingKey,
+          valueHash: existingKey.previousValueHash
+        },
+        await listStoredDynamicKeys(this.state.storage),
+        { clearPreviousValueHash: true }
+      );
+      await appendStoredDynamicKeyAuditEvent(
+        this.state.storage,
+        createGatewayKeyAuditEvent({
+          keyId: key.id,
+          kind: "rotation_canceled",
           ownership: "registry",
           occurredAt: key.updatedAt,
           ...(payload.reason ? { reason: payload.reason } : {}),
@@ -1270,6 +1427,130 @@ export async function rotateGatewayRegistryApiKey(
 
     if (!key) {
       throw new Error("Rotated dynamic key response was empty");
+    }
+
+    return key;
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
+  }
+}
+
+export async function finalizeGatewayRegistryApiKeyRotation(
+  env: GatewayBindings,
+  configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
+  keyId: string,
+  payload: unknown,
+  requestId: string
+): Promise<GatewayKeyRegistryDynamicKeyView> {
+  if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
+    throw createGatewayKeyNotRegistryOwnedError(requestId);
+  }
+
+  const actionRequest = parseRotationActionRequest(
+    payload,
+    "Gateway dynamic key rotation finalize payload is invalid"
+  );
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_ROTATE_FINALIZE, {
+        method: "POST",
+        keyId,
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(actionRequest)
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (response.status === 404) {
+    throw createGatewayKeyNotFoundError(requestId);
+  }
+
+  if (response.status === 409) {
+    throw createGatewayKeyRotationNotStagedError(requestId);
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    const key = parseDynamicKeyResponse(await response.json());
+
+    if (!key) {
+      throw new Error("Finalized dynamic key response was empty");
+    }
+
+    return key;
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
+  }
+}
+
+export async function cancelGatewayRegistryApiKeyRotation(
+  env: GatewayBindings,
+  configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
+  keyId: string,
+  payload: unknown,
+  requestId: string
+): Promise<GatewayKeyRegistryDynamicKeyView> {
+  if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
+    throw createGatewayKeyNotRegistryOwnedError(requestId);
+  }
+
+  const actionRequest = parseRotationActionRequest(
+    payload,
+    "Gateway dynamic key rotation cancel payload is invalid"
+  );
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_ROTATE_CANCEL, {
+        method: "POST",
+        keyId,
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(actionRequest)
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (response.status === 404) {
+    throw createGatewayKeyNotFoundError(requestId);
+  }
+
+  if (response.status === 409) {
+    const body = await response.text();
+
+    if (body === "Rotation not cancelable") {
+      throw createGatewayKeyRotationNotCancelableError(requestId);
+    }
+
+    throw createGatewayKeyRotationNotStagedError(requestId);
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    const key = parseDynamicKeyResponse(await response.json());
+
+    if (!key) {
+      throw new Error("Canceled dynamic key response was empty");
     }
 
     return key;

@@ -3688,6 +3688,475 @@ describe("gateway app", () => {
     });
   });
 
+  it("can finalize a staged registry-owned key rotation early", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-13T03:00:00.000Z"));
+
+    try {
+      const fetcher = vi.fn().mockImplementation(() => {
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl_123",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "hello runtime"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        );
+      });
+      const app = createApp({ fetcher });
+      const bindings = {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+        AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      };
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify({
+                id: "key_dynamic",
+                label: "Dynamic Runtime Key",
+                valueHash:
+                  "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+                status: "active"
+              })
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys/key_dynamic/rotate",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify({
+                valueHash:
+                  "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+                overlapSeconds: 300,
+                reason: "credential rollover"
+              })
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      const finalizeResponse = await app.request(
+        "http://localhost/_airlock/keys/key_dynamic/rotate/finalize",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer admin-secret"
+          },
+          body: JSON.stringify({
+            reason: "cutover complete",
+            actor: "platform@example.com"
+          })
+        },
+        bindings
+      );
+
+      expect(finalizeResponse.status).toBe(200);
+      await expect(readJson(finalizeResponse)).resolves.toMatchObject({
+        keyId: "key_dynamic",
+        key: {
+          id: "key_dynamic",
+          valueHash:
+            "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388"
+        }
+      });
+
+      const oldSecretAfterFinalize = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer runtime-secret"
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            stream: false,
+            messages: [{ role: "user", content: "old secret after finalize" }]
+          })
+        },
+        bindings
+      );
+
+      expect(oldSecretAfterFinalize.status).toBe(401);
+
+      const newSecretAfterFinalize = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer rotated-secret"
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            stream: false,
+            messages: [{ role: "user", content: "new secret after finalize" }]
+          })
+        },
+        bindings
+      );
+
+      expect(newSecretAfterFinalize.status).toBe(200);
+
+      const eventsResponse = await app.request(
+        "http://localhost/_airlock/keys/key_dynamic/events",
+        {
+          method: "GET",
+          headers: {
+            authorization: "Bearer admin-secret"
+          }
+        },
+        bindings
+      );
+
+      expect(eventsResponse.status).toBe(200);
+      const eventsPayload = await readJson(eventsResponse);
+
+      expect(isGatewayKeyEventsPayload(eventsPayload)).toBe(true);
+
+      if (!isGatewayKeyEventsPayload(eventsPayload)) {
+        return;
+      }
+
+      expect(eventsPayload.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            keyId: "key_dynamic",
+            kind: "rotation_finalized",
+            reason: "cutover complete",
+            actor: "platform@example.com"
+          })
+        ])
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("can cancel a staged registry-owned key rotation during overlap", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-13T03:10:00.000Z"));
+
+    try {
+      const fetcher = vi.fn().mockImplementation(() => {
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl_123",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "hello runtime"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        );
+      });
+      const app = createApp({ fetcher });
+      const bindings = {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+        AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      };
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify({
+                id: "key_dynamic",
+                label: "Dynamic Runtime Key",
+                valueHash:
+                  "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+                status: "active"
+              })
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys/key_dynamic/rotate",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify({
+                valueHash:
+                  "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+                overlapSeconds: 300
+              })
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      const cancelResponse = await app.request(
+        "http://localhost/_airlock/keys/key_dynamic/rotate/cancel",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer admin-secret"
+          },
+          body: JSON.stringify({
+            reason: "rollback requested"
+          })
+        },
+        bindings
+      );
+
+      expect(cancelResponse.status).toBe(200);
+      await expect(readJson(cancelResponse)).resolves.toMatchObject({
+        keyId: "key_dynamic",
+        key: {
+          id: "key_dynamic",
+          valueHash:
+            "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16"
+        }
+      });
+
+      const oldSecretAfterCancel = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer runtime-secret"
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            stream: false,
+            messages: [{ role: "user", content: "old secret after cancel" }]
+          })
+        },
+        bindings
+      );
+
+      expect(oldSecretAfterCancel.status).toBe(200);
+
+      const newSecretAfterCancel = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer rotated-secret"
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            stream: false,
+            messages: [{ role: "user", content: "new secret after cancel" }]
+          })
+        },
+        bindings
+      );
+
+      expect(newSecretAfterCancel.status).toBe(401);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects canceling a staged registry-owned key rotation after overlap expiry", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-13T03:20:00.000Z"));
+
+    try {
+      const app = createApp({ fetcher: vi.fn() });
+      const bindings = {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+        AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      };
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify({
+                id: "key_dynamic",
+                label: "Dynamic Runtime Key",
+                valueHash:
+                  "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+                status: "active"
+              })
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys/key_dynamic/rotate",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify({
+                valueHash:
+                  "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+                overlapSeconds: 60
+              })
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      vi.setSystemTime(new Date("2026-05-13T03:21:01.000Z"));
+
+      const cancelResponse = await app.request(
+        "http://localhost/_airlock/keys/key_dynamic/rotate/cancel",
+        {
+          method: "POST",
+          headers: {
+            authorization: "Bearer admin-secret"
+          }
+        },
+        bindings
+      );
+
+      expect(cancelResponse.status).toBe(409);
+      await expect(readJson(cancelResponse)).resolves.toMatchObject({
+        error: {
+          code: "gateway_key_rotation_not_cancelable"
+        }
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects finalizing a registry-owned key when no staged rotation is active", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              id: "key_dynamic",
+              label: "Dynamic Runtime Key",
+              valueHash:
+                "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+              status: "active"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    const finalizeResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/rotate/finalize",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(finalizeResponse.status).toBe(409);
+    await expect(readJson(finalizeResponse)).resolves.toMatchObject({
+      error: {
+        code: "gateway_key_rotation_not_staged"
+      }
+    });
+  });
+
   it("returns merged audit history for a registry-owned key lifecycle", async () => {
     const app = createApp({ fetcher: vi.fn() });
     const bindings = {
