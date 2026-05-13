@@ -139,6 +139,30 @@ export interface BulkRotateGatewayAdminKeysPort {
   ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
 }
 
+export interface BulkFinalizeGatewayAdminKeyRotationsPort {
+  isConfiguredKey(keyId: string): boolean;
+  bulkFinalizeRegistryKeyRotations(
+    payload: {
+      keyIds: string[];
+      reason?: string;
+      actor?: string;
+      actorSource?: "payload" | "trusted_header" | "credential";
+    }
+  ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
+}
+
+export interface BulkCancelGatewayAdminKeyRotationsPort {
+  isConfiguredKey(keyId: string): boolean;
+  bulkCancelRegistryKeyRotations(
+    payload: {
+      keyIds: string[];
+      reason?: string;
+      actor?: string;
+      actorSource?: "payload" | "trusted_header" | "credential";
+    }
+  ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
+}
+
 export interface FinalizeGatewayAdminKeyRotationPort {
   isConfiguredKey(keyId: string): boolean;
   finalizeRegistryKeyRotation(
@@ -388,6 +412,52 @@ export async function bulkRestoreGatewayAdminKeys(
 
   return {
     keys: await port.bulkRestoreRegistryKeys(payload)
+  };
+}
+
+export async function bulkFinalizeGatewayAdminKeyRotations(
+  payload: {
+    keyIds: string[];
+    reason?: string;
+    actor?: string;
+    actorSource?: "payload" | "trusted_header" | "credential";
+  },
+  requestId: string,
+  port: BulkFinalizeGatewayAdminKeyRotationsPort
+): Promise<{
+  keys: GatewayKeyRegistryDynamicKeyView[];
+}> {
+  for (const keyId of payload.keyIds) {
+    if (port.isConfiguredKey(keyId)) {
+      throw createGatewayKeyNotRegistryOwnedError(requestId);
+    }
+  }
+
+  return {
+    keys: await port.bulkFinalizeRegistryKeyRotations(payload)
+  };
+}
+
+export async function bulkCancelGatewayAdminKeyRotations(
+  payload: {
+    keyIds: string[];
+    reason?: string;
+    actor?: string;
+    actorSource?: "payload" | "trusted_header" | "credential";
+  },
+  requestId: string,
+  port: BulkCancelGatewayAdminKeyRotationsPort
+): Promise<{
+  keys: GatewayKeyRegistryDynamicKeyView[];
+}> {
+  for (const keyId of payload.keyIds) {
+    if (port.isConfiguredKey(keyId)) {
+      throw createGatewayKeyNotRegistryOwnedError(requestId);
+    }
+  }
+
+  return {
+    keys: await port.bulkCancelRegistryKeyRotations(payload)
   };
 }
 

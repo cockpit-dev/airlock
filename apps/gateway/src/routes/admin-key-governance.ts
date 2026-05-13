@@ -9,8 +9,10 @@ import {
 import {
   archiveAdminGatewayKey,
   bulkArchiveAdminGatewayKeys,
+  bulkCancelAdminGatewayKeyRotations,
   bulkCreateAdminGatewayKeys,
   bulkDeleteAdminGatewayKeys,
+  bulkFinalizeAdminGatewayKeyRotations,
   bulkRotateAdminGatewayKeys,
   bulkRestoreAdminGatewayKeys,
   cancelAdminGatewayKeyRotation,
@@ -175,6 +177,34 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
     return context.json(
       await bulkRestoreAdminGatewayKeys(
+        context.env,
+        context.req.raw,
+        requestId,
+        await context.req.json()
+      )
+    );
+  });
+
+  app.post("/_airlock/keys/bulk-rotate/finalize", async (context) => {
+    const requestId = context.get("requestId");
+    await requireAdminScope(context, "keys.write");
+
+    return context.json(
+      await bulkFinalizeAdminGatewayKeyRotations(
+        context.env,
+        context.req.raw,
+        requestId,
+        await context.req.json()
+      )
+    );
+  });
+
+  app.post("/_airlock/keys/bulk-rotate/cancel", async (context) => {
+    const requestId = context.get("requestId");
+    await requireAdminScope(context, "keys.write");
+
+    return context.json(
+      await bulkCancelAdminGatewayKeyRotations(
         context.env,
         context.req.raw,
         requestId,

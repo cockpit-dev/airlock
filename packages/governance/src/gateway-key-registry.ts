@@ -132,6 +132,11 @@ export interface GatewayKeyRegistryBulkRestoreRequest {
   auditMetadata: GatewayKeyRegistryUpdateAuditMetadata;
 }
 
+export interface GatewayKeyRegistryBulkRotationActionRequest {
+  keyIds: string[];
+  auditMetadata: GatewayKeyRegistryUpdateAuditMetadata;
+}
+
 export interface GatewayKeyRegistryBulkCreateRequest {
   keys: GatewayApiKeyRecord[];
   actorContext?: GatewayKeyAuditActorContext;
@@ -949,6 +954,73 @@ export function parseGatewayKeyRegistryBulkRestoreRequest(
 ): GatewayKeyRegistryBulkRestoreRequest {
   const message = "Gateway dynamic key bulk restore payload is invalid";
 
+  if (!isRecord(value) || !Array.isArray(value.keyIds)) {
+    throw createGatewayKeyRegistryPayloadError(message);
+  }
+
+  if (value.keyIds.length === 0) {
+    throw createGatewayKeyRegistryPayloadError(
+      message,
+      new Error("keyIds must be a non-empty array")
+    );
+  }
+
+  if (value.actorSource !== undefined && value.actor === undefined) {
+    throw createGatewayKeyRegistryPayloadError(
+      message,
+      new Error("actorSource requires actor")
+    );
+  }
+
+  const seenKeyIds = new Set<string>();
+  const keyIds = value.keyIds.map((entry) => {
+    const keyId = typeof entry === "string" ? entry.trim() : "";
+
+    if (keyId.length === 0) {
+      throw createGatewayKeyRegistryPayloadError(
+        message,
+        new Error("Each keyId must be a non-empty string")
+      );
+    }
+
+    if (seenKeyIds.has(keyId)) {
+      throw createGatewayKeyRegistryPayloadError(
+        message,
+        new Error("Duplicate keyId values are not allowed")
+      );
+    }
+
+    seenKeyIds.add(keyId);
+    return keyId;
+  });
+
+  return {
+    keyIds,
+    auditMetadata: {
+      ...(value.reason !== undefined
+        ? {
+            reason: parseRequiredGatewayKeyRegistryReason(value.reason, message)
+          }
+        : {}),
+      ...(value.actor !== undefined
+        ? {
+            ...toGatewayKeyAuditActorContextRecord(
+              parseRequiredGatewayKeyRegistryActorContext(
+                value.actor,
+                "actorSource" in value ? value.actorSource : undefined,
+                message
+              )
+            )
+          }
+        : {})
+    }
+  };
+}
+
+export function parseGatewayKeyRegistryBulkRotationActionRequest(
+  value: unknown,
+  message: string
+): GatewayKeyRegistryBulkRotationActionRequest {
   if (!isRecord(value) || !Array.isArray(value.keyIds)) {
     throw createGatewayKeyRegistryPayloadError(message);
   }

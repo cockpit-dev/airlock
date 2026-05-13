@@ -8439,6 +8439,587 @@ describe("gateway app", () => {
     );
   });
 
+  it("can bulk finalize staged registry-owned key rotations atomically", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-14T04:00:00.000Z"));
+
+    try {
+      const fetcher = vi.fn().mockImplementation(() => {
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl_123",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "hello runtime"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        );
+      });
+      const app = createApp({ fetcher });
+      const bindings = {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+        AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      };
+
+      for (const payload of [
+        {
+          id: "key_dynamic_a",
+          label: "Dynamic Key A",
+          valueHash:
+            "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+          status: "active"
+        },
+        {
+          id: "key_dynamic_b",
+          label: "Dynamic Key B",
+          valueHash:
+            "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+          status: "active"
+        }
+      ]) {
+        expect(
+          (
+            await app.request(
+              "http://localhost/_airlock/keys",
+              {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  authorization: "Bearer admin-secret"
+                },
+                body: JSON.stringify(payload)
+              },
+              bindings
+            )
+          ).status
+        ).toBe(200);
+      }
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys/bulk-rotate",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify({
+                rotations: [
+                  {
+                    keyId: "key_dynamic_a",
+                    valueHash:
+                      "1d017ea45be35d4491906be88a88483fbfc9552d44c79deef909e9dec1dcd908",
+                    overlapSeconds: 300
+                  },
+                  {
+                    keyId: "key_dynamic_b",
+                    valueHash:
+                      "95ee2bd51ba5315db6299c44e85afdb11ab03757d25d6b1e7bc9df2a5b0ba8c2",
+                    overlapSeconds: 300
+                  }
+                ]
+              })
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      const finalizeResponse = await app.request(
+        "http://localhost/_airlock/keys/bulk-rotate/finalize",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer admin-secret"
+          },
+          body: JSON.stringify({
+            keyIds: ["key_dynamic_a", "key_dynamic_b"],
+            reason: "cutover complete",
+            actor: "ops@example.com"
+          })
+        },
+        bindings
+      );
+
+      expect(finalizeResponse.status).toBe(200);
+      await expect(readJson(finalizeResponse)).resolves.toMatchObject({
+        keys: [
+          {
+            keyId: "key_dynamic_a",
+            key: {
+              valueHash:
+                "1d017ea45be35d4491906be88a88483fbfc9552d44c79deef909e9dec1dcd908"
+            }
+          },
+          {
+            keyId: "key_dynamic_b",
+            key: {
+              valueHash:
+                "95ee2bd51ba5315db6299c44e85afdb11ab03757d25d6b1e7bc9df2a5b0ba8c2"
+            }
+          }
+        ]
+      });
+
+      for (const token of ["runtime-secret", "rotated-secret"]) {
+        const oldSecretResponse = await app.request(
+          "http://localhost/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              model: "gpt-4.1-mini",
+              stream: false,
+              messages: [{ role: "user", content: "old secret after bulk finalize" }]
+            })
+          },
+          bindings
+        );
+
+        expect(oldSecretResponse.status).toBe(401);
+      }
+
+      for (const token of ["bulk-rotated-a", "bulk-rotated-b"]) {
+        const newSecretResponse = await app.request(
+          "http://localhost/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              model: "gpt-4.1-mini",
+              stream: false,
+              messages: [{ role: "user", content: "new secret after bulk finalize" }]
+            })
+          },
+          bindings
+        );
+
+        expect(newSecretResponse.status).toBe(200);
+      }
+
+      const eventsResponse = await app.request(
+        "http://localhost/_airlock/keys/key_dynamic_a/events",
+        {
+          method: "GET",
+          headers: {
+            authorization: "Bearer admin-secret"
+          }
+        },
+        bindings
+      );
+
+      expect(eventsResponse.status).toBe(200);
+      const eventsPayload = await readJson(eventsResponse);
+      expect(isGatewayKeyEventsPayload(eventsPayload)).toBe(true);
+
+      if (!isGatewayKeyEventsPayload(eventsPayload)) {
+        return;
+      }
+
+      expect(eventsPayload.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            keyId: "key_dynamic_a",
+            kind: "rotation_finalized",
+            reason: "cutover complete",
+            actor: "ops@example.com"
+          })
+        ])
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("can bulk cancel staged registry-owned key rotations atomically", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-14T04:10:00.000Z"));
+
+    try {
+      const fetcher = vi.fn().mockImplementation(() => {
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl_123",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "hello runtime"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        );
+      });
+      const app = createApp({ fetcher });
+      const bindings = {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+        AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      };
+
+      for (const payload of [
+        {
+          id: "key_dynamic_a",
+          label: "Dynamic Key A",
+          valueHash:
+            "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+          status: "active"
+        },
+        {
+          id: "key_dynamic_b",
+          label: "Dynamic Key B",
+          valueHash:
+            "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+          status: "active"
+        }
+      ]) {
+        expect(
+          (
+            await app.request(
+              "http://localhost/_airlock/keys",
+              {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  authorization: "Bearer admin-secret"
+                },
+                body: JSON.stringify(payload)
+              },
+              bindings
+            )
+          ).status
+        ).toBe(200);
+      }
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys/bulk-rotate",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify({
+                rotations: [
+                  {
+                    keyId: "key_dynamic_a",
+                    valueHash:
+                      "1d017ea45be35d4491906be88a88483fbfc9552d44c79deef909e9dec1dcd908",
+                    overlapSeconds: 300
+                  },
+                  {
+                    keyId: "key_dynamic_b",
+                    valueHash:
+                      "95ee2bd51ba5315db6299c44e85afdb11ab03757d25d6b1e7bc9df2a5b0ba8c2",
+                    overlapSeconds: 300
+                  }
+                ]
+              })
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      const cancelResponse = await app.request(
+        "http://localhost/_airlock/keys/bulk-rotate/cancel",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer admin-secret"
+          },
+          body: JSON.stringify({
+            keyIds: ["key_dynamic_a", "key_dynamic_b"],
+            reason: "rollback requested"
+          })
+        },
+        bindings
+      );
+
+      expect(cancelResponse.status).toBe(200);
+      await expect(readJson(cancelResponse)).resolves.toMatchObject({
+        keys: [
+          {
+            keyId: "key_dynamic_a",
+            key: {
+              valueHash:
+                "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16"
+            }
+          },
+          {
+            keyId: "key_dynamic_b",
+            key: {
+              valueHash:
+                "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388"
+            }
+          }
+        ]
+      });
+
+      for (const token of ["runtime-secret", "rotated-secret"]) {
+        const oldSecretResponse = await app.request(
+          "http://localhost/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              model: "gpt-4.1-mini",
+              stream: false,
+              messages: [{ role: "user", content: "old secret after bulk cancel" }]
+            })
+          },
+          bindings
+        );
+
+        expect(oldSecretResponse.status).toBe(200);
+      }
+
+      for (const token of ["bulk-rotated-a", "bulk-rotated-b"]) {
+        const newSecretResponse = await app.request(
+          "http://localhost/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              model: "gpt-4.1-mini",
+              stream: false,
+              messages: [{ role: "user", content: "new secret after bulk cancel" }]
+            })
+          },
+          bindings
+        );
+
+        expect(newSecretResponse.status).toBe(401);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects invalid bulk staged rotation lifecycle transitions atomically", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-14T04:20:00.000Z"));
+
+    try {
+      const app = createApp({ fetcher: vi.fn() });
+      const bindings = {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+        AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      };
+
+      for (const payload of [
+        {
+          id: "key_dynamic_a",
+          label: "Dynamic Key A",
+          valueHash:
+            "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+          status: "active"
+        },
+        {
+          id: "key_dynamic_b",
+          label: "Dynamic Key B",
+          valueHash:
+            "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+          status: "active"
+        }
+      ]) {
+        expect(
+          (
+            await app.request(
+              "http://localhost/_airlock/keys",
+              {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  authorization: "Bearer admin-secret"
+                },
+                body: JSON.stringify(payload)
+              },
+              bindings
+            )
+          ).status
+        ).toBe(200);
+      }
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys/key_dynamic_a/rotate",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify({
+                valueHash:
+                  "1d017ea45be35d4491906be88a88483fbfc9552d44c79deef909e9dec1dcd908",
+                overlapSeconds: 300
+              })
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      const finalizeResponse = await app.request(
+        "http://localhost/_airlock/keys/bulk-rotate/finalize",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer admin-secret"
+          },
+          body: JSON.stringify({
+            keyIds: ["key_dynamic_a", "key_dynamic_b"]
+          })
+        },
+        bindings
+      );
+
+      expect(finalizeResponse.status).toBe(409);
+      await expect(readJson(finalizeResponse)).resolves.toMatchObject({
+        error: {
+          code: "gateway_key_rotation_not_staged"
+        }
+      });
+
+      const readAfterFinalizeFailure = await app.request(
+        "http://localhost/_airlock/keys/key_dynamic_a",
+        {
+          method: "GET",
+          headers: {
+            authorization: "Bearer admin-secret"
+          }
+        },
+        bindings
+      );
+
+      expect(readAfterFinalizeFailure.status).toBe(200);
+      await expect(readJson(readAfterFinalizeFailure)).resolves.toMatchObject({
+        previousValueHash:
+          "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16"
+      });
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys/key_dynamic_b/rotate",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify({
+                valueHash:
+                  "95ee2bd51ba5315db6299c44e85afdb11ab03757d25d6b1e7bc9df2a5b0ba8c2",
+                overlapSeconds: 60
+              })
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      vi.setSystemTime(new Date("2026-05-14T04:21:01.000Z"));
+
+      const cancelResponse = await app.request(
+        "http://localhost/_airlock/keys/bulk-rotate/cancel",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer admin-secret"
+          },
+          body: JSON.stringify({
+            keyIds: ["key_dynamic_a", "key_dynamic_b"]
+          })
+        },
+        bindings
+      );
+
+      expect(cancelResponse.status).toBe(409);
+      await expect(readJson(cancelResponse)).resolves.toMatchObject({
+        error: {
+          code: "gateway_key_rotation_not_cancelable"
+        }
+      });
+
+      const readAfterCancelFailure = await app.request(
+        "http://localhost/_airlock/keys/key_dynamic_a",
+        {
+          method: "GET",
+          headers: {
+            authorization: "Bearer admin-secret"
+          }
+        },
+        bindings
+      );
+
+      expect(readAfterCancelFailure.status).toBe(200);
+      await expect(readJson(readAfterCancelFailure)).resolves.toMatchObject({
+        previousValueHash:
+          "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16"
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("rejects mixed configured and registry-owned bulk archives atomically", async () => {
     const app = createApp({ fetcher: vi.fn() });
     const bindings = {

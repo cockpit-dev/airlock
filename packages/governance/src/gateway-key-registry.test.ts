@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   parseGatewayKeyRegistryBulkArchiveRequest,
+  parseGatewayKeyRegistryBulkRotationActionRequest,
   createGatewayKeyRegistryDynamicKeyView,
   parseGatewayKeyRegistryBulkCreateRequest,
   parseGatewayKeyRegistryBulkDeleteRequest,
@@ -540,6 +541,25 @@ describe("registry payload parsers", () => {
         actorSource: "payload"
       }
     });
+
+    expect(
+      parseGatewayKeyRegistryBulkRotationActionRequest(
+        {
+          keyIds: ["key_dynamic_a", " key_dynamic_b "],
+          reason: "rollout converged",
+          actor: "ops@example.com",
+          actorSource: "credential"
+        },
+        "bulk rotation action payload is invalid"
+      )
+    ).toEqual({
+      keyIds: ["key_dynamic_a", "key_dynamic_b"],
+      auditMetadata: {
+        reason: "rollout converged",
+        actor: "ops@example.com",
+        actorSource: "credential"
+      }
+    });
   });
 
   it("rejects invalid overlapSeconds and actorSource values", () => {
@@ -602,6 +622,15 @@ describe("registry payload parsers", () => {
       parseGatewayKeyRegistryBulkRestoreRequest({
         keyIds: ["key_dynamic_a", "key_dynamic_a"]
       })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkRotationActionRequest(
+        {
+          keyIds: ["key_dynamic_a", "key_dynamic_a"]
+        },
+        "bulk rotation action payload is invalid"
+      )
     ).toThrow();
 
     expect(() =>
@@ -678,6 +707,26 @@ describe("registry payload parsers", () => {
         ],
         actorSource: "payload"
       })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkRotationActionRequest(
+        {
+          keyIds: [],
+          actor: "ops@example.com"
+        },
+        "bulk rotation action payload is invalid"
+      )
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkRotationActionRequest(
+        {
+          keyIds: ["key_dynamic_a"],
+          actorSource: "payload"
+        },
+        "bulk rotation action payload is invalid"
+      )
     ).toThrow();
 
     expect(() =>

@@ -5,8 +5,10 @@ import {
   bulkArchiveGatewayAdminKeys,
   bulkCreateGatewayAdminKeys,
   bulkDeleteGatewayAdminKeys,
+  bulkFinalizeGatewayAdminKeyRotations,
   bulkRotateGatewayAdminKeys,
   bulkRestoreGatewayAdminKeys,
+  bulkCancelGatewayAdminKeyRotations,
   restoreGatewayAdminKey,
   clearGatewayAdminKeyRegistryOverride,
   clearGatewayAdminKeyRevocation,
@@ -682,6 +684,146 @@ describe("finalizeGatewayAdminKeyRotation", () => {
         {
           isConfiguredKey: vi.fn().mockReturnValue(true),
           finalizeRegistryKeyRotation: vi.fn()
+        }
+      )
+    ).rejects.toMatchObject({
+      code: "gateway_key_not_registry_owned"
+    });
+  });
+});
+
+describe("bulkFinalizeGatewayAdminKeyRotations", () => {
+  it("passes bulk finalize payloads through for registry-owned keys", async () => {
+    const bulkFinalizeRegistryKeyRotations = vi.fn().mockResolvedValue([
+      {
+        keyId: "key_dynamic_a",
+        ownership: "registry",
+        key: {
+          id: "key_dynamic_a",
+          label: "Key A",
+          valueHash: gatewaySecretHash,
+          status: "active"
+        },
+        createdAt: "2026-05-14T00:00:00.000Z",
+        updatedAt: "2026-05-14T03:00:00.000Z"
+      }
+    ]);
+
+    await expect(
+      bulkFinalizeGatewayAdminKeyRotations(
+        {
+          keyIds: ["key_dynamic_a"],
+          reason: "cutover complete"
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn().mockReturnValue(false),
+          bulkFinalizeRegistryKeyRotations
+        }
+      )
+    ).resolves.toEqual({
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          ownership: "registry",
+          key: {
+            id: "key_dynamic_a",
+            label: "Key A",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          },
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T03:00:00.000Z"
+        }
+      ]
+    });
+
+    expect(bulkFinalizeRegistryKeyRotations).toHaveBeenCalledWith({
+      keyIds: ["key_dynamic_a"],
+      reason: "cutover complete"
+    });
+  });
+
+  it("rejects batches that include configured keys", async () => {
+    await expect(
+      bulkFinalizeGatewayAdminKeyRotations(
+        {
+          keyIds: ["key_dynamic_a", "key_env"]
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn((keyId: string) => keyId === "key_env"),
+          bulkFinalizeRegistryKeyRotations: vi.fn()
+        }
+      )
+    ).rejects.toMatchObject({
+      code: "gateway_key_not_registry_owned"
+    });
+  });
+});
+
+describe("bulkCancelGatewayAdminKeyRotations", () => {
+  it("passes bulk cancel payloads through for registry-owned keys", async () => {
+    const bulkCancelRegistryKeyRotations = vi.fn().mockResolvedValue([
+      {
+        keyId: "key_dynamic_a",
+        ownership: "registry",
+        key: {
+          id: "key_dynamic_a",
+          label: "Key A",
+          valueHash: gatewaySecretHash,
+          status: "active"
+        },
+        createdAt: "2026-05-14T00:00:00.000Z",
+        updatedAt: "2026-05-14T03:00:00.000Z"
+      }
+    ]);
+
+    await expect(
+      bulkCancelGatewayAdminKeyRotations(
+        {
+          keyIds: ["key_dynamic_a"],
+          reason: "rollback"
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn().mockReturnValue(false),
+          bulkCancelRegistryKeyRotations
+        }
+      )
+    ).resolves.toEqual({
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          ownership: "registry",
+          key: {
+            id: "key_dynamic_a",
+            label: "Key A",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          },
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T03:00:00.000Z"
+        }
+      ]
+    });
+
+    expect(bulkCancelRegistryKeyRotations).toHaveBeenCalledWith({
+      keyIds: ["key_dynamic_a"],
+      reason: "rollback"
+    });
+  });
+
+  it("rejects batches that include configured keys", async () => {
+    await expect(
+      bulkCancelGatewayAdminKeyRotations(
+        {
+          keyIds: ["key_dynamic_a", "key_env"]
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn((keyId: string) => keyId === "key_env"),
+          bulkCancelRegistryKeyRotations: vi.fn()
         }
       )
     ).rejects.toMatchObject({
