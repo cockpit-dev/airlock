@@ -13,6 +13,7 @@ export interface GatewayKeyAuditEvent {
   ownership: GatewayKeyAuditOwnership;
   occurredAt: string;
   reason?: string;
+  actor?: string;
 }
 
 export interface GatewayKeyAuditEventsResponse {
@@ -22,6 +23,7 @@ export interface GatewayKeyAuditEventsResponse {
 
 export const MAX_GATEWAY_KEY_AUDIT_EVENTS = 64;
 export const MAX_GATEWAY_KEY_AUDIT_REASON_LENGTH = 280;
+export const MAX_GATEWAY_KEY_AUDIT_ACTOR_LENGTH = 160;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -39,7 +41,8 @@ export function createGatewayKeyAuditEvent(
     kind: event.kind,
     ownership: event.ownership,
     occurredAt: event.occurredAt,
-    ...(event.reason ? { reason: event.reason } : {})
+    ...(event.reason ? { reason: event.reason } : {}),
+    ...(event.actor ? { actor: event.actor } : {})
   };
 }
 
@@ -48,7 +51,7 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
     throw new Error("Gateway key audit event must be an object");
   }
 
-  const { keyId, kind, ownership, occurredAt, reason } = value;
+  const { keyId, kind, ownership, occurredAt, reason, actor } = value;
 
   if (typeof keyId !== "string" || keyId.length === 0) {
     throw new Error("Gateway key audit event keyId must be a non-empty string");
@@ -73,13 +76,15 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
   }
 
   const parsedReason = parseOptionalGatewayKeyAuditReason(reason);
+  const parsedActor = parseOptionalGatewayKeyAuditActor(actor);
 
   return {
     keyId,
     kind,
     ownership,
     occurredAt,
-    ...(parsedReason ? { reason: parsedReason } : {})
+    ...(parsedReason ? { reason: parsedReason } : {}),
+    ...(parsedActor ? { actor: parsedActor } : {})
   };
 }
 
@@ -138,6 +143,30 @@ export function parseOptionalGatewayKeyAuditReason(
 
   if (trimmed.length > MAX_GATEWAY_KEY_AUDIT_REASON_LENGTH) {
     throw new Error("Gateway key audit reason is too long");
+  }
+
+  return trimmed;
+}
+
+export function parseOptionalGatewayKeyAuditActor(
+  value: unknown
+): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    throw new Error("Gateway key audit actor must be a string");
+  }
+
+  const trimmed = value.trim();
+
+  if (trimmed.length === 0) {
+    throw new Error("Gateway key audit actor must not be empty");
+  }
+
+  if (trimmed.length > MAX_GATEWAY_KEY_AUDIT_ACTOR_LENGTH) {
+    throw new Error("Gateway key audit actor is too long");
   }
 
   return trimmed;

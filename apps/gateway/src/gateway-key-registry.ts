@@ -12,6 +12,7 @@ import type { GatewayBindings } from "./env.js";
 import {
   createGatewayKeyAuditEvent,
   MAX_GATEWAY_KEY_AUDIT_EVENTS,
+  parseOptionalGatewayKeyAuditActor,
   parseOptionalGatewayKeyAuditReason,
   parseGatewayKeyAuditEventsResponse,
   type GatewayKeyAuditEvent,
@@ -82,10 +83,12 @@ interface GatewayKeyRegistryLookupRequest {
 interface GatewayKeyRegistryRotateRequest {
   valueHash: string;
   reason?: string;
+  actor?: string;
 }
 
 interface GatewayKeyRegistryDeleteRequest {
   reason?: string;
+  actor?: string;
 }
 
 export interface GatewayApiKeyStatusView {
@@ -363,6 +366,14 @@ function parseRotateRequest(value: unknown): GatewayKeyRegistryRotateRequest {
             "Gateway dynamic key rotation payload is invalid"
           )
         }
+      : {}),
+    ...(value.actor !== undefined
+      ? {
+          actor: parseActorPayload(
+            value.actor,
+            "Gateway dynamic key rotation payload is invalid"
+          )
+        }
       : {})
   };
 }
@@ -389,6 +400,14 @@ function parseDeleteRequest(value: unknown): GatewayKeyRegistryDeleteRequest {
             "Gateway dynamic key delete payload is invalid"
           )
         }
+      : {}),
+    ...(value.actor !== undefined
+      ? {
+          actor: parseActorPayload(
+            value.actor,
+            "Gateway dynamic key delete payload is invalid"
+          )
+        }
       : {})
   };
 }
@@ -402,6 +421,26 @@ function parseReasonPayload(value: unknown, message: string): string {
     }
 
     return reason;
+  } catch (cause) {
+    throw new GatewayError(message, {
+      code: "config_invalid_gateway_api_keys",
+      category: "configuration",
+      httpStatus: 400,
+      retryable: false,
+      cause
+    });
+  }
+}
+
+function parseActorPayload(value: unknown, message: string): string {
+  try {
+    const actor = parseOptionalGatewayKeyAuditActor(value);
+
+    if (!actor) {
+      throw new Error("Actor is missing");
+    }
+
+    return actor;
   } catch (cause) {
     throw new GatewayError(message, {
       code: "config_invalid_gateway_api_keys",
@@ -594,7 +633,8 @@ export class GatewayKeyRegistryDurableObject {
           kind: "rotated",
           ownership: "registry",
           occurredAt: key.updatedAt,
-          ...(payload.reason ? { reason: payload.reason } : {})
+          ...(payload.reason ? { reason: payload.reason } : {}),
+          ...(payload.actor ? { actor: payload.actor } : {})
         })
       );
 
@@ -661,7 +701,8 @@ export class GatewayKeyRegistryDurableObject {
               kind: "deleted",
               ownership: "registry",
               occurredAt: new Date().toISOString(),
-              ...(payload.reason ? { reason: payload.reason } : {})
+              ...(payload.reason ? { reason: payload.reason } : {}),
+              ...(payload.actor ? { actor: payload.actor } : {})
             })
           );
         }
@@ -1122,7 +1163,8 @@ export async function rotateGatewayRegistryApiKey(
         },
         body: JSON.stringify({
           valueHash: rotateRequest.valueHash,
-          ...(rotateRequest.reason ? { reason: rotateRequest.reason } : {})
+          ...(rotateRequest.reason ? { reason: rotateRequest.reason } : {}),
+          ...(rotateRequest.actor ? { actor: rotateRequest.actor } : {})
         } satisfies GatewayKeyRegistryRotateRequest)
       })
     );

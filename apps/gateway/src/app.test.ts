@@ -51,6 +51,7 @@ function isGatewayKeyEventsPayload(
     ownership?: string;
     occurredAt?: string;
     reason?: string;
+    actor?: string;
   }>;
 } {
   return (
@@ -64,7 +65,8 @@ function isGatewayKeyEventsPayload(
         typeof event.kind === "string" &&
         (event.ownership === undefined || typeof event.ownership === "string") &&
         (event.occurredAt === undefined || typeof event.occurredAt === "string") &&
-        (event.reason === undefined || typeof event.reason === "string")
+        (event.reason === undefined || typeof event.reason === "string") &&
+        (event.actor === undefined || typeof event.actor === "string")
       );
     })
   );
@@ -444,6 +446,7 @@ function createRevocationNamespace() {
         ownership: "configured" | "registry";
         occurredAt: string;
         reason?: string;
+        actor?: string;
       }>;
     }
   >();
@@ -485,6 +488,7 @@ function createRevocationNamespace() {
               recordEvent?: boolean;
               ownership?: "configured" | "registry";
               reason?: string;
+              actor?: string;
             };
             const occurredAt = new Date().toISOString();
             const next = {
@@ -500,7 +504,8 @@ function createRevocationNamespace() {
                         kind: "revoked" as const,
                         ownership: body.ownership ?? "configured",
                         occurredAt,
-                        ...(body.reason ? { reason: body.reason } : {})
+                        ...(body.reason ? { reason: body.reason } : {}),
+                        ...(body.actor ? { actor: body.actor } : {})
                       }
                     ]
             };
@@ -517,6 +522,7 @@ function createRevocationNamespace() {
               recordEvent?: boolean;
               ownership?: "configured" | "registry";
               reason?: string;
+              actor?: string;
             };
             const occurredAt = new Date().toISOString();
             const next = {
@@ -532,7 +538,8 @@ function createRevocationNamespace() {
                         kind: "unrevoked" as const,
                         ownership: body.ownership ?? "configured",
                         occurredAt,
-                        ...(body.reason ? { reason: body.reason } : {})
+                        ...(body.reason ? { reason: body.reason } : {}),
+                        ...(body.actor ? { actor: body.actor } : {})
                       }
                     ]
             };
@@ -3928,6 +3935,239 @@ describe("gateway app", () => {
           valueHash:
             "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
           reason: 42
+        })
+      },
+      bindings
+    );
+
+    expect(rotateResponse.status).toBe(400);
+  });
+
+  it("records explicit actor metadata on lifecycle audit events", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              id: "key_dynamic",
+              label: "Dynamic Runtime Key",
+              valueHash:
+                "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+              status: "active"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys/gak_1/revocation",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              reason: "incident containment",
+              actor: "oncall@example.com"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys/gak_1/revocation",
+          {
+            method: "DELETE",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              reason: "incident resolved",
+              actor: "sre@example.com"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys/key_dynamic/rotate",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              valueHash:
+                "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+              reason: "credential rollover",
+              actor: "platform@example.com"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys/key_dynamic",
+          {
+            method: "DELETE",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              reason: "tenant deprovisioned",
+              actor: "ops@example.com"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    const configuredEventsResponse = await app.request(
+      "http://localhost/_airlock/keys/gak_1/events",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(configuredEventsResponse.status).toBe(200);
+    const configuredPayload = await readJson(configuredEventsResponse);
+
+    expect(isGatewayKeyEventsPayload(configuredPayload)).toBe(true);
+
+    if (!isGatewayKeyEventsPayload(configuredPayload)) {
+      return;
+    }
+
+    expect(configuredPayload.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          keyId: "gak_1",
+          kind: "revoked",
+          actor: "oncall@example.com"
+        }),
+        expect.objectContaining({
+          keyId: "gak_1",
+          kind: "unrevoked",
+          actor: "sre@example.com"
+        })
+      ])
+    );
+
+    const registryEventsResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/events",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(registryEventsResponse.status).toBe(200);
+    const registryPayload = await readJson(registryEventsResponse);
+
+    expect(isGatewayKeyEventsPayload(registryPayload)).toBe(true);
+
+    if (!isGatewayKeyEventsPayload(registryPayload)) {
+      return;
+    }
+
+    expect(registryPayload.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          keyId: "key_dynamic",
+          kind: "rotated",
+          actor: "platform@example.com"
+        }),
+        expect.objectContaining({
+          keyId: "key_dynamic",
+          kind: "deleted",
+          actor: "ops@example.com"
+        })
+      ])
+    );
+  });
+
+  it("rejects invalid explicit actor metadata payloads", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    const revokeResponse = await app.request(
+      "http://localhost/_airlock/keys/gak_1/revocation",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          actor: "   "
+        })
+      },
+      bindings
+    );
+
+    expect(revokeResponse.status).toBe(400);
+
+    const rotateResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/rotate",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          valueHash:
+            "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+          actor: 42
         })
       },
       bindings
