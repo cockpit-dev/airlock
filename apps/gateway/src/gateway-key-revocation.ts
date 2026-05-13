@@ -10,8 +10,10 @@ import {
   createGatewayKeyAuditEvent,
   MAX_GATEWAY_KEY_AUDIT_EVENTS,
   parseOptionalGatewayKeyAuditActor,
+  parseOptionalGatewayKeyAuditActorSource,
   parseOptionalGatewayKeyAuditReason,
   parseGatewayKeyAuditEventsResponse,
+  type GatewayKeyAuditActorContext,
   type GatewayKeyAuditEvent,
   type GatewayKeyAuditEventsResponse,
   type GatewayKeyAuditOwnership
@@ -35,6 +37,7 @@ interface GatewayKeyRevocationWriteRequest {
   ownership?: GatewayKeyAuditOwnership;
   reason?: string;
   actor?: string;
+  actorSource?: "payload" | "trusted_header";
 }
 
 interface DurableObjectStateLike {
@@ -431,7 +434,8 @@ export async function revokeGatewayKeyById(
   gatewayApiKeys: readonly GatewayApiKeyRecord[],
   keyId: string,
   payload: unknown,
-  requestId: string
+  requestId: string,
+  actorContext?: GatewayKeyAuditActorContext
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
   const { gatewayApiKey, ownership } = await resolveGatewayApiKeyByIdWithRegistry(
     env,
@@ -448,6 +452,7 @@ export async function revokeGatewayKeyById(
     {
       keyId,
       ownership,
+      ...(actorContext ? toActorContextRecord(actorContext) : {}),
       ...parseExplicitRevocationMetadataPayload(
         payload,
         "Gateway key revocation payload is invalid"
@@ -486,7 +491,8 @@ export async function clearGatewayKeyRevocationById(
   gatewayApiKeys: readonly GatewayApiKeyRecord[],
   keyId: string,
   payload: unknown,
-  requestId: string
+  requestId: string,
+  actorContext?: GatewayKeyAuditActorContext
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
   const { gatewayApiKey, ownership } = await resolveGatewayApiKeyByIdWithRegistry(
     env,
@@ -503,6 +509,7 @@ export async function clearGatewayKeyRevocationById(
     {
       keyId,
       ownership,
+      ...(actorContext ? toActorContextRecord(actorContext) : {}),
       ...parseExplicitRevocationMetadataPayload(
         payload,
         "Gateway key revocation payload is invalid"
@@ -641,6 +648,7 @@ async function writeGatewayKeyRevocationStateForKey(
           recordEvent: options?.recordEvent ?? true,
           ...(options?.reason ? { reason: options.reason } : {}),
           ...(options?.actor ? { actor: options.actor } : {}),
+          ...(options?.actorSource ? { actorSource: options.actorSource } : {}),
           ...((options?.recordEvent ?? true)
             ? {
                 ownership:
@@ -727,7 +735,8 @@ async function writeGatewayKeyRevocationState(
         ownership: request.ownership ?? "configured",
         occurredAt: now,
         ...(request.reason ? { reason: request.reason } : {}),
-        ...(request.actor ? { actor: request.actor } : {})
+        ...(request.actor ? { actor: request.actor } : {}),
+        ...(request.actorSource ? { actorSource: request.actorSource } : {})
       })
     );
   }
@@ -888,10 +897,14 @@ function parseExplicitRevocationMetadataPayload(
     const actor = "actor" in payload
       ? parseOptionalGatewayKeyAuditActor(payload.actor)
       : undefined;
+    const actorSource = "actorSource" in payload
+      ? parseOptionalGatewayKeyAuditActorSource(payload.actorSource)
+      : undefined;
 
     return {
       ...(reason ? { reason } : {}),
-      ...(actor ? { actor } : {})
+      ...(actor ? { actor } : {}),
+      ...(actor && actorSource ? { actorSource } : {})
     };
   } catch (cause) {
     throw new GatewayError(message, {
@@ -902,6 +915,15 @@ function parseExplicitRevocationMetadataPayload(
       cause
     });
   }
+}
+
+function toActorContextRecord(
+  actorContext: GatewayKeyAuditActorContext
+): { actor: string; actorSource: "payload" | "trusted_header" } {
+  return {
+    actor: actorContext.actor,
+    actorSource: actorContext.actorSource
+  };
 }
 
 function createUnauthorizedGatewayKeyError(requestId: string): GatewayError {

@@ -1,4 +1,5 @@
 export type GatewayKeyAuditOwnership = "configured" | "registry";
+export type GatewayKeyAuditActorSource = "payload" | "trusted_header";
 
 export type GatewayKeyAuditEventKind =
   | "created"
@@ -16,6 +17,12 @@ export interface GatewayKeyAuditEvent {
   occurredAt: string;
   reason?: string;
   actor?: string;
+  actorSource?: GatewayKeyAuditActorSource;
+}
+
+export interface GatewayKeyAuditActorContext {
+  actor: string;
+  actorSource: GatewayKeyAuditActorSource;
 }
 
 export interface GatewayKeyAuditEventsResponse {
@@ -44,7 +51,10 @@ export function createGatewayKeyAuditEvent(
     ownership: event.ownership,
     occurredAt: event.occurredAt,
     ...(event.reason ? { reason: event.reason } : {}),
-    ...(event.actor ? { actor: event.actor } : {})
+    ...(event.actor ? { actor: event.actor } : {}),
+    ...(event.actor && event.actorSource
+      ? { actorSource: event.actorSource }
+      : {})
   };
 }
 
@@ -53,7 +63,7 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
     throw new Error("Gateway key audit event must be an object");
   }
 
-  const { keyId, kind, ownership, occurredAt, reason, actor } = value;
+  const { keyId, kind, ownership, occurredAt, reason, actor, actorSource } = value;
 
   if (typeof keyId !== "string" || keyId.length === 0) {
     throw new Error("Gateway key audit event keyId must be a non-empty string");
@@ -81,6 +91,13 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
 
   const parsedReason = parseOptionalGatewayKeyAuditReason(reason);
   const parsedActor = parseOptionalGatewayKeyAuditActor(actor);
+  const parsedActorSource = parseOptionalGatewayKeyAuditActorSource(actorSource);
+
+  if (parsedActorSource && !parsedActor) {
+    throw new Error(
+      "Gateway key audit event actorSource requires a corresponding actor"
+    );
+  }
 
   return {
     keyId,
@@ -88,7 +105,10 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
     ownership,
     occurredAt,
     ...(parsedReason ? { reason: parsedReason } : {}),
-    ...(parsedActor ? { actor: parsedActor } : {})
+    ...(parsedActor ? { actor: parsedActor } : {}),
+    ...(parsedActor && parsedActorSource
+      ? { actorSource: parsedActorSource }
+      : {})
   };
 }
 
@@ -174,4 +194,18 @@ export function parseOptionalGatewayKeyAuditActor(
   }
 
   return trimmed;
+}
+
+export function parseOptionalGatewayKeyAuditActorSource(
+  value: unknown
+): GatewayKeyAuditActorSource | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value !== "payload" && value !== "trusted_header") {
+    throw new Error("Gateway key audit actorSource is invalid");
+  }
+
+  return value;
 }

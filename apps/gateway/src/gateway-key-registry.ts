@@ -13,8 +13,10 @@ import {
   createGatewayKeyAuditEvent,
   MAX_GATEWAY_KEY_AUDIT_EVENTS,
   parseOptionalGatewayKeyAuditActor,
+  parseOptionalGatewayKeyAuditActorSource,
   parseOptionalGatewayKeyAuditReason,
   parseGatewayKeyAuditEventsResponse,
+  type GatewayKeyAuditActorContext,
   type GatewayKeyAuditEvent,
   type GatewayKeyAuditEventsResponse
 } from "./gateway-key-audit.js";
@@ -86,21 +88,29 @@ interface GatewayKeyRegistryLookupRequest {
   bearerToken: string;
 }
 
+interface GatewayKeyRegistryCreateRequest extends GatewayApiKeyRecord {
+  actor?: string;
+  actorSource?: "payload" | "trusted_header";
+}
+
 interface GatewayKeyRegistryRotateRequest {
   valueHash: string;
   overlapSeconds?: number;
   reason?: string;
   actor?: string;
+  actorSource?: "payload" | "trusted_header";
 }
 
 interface GatewayKeyRegistryRotationActionRequest {
   reason?: string;
   actor?: string;
+  actorSource?: "payload" | "trusted_header";
 }
 
 interface GatewayKeyRegistryDeleteRequest {
   reason?: string;
   actor?: string;
+  actorSource?: "payload" | "trusted_header";
 }
 
 export interface GatewayApiKeyStatusView {
@@ -448,12 +458,41 @@ function parseRotateRequest(value: unknown): GatewayKeyRegistryRotateRequest {
       : {}),
     ...(value.actor !== undefined
       ? {
-          actor: parseActorPayload(
-            value.actor,
-            "Gateway dynamic key rotation payload is invalid"
+          ...toActorContextRecord(
+            parseActorPayload(
+              value.actor,
+              "actorSource" in value ? value.actorSource : undefined,
+              "Gateway dynamic key rotation payload is invalid"
+            )
           )
         }
       : {})
+  };
+}
+
+function parseCreateRequest(
+  value: unknown,
+  existingGatewayApiKeys: readonly GatewayApiKeyRecord[]
+): {
+  key: GatewayApiKeyRecord;
+  actorContext?: GatewayKeyAuditActorContext;
+} {
+  const key = parseGatewayDynamicApiKeyRecord(
+    stripActorMetadata(value),
+    existingGatewayApiKeys
+  );
+
+  if (!isRecord(value) || value.actor === undefined) {
+    return { key };
+  }
+
+  return {
+    key,
+    actorContext: parseActorPayload(
+      value.actor,
+      "actorSource" in value ? value.actorSource : undefined,
+      "Gateway dynamic key create payload is invalid"
+    )
   };
 }
 
@@ -482,9 +521,12 @@ function parseDeleteRequest(value: unknown): GatewayKeyRegistryDeleteRequest {
       : {}),
     ...(value.actor !== undefined
       ? {
-          actor: parseActorPayload(
-            value.actor,
-            "Gateway dynamic key delete payload is invalid"
+          ...toActorContextRecord(
+            parseActorPayload(
+              value.actor,
+              "actorSource" in value ? value.actorSource : undefined,
+              "Gateway dynamic key delete payload is invalid"
+            )
           )
         }
       : {})
@@ -516,7 +558,13 @@ function parseRotationActionRequest(
       : {}),
     ...(value.actor !== undefined
       ? {
-          actor: parseActorPayload(value.actor, message)
+          ...toActorContextRecord(
+            parseActorPayload(
+              value.actor,
+              "actorSource" in value ? value.actorSource : undefined,
+              message
+            )
+          )
         }
       : {})
   };
@@ -560,7 +608,11 @@ function parseOverlapSecondsPayload(value: unknown, message: string): number {
   return value;
 }
 
-function parseActorPayload(value: unknown, message: string): string {
+function parseActorPayload(
+  value: unknown,
+  actorSource: unknown,
+  message: string
+): GatewayKeyAuditActorContext {
   try {
     const actor = parseOptionalGatewayKeyAuditActor(value);
 
@@ -568,7 +620,11 @@ function parseActorPayload(value: unknown, message: string): string {
       throw new Error("Actor is missing");
     }
 
-    return actor;
+    return {
+      actor,
+      actorSource:
+        parseOptionalGatewayKeyAuditActorSource(actorSource) ?? "payload"
+    };
   } catch (cause) {
     throw new GatewayError(message, {
       code: "config_invalid_gateway_api_keys",
@@ -578,6 +634,43 @@ function parseActorPayload(value: unknown, message: string): string {
       cause
     });
   }
+}
+
+function toActorContextRecord(
+  actorContext: GatewayKeyAuditActorContext
+): { actor: string; actorSource: "payload" | "trusted_header" } {
+  return {
+    actor: actorContext.actor,
+    actorSource: actorContext.actorSource
+  };
+}
+
+function actorContextFromRequest(
+  request:
+    | GatewayKeyRegistryCreateRequest
+    | GatewayKeyRegistryRotateRequest
+    | GatewayKeyRegistryRotationActionRequest
+    | GatewayKeyRegistryDeleteRequest
+): GatewayKeyAuditActorContext | undefined {
+  if (!request.actor) {
+    return undefined;
+  }
+
+  return {
+    actor: request.actor,
+    actorSource: request.actorSource ?? "payload"
+  };
+}
+
+function stripActorMetadata(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const rest = { ...value };
+  delete rest.actor;
+  delete rest.actorSource;
+  return rest;
 }
 
 function buildRegistryRequest(
@@ -768,6 +861,7 @@ export class GatewayKeyRegistryDurableObject {
           ? undefined
           : { clearPreviousValueHash: true }
       );
+      const actorContext = actorContextFromRequest(payload);
       await appendStoredDynamicKeyAuditEvent(
         this.state.storage,
         createGatewayKeyAuditEvent({
@@ -776,7 +870,7 @@ export class GatewayKeyRegistryDurableObject {
           ownership: "registry",
           occurredAt: key.updatedAt,
           ...(payload.reason ? { reason: payload.reason } : {}),
-          ...(payload.actor ? { actor: payload.actor } : {})
+          ...(actorContext ? toActorContextRecord(actorContext) : {})
         })
       );
 
@@ -807,6 +901,7 @@ export class GatewayKeyRegistryDurableObject {
         await request.json(),
         "Gateway dynamic key rotation finalize payload is invalid"
       );
+      const actorContext = actorContextFromRequest(payload);
       const key = await updateStoredDynamicKey(
         this.state.storage,
         existingKey,
@@ -821,7 +916,7 @@ export class GatewayKeyRegistryDurableObject {
           ownership: "registry",
           occurredAt: key.updatedAt,
           ...(payload.reason ? { reason: payload.reason } : {}),
-          ...(payload.actor ? { actor: payload.actor } : {})
+          ...(actorContext ? toActorContextRecord(actorContext) : {})
         })
       );
 
@@ -856,6 +951,7 @@ export class GatewayKeyRegistryDurableObject {
         await request.json(),
         "Gateway dynamic key rotation cancel payload is invalid"
       );
+      const actorContext = actorContextFromRequest(payload);
       const key = await updateStoredDynamicKey(
         this.state.storage,
         {
@@ -873,7 +969,7 @@ export class GatewayKeyRegistryDurableObject {
           ownership: "registry",
           occurredAt: key.updatedAt,
           ...(payload.reason ? { reason: payload.reason } : {}),
-          ...(payload.actor ? { actor: payload.actor } : {})
+          ...(actorContext ? toActorContextRecord(actorContext) : {})
         })
       );
 
@@ -885,9 +981,10 @@ export class GatewayKeyRegistryDurableObject {
     if (kind === REGISTRY_KIND_DYNAMIC) {
       if (request.method === "POST") {
         const dynamicKeys = await listStoredDynamicKeys(this.state.storage);
+        const createRequest = parseCreateRequest(await request.json(), dynamicKeys);
         const key = await createStoredDynamicKey(
           this.state.storage,
-          parseGatewayDynamicApiKeyRecord(await request.json(), dynamicKeys)
+          createRequest.key
         );
         await appendStoredDynamicKeyAuditEvent(
           this.state.storage,
@@ -895,7 +992,10 @@ export class GatewayKeyRegistryDurableObject {
             keyId: key.id,
             kind: "created",
             ownership: "registry",
-            occurredAt: key.createdAt
+            occurredAt: key.createdAt,
+            ...(createRequest.actorContext
+              ? toActorContextRecord(createRequest.actorContext)
+              : {})
           })
         );
 
@@ -926,6 +1026,7 @@ export class GatewayKeyRegistryDurableObject {
           request.headers.get("content-type")?.includes("application/json")
             ? parseDeleteRequest(await request.json())
             : {};
+        const actorContext = actorContextFromRequest(payload);
         const deleted = await clearStoredDynamicKey(this.state.storage, keyId);
 
         if (!deleted) {
@@ -941,7 +1042,7 @@ export class GatewayKeyRegistryDurableObject {
               ownership: "registry",
               occurredAt: new Date().toISOString(),
               ...(payload.reason ? { reason: payload.reason } : {}),
-              ...(payload.actor ? { actor: payload.actor } : {})
+              ...(actorContext ? toActorContextRecord(actorContext) : {})
             })
           );
         }
@@ -1097,15 +1198,17 @@ export async function createGatewayRegistryApiKey(
   env: GatewayBindings,
   configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
   payload: unknown,
-  requestId: string
+  requestId: string,
+  actorContext?: GatewayKeyAuditActorContext
 ): Promise<GatewayKeyRegistryDynamicKeyView> {
   const existingDynamicKeys = await listGatewayRegistryApiKeys(env, requestId);
-  const gatewayApiKey = parseGatewayDynamicApiKeyRecord(payload, [
+  const createRequest = parseCreateRequest(payload, [
     ...configuredGatewayApiKeys,
     ...existingDynamicKeys.map((entry) => {
       return entry.key;
     })
   ]);
+  const gatewayApiKey = createRequest.key;
   assertGatewayKeyRuntimeDependencies(env, gatewayApiKey, requestId);
   const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
   const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
@@ -1118,7 +1221,12 @@ export async function createGatewayRegistryApiKey(
         headers: {
           "content-type": "application/json"
         },
-        body: JSON.stringify(gatewayApiKey)
+        body: JSON.stringify({
+          ...gatewayApiKey,
+          ...(actorContext ?? createRequest.actorContext
+            ? toActorContextRecord(actorContext ?? createRequest.actorContext!)
+            : {})
+        } satisfies GatewayKeyRegistryCreateRequest)
       })
     );
   } catch (cause) {
@@ -1186,7 +1294,8 @@ export async function deleteGatewayRegistryApiKey(
   configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
   keyId: string,
   payload: unknown,
-  requestId: string
+  requestId: string,
+  actorContext?: GatewayKeyAuditActorContext
 ): Promise<void> {
   if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
     throw createGatewayKeyNotRegistryOwnedError(requestId);
@@ -1218,7 +1327,10 @@ export async function deleteGatewayRegistryApiKey(
         headers: {
           "content-type": "application/json"
         },
-        body: JSON.stringify(deleteRequest)
+        body: JSON.stringify({
+          ...deleteRequest,
+          ...(actorContext ? toActorContextRecord(actorContext) : {})
+        } satisfies GatewayKeyRegistryDeleteRequest)
       })
     );
   } catch (cause) {
@@ -1354,7 +1466,8 @@ export async function rotateGatewayRegistryApiKey(
   configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
   keyId: string,
   payload: unknown,
-  requestId: string
+  requestId: string,
+  actorContext?: GatewayKeyAuditActorContext
 ): Promise<GatewayKeyRegistryDynamicKeyView> {
   if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
     throw createGatewayKeyNotRegistryOwnedError(requestId);
@@ -1406,7 +1519,11 @@ export async function rotateGatewayRegistryApiKey(
             ? { overlapSeconds: rotateRequest.overlapSeconds }
             : {}),
           ...(rotateRequest.reason ? { reason: rotateRequest.reason } : {}),
-          ...(rotateRequest.actor ? { actor: rotateRequest.actor } : {})
+          ...(actorContext
+            ? toActorContextRecord(actorContext)
+            : rotateRequest.actor
+              ? toActorContextRecord(actorContextFromRequest(rotateRequest)!)
+              : {})
         } satisfies GatewayKeyRegistryRotateRequest)
       })
     );
@@ -1440,7 +1557,8 @@ export async function finalizeGatewayRegistryApiKeyRotation(
   configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
   keyId: string,
   payload: unknown,
-  requestId: string
+  requestId: string,
+  actorContext?: GatewayKeyAuditActorContext
 ): Promise<GatewayKeyRegistryDynamicKeyView> {
   if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
     throw createGatewayKeyNotRegistryOwnedError(requestId);
@@ -1462,7 +1580,10 @@ export async function finalizeGatewayRegistryApiKeyRotation(
         headers: {
           "content-type": "application/json"
         },
-        body: JSON.stringify(actionRequest)
+        body: JSON.stringify({
+          ...actionRequest,
+          ...(actorContext ? toActorContextRecord(actorContext) : {})
+        } satisfies GatewayKeyRegistryRotationActionRequest)
       })
     );
   } catch (cause) {
@@ -1499,7 +1620,8 @@ export async function cancelGatewayRegistryApiKeyRotation(
   configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
   keyId: string,
   payload: unknown,
-  requestId: string
+  requestId: string,
+  actorContext?: GatewayKeyAuditActorContext
 ): Promise<GatewayKeyRegistryDynamicKeyView> {
   if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
     throw createGatewayKeyNotRegistryOwnedError(requestId);
@@ -1521,7 +1643,10 @@ export async function cancelGatewayRegistryApiKeyRotation(
         headers: {
           "content-type": "application/json"
         },
-        body: JSON.stringify(actionRequest)
+        body: JSON.stringify({
+          ...actionRequest,
+          ...(actorContext ? toActorContextRecord(actorContext) : {})
+        } satisfies GatewayKeyRegistryRotationActionRequest)
       })
     );
   } catch (cause) {

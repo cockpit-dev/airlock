@@ -73,6 +73,8 @@ export const gatewayEnvSchema = z.object({
     .optional(),
   AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: z.coerce.boolean().default(false),
   AIRLOCK_INTERNAL_ADMIN_TOKEN: z.string().min(1).optional(),
+  AIRLOCK_INTERNAL_ADMIN_ACTOR_HEADER: z.string().min(1).optional(),
+  AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED: z.coerce.boolean().default(false),
   AIRLOCK_GATEWAY_KEY_REGISTRY: z
     .custom<{
       idFromName(name: string): unknown;
