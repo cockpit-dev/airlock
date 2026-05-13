@@ -5,6 +5,7 @@ import {
   createGatewayAdminKey as writeGatewayAdminKeyCreate,
   deleteGatewayAdminKey as writeGatewayAdminKeyDelete,
   finalizeGatewayAdminKeyRotation as writeGatewayAdminKeyRotationFinalize,
+  bulkUpdateGatewayAdminKeys as writeGatewayAdminKeyBulkUpdate,
   getGatewayAdminKey as readGatewayAdminKey,
   getGatewayAdminKeyEvents as readGatewayAdminKeyEvents,
   getGatewayAdminKeyRegistryView as readGatewayAdminKeyRegistryView,
@@ -25,6 +26,7 @@ import { resolveGatewayConfig } from "./config.js";
 import type { GatewayBindings } from "./env.js";
 import {
   cancelGatewayRegistryApiKeyRotation,
+  bulkUpdateGatewayRegistryApiKeys,
   clearGatewayKeyRegistryOverride,
   createGatewayRegistryApiKey,
   deleteGatewayRegistryApiKey,
@@ -91,6 +93,55 @@ export async function createAdminGatewayKey(
       );
     }
   });
+}
+
+export async function bulkUpdateAdminGatewayKeys(
+  env: GatewayBindings,
+  request: Request,
+  requestId: string,
+  payload: unknown
+) {
+  const config = resolveGatewayConfig(env);
+  const mutation = await resolveAdminMutationActorCommand(
+    request,
+    env,
+    payload,
+    requestId,
+    "Gateway dynamic key bulk update payload is invalid"
+  );
+
+  return writeGatewayAdminKeyBulkUpdate(
+    mutation.payload as {
+      updates: Array<{
+        keyId: string;
+        status?: "active" | "revoked";
+        label?: string;
+        notBefore?: string | null;
+        expiresAt?: string | null;
+        policy?: object | null;
+      }>;
+      reason?: string;
+      actor?: string;
+      actorSource?: "payload" | "trusted_header" | "credential";
+    },
+    requestId,
+    {
+      isConfiguredKey: (candidateKeyId) => {
+        return config.gatewayApiKeys.some((gatewayApiKey) => {
+          return gatewayApiKey.id === candidateKeyId;
+        });
+      },
+      bulkUpdateRegistryKeys: (candidatePayload) => {
+        return bulkUpdateGatewayRegistryApiKeys(
+          env,
+          config.gatewayApiKeys,
+          candidatePayload,
+          requestId,
+          mutation.actorContext
+        );
+      }
+    }
+  );
 }
 
 export async function getAdminGatewayKey(

@@ -91,6 +91,16 @@ export interface GatewayKeyRegistryUpdateRequest {
   auditMetadata: GatewayKeyRegistryUpdateAuditMetadata;
 }
 
+export interface GatewayKeyRegistryBulkUpdateItem {
+  keyId: string;
+  update: GatewayApiKeyMetadataOverride;
+}
+
+export interface GatewayKeyRegistryBulkUpdateRequest {
+  updates: GatewayKeyRegistryBulkUpdateItem[];
+  auditMetadata: GatewayKeyRegistryUpdateAuditMetadata;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -533,6 +543,87 @@ export function parseGatewayKeyRegistryUpdateRequest(
 
   return {
     update,
+    auditMetadata: {
+      ...(value.reason !== undefined
+        ? {
+            reason: parseRequiredGatewayKeyRegistryReason(value.reason, message)
+          }
+        : {}),
+      ...(value.actor !== undefined
+        ? {
+            ...toGatewayKeyAuditActorContextRecord(
+              parseRequiredGatewayKeyRegistryActorContext(
+                value.actor,
+                "actorSource" in value ? value.actorSource : undefined,
+                message
+              )
+            )
+          }
+        : {})
+    }
+  };
+}
+
+export function parseGatewayKeyRegistryBulkUpdateRequest(
+  value: unknown
+): GatewayKeyRegistryBulkUpdateRequest {
+  const message = "Gateway dynamic key bulk update payload is invalid";
+
+  if (!isRecord(value) || !Array.isArray(value.updates)) {
+    throw createGatewayKeyRegistryPayloadError(message);
+  }
+
+  if (value.updates.length === 0) {
+    throw createGatewayKeyRegistryPayloadError(
+      message,
+      new Error("updates must be a non-empty array")
+    );
+  }
+
+  if (value.actorSource !== undefined && value.actor === undefined) {
+    throw createGatewayKeyRegistryPayloadError(
+      message,
+      new Error("actorSource requires actor")
+    );
+  }
+
+  const seenKeyIds = new Set<string>();
+  const updates = value.updates.map((entry) => {
+    if (!isRecord(entry)) {
+      throw createGatewayKeyRegistryPayloadError(message);
+    }
+
+    const keyId = typeof entry.keyId === "string" ? entry.keyId.trim() : "";
+
+    if (keyId.length === 0) {
+      throw createGatewayKeyRegistryPayloadError(
+        message,
+        new Error("Each update must include a non-empty keyId")
+      );
+    }
+
+    if (seenKeyIds.has(keyId)) {
+      throw createGatewayKeyRegistryPayloadError(
+        message,
+        new Error("Duplicate keyId values are not allowed")
+      );
+    }
+
+    seenKeyIds.add(keyId);
+
+    const updateCandidate = Object.fromEntries(
+      Object.entries(entry).filter(([key]) => key !== "keyId")
+    );
+    const parsedUpdate = parseGatewayKeyRegistryUpdateRequest(updateCandidate);
+
+    return {
+      keyId,
+      update: parsedUpdate.update
+    };
+  });
+
+  return {
+    updates,
     auditMetadata: {
       ...(value.reason !== undefined
         ? {

@@ -8,6 +8,7 @@ import {
   finalizeGatewayAdminKeyRotation,
   revokeGatewayAdminKey,
   rotateGatewayAdminKey,
+  bulkUpdateGatewayAdminKeys,
   updateGatewayAdminKey
 } from "./admin-key-governance-mutations.js";
 
@@ -177,6 +178,62 @@ describe("updateGatewayAdminKey", () => {
         {
           isConfiguredKey: vi.fn().mockReturnValue(true),
           updateRegistryKey: vi.fn()
+        }
+      )
+    ).rejects.toMatchObject({
+      code: "gateway_key_not_registry_owned"
+    });
+  });
+});
+
+describe("bulkUpdateGatewayAdminKeys", () => {
+  it("passes bulk update payloads through for registry-owned keys", async () => {
+    const bulkUpdateRegistryKeys = vi.fn().mockResolvedValue([
+      {
+        keyId: "key_dynamic_a",
+        ownership: "registry",
+        key: {
+          id: "key_dynamic_a",
+          label: "Key A",
+          valueHash: gatewaySecretHash,
+          status: "revoked"
+        },
+        createdAt: "2026-05-14T00:00:00.000Z",
+        updatedAt: "2026-05-14T01:00:00.000Z"
+      }
+    ]);
+
+    await bulkUpdateGatewayAdminKeys(
+      {
+        updates: [{ keyId: "key_dynamic_a", status: "revoked" }],
+        reason: "maintenance"
+      },
+      "req_123",
+      {
+        isConfiguredKey: vi.fn().mockReturnValue(false),
+        bulkUpdateRegistryKeys
+      }
+    );
+
+    expect(bulkUpdateRegistryKeys).toHaveBeenCalledWith({
+      updates: [{ keyId: "key_dynamic_a", status: "revoked" }],
+      reason: "maintenance"
+    });
+  });
+
+  it("rejects batches that include configured keys", async () => {
+    await expect(
+      bulkUpdateGatewayAdminKeys(
+        {
+          updates: [
+            { keyId: "key_dynamic_a", status: "revoked" },
+            { keyId: "key_env", status: "revoked" }
+          ]
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn((keyId: string) => keyId === "key_env"),
+          bulkUpdateRegistryKeys: vi.fn()
         }
       )
     ).rejects.toMatchObject({

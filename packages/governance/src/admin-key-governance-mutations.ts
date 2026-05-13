@@ -2,7 +2,10 @@ import { GatewayError } from "@airlock/shared";
 
 import type { GatewayApiKeyMetadataOverride } from "./gateway-auth.js";
 import type { GatewayKeyAuditActorContext } from "./gateway-key-audit.js";
-import type { GatewayKeyRegistryDynamicKeyView } from "./gateway-key-registry.js";
+import type {
+  GatewayKeyRegistryBulkUpdateRequest,
+  GatewayKeyRegistryDynamicKeyView
+} from "./gateway-key-registry.js";
 
 function createGatewayKeyNotRegistryOwnedError(requestId: string): GatewayError {
   return new GatewayError("Gateway API key is not registry owned", {
@@ -39,6 +42,22 @@ export interface UpdateGatewayAdminKeyPort {
     keyId: string,
     payload: unknown
   ): Promise<GatewayKeyRegistryDynamicKeyView>;
+}
+
+export interface BulkUpdateGatewayAdminKeysPort {
+  isConfiguredKey(keyId: string): boolean;
+  bulkUpdateRegistryKeys(
+    payload: GatewayKeyRegistryBulkUpdateRequest["auditMetadata"] & {
+      updates: Array<{
+        keyId: string;
+        status?: "active" | "revoked";
+        label?: string;
+        notBefore?: string | null;
+        expiresAt?: string | null;
+        policy?: object | null;
+      }>;
+    }
+  ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
 }
 
 export interface FinalizeGatewayAdminKeyRotationPort {
@@ -131,6 +150,33 @@ export async function updateGatewayAdminKey(
   }
 
   return port.updateRegistryKey(keyId, payload);
+}
+
+export async function bulkUpdateGatewayAdminKeys(
+  payload: GatewayKeyRegistryBulkUpdateRequest["auditMetadata"] & {
+    updates: Array<{
+      keyId: string;
+      status?: "active" | "revoked";
+      label?: string;
+      notBefore?: string | null;
+      expiresAt?: string | null;
+      policy?: object | null;
+    }>;
+  },
+  requestId: string,
+  port: BulkUpdateGatewayAdminKeysPort
+): Promise<{
+  keys: GatewayKeyRegistryDynamicKeyView[];
+}> {
+  for (const entry of payload.updates) {
+    if (port.isConfiguredKey(entry.keyId)) {
+      throw createGatewayKeyNotRegistryOwnedError(requestId);
+    }
+  }
+
+  return {
+    keys: await port.bulkUpdateRegistryKeys(payload)
+  };
 }
 
 export async function finalizeGatewayAdminKeyRotation(

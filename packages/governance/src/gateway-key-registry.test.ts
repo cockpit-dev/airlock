@@ -11,6 +11,7 @@ import {
   parseGatewayKeyRegistryRecordResponse,
   parseGatewayKeyRegistryRotateRequest,
   parseGatewayKeyRegistryRotationActionRequest,
+  parseGatewayKeyRegistryBulkUpdateRequest,
   parseGatewayKeyRegistryUpdateRequest,
   parseGatewayKeyRegistryStoredDynamicKey,
   parseGatewayKeyRegistryStoredOverride,
@@ -298,6 +299,50 @@ describe("registry payload parsers", () => {
         actorSource: "trusted_header"
       }
     });
+
+    expect(
+      parseGatewayKeyRegistryBulkUpdateRequest({
+        updates: [
+          {
+            keyId: "key_dynamic_a",
+            status: "revoked"
+          },
+          {
+            keyId: "key_dynamic_b",
+            label: "Tenant B Key",
+            policy: {
+              tier: "pro"
+            }
+          }
+        ],
+        reason: "maintenance window",
+        actor: "ops@example.com",
+        actorSource: "credential"
+      })
+    ).toEqual({
+      updates: [
+        {
+          keyId: "key_dynamic_a",
+          update: {
+            status: "revoked"
+          }
+        },
+        {
+          keyId: "key_dynamic_b",
+          update: {
+            label: "Tenant B Key",
+            policy: {
+              tier: "pro"
+            }
+          }
+        }
+      ],
+      auditMetadata: {
+        reason: "maintenance window",
+        actor: "ops@example.com",
+        actorSource: "credential"
+      }
+    });
   });
 
   it("rejects invalid overlapSeconds and actorSource values", () => {
@@ -329,6 +374,33 @@ describe("registry payload parsers", () => {
     expect(() =>
       parseGatewayKeyRegistryUpdateRequest({
         actorSource: "payload"
+      })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkUpdateRequest({
+        updates: []
+      })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkUpdateRequest({
+        updates: [
+          { keyId: "key_dynamic_a", status: "revoked" },
+          { keyId: "key_dynamic_a", label: "Duplicate" }
+        ]
+      })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkUpdateRequest({
+        updates: [
+          {
+            keyId: "key_dynamic_a",
+            valueHash:
+              "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6"
+          }
+        ]
       })
     ).toThrow();
   });

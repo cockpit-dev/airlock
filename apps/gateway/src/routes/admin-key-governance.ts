@@ -8,6 +8,7 @@ import {
 
 import {
   cancelAdminGatewayKeyRotation,
+  bulkUpdateAdminGatewayKeys,
   clearAdminGatewayKeyRegistryOverride,
   clearAdminGatewayKeyRevocation,
   createAdminGatewayKey,
@@ -83,6 +84,20 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
     return context.json(
       await createAdminGatewayKey(
+        context.env,
+        context.req.raw,
+        requestId,
+        await context.req.json()
+      )
+    );
+  });
+
+  app.patch("/_airlock/keys", async (context) => {
+    const requestId = context.get("requestId");
+    await requireAdminScope(context, "keys.write");
+
+    return context.json(
+      await bulkUpdateAdminGatewayKeys(
         context.env,
         context.req.raw,
         requestId,

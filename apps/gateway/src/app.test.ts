@@ -6668,6 +6668,225 @@ describe("gateway app", () => {
     expect(response.status).toBe(400);
   });
 
+  it("can bulk update registry-owned dynamic key metadata", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    for (const payload of [
+      {
+        id: "key_dynamic_a",
+        label: "Dynamic Key A",
+        valueHash:
+          "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+        status: "active"
+      },
+      {
+        id: "key_dynamic_b",
+        label: "Dynamic Key B",
+        valueHash:
+          "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+        status: "active"
+      }
+    ]) {
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify(payload)
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+    }
+
+    const bulkResponse = await app.request(
+      "http://localhost/_airlock/keys",
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          updates: [
+            {
+              keyId: "key_dynamic_a",
+              status: "revoked"
+            },
+            {
+              keyId: "key_dynamic_b",
+              label: "Tenant B Key",
+              notBefore: "2099-01-01T00:00:00.000Z"
+            }
+          ],
+          reason: "maintenance window",
+          actor: "ops@example.com"
+        })
+      },
+      bindings
+    );
+
+    expect(bulkResponse.status).toBe(200);
+    await expect(readJson(bulkResponse)).resolves.toMatchObject({
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          key: {
+            status: "revoked"
+          }
+        },
+        {
+          keyId: "key_dynamic_b",
+          key: {
+            label: "Tenant B Key",
+            notBefore: "2099-01-01T00:00:00.000Z"
+          }
+        }
+      ]
+    });
+
+    const listResponse = await app.request(
+      "http://localhost/_airlock/keys",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(listResponse.status).toBe(200);
+    const listPayload = await readJson(listResponse);
+    expect(isRecord(listPayload)).toBe(true);
+
+    if (!isRecord(listPayload) || !isRecordArray(listPayload.keys)) {
+      return;
+    }
+
+    expect(
+      listPayload.keys.find((entry) => entry.keyId === "key_dynamic_a")
+    ).toMatchObject({
+      runtime: {
+        effectiveStatus: "revoked",
+        acceptedNow: false
+      }
+    });
+    expect(
+      listPayload.keys.find((entry) => entry.keyId === "key_dynamic_b")
+    ).toMatchObject({
+      runtime: {
+        label: "Tenant B Key",
+        lifecycleStatus: "not_yet_active",
+        acceptedNow: false
+      }
+    });
+  });
+
+  it("rejects mixed configured and registry-owned bulk updates atomically", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_env",
+          label: "Configured Gateway Key",
+          value: "gateway-secret",
+          status: "active"
+        }
+      ])
+    };
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              id: "key_dynamic_a",
+              label: "Dynamic Key A",
+              valueHash:
+                "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+              status: "active"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    const bulkResponse = await app.request(
+      "http://localhost/_airlock/keys",
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          updates: [
+            {
+              keyId: "key_dynamic_a",
+              status: "revoked"
+            },
+            {
+              keyId: "key_env",
+              status: "revoked"
+            }
+          ]
+        })
+      },
+      bindings
+    );
+
+    expect(bulkResponse.status).toBe(409);
+    await expect(readJson(bulkResponse)).resolves.toMatchObject({
+      error: {
+        code: "gateway_key_not_registry_owned"
+      }
+    });
+
+    const readResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic_a",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(readResponse.status).toBe(200);
+    await expect(readJson(readResponse)).resolves.toMatchObject({
+      key: {
+        status: "active"
+      }
+    });
+  });
+
   it("authorizes hashed structured gateway keys on chat completions requests", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
