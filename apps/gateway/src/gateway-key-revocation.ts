@@ -1,16 +1,21 @@
 import {
+  buildGatewayKeyRevocationStateTransition,
   createGatewayApiKeyRegistrySnapshot,
   createGatewayKeyAuditEvent,
+  DEFAULT_GATEWAY_KEY_REVOCATION_STATE,
   deriveGatewayApiKeyStatusView,
   MAX_GATEWAY_KEY_AUDIT_EVENTS,
+  parseExplicitGatewayKeyRevocationMetadataPayload,
+  parseGatewayKeyRevocationState,
+  parseGatewayKeyRevocationWriteRequest,
   parseGatewayKeyAuditEventsResponse,
-  parseOptionalGatewayKeyAuditActor,
-  parseOptionalGatewayKeyAuditActorSource,
-  parseOptionalGatewayKeyAuditReason,
+  toGatewayKeyRevocationActorContextRecord,
   type GatewayApiKeyRegistrySnapshot,
   type GatewayApiKeyStatusView,
   type GatewayApiKeyLifecycleStatus,
   type GatewayKeyRevocationOverlayState,
+  type GatewayKeyRevocationState,
+  type GatewayKeyRevocationWriteRequest,
   type GatewayKeyAuditActorContext,
   type GatewayKeyAuditEvent,
   type GatewayKeyAuditEventsResponse,
@@ -26,57 +31,13 @@ import {
   resolveGatewayRuntimeApiKey
 } from "./gateway-key-registry.js";
 
-interface GatewayKeyRevocationState {
-  revoked: boolean;
-  updatedAt: string;
-}
-
-interface GatewayKeyRevocationWriteRequest {
-  keyId?: string;
-  recordEvent?: boolean;
-  ownership?: GatewayKeyAuditOwnership;
-  reason?: string;
-  actor?: string;
-  actorSource?: "payload" | "trusted_header" | "credential";
-}
-
 interface DurableObjectStateLike {
   storage: {
     get<T>(key: string): Promise<T | undefined>;
     put<T>(key: string, value: T): Promise<void>;
   };
 }
-
-const DEFAULT_REVOCATION_STATE: GatewayKeyRevocationState = {
-  revoked: false,
-  updatedAt: new Date(0).toISOString()
-};
 const REVOCATION_EVENTS_KEY = "revocation_events";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function parseRevocationState(value: unknown): GatewayKeyRevocationState {
-  if (!isRecord(value)) {
-    throw new Error("Revocation state must be an object");
-  }
-
-  const { revoked, updatedAt } = value;
-
-  if (
-    typeof revoked !== "boolean" ||
-    typeof updatedAt !== "string" ||
-    Number.isNaN(Date.parse(updatedAt))
-  ) {
-    throw new Error("Revocation state is invalid");
-  }
-
-  return {
-    revoked,
-    updatedAt
-  };
-}
 
 export class GatewayKeyRevocationDurableObject {
   constructor(private readonly state: DurableObjectStateLike) {}
@@ -168,7 +129,7 @@ export async function assertGatewayKeyNotRevoked(
   let state: GatewayKeyRevocationState;
 
   try {
-    state = parseRevocationState(await response.json());
+    state = parseGatewayKeyRevocationState(await response.json());
   } catch (cause) {
     throw new GatewayError(
       "Gateway key revocation subsystem returned an invalid response",
@@ -287,7 +248,7 @@ export async function getGatewayApiKeyStatus(
 ): Promise<GatewayApiKeyStatusView> {
   const overlayState = env.AIRLOCK_GATEWAY_KEY_REVOCATION
     ? await readGatewayKeyRevocationStateForKey(env, gatewayApiKey, requestId)
-    : DEFAULT_REVOCATION_STATE;
+    : DEFAULT_GATEWAY_KEY_REVOCATION_STATE;
 
   return deriveGatewayApiKeyStatusView(
     gatewayApiKey,
@@ -430,8 +391,10 @@ export async function revokeGatewayKeyById(
     {
       keyId,
       ownership,
-      ...(actorContext ? toActorContextRecord(actorContext) : {}),
-      ...parseExplicitRevocationMetadataPayload(
+      ...(actorContext
+        ? toGatewayKeyRevocationActorContextRecord(actorContext)
+        : {}),
+      ...parseExplicitGatewayKeyRevocationMetadataPayload(
         payload,
         "Gateway key revocation payload is invalid"
       )
@@ -487,8 +450,10 @@ export async function clearGatewayKeyRevocationById(
     {
       keyId,
       ownership,
-      ...(actorContext ? toActorContextRecord(actorContext) : {}),
-      ...parseExplicitRevocationMetadataPayload(
+      ...(actorContext
+        ? toGatewayKeyRevocationActorContextRecord(actorContext)
+        : {}),
+      ...parseExplicitGatewayKeyRevocationMetadataPayload(
         payload,
         "Gateway key revocation payload is invalid"
       )
@@ -600,7 +565,7 @@ async function readGatewayKeyRevocationStateForKey(
     });
   }
 
-  return parseRevocationState(await response.json());
+  return parseGatewayKeyRevocationState(await response.json());
 }
 
 async function writeGatewayKeyRevocationStateForKey(
@@ -662,7 +627,7 @@ async function writeGatewayKeyRevocationStateForKey(
     });
   }
 
-  return parseRevocationState(await response.json());
+  return parseGatewayKeyRevocationState(await response.json());
 }
 
 function requireGatewayKeyRevocationNamespace(
@@ -688,7 +653,7 @@ async function readGatewayKeyRevocationState(
   storage: DurableObjectStateLike["storage"]
 ): Promise<GatewayKeyRevocationState> {
   const state = await storage.get<GatewayKeyRevocationState>("revocation_state");
-  return state ?? DEFAULT_REVOCATION_STATE;
+  return state ?? DEFAULT_GATEWAY_KEY_REVOCATION_STATE;
 }
 
 async function writeGatewayKeyRevocationState(
@@ -697,29 +662,22 @@ async function writeGatewayKeyRevocationState(
   request: GatewayKeyRevocationWriteRequest = {},
   now = new Date().toISOString()
 ): Promise<GatewayKeyRevocationState> {
-  const nextState = {
+  const transition = buildGatewayKeyRevocationStateTransition(
     revoked,
-    updatedAt: now
-  };
+    request,
+    now
+  );
 
-  await storage.put("revocation_state", nextState);
+  await storage.put("revocation_state", transition.nextState);
 
-  if (request.recordEvent ?? true) {
+  if (transition.auditEvent) {
     await appendGatewayKeyRevocationEvent(
       storage,
-      createGatewayKeyAuditEvent({
-        keyId: requestKeyIdFromOwnershipRequest(request),
-        kind: revoked ? "revoked" : "unrevoked",
-        ownership: request.ownership ?? "configured",
-        occurredAt: now,
-        ...(request.reason ? { reason: request.reason } : {}),
-        ...(request.actor ? { actor: request.actor } : {}),
-        ...(request.actorSource ? { actorSource: request.actorSource } : {})
-      })
+      transition.auditEvent
     );
   }
 
-  return nextState;
+  return transition.nextState;
 }
 
 async function readGatewayKeyRevocationEvents(
@@ -771,47 +729,7 @@ async function readGatewayKeyRevocationWriteRequest(
     return {};
   }
 
-  const body = (await request.json()) as GatewayKeyRevocationWriteRequest;
-
-  if (!isRecord(body)) {
-    throw new Error("Revocation write request must be an object");
-  }
-
-  const { keyId, recordEvent, ownership } = body;
-  let reason: string | undefined;
-  let actor: string | undefined;
-
-  if (keyId !== undefined && (typeof keyId !== "string" || keyId.length === 0)) {
-    throw new Error("Revocation write request keyId is invalid");
-  }
-
-  if (recordEvent !== undefined && typeof recordEvent !== "boolean") {
-    throw new Error("Revocation write request recordEvent is invalid");
-  }
-
-  if (
-    ownership !== undefined &&
-    ownership !== "configured" &&
-    ownership !== "registry"
-  ) {
-    throw new Error("Revocation write request ownership is invalid");
-  }
-
-  if ("reason" in body) {
-    reason = parseOptionalGatewayKeyAuditReason(body.reason);
-  }
-
-  if ("actor" in body) {
-    actor = parseOptionalGatewayKeyAuditActor(body.actor);
-  }
-
-  return {
-    ...(keyId !== undefined ? { keyId } : {}),
-    ...(recordEvent !== undefined ? { recordEvent } : {}),
-    ...(ownership !== undefined ? { ownership } : {}),
-    ...(reason ? { reason } : {}),
-    ...(actor ? { actor } : {})
-  };
+  return parseGatewayKeyRevocationWriteRequest(await request.json());
 }
 
 function buildGatewayKeyRevocationEventsRequest(keyId: string): Request {
@@ -836,72 +754,6 @@ async function resolveGatewayKeyAuditOwnership(
   );
 
   return registryKey ? "registry" : "configured";
-}
-
-function requestKeyIdFromOwnershipRequest(
-  request: GatewayKeyRevocationWriteRequest
-): string {
-  const keyId = (request as GatewayKeyRevocationWriteRequest & { keyId?: unknown })
-    .keyId;
-
-  if (typeof keyId !== "string" || keyId.length === 0) {
-    throw new Error("Revocation write request keyId is invalid");
-  }
-
-  return keyId;
-}
-
-function parseExplicitRevocationMetadataPayload(
-  payload: unknown,
-  message: string
-): { reason?: string; actor?: string } {
-  if (payload === undefined || payload === null) {
-    return {};
-  }
-
-  if (!isRecord(payload)) {
-    throw new GatewayError(message, {
-      code: "gateway_key_revocation_invalid_payload",
-      category: "governance",
-      httpStatus: 400,
-      retryable: false
-    });
-  }
-
-  try {
-    const reason = "reason" in payload
-      ? parseOptionalGatewayKeyAuditReason(payload.reason)
-      : undefined;
-    const actor = "actor" in payload
-      ? parseOptionalGatewayKeyAuditActor(payload.actor)
-      : undefined;
-    const actorSource = "actorSource" in payload
-      ? parseOptionalGatewayKeyAuditActorSource(payload.actorSource)
-      : undefined;
-
-    return {
-      ...(reason ? { reason } : {}),
-      ...(actor ? { actor } : {}),
-      ...(actor && actorSource ? { actorSource } : {})
-    };
-  } catch (cause) {
-    throw new GatewayError(message, {
-      code: "gateway_key_revocation_invalid_payload",
-      category: "governance",
-      httpStatus: 400,
-      retryable: false,
-      cause
-    });
-  }
-}
-
-function toActorContextRecord(
-  actorContext: GatewayKeyAuditActorContext
-): { actor: string; actorSource: "payload" | "trusted_header" | "credential" } {
-  return {
-    actor: actorContext.actor,
-    actorSource: actorContext.actorSource
-  };
 }
 
 function createUnauthorizedGatewayKeyError(requestId: string): GatewayError {
