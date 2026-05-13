@@ -1,5 +1,7 @@
 import {
+  bulkCreateGatewayAdminKeys as writeGatewayAdminKeyBulkCreate,
   bulkDeleteGatewayAdminKeys as writeGatewayAdminKeyBulkDelete,
+  bulkRotateGatewayAdminKeys as writeGatewayAdminKeyBulkRotate,
   cancelGatewayAdminKeyRotation as writeGatewayAdminKeyRotationCancel,
   clearGatewayAdminKeyRegistryOverride as writeGatewayAdminKeyRegistryOverrideClear,
   clearGatewayAdminKeyRevocation as writeGatewayAdminKeyRevocationClear,
@@ -26,7 +28,9 @@ import {
 import { resolveGatewayConfig } from "./config.js";
 import type { GatewayBindings } from "./env.js";
 import {
+  bulkCreateGatewayRegistryApiKeys,
   bulkDeleteGatewayRegistryApiKeys,
+  bulkRotateGatewayRegistryApiKeys,
   cancelGatewayRegistryApiKeyRotation,
   bulkUpdateGatewayRegistryApiKeys,
   clearGatewayKeyRegistryOverride,
@@ -95,6 +99,49 @@ export async function createAdminGatewayKey(
       );
     }
   });
+}
+
+export async function bulkCreateAdminGatewayKeys(
+  env: GatewayBindings,
+  request: Request,
+  requestId: string,
+  payload: unknown
+) {
+  const config = resolveGatewayConfig(env);
+  const mutation = await resolveAdminMutationActorCommand(
+    request,
+    env,
+    payload,
+    requestId,
+    "Gateway dynamic key bulk create payload is invalid"
+  );
+
+  return writeGatewayAdminKeyBulkCreate(
+    mutation.payload as {
+      keys: Array<{
+        id: string;
+        label: string;
+        valueHash: string;
+        status: "active" | "revoked";
+        notBefore?: string;
+        expiresAt?: string;
+        policy?: object;
+      }>;
+      actor?: string;
+      actorSource?: "payload" | "trusted_header" | "credential";
+    },
+    {
+      bulkCreateRegistryKeys: (candidatePayload) => {
+        return bulkCreateGatewayRegistryApiKeys(
+          env,
+          config.gatewayApiKeys,
+          candidatePayload,
+          requestId,
+          mutation.actorContext
+        );
+      }
+    }
+  );
 }
 
 export async function bulkUpdateAdminGatewayKeys(
@@ -177,6 +224,52 @@ export async function bulkDeleteAdminGatewayKeys(
       },
       bulkDeleteRegistryKeys: (candidatePayload) => {
         return bulkDeleteGatewayRegistryApiKeys(
+          env,
+          config.gatewayApiKeys,
+          candidatePayload,
+          requestId,
+          mutation.actorContext
+        );
+      }
+    }
+  );
+}
+
+export async function bulkRotateAdminGatewayKeys(
+  env: GatewayBindings,
+  request: Request,
+  requestId: string,
+  payload: unknown
+) {
+  const config = resolveGatewayConfig(env);
+  const mutation = await resolveAdminMutationActorCommand(
+    request,
+    env,
+    payload,
+    requestId,
+    "Gateway dynamic key bulk rotate payload is invalid"
+  );
+
+  return writeGatewayAdminKeyBulkRotate(
+    mutation.payload as {
+      rotations: Array<{
+        keyId: string;
+        valueHash: string;
+        overlapSeconds?: number;
+      }>;
+      reason?: string;
+      actor?: string;
+      actorSource?: "payload" | "trusted_header" | "credential";
+    },
+    requestId,
+    {
+      isConfiguredKey: (candidateKeyId) => {
+        return config.gatewayApiKeys.some((gatewayApiKey) => {
+          return gatewayApiKey.id === candidateKeyId;
+        });
+      },
+      bulkRotateRegistryKeys: (candidatePayload) => {
+        return bulkRotateGatewayRegistryApiKeys(
           env,
           config.gatewayApiKeys,
           candidatePayload,

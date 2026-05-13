@@ -4,6 +4,7 @@ import type { GatewayApiKeyMetadataOverride } from "./gateway-auth.js";
 import type { GatewayKeyAuditActorContext } from "./gateway-key-audit.js";
 import type {
   GatewayKeyRegistryBulkDeleteRequest,
+  GatewayKeyRegistryBulkRotateRequest,
   GatewayKeyRegistryBulkUpdateRequest,
   GatewayKeyRegistryDeleteResponse,
   GatewayKeyRegistryDynamicKeyView
@@ -62,6 +63,24 @@ export interface BulkUpdateGatewayAdminKeysPort {
   ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
 }
 
+export interface BulkCreateGatewayAdminKeysPort {
+  bulkCreateRegistryKeys(
+    payload: {
+      keys: Array<{
+        id: string;
+        label: string;
+        valueHash: string;
+        status: "active" | "revoked";
+        notBefore?: string;
+        expiresAt?: string;
+        policy?: object;
+      }>;
+      actor?: string;
+      actorSource?: "payload" | "trusted_header" | "credential";
+    }
+  ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
+}
+
 export interface BulkDeleteGatewayAdminKeysPort {
   isConfiguredKey(keyId: string): boolean;
   bulkDeleteRegistryKeys(
@@ -69,6 +88,19 @@ export interface BulkDeleteGatewayAdminKeysPort {
       keyIds: string[];
     }
   ): Promise<GatewayKeyRegistryDeleteResponse[]>;
+}
+
+export interface BulkRotateGatewayAdminKeysPort {
+  isConfiguredKey(keyId: string): boolean;
+  bulkRotateRegistryKeys(
+    payload: GatewayKeyRegistryBulkRotateRequest["auditMetadata"] & {
+      rotations: Array<{
+        keyId: string;
+        valueHash: string;
+        overlapSeconds?: number;
+      }>;
+    }
+  ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
 }
 
 export interface FinalizeGatewayAdminKeyRotationPort {
@@ -117,6 +149,29 @@ export async function createGatewayAdminKey(
   port: CreateGatewayAdminKeyPort
 ): Promise<GatewayKeyRegistryDynamicKeyView> {
   return port.createRegistryKey(payload);
+}
+
+export async function bulkCreateGatewayAdminKeys(
+  payload: {
+    keys: Array<{
+      id: string;
+      label: string;
+      valueHash: string;
+      status: "active" | "revoked";
+      notBefore?: string;
+      expiresAt?: string;
+      policy?: object;
+    }>;
+    actor?: string;
+    actorSource?: "payload" | "trusted_header" | "credential";
+  },
+  port: BulkCreateGatewayAdminKeysPort
+): Promise<{
+  keys: GatewayKeyRegistryDynamicKeyView[];
+}> {
+  return {
+    keys: await port.bulkCreateRegistryKeys(payload)
+  };
 }
 
 export async function deleteGatewayAdminKey(
@@ -207,6 +262,30 @@ export async function bulkDeleteGatewayAdminKeys(
 
   return {
     keys: await port.bulkDeleteRegistryKeys(payload)
+  };
+}
+
+export async function bulkRotateGatewayAdminKeys(
+  payload: GatewayKeyRegistryBulkRotateRequest["auditMetadata"] & {
+    rotations: Array<{
+      keyId: string;
+      valueHash: string;
+      overlapSeconds?: number;
+    }>;
+  },
+  requestId: string,
+  port: BulkRotateGatewayAdminKeysPort
+): Promise<{
+  keys: GatewayKeyRegistryDynamicKeyView[];
+}> {
+  for (const entry of payload.rotations) {
+    if (port.isConfiguredKey(entry.keyId)) {
+      throw createGatewayKeyNotRegistryOwnedError(requestId);
+    }
+  }
+
+  return {
+    keys: await port.bulkRotateRegistryKeys(payload)
   };
 }
 

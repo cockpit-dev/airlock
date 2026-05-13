@@ -59,6 +59,10 @@ export interface GatewayKeyRegistryBulkDeleteResponse {
   keys: GatewayKeyRegistryDeleteResponse[];
 }
 
+export interface GatewayKeyRegistryBulkCreateResponse {
+  keys: GatewayKeyRegistryDynamicKeyView[];
+}
+
 export interface GatewayKeyRegistryCreateRequest extends GatewayApiKeyRecord {
   actor?: string;
   actorSource?: GatewayKeyAuditActorSource;
@@ -107,6 +111,22 @@ export interface GatewayKeyRegistryBulkUpdateRequest {
 
 export interface GatewayKeyRegistryBulkDeleteRequest {
   keyIds: string[];
+  auditMetadata: GatewayKeyRegistryUpdateAuditMetadata;
+}
+
+export interface GatewayKeyRegistryBulkCreateRequest {
+  keys: GatewayApiKeyRecord[];
+  actorContext?: GatewayKeyAuditActorContext;
+}
+
+export interface GatewayKeyRegistryBulkRotateItem {
+  keyId: string;
+  valueHash: string;
+  overlapSeconds?: number;
+}
+
+export interface GatewayKeyRegistryBulkRotateRequest {
+  rotations: GatewayKeyRegistryBulkRotateItem[];
   auditMetadata: GatewayKeyRegistryUpdateAuditMetadata;
 }
 
@@ -180,6 +200,20 @@ function createGatewayKeyRegistryPayloadError(
     retryable: false,
     ...(cause ? { cause } : {})
   });
+}
+
+function toGatewayKeyRegistryRequestValidationError(
+  message: string,
+  cause: unknown
+): GatewayError {
+  if (
+    cause instanceof GatewayError &&
+    cause.code === "config_invalid_gateway_api_keys"
+  ) {
+    return createGatewayKeyRegistryPayloadError(message, cause);
+  }
+
+  return createGatewayKeyRegistryPayloadError(message, cause);
 }
 
 export function parseGatewayKeyRegistryStoredOverride(
@@ -390,6 +424,20 @@ export function parseGatewayKeyRegistryBulkDeleteResponse(
   };
 }
 
+export function parseGatewayKeyRegistryBulkCreateResponse(
+  value: unknown
+): GatewayKeyRegistryBulkCreateResponse {
+  if (!isRecord(value) || !Array.isArray(value.keys)) {
+    throw new Error("Registry bulk create response is invalid");
+  }
+
+  return {
+    keys: value.keys.map((entry) => {
+      return parseGatewayKeyRegistryDynamicKeyView(entry);
+    })
+  };
+}
+
 export function parseGatewayKeyRegistryRotateRequest(
   value: unknown
 ): GatewayKeyRegistryRotateRequest {
@@ -448,10 +496,19 @@ export function parseGatewayKeyRegistryCreateRequest(
   key: GatewayApiKeyRecord;
   actorContext?: GatewayKeyAuditActorContext;
 } {
-  const key = parseGatewayDynamicApiKeyRecord(
-    stripGatewayKeyAuditActorMetadata(value),
-    existingGatewayApiKeys
-  );
+  let key: GatewayApiKeyRecord;
+
+  try {
+    key = parseGatewayDynamicApiKeyRecord(
+      stripGatewayKeyAuditActorMetadata(value),
+      existingGatewayApiKeys
+    );
+  } catch (cause) {
+    throw toGatewayKeyRegistryRequestValidationError(
+      "Gateway dynamic key create payload is invalid",
+      cause
+    );
+  }
 
   if (!isRecord(value) || value.actor === undefined) {
     return { key };
@@ -463,6 +520,59 @@ export function parseGatewayKeyRegistryCreateRequest(
       value.actor,
       "actorSource" in value ? value.actorSource : undefined,
       "Gateway dynamic key create payload is invalid"
+    )
+  };
+}
+
+export function parseGatewayKeyRegistryBulkCreateRequest(
+  value: unknown,
+  existingGatewayApiKeys: readonly GatewayApiKeyRecord[]
+): GatewayKeyRegistryBulkCreateRequest {
+  const message = "Gateway dynamic key bulk create payload is invalid";
+
+  if (!isRecord(value) || !Array.isArray(value.keys)) {
+    throw createGatewayKeyRegistryPayloadError(message);
+  }
+
+  if (value.keys.length === 0) {
+    throw createGatewayKeyRegistryPayloadError(
+      message,
+      new Error("keys must be a non-empty array")
+    );
+  }
+
+  if (value.actorSource !== undefined && value.actor === undefined) {
+    throw createGatewayKeyRegistryPayloadError(
+      message,
+      new Error("actorSource requires actor")
+    );
+  }
+
+  const keys: GatewayApiKeyRecord[] = [];
+
+  for (const entry of value.keys) {
+    try {
+      keys.push(
+        parseGatewayDynamicApiKeyRecord(stripGatewayKeyAuditActorMetadata(entry), [
+          ...existingGatewayApiKeys,
+          ...keys
+        ])
+      );
+    } catch (cause) {
+      throw toGatewayKeyRegistryRequestValidationError(message, cause);
+    }
+  }
+
+  if (value.actor === undefined) {
+    return { keys };
+  }
+
+  return {
+    keys,
+    actorContext: parseRequiredGatewayKeyRegistryActorContext(
+      value.actor,
+      "actorSource" in value ? value.actorSource : undefined,
+      message
     )
   };
 }
@@ -715,6 +825,97 @@ export function parseGatewayKeyRegistryBulkDeleteRequest(
 
   return {
     keyIds,
+    auditMetadata: {
+      ...(value.reason !== undefined
+        ? {
+            reason: parseRequiredGatewayKeyRegistryReason(value.reason, message)
+          }
+        : {}),
+      ...(value.actor !== undefined
+        ? {
+            ...toGatewayKeyAuditActorContextRecord(
+              parseRequiredGatewayKeyRegistryActorContext(
+                value.actor,
+                "actorSource" in value ? value.actorSource : undefined,
+                message
+              )
+            )
+          }
+        : {})
+    }
+  };
+}
+
+export function parseGatewayKeyRegistryBulkRotateRequest(
+  value: unknown
+): GatewayKeyRegistryBulkRotateRequest {
+  const message = "Gateway dynamic key bulk rotate payload is invalid";
+
+  if (!isRecord(value) || !Array.isArray(value.rotations)) {
+    throw createGatewayKeyRegistryPayloadError(message);
+  }
+
+  if (value.rotations.length === 0) {
+    throw createGatewayKeyRegistryPayloadError(
+      message,
+      new Error("rotations must be a non-empty array")
+    );
+  }
+
+  if (value.actorSource !== undefined && value.actor === undefined) {
+    throw createGatewayKeyRegistryPayloadError(
+      message,
+      new Error("actorSource requires actor")
+    );
+  }
+
+  const seenKeyIds = new Set<string>();
+  const rotations = value.rotations.map((entry) => {
+    if (!isRecord(entry)) {
+      throw createGatewayKeyRegistryPayloadError(message);
+    }
+
+    const keyId = typeof entry.keyId === "string" ? entry.keyId.trim() : "";
+
+    if (keyId.length === 0) {
+      throw createGatewayKeyRegistryPayloadError(
+        message,
+        new Error("Each rotation must include a non-empty keyId")
+      );
+    }
+
+    if (seenKeyIds.has(keyId)) {
+      throw createGatewayKeyRegistryPayloadError(
+        message,
+        new Error("Duplicate keyId values are not allowed")
+      );
+    }
+
+    seenKeyIds.add(keyId);
+
+    let parsedRotation: GatewayKeyRegistryRotateRequest;
+
+    try {
+      parsedRotation = parseGatewayKeyRegistryRotateRequest(
+        Object.fromEntries(
+          Object.entries(entry).filter(([key]) => key !== "keyId")
+        )
+      );
+    } catch (cause) {
+      throw toGatewayKeyRegistryRequestValidationError(message, cause);
+    }
+
+    return {
+      keyId,
+      valueHash: parsedRotation.valueHash,
+      ...(parsedRotation.overlapSeconds !== undefined
+        ? { overlapSeconds: parsedRotation.overlapSeconds }
+        : {})
+    };
+  });
+
+  return {
+    rotations,
     auditMetadata: {
       ...(value.reason !== undefined
         ? {

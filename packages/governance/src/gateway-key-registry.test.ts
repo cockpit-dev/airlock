@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   createGatewayKeyRegistryDynamicKeyView,
+  parseGatewayKeyRegistryBulkCreateRequest,
   parseGatewayKeyRegistryBulkDeleteRequest,
   parseGatewayKeyRegistryBulkDeleteResponse,
+  parseGatewayKeyRegistryBulkRotateRequest,
   gatewayKeyAuditActorContextFromRegistryRequest,
   parseGatewayKeyRegistryCreateRequest,
   parseGatewayKeyRegistryDeleteRequest,
@@ -387,6 +389,93 @@ describe("registry payload parsers", () => {
         actorSource: "trusted_header"
       }
     });
+
+    expect(
+      parseGatewayKeyRegistryBulkCreateRequest(
+        {
+          keys: [
+            {
+              id: "key_dynamic_a",
+              label: "Dynamic Key A",
+              valueHash:
+                "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+              status: "active"
+            },
+            {
+              id: "key_dynamic_b",
+              label: "Dynamic Key B",
+              valueHash:
+                "2e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+              status: "revoked"
+            }
+          ],
+          actor: "ops@example.com",
+          actorSource: "credential"
+        },
+        []
+      )
+    ).toEqual({
+      keys: [
+        {
+          id: "key_dynamic_a",
+          label: "Dynamic Key A",
+          valueHash:
+            "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+          status: "active"
+        },
+        {
+          id: "key_dynamic_b",
+          label: "Dynamic Key B",
+          valueHash:
+            "2e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+          status: "revoked"
+        }
+      ],
+      actorContext: {
+        actor: "ops@example.com",
+        actorSource: "credential"
+      }
+    });
+
+    expect(
+      parseGatewayKeyRegistryBulkRotateRequest({
+        rotations: [
+          {
+            keyId: "key_dynamic_a",
+            valueHash:
+              "3e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+            overlapSeconds: 60
+          },
+          {
+            keyId: "key_dynamic_b",
+            valueHash:
+              "4e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6"
+          }
+        ],
+        reason: "credential rollover",
+        actor: "ops@example.com",
+        actorSource: "trusted_header"
+      })
+    ).toEqual({
+      rotations: [
+        {
+          keyId: "key_dynamic_a",
+          valueHash:
+            "3e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+          overlapSeconds: 60
+        },
+        {
+          keyId: "key_dynamic_b",
+          valueHash:
+            "4e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6"
+        }
+      ],
+      auditMetadata: {
+        reason: "credential rollover",
+        actor: "ops@example.com",
+        actorSource: "trusted_header"
+      }
+    });
   });
 
   it("rejects invalid overlapSeconds and actorSource values", () => {
@@ -442,6 +531,75 @@ describe("registry payload parsers", () => {
     expect(() =>
       parseGatewayKeyRegistryBulkDeleteRequest({
         keyIds: ["key_dynamic_a"],
+        actorSource: "payload"
+      })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkCreateRequest(
+        {
+          keys: []
+        },
+        []
+      )
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkCreateRequest(
+        {
+          keys: [
+            {
+              id: "key_dynamic_a",
+              label: "Dynamic Key A",
+              valueHash:
+                "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+              status: "active"
+            },
+            {
+              id: "key_dynamic_a",
+              label: "Dynamic Key B",
+              valueHash:
+                "2e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+              status: "active"
+            }
+          ]
+        },
+        []
+      )
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkRotateRequest({
+        rotations: []
+      })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkRotateRequest({
+        rotations: [
+          {
+            keyId: "key_dynamic_a",
+            valueHash:
+              "3e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6"
+          },
+          {
+            keyId: "key_dynamic_a",
+            valueHash:
+              "4e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6"
+          }
+        ]
+      })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkRotateRequest({
+        rotations: [
+          {
+            keyId: "key_dynamic_a",
+            valueHash:
+              "3e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6"
+          }
+        ],
         actorSource: "payload"
       })
     ).toThrow();
