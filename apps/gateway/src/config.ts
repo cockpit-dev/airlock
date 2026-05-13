@@ -1,4 +1,9 @@
-import { parseGatewayApiKeys, type GatewayApiKeyRecord } from "@airlock/governance";
+import {
+  parseGatewayApiKeys,
+  parseInternalAdminCredentials,
+  type GatewayApiKeyRecord,
+  type InternalAdminCredential
+} from "@airlock/governance";
 import { parseRouteRequestShaping } from "@airlock/request-shaping";
 import {
   attachRouteFallbacks,
@@ -28,6 +33,7 @@ export interface GatewayConfig {
   providerCircuitBreakerCooldownMs?: number;
   providerCircuitBreakerPersistent?: boolean;
   gatewayKeyRegistryEnabled?: boolean;
+  internalAdminCredentials?: InternalAdminCredential[];
   gatewayApiKeys: GatewayApiKeyRecord[];
   modelGroups: ModelGroupMap;
   modelAliases: ModelRouteDirectory;
@@ -180,6 +186,9 @@ function validateModelGroups(
 export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
   const env = gatewayEnvSchema.parse(bindings);
   const gatewayApiKeys = parseGatewayApiKeys(env.AIRLOCK_GATEWAY_API_KEYS);
+  const internalAdminCredentials = parseInternalAdminCredentials(
+    env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS
+  );
   const modelAliases = attachRouteTargetSelection(
     attachRouteFallbacks(
       attachRouteRequestShaping(
@@ -250,7 +259,10 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
     });
   }
 
-  if (env.AIRLOCK_INTERNAL_ADMIN_TOKEN && !env.AIRLOCK_GATEWAY_KEY_REVOCATION) {
+  if (
+    (env.AIRLOCK_INTERNAL_ADMIN_TOKEN || internalAdminCredentials.length > 0) &&
+    !env.AIRLOCK_GATEWAY_KEY_REVOCATION
+  ) {
     throw new GatewayError("Gateway key revocation binding is required", {
       code: "config_missing_gateway_key_revocation",
       category: "configuration",
@@ -313,6 +325,7 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
     providerCircuitBreakerCooldownMs: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS,
     providerCircuitBreakerPersistent: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT,
     gatewayKeyRegistryEnabled: env.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED,
+    internalAdminCredentials,
     gatewayApiKeys,
     modelGroups,
     modelAliases,

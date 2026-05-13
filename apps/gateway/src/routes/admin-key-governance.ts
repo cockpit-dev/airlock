@@ -1,5 +1,6 @@
 import type { Hono } from "hono";
 import type { TelemetrySink } from "@airlock/telemetry";
+import { parseInternalAdminCredentials } from "@airlock/governance";
 
 import {
   cancelAdminGatewayKeyRotation,
@@ -20,7 +21,7 @@ import {
 } from "../admin-key-governance-service.js";
 import type { GatewayBindings } from "../env.js";
 import {
-  assertInternalAdminAuthorization,
+  authorizeInternalAdminRequest,
 } from "../gateway-key-revocation.js";
 
 type AppVariables = {
@@ -39,9 +40,10 @@ type GatewayApp = Hono<{
 export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
   app.get("/_airlock/keys", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 
@@ -57,9 +59,10 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
   app.post("/_airlock/keys", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 
@@ -75,9 +78,10 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
   app.get("/_airlock/keys/:keyId", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 
@@ -92,9 +96,10 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
   app.delete("/_airlock/keys/:keyId", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 
@@ -112,9 +117,10 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
   app.post("/_airlock/keys/:keyId/rotate", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 
@@ -131,9 +137,10 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
   app.post("/_airlock/keys/:keyId/rotate/finalize", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 
@@ -151,9 +158,10 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
   app.post("/_airlock/keys/:keyId/rotate/cancel", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 
@@ -171,9 +179,10 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
   app.get("/_airlock/keys/:keyId/revocation", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 
@@ -188,9 +197,10 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
   app.get("/_airlock/keys/:keyId/status", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 
@@ -205,9 +215,10 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
   app.get("/_airlock/keys/:keyId/events", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 
@@ -222,9 +233,10 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
   app.get("/_airlock/keys/:keyId/registry", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 
@@ -239,9 +251,10 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
   app.put("/_airlock/keys/:keyId/registry", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 
@@ -257,9 +270,10 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
   app.delete("/_airlock/keys/:keyId/registry", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 
@@ -274,9 +288,10 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
   app.post("/_airlock/keys/:keyId/revocation", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 
@@ -294,9 +309,10 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
   app.delete("/_airlock/keys/:keyId/revocation", async (context) => {
     const requestId = context.get("requestId");
-    assertInternalAdminAuthorization(
+    await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
       requestId
     );
 

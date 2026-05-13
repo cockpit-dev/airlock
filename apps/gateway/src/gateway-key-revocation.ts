@@ -1,7 +1,10 @@
 import {
   evaluateGatewayApiKeyLifecycle,
+  extractBearerToken,
+  validateInternalAdminCredential,
   type GatewayApiKeyLifecycleStatus,
-  type GatewayApiKeyRecord
+  type GatewayApiKeyRecord,
+  type InternalAdminCredential
 } from "@airlock/governance";
 import { GatewayError } from "@airlock/shared";
 
@@ -37,7 +40,7 @@ interface GatewayKeyRevocationWriteRequest {
   ownership?: GatewayKeyAuditOwnership;
   reason?: string;
   actor?: string;
-  actorSource?: "payload" | "trusted_header";
+  actorSource?: "payload" | "trusted_header" | "credential";
 }
 
 interface DurableObjectStateLike {
@@ -212,6 +215,25 @@ export function assertInternalAdminAuthorization(
       requestId
     });
   }
+}
+
+export async function authorizeInternalAdminRequest(
+  authorization: string | undefined,
+  adminToken: string | undefined,
+  adminCredentials: readonly InternalAdminCredential[],
+  requestId: string
+): Promise<void> {
+  if (adminCredentials.length > 0) {
+    const bearerToken = extractBearerToken(authorization, requestId);
+    await validateInternalAdminCredential(
+      bearerToken,
+      adminCredentials,
+      requestId
+    );
+    return;
+  }
+
+  assertInternalAdminAuthorization(authorization, adminToken, requestId);
 }
 
 export function resolveGatewayApiKeyById(
@@ -919,7 +941,7 @@ function parseExplicitRevocationMetadataPayload(
 
 function toActorContextRecord(
   actorContext: GatewayKeyAuditActorContext
-): { actor: string; actorSource: "payload" | "trusted_header" } {
+): { actor: string; actorSource: "payload" | "trusted_header" | "credential" } {
   return {
     actor: actorContext.actor,
     actorSource: actorContext.actorSource

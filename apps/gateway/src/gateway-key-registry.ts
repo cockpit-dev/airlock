@@ -90,7 +90,7 @@ interface GatewayKeyRegistryLookupRequest {
 
 interface GatewayKeyRegistryCreateRequest extends GatewayApiKeyRecord {
   actor?: string;
-  actorSource?: "payload" | "trusted_header";
+  actorSource?: "payload" | "trusted_header" | "credential";
 }
 
 interface GatewayKeyRegistryRotateRequest {
@@ -98,19 +98,19 @@ interface GatewayKeyRegistryRotateRequest {
   overlapSeconds?: number;
   reason?: string;
   actor?: string;
-  actorSource?: "payload" | "trusted_header";
+  actorSource?: "payload" | "trusted_header" | "credential";
 }
 
 interface GatewayKeyRegistryRotationActionRequest {
   reason?: string;
   actor?: string;
-  actorSource?: "payload" | "trusted_header";
+  actorSource?: "payload" | "trusted_header" | "credential";
 }
 
 interface GatewayKeyRegistryDeleteRequest {
   reason?: string;
   actor?: string;
-  actorSource?: "payload" | "trusted_header";
+  actorSource?: "payload" | "trusted_header" | "credential";
 }
 
 export interface GatewayApiKeyStatusView {
@@ -638,7 +638,7 @@ function parseActorPayload(
 
 function toActorContextRecord(
   actorContext: GatewayKeyAuditActorContext
-): { actor: string; actorSource: "payload" | "trusted_header" } {
+): { actor: string; actorSource: "payload" | "trusted_header" | "credential" } {
   return {
     actor: actorContext.actor,
     actorSource: actorContext.actorSource

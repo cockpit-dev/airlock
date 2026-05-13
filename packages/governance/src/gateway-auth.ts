@@ -51,6 +51,17 @@ export interface GatewayApiKeyMetadataOverride {
   policy?: GatewayApiKeyPolicy | null;
 }
 
+export interface InternalAdminCredential {
+  id: string;
+  tokenHash: string;
+  actor: string;
+}
+
+export interface InternalAdminAuthorization {
+  credentialId: string;
+  actor: string;
+}
+
 function createUnauthorizedError(requestId: string): GatewayError {
   return new GatewayError("Unauthorized", {
     code: "auth_invalid_api_key",
@@ -100,6 +111,16 @@ function isSha256Hex(value: string): boolean {
 
 function isValidTimestamp(value: string): boolean {
   return !Number.isNaN(Date.parse(value));
+}
+
+function parseInternalAdminActor(value: unknown): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw createInvalidGatewayKeyConfigError(
+      "Internal admin credential actor must be a non-empty string"
+    );
+  }
+
+  return value.trim();
 }
 
 function validateLifecycleWindow(
@@ -564,6 +585,81 @@ export function parseGatewayDynamicApiKeyRecord(
   return record;
 }
 
+export function parseInternalAdminCredentials(
+  value: string | undefined
+): InternalAdminCredential[] {
+  if (!value) {
+    return [];
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw createInvalidGatewayKeyConfigError(
+      "Internal admin credentials config must be valid JSON"
+    );
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw createInvalidGatewayKeyConfigError(
+      "Internal admin credentials config must be an array"
+    );
+  }
+
+  const ids = new Set<string>();
+  const tokenHashes = new Set<string>();
+
+  return parsed.map((entry) => {
+    if (!isRecord(entry)) {
+      throw createInvalidGatewayKeyConfigError(
+        "Internal admin credential must be an object"
+      );
+    }
+
+    const id = typeof entry.id === "string" ? entry.id.trim() : "";
+    const tokenHash =
+      typeof entry.tokenHash === "string"
+        ? entry.tokenHash.trim().toLowerCase()
+        : "";
+    const actor = parseInternalAdminActor(entry.actor);
+
+    if (id.length === 0) {
+      throw createInvalidGatewayKeyConfigError(
+        "Internal admin credential id must be a non-empty string"
+      );
+    }
+
+    if (!isSha256Hex(tokenHash)) {
+      throw createInvalidGatewayKeyConfigError(
+        "Internal admin credential tokenHash must be a lowercase 64-character SHA-256 hex digest"
+      );
+    }
+
+    if (ids.has(id)) {
+      throw createInvalidGatewayKeyConfigError(
+        "Internal admin credential ids must be unique"
+      );
+    }
+
+    if (tokenHashes.has(tokenHash)) {
+      throw createInvalidGatewayKeyConfigError(
+        "Internal admin credential token hashes must be unique"
+      );
+    }
+
+    ids.add(id);
+    tokenHashes.add(tokenHash);
+
+    return {
+      id,
+      tokenHash,
+      actor
+    };
+  });
+}
+
 function validateGatewayApiKeyRecords(records: GatewayApiKeyRecord[]) {
   const ids = new Set<string>();
   const secretMaterial = new Set<string>();
@@ -668,6 +764,26 @@ async function sha256Hex(value: string): Promise<string> {
       return byte.toString(16).padStart(2, "0");
     })
     .join("");
+}
+
+export async function validateInternalAdminCredential(
+  bearerToken: string,
+  credentials: readonly InternalAdminCredential[],
+  requestId = "unknown_request"
+): Promise<InternalAdminAuthorization> {
+  const bearerTokenHash = await sha256Hex(bearerToken);
+  const matchedCredential = credentials.find((credential) => {
+    return credential.tokenHash === bearerTokenHash;
+  });
+
+  if (!matchedCredential) {
+    throw createUnauthorizedError(requestId);
+  }
+
+  return {
+    credentialId: matchedCredential.id,
+    actor: matchedCredential.actor
+  };
 }
 
 export function extractBearerToken(

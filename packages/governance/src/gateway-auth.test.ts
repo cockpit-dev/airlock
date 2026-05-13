@@ -5,6 +5,7 @@ import { GatewayError } from "@airlock/shared";
 import {
   applyGatewayApiKeyMetadataOverride,
   extractBearerToken,
+  parseInternalAdminCredentials,
   parseGatewayApiKeyMetadataOverride,
   parseGatewayDynamicApiKeyRecord,
   parseGatewayApiKeys,
@@ -832,6 +833,41 @@ describe("parseGatewayDynamicApiKeyRecord", () => {
             status: "active"
           }
         ]
+      )
+    ).toThrow(GatewayError);
+  });
+});
+
+describe("parseInternalAdminCredentials", () => {
+  it("parses valid structured internal admin credentials", () => {
+    expect(
+      parseInternalAdminCredentials(
+        JSON.stringify([
+          {
+            id: "ops_primary",
+            tokenHash: gatewaySecretHash,
+            actor: "ops@example.com"
+          }
+        ])
+      )
+    ).toEqual([
+      {
+        id: "ops_primary",
+        tokenHash: gatewaySecretHash,
+        actor: "ops@example.com"
+      }
+    ]);
+  });
+
+  it("rejects credentials without actor identity", () => {
+    expect(() =>
+      parseInternalAdminCredentials(
+        JSON.stringify([
+          {
+            id: "ops_primary",
+            tokenHash: gatewaySecretHash
+          }
+        ])
       )
     ).toThrow(GatewayError);
   });

@@ -71,7 +71,7 @@ export async function createAdminGatewayKey(
   payload: unknown
 ) {
   const config = resolveGatewayConfig(env);
-  const actorContext = resolveActorContext(
+  const actorContext = await resolveActorContext(
     request,
     env,
     payload,
@@ -116,7 +116,7 @@ export async function deleteAdminGatewayKey(
   payload: unknown
 ) {
   const config = resolveGatewayConfig(env);
-  const actorContext = resolveActorContext(
+  const actorContext = await resolveActorContext(
     request,
     env,
     payload,
@@ -147,7 +147,7 @@ export async function rotateAdminGatewayKey(
   payload: unknown
 ) {
   const config = resolveGatewayConfig(env);
-  const actorContext = resolveActorContext(
+  const actorContext = await resolveActorContext(
     request,
     env,
     payload,
@@ -173,7 +173,7 @@ export async function finalizeAdminGatewayKeyRotation(
   payload: unknown
 ) {
   const config = resolveGatewayConfig(env);
-  const actorContext = resolveActorContext(
+  const actorContext = await resolveActorContext(
     request,
     env,
     payload,
@@ -199,7 +199,7 @@ export async function cancelAdminGatewayKeyRotation(
   payload: unknown
 ) {
   const config = resolveGatewayConfig(env);
-  const actorContext = resolveActorContext(
+  const actorContext = await resolveActorContext(
     request,
     env,
     payload,
@@ -372,7 +372,7 @@ export async function revokeAdminGatewayKey(
   payload: unknown
 ) {
   const config = resolveGatewayConfig(env);
-  const actorContext = resolveActorContext(
+  const actorContext = await resolveActorContext(
     request,
     env,
     payload,
@@ -398,7 +398,7 @@ export async function clearAdminGatewayKeyRevocation(
   payload: unknown
 ) {
   const config = resolveGatewayConfig(env);
-  const actorContext = resolveActorContext(
+  const actorContext = await resolveActorContext(
     request,
     env,
     payload,
@@ -416,7 +416,7 @@ export async function clearAdminGatewayKeyRevocation(
   );
 }
 
-function resolveActorContext(
+async function resolveActorContext(
   request: Request,
   env: GatewayBindings,
   payload: unknown,

@@ -1,5 +1,8 @@
 export type GatewayKeyAuditOwnership = "configured" | "registry";
-export type GatewayKeyAuditActorSource = "payload" | "trusted_header";
+export type GatewayKeyAuditActorSource =
+  | "payload"
+  | "trusted_header"
+  | "credential";
 
 export type GatewayKeyAuditEventKind =
   | "created"
@@ -203,7 +206,11 @@ export function parseOptionalGatewayKeyAuditActorSource(
     return undefined;
   }
 
-  if (value !== "payload" && value !== "trusted_header") {
+  if (
+    value !== "payload" &&
+    value !== "trusted_header" &&
+    value !== "credential"
+  ) {
     throw new Error("Gateway key audit actorSource is invalid");
   }
 

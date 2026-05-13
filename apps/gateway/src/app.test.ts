@@ -1342,6 +1342,22 @@ describe("gateway app", () => {
     });
   });
 
+  it("returns not ready from /readyz when structured internal admin credentials are malformed", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_CREDENTIALS: "{not-json",
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
   it("returns not ready from /readyz when model alias config is invalid", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -2909,6 +2925,37 @@ describe("gateway app", () => {
       error: {
         code: "auth_invalid_admin_token"
       }
+    });
+  });
+
+  it("accepts structured internal admin credentials on governance routes", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys/gak_1/revocation",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer gateway-secret"
+        }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_CREDENTIALS: JSON.stringify([
+          {
+            id: "ops_primary",
+            tokenHash: gatewaySecretHash,
+            actor: "ops@example.com"
+          }
+        ]),
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson(response)).resolves.toMatchObject({
+      keyId: "gak_1",
+      revoked: false
     });
   });
 
@@ -4877,6 +4924,119 @@ describe("gateway app", () => {
         })
       ])
     );
+  });
+
+  it("prefers credential-bound admin actor identity over trusted header and payload actor metadata", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_CREDENTIALS: JSON.stringify([
+        {
+          id: "ops_primary",
+          tokenHash: gatewaySecretHash,
+          actor: "credential@example.com"
+        }
+      ]),
+      AIRLOCK_INTERNAL_ADMIN_ACTOR_HEADER: "cf-access-authenticated-user-email",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer gateway-secret",
+              "cf-access-authenticated-user-email": "header@example.com"
+            },
+            body: JSON.stringify({
+              id: "key_dynamic",
+              label: "Dynamic Runtime Key",
+              valueHash:
+                "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+              status: "active",
+              actor: "payload@example.com"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/events",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer gateway-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await readJson(response);
+
+    expect(isGatewayKeyEventsPayload(payload)).toBe(true);
+
+    if (!isGatewayKeyEventsPayload(payload)) {
+      return;
+    }
+
+    expect(payload.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          keyId: "key_dynamic",
+          kind: "created",
+          actor: "credential@example.com",
+          actorSource: "credential"
+        })
+      ])
+    );
+  });
+
+  it("satisfies required actor metadata through structured internal admin credentials alone", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_CREDENTIALS: JSON.stringify([
+        {
+          id: "ops_primary",
+          tokenHash: gatewaySecretHash,
+          actor: "credential@example.com"
+        }
+      ]),
+      AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    const createResponse = await app.request(
+      "http://localhost/_airlock/keys",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          id: "key_dynamic",
+          label: "Dynamic Runtime Key",
+          valueHash:
+            "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+          status: "active"
+        })
+      },
+      bindings
+    );
+
+    expect(createResponse.status).toBe(200);
   });
 
   it("rejects explicit admin mutations when actor is required but unavailable", async () => {
