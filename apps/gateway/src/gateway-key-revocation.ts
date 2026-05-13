@@ -1,4 +1,5 @@
 import {
+  clearGatewayKeyRevocationById as clearGatewayKeyRevocationByIdUseCase,
   buildGatewayKeyRevocationStateTransition,
   createGatewayApiKeyRegistrySnapshot,
   createGatewayKeyAuditEvent,
@@ -7,11 +8,10 @@ import {
   requireConfiguredGatewayApiKeyById,
   resolveGatewayApiKeyByIdWithOwnership,
   MAX_GATEWAY_KEY_AUDIT_EVENTS,
-  parseExplicitGatewayKeyRevocationMetadataPayload,
   parseGatewayKeyRevocationState,
   parseGatewayKeyRevocationWriteRequest,
   parseGatewayKeyAuditEventsResponse,
-  toGatewayKeyRevocationActorContextRecord,
+  revokeGatewayKeyById as revokeGatewayKeyByIdUseCase,
   type GatewayApiKeyRegistrySnapshot,
   type GatewayApiKeyStatusView,
   type GatewayApiKeyLifecycleStatus,
@@ -345,36 +345,35 @@ export async function revokeGatewayKeyById(
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
-  const { gatewayApiKey, ownership } = await resolveGatewayApiKeyByIdWithRegistry(
-    env,
-    gatewayApiKeys,
+  return revokeGatewayKeyByIdUseCase(
     keyId,
-    requestId
-  );
-
-  const state = await writeGatewayKeyRevocationStateForKey(
-    env,
-    gatewayApiKey,
-    true,
-    requestId,
+    payload,
+    "Gateway key revocation payload is invalid",
+    actorContext,
     {
-      keyId,
-      ownership,
-      ...(actorContext
-        ? toGatewayKeyRevocationActorContextRecord(actorContext)
-        : {}),
-      ...parseExplicitGatewayKeyRevocationMetadataPayload(
-        payload,
-        "Gateway key revocation payload is invalid"
-      )
+      resolveKeyById: async (candidateKeyId) => {
+        return resolveGatewayApiKeyByIdWithRegistry(
+          env,
+          gatewayApiKeys,
+          candidateKeyId,
+          requestId
+        );
+      },
+      writeKeyRevocationState: async (
+        gatewayApiKey,
+        revoked,
+        request
+      ) => {
+        return writeGatewayKeyRevocationStateForKey(
+          env,
+          gatewayApiKey,
+          revoked,
+          requestId,
+          request
+        );
+      }
     }
   );
-
-  return {
-    keyId: gatewayApiKey.id,
-    revoked: state.revoked,
-    updatedAt: state.updatedAt
-  };
 }
 
 export async function clearGatewayKeyRevocation(
@@ -404,36 +403,35 @@ export async function clearGatewayKeyRevocationById(
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
-  const { gatewayApiKey, ownership } = await resolveGatewayApiKeyByIdWithRegistry(
-    env,
-    gatewayApiKeys,
+  return clearGatewayKeyRevocationByIdUseCase(
     keyId,
-    requestId
-  );
-
-  const state = await writeGatewayKeyRevocationStateForKey(
-    env,
-    gatewayApiKey,
-    false,
-    requestId,
+    payload,
+    "Gateway key revocation payload is invalid",
+    actorContext,
     {
-      keyId,
-      ownership,
-      ...(actorContext
-        ? toGatewayKeyRevocationActorContextRecord(actorContext)
-        : {}),
-      ...parseExplicitGatewayKeyRevocationMetadataPayload(
-        payload,
-        "Gateway key revocation payload is invalid"
-      )
+      resolveKeyById: async (candidateKeyId) => {
+        return resolveGatewayApiKeyByIdWithRegistry(
+          env,
+          gatewayApiKeys,
+          candidateKeyId,
+          requestId
+        );
+      },
+      writeKeyRevocationState: async (
+        gatewayApiKey,
+        revoked,
+        request
+      ) => {
+        return writeGatewayKeyRevocationStateForKey(
+          env,
+          gatewayApiKey,
+          revoked,
+          requestId,
+          request
+        );
+      }
     }
   );
-
-  return {
-    keyId: gatewayApiKey.id,
-    revoked: state.revoked,
-    updatedAt: state.updatedAt
-  };
 }
 
 export async function clearGatewayKeyRevocationOverlayState(

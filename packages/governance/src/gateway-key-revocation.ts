@@ -10,6 +10,7 @@ import {
   type GatewayKeyAuditEvent,
   type GatewayKeyAuditOwnership
 } from "./gateway-key-audit.js";
+import type { GatewayApiKeyRecord, GatewayApiKeyOwnership } from "./gateway-auth.js";
 
 export interface GatewayKeyRevocationState {
   revoked: boolean;
@@ -178,6 +179,97 @@ export function toGatewayKeyRevocationActorContextRecord(
     actor: actorContext.actor,
     actorSource: actorContext.actorSource
   };
+}
+
+export interface GatewayKeyRevocationByIdPort {
+  resolveKeyById(keyId: string): Promise<{
+    gatewayApiKey: GatewayApiKeyRecord;
+    ownership: GatewayApiKeyOwnership;
+  }>;
+  writeKeyRevocationState(
+    gatewayApiKey: GatewayApiKeyRecord,
+    revoked: boolean,
+    request: GatewayKeyRevocationWriteRequest
+  ): Promise<GatewayKeyRevocationState>;
+}
+
+function buildGatewayKeyRevocationWriteRequestFromPayload(
+  keyId: string,
+  ownership: GatewayApiKeyOwnership,
+  payload: unknown,
+  message: string,
+  actorContext?: GatewayKeyAuditActorContext
+): GatewayKeyRevocationWriteRequest {
+  return {
+    keyId,
+    ownership,
+    ...(actorContext
+      ? toGatewayKeyRevocationActorContextRecord(actorContext)
+      : {}),
+    ...parseExplicitGatewayKeyRevocationMetadataPayload(payload, message)
+  };
+}
+
+async function writeGatewayKeyRevocationById(
+  keyId: string,
+  revoked: boolean,
+  payload: unknown,
+  message: string,
+  actorContext: GatewayKeyAuditActorContext | undefined,
+  port: GatewayKeyRevocationByIdPort
+): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
+  const { gatewayApiKey, ownership } = await port.resolveKeyById(keyId);
+  const state = await port.writeKeyRevocationState(
+    gatewayApiKey,
+    revoked,
+    buildGatewayKeyRevocationWriteRequestFromPayload(
+      keyId,
+      ownership,
+      payload,
+      message,
+      actorContext
+    )
+  );
+
+  return {
+    keyId: gatewayApiKey.id,
+    revoked: state.revoked,
+    updatedAt: state.updatedAt
+  };
+}
+
+export async function revokeGatewayKeyById(
+  keyId: string,
+  payload: unknown,
+  message: string,
+  actorContext: GatewayKeyAuditActorContext | undefined,
+  port: GatewayKeyRevocationByIdPort
+): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
+  return writeGatewayKeyRevocationById(
+    keyId,
+    true,
+    payload,
+    message,
+    actorContext,
+    port
+  );
+}
+
+export async function clearGatewayKeyRevocationById(
+  keyId: string,
+  payload: unknown,
+  message: string,
+  actorContext: GatewayKeyAuditActorContext | undefined,
+  port: GatewayKeyRevocationByIdPort
+): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
+  return writeGatewayKeyRevocationById(
+    keyId,
+    false,
+    payload,
+    message,
+    actorContext,
+    port
+  );
 }
 
 export function buildGatewayKeyRevocationStateTransition(

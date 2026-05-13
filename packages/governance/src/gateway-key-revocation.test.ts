@@ -1,11 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildGatewayKeyRevocationStateTransition,
   DEFAULT_GATEWAY_KEY_REVOCATION_STATE,
+  clearGatewayKeyRevocationById,
   parseExplicitGatewayKeyRevocationMetadataPayload,
   parseGatewayKeyRevocationState,
   parseGatewayKeyRevocationWriteRequest,
+  revokeGatewayKeyById,
   requestKeyIdFromGatewayKeyRevocationWriteRequest,
   toGatewayKeyRevocationActorContextRecord
 } from "./gateway-key-revocation.js";
@@ -138,5 +140,137 @@ describe("buildGatewayKeyRevocationStateTransition", () => {
         updatedAt: "2026-05-13T00:00:00.000Z"
       }
     });
+  });
+});
+
+describe("revokeGatewayKeyById", () => {
+  it("merges ownership, explicit metadata, and actor context before delegating to the write port", async () => {
+    const resolveKeyById = vi.fn().mockResolvedValue({
+      gatewayApiKey: {
+        id: "key_dynamic",
+        label: "Dynamic Key",
+        valueHash: "hash",
+        status: "active" as const
+      },
+      ownership: "registry" as const
+    });
+    const writeKeyRevocationState = vi.fn().mockResolvedValue({
+      revoked: true,
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+
+    await expect(
+      revokeGatewayKeyById(
+        "key_dynamic",
+        {
+          reason: "incident containment"
+        },
+        "Gateway key revocation payload is invalid",
+        {
+          actor: "ops@example.com",
+          actorSource: "credential"
+        },
+        {
+          resolveKeyById,
+          writeKeyRevocationState
+        }
+      )
+    ).resolves.toEqual({
+      keyId: "key_dynamic",
+      revoked: true,
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+
+    expect(writeKeyRevocationState).toHaveBeenCalledWith(
+      {
+        id: "key_dynamic",
+        label: "Dynamic Key",
+        valueHash: "hash",
+        status: "active"
+      },
+      true,
+      {
+        keyId: "key_dynamic",
+        ownership: "registry",
+        reason: "incident containment",
+        actor: "ops@example.com",
+        actorSource: "credential"
+      }
+    );
+  });
+
+  it("continues to reject invalid explicit metadata payloads", async () => {
+    await expect(
+      revokeGatewayKeyById(
+        "key_dynamic",
+        {
+          reason: ""
+        },
+        "Gateway key revocation payload is invalid",
+        undefined,
+        {
+          resolveKeyById: vi.fn().mockResolvedValue({
+            gatewayApiKey: {
+              id: "key_dynamic",
+              label: "Dynamic Key",
+              valueHash: "hash",
+              status: "active"
+            },
+            ownership: "registry"
+          }),
+          writeKeyRevocationState: vi.fn()
+        }
+      )
+    ).rejects.toMatchObject({
+      code: "gateway_key_revocation_invalid_payload"
+    });
+  });
+});
+
+describe("clearGatewayKeyRevocationById", () => {
+  it("produces a stable unrevoke response and writes revoked=false", async () => {
+    const writeKeyRevocationState = vi.fn().mockResolvedValue({
+      revoked: false,
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+
+    await expect(
+      clearGatewayKeyRevocationById(
+        "key_configured",
+        undefined,
+        "Gateway key revocation payload is invalid",
+        undefined,
+        {
+          resolveKeyById: vi.fn().mockResolvedValue({
+            gatewayApiKey: {
+              id: "key_configured",
+              label: "Configured Key",
+              valueHash: "hash",
+              status: "active"
+            },
+            ownership: "configured"
+          }),
+          writeKeyRevocationState
+        }
+      )
+    ).resolves.toEqual({
+      keyId: "key_configured",
+      revoked: false,
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+
+    expect(writeKeyRevocationState).toHaveBeenCalledWith(
+      {
+        id: "key_configured",
+        label: "Configured Key",
+        valueHash: "hash",
+        status: "active"
+      },
+      false,
+      {
+        keyId: "key_configured",
+        ownership: "configured"
+      }
+    );
   });
 });
