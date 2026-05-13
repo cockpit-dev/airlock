@@ -48,12 +48,16 @@ export interface GatewayKeyRegistryDynamicKeyView {
   keyId: string;
   ownership: "registry";
   key: GatewayApiKeyRecord;
+  previousValueHash?: string;
+  previousValueHashExpiresAt?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 interface GatewayKeyRegistryStoredDynamicKey extends GatewayApiKeyRecord {
   valueHash: string;
+  previousValueHash?: string;
+  previousValueHashExpiresAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -82,6 +86,7 @@ interface GatewayKeyRegistryLookupRequest {
 
 interface GatewayKeyRegistryRotateRequest {
   valueHash: string;
+  overlapSeconds?: number;
   reason?: string;
   actor?: string;
 }
@@ -216,6 +221,14 @@ function parseStoredDynamicKey(value: unknown): GatewayKeyRegistryStoredDynamicK
   const record = parseGatewayDynamicApiKeyRecord(value);
   const createdAt = value.createdAt;
   const updatedAt = value.updatedAt;
+  const previousValueHash =
+    typeof value.previousValueHash === "string"
+      ? value.previousValueHash.trim().toLowerCase()
+      : undefined;
+  const previousValueHashExpiresAt =
+    typeof value.previousValueHashExpiresAt === "string"
+      ? value.previousValueHashExpiresAt
+      : undefined;
 
   if (
     typeof createdAt !== "string" ||
@@ -226,9 +239,28 @@ function parseStoredDynamicKey(value: unknown): GatewayKeyRegistryStoredDynamicK
     throw new Error("Registry dynamic key timestamps are invalid");
   }
 
+  if (
+    previousValueHash !== undefined &&
+    previousValueHash.length > 0 &&
+    !/^[a-f0-9]{64}$/.test(previousValueHash)
+  ) {
+    throw new Error("Registry dynamic key previousValueHash is invalid");
+  }
+
+  if (
+    previousValueHashExpiresAt !== undefined &&
+    !isValidTimestamp(previousValueHashExpiresAt)
+  ) {
+    throw new Error("Registry dynamic key previousValueHashExpiresAt is invalid");
+  }
+
   return {
     ...record,
     valueHash: record.valueHash!,
+    ...(previousValueHash ? { previousValueHash } : {}),
+    ...(previousValueHashExpiresAt
+      ? { previousValueHashExpiresAt }
+      : {}),
     createdAt,
     updatedAt
   };
@@ -249,6 +281,10 @@ function toDynamicKeyView(
       ...(key.expiresAt ? { expiresAt: key.expiresAt } : {}),
       ...(key.policy ? { policy: key.policy } : {})
     },
+    ...(key.previousValueHash ? { previousValueHash: key.previousValueHash } : {}),
+    ...(key.previousValueHashExpiresAt
+      ? { previousValueHashExpiresAt: key.previousValueHashExpiresAt }
+      : {}),
     createdAt: key.createdAt,
     updatedAt: key.updatedAt
   };
@@ -276,6 +312,12 @@ function parseDynamicKeyView(value: unknown): GatewayKeyRegistryDynamicKeyView {
     keyId: value.keyId,
     ownership: "registry",
     key,
+    ...(typeof value.previousValueHash === "string"
+      ? { previousValueHash: value.previousValueHash }
+      : {}),
+    ...(typeof value.previousValueHashExpiresAt === "string"
+      ? { previousValueHashExpiresAt: value.previousValueHashExpiresAt }
+      : {}),
     createdAt,
     updatedAt
   };
@@ -359,6 +401,14 @@ function parseRotateRequest(value: unknown): GatewayKeyRegistryRotateRequest {
 
   return {
     valueHash: record.valueHash!,
+    ...(value.overlapSeconds !== undefined
+      ? {
+          overlapSeconds: parseOverlapSecondsPayload(
+            value.overlapSeconds,
+            "Gateway dynamic key rotation payload is invalid"
+          )
+        }
+      : {}),
     ...(value.reason !== undefined
       ? {
           reason: parseReasonPayload(
@@ -430,6 +480,24 @@ function parseReasonPayload(value: unknown, message: string): string {
       cause
     });
   }
+}
+
+function parseOverlapSecondsPayload(value: unknown, message: string): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > 3600
+  ) {
+    throw new GatewayError(message, {
+      code: "config_invalid_gateway_api_keys",
+      category: "configuration",
+      httpStatus: 400,
+      retryable: false
+    });
+  }
+
+  return value;
 }
 
 function parseActorPayload(value: unknown, message: string): string {
@@ -618,13 +686,27 @@ export class GatewayKeyRegistryDurableObject {
 
       const dynamicKeys = await listStoredDynamicKeys(this.state.storage);
       const payload = parseRotateRequest(await request.json());
+      const rotateRecord =
+        payload.overlapSeconds && payload.overlapSeconds > 0
+          ? {
+              ...existingKey,
+              valueHash: payload.valueHash,
+              previousValueHash: existingKey.valueHash,
+              previousValueHashExpiresAt: new Date(
+                Date.now() + payload.overlapSeconds * 1000
+              ).toISOString()
+            }
+          : {
+              ...existingKey,
+              valueHash: payload.valueHash
+            };
       const key = await updateStoredDynamicKey(
         this.state.storage,
-        {
-          ...existingKey,
-          valueHash: payload.valueHash
-        },
-        dynamicKeys
+        rotateRecord,
+        dynamicKeys,
+        payload.overlapSeconds && payload.overlapSeconds > 0
+          ? undefined
+          : { clearPreviousValueHash: true }
       );
       await appendStoredDynamicKeyAuditEvent(
         this.state.storage,
@@ -1163,6 +1245,9 @@ export async function rotateGatewayRegistryApiKey(
         },
         body: JSON.stringify({
           valueHash: rotateRequest.valueHash,
+          ...(rotateRequest.overlapSeconds !== undefined
+            ? { overlapSeconds: rotateRequest.overlapSeconds }
+            : {}),
           ...(rotateRequest.reason ? { reason: rotateRequest.reason } : {}),
           ...(rotateRequest.actor ? { actor: rotateRequest.actor } : {})
         } satisfies GatewayKeyRegistryRotateRequest)
@@ -1367,10 +1452,19 @@ async function findStoredDynamicKeyByValueHash(
   valueHash: string
 ): Promise<GatewayKeyRegistryStoredDynamicKey | null> {
   const keys = await listStoredDynamicKeys(storage);
+  const now = Date.now();
 
   return (
     keys.find((key) => {
-      return key.valueHash === valueHash;
+      if (key.valueHash === valueHash) {
+        return true;
+      }
+
+      return (
+        key.previousValueHash === valueHash &&
+        key.previousValueHashExpiresAt !== undefined &&
+        now < Date.parse(key.previousValueHashExpiresAt)
+      );
     }) ?? null
   );
 }
@@ -1409,8 +1503,14 @@ async function createStoredDynamicKey(
 
 async function updateStoredDynamicKey(
   storage: DurableObjectStateLike["storage"],
-  gatewayApiKey: GatewayApiKeyRecord,
-  existingGatewayApiKeys: readonly GatewayKeyRegistryStoredDynamicKey[]
+  gatewayApiKey: GatewayApiKeyRecord & {
+    previousValueHash?: string;
+    previousValueHashExpiresAt?: string;
+  },
+  existingGatewayApiKeys: readonly GatewayKeyRegistryStoredDynamicKey[],
+  options?: {
+    clearPreviousValueHash?: boolean;
+  }
 ): Promise<GatewayKeyRegistryStoredDynamicKey> {
   const existing = await readStoredDynamicKey(storage, gatewayApiKey.id);
 
@@ -1433,6 +1533,30 @@ async function updateStoredDynamicKey(
     valueHash: gatewayApiKey.valueHash!,
     updatedAt: new Date().toISOString()
   };
+
+  if (
+    options?.clearPreviousValueHash !== true &&
+    gatewayApiKey.valueHash === existing.valueHash &&
+    existing.previousValueHash &&
+    existing.previousValueHashExpiresAt
+  ) {
+    next.previousValueHash = existing.previousValueHash;
+    next.previousValueHashExpiresAt = existing.previousValueHashExpiresAt;
+  }
+
+  if (
+    options?.clearPreviousValueHash === true ||
+    gatewayApiKey.previousValueHash === undefined
+  ) {
+    delete next.previousValueHash;
+  }
+
+  if (
+    options?.clearPreviousValueHash === true ||
+    gatewayApiKey.previousValueHashExpiresAt === undefined
+  ) {
+    delete next.previousValueHashExpiresAt;
+  }
 
   await storage.put(`dynamic:${gatewayApiKey.id}`, next);
 

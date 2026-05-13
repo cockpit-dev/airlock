@@ -3470,6 +3470,182 @@ describe("gateway app", () => {
     });
   });
 
+  it("can stage a registry-owned key rotation with a bounded overlap window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-13T02:20:00.000Z"));
+
+    try {
+      const fetcher = vi.fn().mockImplementation(() => {
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl_123",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "hello runtime"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        );
+      });
+      const app = createApp({ fetcher });
+      const bindings = {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+        AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      };
+
+      const createResponse = await app.request(
+        "http://localhost/_airlock/keys",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer admin-secret"
+          },
+          body: JSON.stringify({
+            id: "key_dynamic",
+            label: "Dynamic Runtime Key",
+            valueHash:
+              "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+            status: "active"
+          })
+        },
+        bindings
+      );
+
+      expect(createResponse.status).toBe(200);
+
+      const oldSecretBeforeRotate = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer runtime-secret"
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            stream: false,
+            messages: [{ role: "user", content: "old secret before rotate" }]
+          })
+        },
+        bindings
+      );
+
+      expect(oldSecretBeforeRotate.status).toBe(200);
+
+      const rotateResponse = await app.request(
+        "http://localhost/_airlock/keys/key_dynamic/rotate",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer admin-secret"
+          },
+          body: JSON.stringify({
+            valueHash:
+              "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+            overlapSeconds: 60
+          })
+        },
+        bindings
+      );
+
+      expect(rotateResponse.status).toBe(200);
+      const rotatePayload = await readJson(rotateResponse);
+
+      expect(rotatePayload).toMatchObject({
+        keyId: "key_dynamic",
+        previousValueHash:
+          "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16"
+      });
+      expect(isRecord(rotatePayload) && isRecord(rotatePayload.key)).toBe(true);
+
+      if (!isRecord(rotatePayload) || !isRecord(rotatePayload.key)) {
+        return;
+      }
+
+      expect(rotatePayload.key.id).toBe("key_dynamic");
+
+      const oldSecretDuringOverlap = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer runtime-secret"
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            stream: false,
+            messages: [{ role: "user", content: "old secret during overlap" }]
+          })
+        },
+        bindings
+      );
+
+      expect(oldSecretDuringOverlap.status).toBe(200);
+
+      const newSecretDuringOverlap = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer rotated-secret"
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            stream: false,
+            messages: [{ role: "user", content: "new secret during overlap" }]
+          })
+        },
+        bindings
+      );
+
+      expect(newSecretDuringOverlap.status).toBe(200);
+
+      vi.setSystemTime(new Date("2026-05-13T02:21:01.000Z"));
+
+      const oldSecretAfterOverlap = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer runtime-secret"
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            stream: false,
+            messages: [{ role: "user", content: "old secret after overlap" }]
+          })
+        },
+        bindings
+      );
+
+      expect(oldSecretAfterOverlap.status).toBe(401);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("rejects rotating env-configured keys through the runtime rotation route", async () => {
     const app = createApp({ fetcher: vi.fn() });
     const bindings = {
