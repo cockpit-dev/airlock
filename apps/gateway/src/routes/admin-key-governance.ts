@@ -38,12 +38,20 @@ type GatewayApp = Hono<{
 }>;
 
 export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
+  const hasStructuredAdminCredentials = (
+    value: string | undefined
+  ): boolean => {
+    return typeof value === "string" && value.length > 0;
+  };
+
   app.get("/_airlock/keys", async (context) => {
     const requestId = context.get("requestId");
     await authorizeInternalAdminRequest(
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.read",
       requestId
     );
 
@@ -63,6 +71,8 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.write",
       requestId
     );
 
@@ -82,6 +92,8 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.read",
       requestId
     );
 
@@ -100,6 +112,8 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.write",
       requestId
     );
 
@@ -121,6 +135,8 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.write",
       requestId
     );
 
@@ -141,6 +157,8 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.write",
       requestId
     );
 
@@ -162,6 +180,8 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.write",
       requestId
     );
 
@@ -183,6 +203,8 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.read",
       requestId
     );
 
@@ -201,6 +223,8 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.read",
       requestId
     );
 
@@ -219,6 +243,8 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.read",
       requestId
     );
 
@@ -237,6 +263,8 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.read",
       requestId
     );
 
@@ -255,6 +283,8 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.write",
       requestId
     );
 
@@ -274,6 +304,8 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.write",
       requestId
     );
 
@@ -292,6 +324,8 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.write",
       requestId
     );
 
@@ -313,6 +347,8 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       context.req.header("authorization"),
       context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
       parseInternalAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      hasStructuredAdminCredentials(context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+      "keys.write",
       requestId
     );
 

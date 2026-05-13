@@ -55,12 +55,20 @@ export interface InternalAdminCredential {
   id: string;
   tokenHash: string;
   actor: string;
+  scopes: InternalAdminScope[];
 }
 
 export interface InternalAdminAuthorization {
   credentialId: string;
   actor: string;
+  scopes: InternalAdminScope[];
 }
+
+export type InternalAdminScope = "keys.read" | "keys.write";
+const DEFAULT_INTERNAL_ADMIN_SCOPES: InternalAdminScope[] = [
+  "keys.read",
+  "keys.write"
+];
 
 function createUnauthorizedError(requestId: string): GatewayError {
   return new GatewayError("Unauthorized", {
@@ -121,6 +129,41 @@ function parseInternalAdminActor(value: unknown): string {
   }
 
   return value.trim();
+}
+
+function parseInternalAdminScopes(
+  value: unknown
+): InternalAdminScope[] {
+  if (value === undefined) {
+    return [...DEFAULT_INTERNAL_ADMIN_SCOPES];
+  }
+
+  if (!Array.isArray(value)) {
+    throw createInvalidGatewayKeyConfigError(
+      "Internal admin credential scopes must be an array"
+    );
+  }
+
+  const rawScopes = value as unknown[];
+  const scopes: InternalAdminScope[] = [];
+
+  for (const scope of rawScopes) {
+    if (scope !== "keys.read" && scope !== "keys.write") {
+      throw createInvalidGatewayKeyConfigError(
+        "Internal admin credential scopes must contain only supported values"
+      );
+    }
+
+    scopes.push(scope);
+  }
+
+  if (new Set(scopes).size !== scopes.length) {
+    throw createInvalidGatewayKeyConfigError(
+      "Internal admin credential scopes must be unique"
+    );
+  }
+
+  return scopes;
 }
 
 function validateLifecycleWindow(
@@ -624,6 +667,7 @@ export function parseInternalAdminCredentials(
         ? entry.tokenHash.trim().toLowerCase()
         : "";
     const actor = parseInternalAdminActor(entry.actor);
+    const scopes = parseInternalAdminScopes(entry.scopes);
 
     if (id.length === 0) {
       throw createInvalidGatewayKeyConfigError(
@@ -655,7 +699,8 @@ export function parseInternalAdminCredentials(
     return {
       id,
       tokenHash,
-      actor
+      actor,
+      scopes
     };
   });
 }
@@ -782,8 +827,27 @@ export async function validateInternalAdminCredential(
 
   return {
     credentialId: matchedCredential.id,
-    actor: matchedCredential.actor
+    actor: matchedCredential.actor,
+    scopes: matchedCredential.scopes
   };
+}
+
+export function requireInternalAdminScope(
+  authorization: InternalAdminAuthorization,
+  scope: InternalAdminScope,
+  requestId = "unknown_request"
+): InternalAdminAuthorization {
+  if (!authorization.scopes.includes(scope)) {
+    throw new GatewayError("Forbidden", {
+      code: "auth_admin_scope_denied",
+      category: "authentication",
+      httpStatus: 403,
+      retryable: false,
+      requestId
+    });
+  }
+
+  return authorization;
 }
 
 export function extractBearerToken(

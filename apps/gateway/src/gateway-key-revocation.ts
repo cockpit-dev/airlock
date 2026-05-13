@@ -1,8 +1,10 @@
 import {
   evaluateGatewayApiKeyLifecycle,
   extractBearerToken,
+  requireInternalAdminScope,
   validateInternalAdminCredential,
   type GatewayApiKeyLifecycleStatus,
+  type InternalAdminScope,
   type GatewayApiKeyRecord,
   type InternalAdminCredential
 } from "@airlock/governance";
@@ -221,15 +223,25 @@ export async function authorizeInternalAdminRequest(
   authorization: string | undefined,
   adminToken: string | undefined,
   adminCredentials: readonly InternalAdminCredential[],
+  structuredCredentialsConfigured: boolean,
+  requiredScope: InternalAdminScope | undefined,
   requestId: string
 ): Promise<void> {
-  if (adminCredentials.length > 0) {
+  if (structuredCredentialsConfigured) {
     const bearerToken = extractBearerToken(authorization, requestId);
-    await validateInternalAdminCredential(
+    const adminAuthorization = await validateInternalAdminCredential(
       bearerToken,
       adminCredentials,
       requestId
     );
+
+    if (requiredScope) {
+      requireInternalAdminScope(
+        adminAuthorization,
+        requiredScope,
+        requestId
+      );
+    }
     return;
   }
 

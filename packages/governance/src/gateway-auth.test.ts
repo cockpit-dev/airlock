@@ -846,7 +846,8 @@ describe("parseInternalAdminCredentials", () => {
           {
             id: "ops_primary",
             tokenHash: gatewaySecretHash,
-            actor: "ops@example.com"
+            actor: "ops@example.com",
+            scopes: ["keys.read"]
           }
         ])
       )
@@ -854,7 +855,8 @@ describe("parseInternalAdminCredentials", () => {
       {
         id: "ops_primary",
         tokenHash: gatewaySecretHash,
-        actor: "ops@example.com"
+        actor: "ops@example.com",
+        scopes: ["keys.read"]
       }
     ]);
   });
@@ -870,6 +872,42 @@ describe("parseInternalAdminCredentials", () => {
         ])
       )
     ).toThrow(GatewayError);
+  });
+
+  it("rejects credentials with unknown scopes", () => {
+    expect(() =>
+      parseInternalAdminCredentials(
+        JSON.stringify([
+          {
+            id: "ops_primary",
+            tokenHash: gatewaySecretHash,
+            actor: "ops@example.com",
+            scopes: ["keys.admin"]
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("defaults credentials without scopes to full access in this phase", () => {
+    expect(
+      parseInternalAdminCredentials(
+        JSON.stringify([
+          {
+            id: "ops_primary",
+            tokenHash: gatewaySecretHash,
+            actor: "ops@example.com"
+          }
+        ])
+      )
+    ).toEqual([
+      {
+        id: "ops_primary",
+        tokenHash: gatewaySecretHash,
+        actor: "ops@example.com",
+        scopes: ["keys.read", "keys.write"]
+      }
+    ]);
   });
 });
 
