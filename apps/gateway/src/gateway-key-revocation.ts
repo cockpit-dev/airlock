@@ -6,6 +6,11 @@ import {
 import { GatewayError } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
+import {
+  createGatewayApiKeyRegistrySnapshot,
+  type GatewayApiKeyRegistrySnapshot,
+  type GatewayApiKeyStatusView
+} from "./gateway-key-registry.js";
 
 interface GatewayKeyRevocationState {
   revoked: boolean;
@@ -204,17 +209,7 @@ export async function getGatewayApiKeyStatus(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string
-): Promise<{
-  keyId: string;
-  configuredStatus: GatewayApiKeyRecord["status"];
-  notBefore?: string;
-  expiresAt?: string;
-  lifecycleStatus: GatewayApiKeyLifecycleStatus;
-  overlayRevoked: boolean;
-  overlayUpdatedAt: string;
-  effectiveStatus: GatewayApiKeyLifecycleStatus;
-  acceptedNow: boolean;
-}> {
+): Promise<GatewayApiKeyStatusView> {
   const lifecycleStatus = evaluateGatewayApiKeyLifecycle(gatewayApiKey);
   const overlayState = env.AIRLOCK_GATEWAY_KEY_REVOCATION
     ? await readGatewayKeyRevocationStateForKey(env, gatewayApiKey, requestId)
@@ -226,6 +221,7 @@ export async function getGatewayApiKeyStatus(
 
   return {
     keyId: gatewayApiKey.id,
+    label: gatewayApiKey.label,
     configuredStatus: gatewayApiKey.status,
     ...(gatewayApiKey.notBefore ? { notBefore: gatewayApiKey.notBefore } : {}),
     ...(gatewayApiKey.expiresAt ? { expiresAt: gatewayApiKey.expiresAt } : {}),
@@ -235,6 +231,21 @@ export async function getGatewayApiKeyStatus(
     effectiveStatus,
     acceptedNow: effectiveStatus === "active"
   };
+}
+
+export async function getGatewayApiKeyStatusSnapshot(
+  env: GatewayBindings,
+  gatewayApiKey: GatewayApiKeyRecord,
+  requestId: string
+): Promise<GatewayApiKeyRegistrySnapshot> {
+  return createGatewayApiKeyRegistrySnapshot(
+    env,
+    gatewayApiKey,
+    requestId,
+    async (gatewayApiKeyRecord, nextRequestId) => {
+      return getGatewayApiKeyStatus(env, gatewayApiKeyRecord, nextRequestId);
+    }
+  );
 }
 
 export async function listGatewayApiKeyStatuses(
@@ -248,39 +259,30 @@ export async function listGatewayApiKeyStatuses(
 ): Promise<
   Array<{
     keyId: string;
-    label: string;
-    configuredStatus: GatewayApiKeyRecord["status"];
-    notBefore?: string;
-    expiresAt?: string;
-    lifecycleStatus: GatewayApiKeyLifecycleStatus;
-    overlayRevoked: boolean;
-    overlayUpdatedAt: string;
-    effectiveStatus: GatewayApiKeyLifecycleStatus;
-    acceptedNow: boolean;
+    configured: GatewayApiKeyStatusView;
+    runtime: GatewayApiKeyStatusView;
+    registryOverride: GatewayApiKeyRegistrySnapshot["registryOverride"];
+    registryOverrideApplied: boolean;
+    registryUpdatedAt?: string;
   }>
 > {
   const entries = await Promise.all(
     gatewayApiKeys.map(async (gatewayApiKey) => {
-      const status = await getGatewayApiKeyStatus(env, gatewayApiKey, requestId);
-
-      return {
-        ...status,
-        label: gatewayApiKey.label
-      };
+      return getGatewayApiKeyStatusSnapshot(env, gatewayApiKey, requestId);
     })
   );
 
   return entries.filter((entry) => {
     if (
       filters?.acceptedNow !== undefined &&
-      entry.acceptedNow !== filters.acceptedNow
+      entry.runtime.acceptedNow !== filters.acceptedNow
     ) {
       return false;
     }
 
     if (
       filters?.effectiveStatus !== undefined &&
-      entry.effectiveStatus !== filters.effectiveStatus
+      entry.runtime.effectiveStatus !== filters.effectiveStatus
     ) {
       return false;
     }

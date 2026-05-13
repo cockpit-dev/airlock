@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { GatewayError } from "@airlock/shared";
 
 import {
+  applyGatewayApiKeyMetadataOverride,
   extractBearerToken,
+  parseGatewayApiKeyMetadataOverride,
   parseGatewayApiKeys,
   requireGatewayAuthorization,
   validateGatewayApiKey
@@ -701,6 +703,118 @@ describe("parseGatewayApiKeys", () => {
             }
           }
         ])
+      )
+    ).toThrow(GatewayError);
+  });
+});
+
+describe("parseGatewayApiKeyMetadataOverride", () => {
+  it("parses a valid metadata override with policy and lifecycle fields", () => {
+    expect(
+      parseGatewayApiKeyMetadataOverride({
+        label: "Rotated Production Key",
+        status: "active",
+        notBefore: "2026-05-13T00:00:00.000Z",
+        expiresAt: "2026-06-13T00:00:00.000Z",
+        policy: {
+          tier: "prod",
+          tags: ["internal"],
+          allowedProviders: ["openai"],
+          requestQuota: {
+            limit: 100,
+            windowSeconds: 60
+          }
+        }
+      })
+    ).toEqual({
+      label: "Rotated Production Key",
+      status: "active",
+      notBefore: "2026-05-13T00:00:00.000Z",
+      expiresAt: "2026-06-13T00:00:00.000Z",
+      policy: {
+        tier: "prod",
+        tags: ["internal"],
+        allowedProviders: ["openai"],
+        requestQuota: {
+          limit: 100,
+          windowSeconds: 60
+        }
+      }
+    });
+  });
+
+  it("allows clearing optional lifecycle and policy fields with null", () => {
+    expect(
+      parseGatewayApiKeyMetadataOverride({
+        notBefore: null,
+        expiresAt: null,
+        policy: null
+      })
+    ).toEqual({
+      notBefore: null,
+      expiresAt: null,
+      policy: null
+    });
+  });
+
+  it("rejects invalid metadata override status", () => {
+    expect(() =>
+      parseGatewayApiKeyMetadataOverride({
+        status: "disabled"
+      })
+    ).toThrow(GatewayError);
+  });
+});
+
+describe("applyGatewayApiKeyMetadataOverride", () => {
+  it("applies an override onto a configured key record", () => {
+    expect(
+      applyGatewayApiKeyMetadataOverride(
+        {
+          id: "key_1",
+          label: "Configured Key",
+          value: "gateway-secret",
+          status: "active",
+          notBefore: "2026-05-01T00:00:00.000Z",
+          policy: {
+            tier: "dev"
+          }
+        },
+        {
+          label: "Runtime Key",
+          status: "revoked",
+          notBefore: null,
+          expiresAt: "2026-06-01T00:00:00.000Z",
+          policy: {
+            tier: "prod"
+          }
+        }
+      )
+    ).toEqual({
+      id: "key_1",
+      label: "Runtime Key",
+      value: "gateway-secret",
+      status: "revoked",
+      expiresAt: "2026-06-01T00:00:00.000Z",
+      policy: {
+        tier: "prod"
+      }
+    });
+  });
+
+  it("rejects overrides that produce an invalid lifecycle window", () => {
+    expect(() =>
+      applyGatewayApiKeyMetadataOverride(
+        {
+          id: "key_1",
+          label: "Configured Key",
+          value: "gateway-secret",
+          status: "active",
+          notBefore: "2026-05-13T00:00:00.000Z"
+        },
+        {
+          expiresAt: "2026-05-13T00:00:00.000Z"
+        }
       )
     ).toThrow(GatewayError);
   });

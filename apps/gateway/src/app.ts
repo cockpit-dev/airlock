@@ -7,12 +7,16 @@ import type { GatewayBindings } from "./env.js";
 import {
   assertInternalAdminAuthorization,
   clearGatewayKeyRevocation,
-  getGatewayApiKeyStatus,
+  getGatewayApiKeyStatusSnapshot,
   getGatewayKeyRevocationStatus,
   listGatewayApiKeyStatuses,
   resolveGatewayApiKeyById,
   revokeGatewayKey
 } from "./gateway-key-revocation.js";
+import {
+  clearGatewayKeyRegistryOverride,
+  upsertGatewayKeyRegistryOverride
+} from "./gateway-key-registry.js";
 import { createRequestId } from "./request-id.js";
 import { handleChatCompletions } from "./routes/chat-completions.js";
 import { handleHealth } from "./routes/health.js";
@@ -167,12 +171,95 @@ export function createApp(options: CreateAppOptions = {}) {
     );
 
     return context.json(
-      await getGatewayApiKeyStatus(
+      await getGatewayApiKeyStatusSnapshot(
         context.env,
         gatewayApiKey,
         requestId
       )
     );
+  });
+  app.get("/_airlock/keys/:keyId/registry", async (context) => {
+    const requestId = context.get("requestId");
+    assertInternalAdminAuthorization(
+      context.req.header("authorization"),
+      context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      requestId
+    );
+
+    const config = resolveGatewayConfig(context.env);
+    const gatewayApiKey = resolveGatewayApiKeyById(
+      config.gatewayApiKeys,
+      context.req.param("keyId"),
+      requestId
+    );
+    const snapshot = await getGatewayApiKeyStatusSnapshot(
+      context.env,
+      gatewayApiKey,
+      requestId
+    );
+
+    return context.json({
+      keyId: snapshot.keyId,
+      configured: snapshot.configured,
+      runtime: snapshot.runtime,
+      override: snapshot.registryOverride,
+      registryOverrideApplied: snapshot.registryOverrideApplied,
+      ...(snapshot.registryUpdatedAt
+        ? { registryUpdatedAt: snapshot.registryUpdatedAt }
+        : {})
+    });
+  });
+  app.put("/_airlock/keys/:keyId/registry", async (context) => {
+    const requestId = context.get("requestId");
+    assertInternalAdminAuthorization(
+      context.req.header("authorization"),
+      context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      requestId
+    );
+
+    const config = resolveGatewayConfig(context.env);
+    const gatewayApiKey = resolveGatewayApiKeyById(
+      config.gatewayApiKeys,
+      context.req.param("keyId"),
+      requestId
+    );
+    const override = await upsertGatewayKeyRegistryOverride(
+      context.env,
+      gatewayApiKey,
+      await context.req.json(),
+      requestId
+    );
+
+    return context.json({
+      keyId: gatewayApiKey.id,
+      override
+    });
+  });
+  app.delete("/_airlock/keys/:keyId/registry", async (context) => {
+    const requestId = context.get("requestId");
+    assertInternalAdminAuthorization(
+      context.req.header("authorization"),
+      context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      requestId
+    );
+
+    const config = resolveGatewayConfig(context.env);
+    const gatewayApiKey = resolveGatewayApiKeyById(
+      config.gatewayApiKeys,
+      context.req.param("keyId"),
+      requestId
+    );
+
+    await clearGatewayKeyRegistryOverride(
+      context.env,
+      gatewayApiKey,
+      requestId
+    );
+
+    return context.json({
+      keyId: gatewayApiKey.id,
+      override: null
+    });
   });
   app.post("/_airlock/keys/:keyId/revocation", async (context) => {
     const requestId = context.get("requestId");

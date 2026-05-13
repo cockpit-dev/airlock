@@ -2,7 +2,9 @@ import type { Context } from "hono";
 import type { TelemetrySink } from "@airlock/telemetry";
 
 import {
-  requireGatewayAuthorization as requireAuthorization,
+  assertGatewayApiKeyIsActive,
+  extractBearerToken,
+  matchGatewayApiKeyByToken,
   type GatewayApiKeyRecord
 } from "@airlock/governance";
 import { GatewayError, type ProviderId } from "@airlock/shared";
@@ -11,6 +13,7 @@ import type { ModelRoute } from "@airlock/routing";
 import type { GatewayConfig } from "./config.js";
 import type { CreateAppOptions } from "./app.js";
 import type { GatewayBindings } from "./env.js";
+import { resolveGatewayRuntimeApiKey } from "./gateway-key-registry.js";
 import { assertGatewayKeyNotRevoked } from "./gateway-key-revocation.js";
 
 export async function requireGatewayAuthorization(
@@ -27,11 +30,52 @@ export async function requireGatewayAuthorization(
   config: GatewayConfig,
   requestId: string
 ) {
-  const gatewayApiKey = await requireAuthorization(
-    context.req.header("authorization"),
-    config.gatewayApiKeys,
-    requestId
-  );
+  const authorization = context.req.header("authorization");
+  const gatewayApiKey = config.gatewayKeyRegistryEnabled
+    ? await (async () => {
+        const bearerToken = extractBearerToken(authorization, requestId);
+        const matchedGatewayApiKey = await matchGatewayApiKeyByToken(
+          bearerToken,
+          config.gatewayApiKeys
+        );
+
+        if (!matchedGatewayApiKey) {
+          throw new GatewayError("Unauthorized", {
+            code: "auth_invalid_api_key",
+            category: "authentication",
+            httpStatus: 401,
+            retryable: false,
+            requestId
+          });
+        }
+
+        const { runtimeGatewayApiKey } = await resolveGatewayRuntimeApiKey(
+          context.env,
+          matchedGatewayApiKey,
+          requestId
+        );
+
+        return assertGatewayApiKeyIsActive(runtimeGatewayApiKey, requestId);
+      })()
+    : await (async () => {
+        const bearerToken = extractBearerToken(authorization, requestId);
+        const matchedGatewayApiKey = await matchGatewayApiKeyByToken(
+          bearerToken,
+          config.gatewayApiKeys
+        );
+
+        if (!matchedGatewayApiKey) {
+          throw new GatewayError("Unauthorized", {
+            code: "auth_invalid_api_key",
+            category: "authentication",
+            httpStatus: 401,
+            retryable: false,
+            requestId
+          });
+        }
+
+        return assertGatewayApiKeyIsActive(matchedGatewayApiKey, requestId);
+      })();
 
   await assertGatewayKeyNotRevoked(context.env, gatewayApiKey, requestId);
 

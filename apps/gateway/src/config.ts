@@ -27,6 +27,7 @@ export interface GatewayConfig {
   providerCircuitBreakerThreshold?: number;
   providerCircuitBreakerCooldownMs?: number;
   providerCircuitBreakerPersistent?: boolean;
+  gatewayKeyRegistryEnabled?: boolean;
   gatewayApiKeys: GatewayApiKeyRecord[];
   modelGroups: ModelGroupMap;
   modelAliases: ModelRouteDirectory;
@@ -237,6 +238,18 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
     });
   }
 
+  if (
+    env.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED &&
+    !env.AIRLOCK_GATEWAY_KEY_REGISTRY
+  ) {
+    throw new GatewayError("Gateway key registry binding is required", {
+      code: "config_missing_gateway_key_registry",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false
+    });
+  }
+
   if (env.AIRLOCK_INTERNAL_ADMIN_TOKEN && !env.AIRLOCK_GATEWAY_KEY_REVOCATION) {
     throw new GatewayError("Gateway key revocation binding is required", {
       code: "config_missing_gateway_key_revocation",
@@ -299,6 +312,7 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
     providerCircuitBreakerThreshold: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD,
     providerCircuitBreakerCooldownMs: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS,
     providerCircuitBreakerPersistent: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT,
+    gatewayKeyRegistryEnabled: env.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED,
     gatewayApiKeys,
     modelGroups,
     modelAliases,

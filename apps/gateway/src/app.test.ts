@@ -409,6 +409,75 @@ function createPersistentBreakerNamespace() {
   return namespace;
 }
 
+function createRegistryNamespace() {
+  const state = new Map<
+    string,
+    {
+      label?: string;
+      status?: "active" | "revoked";
+      notBefore?: string | null;
+      expiresAt?: string | null;
+      policy?: Record<string, unknown> | null;
+      updatedAt: string;
+    }
+  >();
+
+  const namespace: DurableObjectNamespaceLike = {
+    idFromName(name: string) {
+      return { name };
+    },
+    get(id: { name: string }) {
+      return {
+        async fetch(request: Request) {
+          if (id.name !== "gateway-key-registry") {
+            return new Response("Not found", { status: 404 });
+          }
+
+          const url = new URL(request.url);
+          const keyId = url.searchParams.get("keyId");
+
+          if (!keyId) {
+            return new Response("Missing keyId", { status: 400 });
+          }
+
+          if (request.method === "GET") {
+            const current = state.get(keyId);
+            return Response.json({
+              keyId,
+              override: current ?? null
+            });
+          }
+
+          if (request.method === "PUT") {
+            const body = (await request.json()) as Record<string, unknown>;
+            const next = {
+              ...body,
+              updatedAt: new Date().toISOString()
+            };
+            state.set(keyId, next);
+            return Response.json({
+              keyId,
+              override: next
+            });
+          }
+
+          if (request.method === "DELETE") {
+            state.delete(keyId);
+            return Response.json({
+              keyId,
+              override: null
+            });
+          }
+
+          return new Response("Method not allowed", { status: 405 });
+        }
+      };
+    }
+  };
+
+  return namespace;
+}
+
 const gatewaySecretHash =
   "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6";
 
@@ -2729,6 +2798,303 @@ describe("gateway app", () => {
       error: {
         code: "auth_invalid_admin_token"
       }
+    });
+  });
+
+  it("returns not ready from /readyz when gateway key registry mode is enabled without a registry binding", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true"
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toEqual({
+      ok: false,
+      ready: false,
+      code: "not_ready"
+    });
+  });
+
+  it("rejects missing admin auth on internal key registry routes", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys/key_1/registry",
+      {
+        method: "GET"
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+        AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace()
+      }
+    );
+
+    expect(response.status).toBe(401);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_invalid_admin_token"
+      }
+    });
+  });
+
+  it("supports reading, writing, and clearing gateway key registry metadata overrides", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active"
+        }
+      ])
+    };
+
+    const writeResponse = await app.request(
+      "http://localhost/_airlock/keys/key_1/registry",
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          label: "Runtime Key 1",
+          status: "revoked",
+          policy: {
+            tier: "prod"
+          }
+        })
+      },
+      bindings
+    );
+
+    expect(writeResponse.status).toBe(200);
+    await expect(readJson(writeResponse)).resolves.toMatchObject({
+      keyId: "key_1",
+      override: {
+        label: "Runtime Key 1",
+        status: "revoked",
+        policy: {
+          tier: "prod"
+        }
+      }
+    });
+
+    const readResponse = await app.request(
+      "http://localhost/_airlock/keys/key_1/registry",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(readResponse.status).toBe(200);
+    await expect(readJson(readResponse)).resolves.toMatchObject({
+      keyId: "key_1",
+      configured: {
+        keyId: "key_1",
+        label: "Gateway Key 1",
+        configuredStatus: "active"
+      },
+      runtime: {
+        keyId: "key_1",
+        label: "Runtime Key 1",
+        configuredStatus: "revoked"
+      },
+      override: {
+        label: "Runtime Key 1",
+        status: "revoked"
+      }
+    });
+
+    const clearResponse = await app.request(
+      "http://localhost/_airlock/keys/key_1/registry",
+      {
+        method: "DELETE",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(clearResponse.status).toBe(200);
+    await expect(readJson(clearResponse)).resolves.toMatchObject({
+      keyId: "key_1",
+      override: null
+    });
+  });
+
+  it("rejects requests when a registry override revokes an otherwise valid key", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active"
+        }
+      ])
+    };
+
+    const registryResponse = await app.request(
+      "http://localhost/_airlock/keys/key_1/registry",
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          status: "revoked"
+        })
+      },
+      bindings
+    );
+
+    expect(registryResponse.status).toBe(200);
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(401);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_invalid_api_key"
+      }
+    });
+  });
+
+  it("surfaces registry-aware runtime metadata from internal key status and inventory routes", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active"
+        }
+      ])
+    };
+
+    const registryResponse = await app.request(
+      "http://localhost/_airlock/keys/key_1/registry",
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          label: "Runtime Key 1",
+          notBefore: "2099-01-01T00:00:00.000Z",
+          policy: {
+            tier: "prod"
+          }
+        })
+      },
+      bindings
+    );
+
+    expect(registryResponse.status).toBe(200);
+
+    const statusResponse = await app.request(
+      "http://localhost/_airlock/keys/key_1/status",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(statusResponse.status).toBe(200);
+    await expect(readJson(statusResponse)).resolves.toMatchObject({
+      keyId: "key_1",
+      configured: {
+        label: "Gateway Key 1",
+        configuredStatus: "active"
+      },
+      runtime: {
+        label: "Runtime Key 1",
+        configuredStatus: "active",
+        lifecycleStatus: "not_yet_active",
+        acceptedNow: false
+      },
+      registryOverride: {
+        label: "Runtime Key 1",
+        notBefore: "2099-01-01T00:00:00.000Z"
+      },
+      registryOverrideApplied: true
+    });
+
+    const inventoryResponse = await app.request(
+      "http://localhost/_airlock/keys",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(inventoryResponse.status).toBe(200);
+    await expect(readJson(inventoryResponse)).resolves.toMatchObject({
+      keys: [
+        {
+          keyId: "key_1",
+          configured: {
+            label: "Gateway Key 1"
+          },
+          runtime: {
+            label: "Runtime Key 1",
+            lifecycleStatus: "not_yet_active",
+            acceptedNow: false
+          },
+          registryOverrideApplied: true
+        }
+      ]
     });
   });
 
