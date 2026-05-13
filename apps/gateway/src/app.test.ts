@@ -57,6 +57,11 @@ function isGatewayKeyEventsPayload(
     reason?: string;
     actor?: string;
     actorSource?: string;
+    changes?: Array<{
+      field: string;
+      before?: unknown;
+      after?: unknown;
+    }>;
   }>;
 } {
   return (
@@ -72,7 +77,17 @@ function isGatewayKeyEventsPayload(
         (event.occurredAt === undefined || typeof event.occurredAt === "string") &&
         (event.reason === undefined || typeof event.reason === "string") &&
         (event.actor === undefined || typeof event.actor === "string") &&
-        (event.actorSource === undefined || typeof event.actorSource === "string")
+        (event.actorSource === undefined || typeof event.actorSource === "string") &&
+        (event.changes === undefined ||
+          (Array.isArray(event.changes) &&
+            event.changes.every((change) => {
+              return (
+                isRecord(change) &&
+                typeof change.field === "string" &&
+                (change.before === undefined || true) &&
+                (change.after === undefined || true)
+              );
+            })))
       );
     })
   );
@@ -8629,6 +8644,327 @@ describe("gateway app", () => {
 
     expect(readPayload.keyId).toBe("key_dynamic_a");
     expect("archivedAt" in readPayload).toBe(false);
+  });
+
+  it("records field-level diff audit metadata on registry lifecycle events", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-14T02:00:00.000Z"));
+
+    try {
+      const app = createApp({ fetcher: vi.fn() });
+      const bindings = {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+        AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      };
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify({
+                id: "key_dynamic",
+                label: "Dynamic Runtime Key",
+                valueHash:
+                  "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+                status: "active"
+              })
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys/key_dynamic",
+            {
+              method: "PUT",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify({
+                label: "Renamed Runtime Key",
+                status: "revoked",
+                reason: "paused for maintenance"
+              })
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys/key_dynamic/rotate",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify({
+                valueHash:
+                  "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+                overlapSeconds: 60,
+                reason: "credential rollover"
+              })
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys/key_dynamic/rotate/finalize",
+            {
+              method: "POST",
+              headers: {
+                authorization: "Bearer admin-secret"
+              }
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys/key_dynamic/archive",
+            {
+              method: "POST",
+              headers: {
+                authorization: "Bearer admin-secret"
+              }
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys/key_dynamic/restore",
+            {
+              method: "POST",
+              headers: {
+                authorization: "Bearer admin-secret"
+              }
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys/key_dynamic/rotate",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify({
+                valueHash:
+                  "95ee2bd51ba5315db6299c44e85afdb11ab03757d25d6b1e7bc9df2a5b0ba8c2",
+                overlapSeconds: 60
+              })
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys/key_dynamic/rotate/cancel",
+            {
+              method: "POST",
+              headers: {
+                authorization: "Bearer admin-secret"
+              }
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+
+      const eventsResponse = await app.request(
+        "http://localhost/_airlock/keys/key_dynamic/events",
+        {
+          method: "GET",
+          headers: {
+            authorization: "Bearer admin-secret"
+          }
+        },
+        bindings
+      );
+
+      expect(eventsResponse.status).toBe(200);
+      const eventsPayload = await readJson(eventsResponse);
+      expect(isGatewayKeyEventsPayload(eventsPayload)).toBe(true);
+
+      if (!isGatewayKeyEventsPayload(eventsPayload)) {
+        return;
+      }
+
+      const updatedEvent = eventsPayload.events.find((event) => {
+        return event.kind === "updated";
+      });
+      const rotatedEvent = eventsPayload.events.find((event) => {
+        return event.kind === "rotated" && event.reason === "credential rollover";
+      });
+      const finalizedEvent = eventsPayload.events.find((event) => {
+        return event.kind === "rotation_finalized";
+      });
+      const archivedEvent = eventsPayload.events.find((event) => {
+        return event.kind === "archived";
+      });
+      const restoredEvent = eventsPayload.events.find((event) => {
+        return event.kind === "restored";
+      });
+      const canceledEvent = eventsPayload.events.find((event) => {
+        return event.kind === "rotation_canceled";
+      });
+
+      expect(isRecord(updatedEvent)).toBe(true);
+      expect(isRecord(rotatedEvent)).toBe(true);
+      expect(isRecord(finalizedEvent)).toBe(true);
+      expect(isRecord(archivedEvent)).toBe(true);
+      expect(isRecord(restoredEvent)).toBe(true);
+      expect(isRecord(canceledEvent)).toBe(true);
+
+      if (
+        !isRecord(updatedEvent) ||
+        !isRecord(rotatedEvent) ||
+        !isRecord(finalizedEvent) ||
+        !isRecord(archivedEvent) ||
+        !isRecord(restoredEvent) ||
+        !isRecord(canceledEvent)
+      ) {
+        return;
+      }
+
+      const updatedChanges = updatedEvent.changes;
+      const rotatedChanges = rotatedEvent.changes;
+      const finalizedChanges = finalizedEvent.changes;
+      const archivedChanges = archivedEvent.changes;
+      const restoredChanges = restoredEvent.changes;
+      const canceledChanges = canceledEvent.changes;
+
+      expect(Array.isArray(updatedChanges)).toBe(true);
+      expect(Array.isArray(rotatedChanges)).toBe(true);
+      expect(Array.isArray(finalizedChanges)).toBe(true);
+      expect(Array.isArray(archivedChanges)).toBe(true);
+      expect(Array.isArray(restoredChanges)).toBe(true);
+      expect(Array.isArray(canceledChanges)).toBe(true);
+
+      if (
+        !Array.isArray(updatedChanges) ||
+        !Array.isArray(rotatedChanges) ||
+        !Array.isArray(finalizedChanges) ||
+        !Array.isArray(archivedChanges) ||
+        !Array.isArray(restoredChanges) ||
+        !Array.isArray(canceledChanges)
+      ) {
+        return;
+      }
+
+      expect(updatedChanges).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: "label",
+            before: "Dynamic Runtime Key",
+            after: "Renamed Runtime Key"
+          }),
+          expect.objectContaining({
+            field: "status",
+            before: "active",
+            after: "revoked"
+          })
+        ])
+      );
+      expect(rotatedChanges).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: "valueHash",
+            before:
+              "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+            after:
+              "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388"
+          }),
+          expect.objectContaining({
+            field: "previousValueHash",
+            before: null,
+            after:
+              "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16"
+          })
+        ])
+      );
+      expect(finalizedChanges).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: "previousValueHash",
+            before:
+              "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+            after: null
+          })
+        ])
+      );
+      expect(archivedChanges).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: "archivedAt",
+            before: null
+          })
+        ])
+      );
+      expect(restoredChanges).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: "archivedAt",
+            after: null
+          })
+        ])
+      );
+      expect(canceledChanges).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            field: "valueHash",
+            before:
+              "95ee2bd51ba5315db6299c44e85afdb11ab03757d25d6b1e7bc9df2a5b0ba8c2",
+            after:
+              "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388"
+          }),
+          expect.objectContaining({
+            field: "previousValueHash",
+            before:
+              "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+            after: null
+          })
+        ])
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects mixed configured and registry-owned bulk rotates atomically", async () => {

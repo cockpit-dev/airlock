@@ -38,7 +38,15 @@ describe("parseGatewayKeyAuditEvent", () => {
         occurredAt: "2026-05-13T00:00:00.000Z",
         reason: "promoted new secret",
         actor: "platform@example.com",
-        actorSource: "credential"
+        actorSource: "credential",
+        changes: [
+          {
+            field: "previousValueHash",
+            before:
+              "2e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+            after: null
+          }
+        ]
       })
     ).toEqual({
       keyId: "key_1",
@@ -47,7 +55,15 @@ describe("parseGatewayKeyAuditEvent", () => {
       occurredAt: "2026-05-13T00:00:00.000Z",
       reason: "promoted new secret",
       actor: "platform@example.com",
-      actorSource: "credential"
+      actorSource: "credential",
+      changes: [
+        {
+          field: "previousValueHash",
+          before:
+            "2e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+          after: null
+        }
+      ]
     });
   });
 
@@ -98,6 +114,24 @@ describe("parseGatewayKeyAuditEvent", () => {
         ownership: "registry",
         occurredAt: "2026-05-13T00:00:00.000Z",
         actorSource: "payload"
+      })
+    ).toThrow();
+  });
+
+  it("rejects invalid diff fields", () => {
+    expect(() =>
+      parseGatewayKeyAuditEvent({
+        keyId: "key_1",
+        kind: "updated",
+        ownership: "registry",
+        occurredAt: "2026-05-13T00:00:00.000Z",
+        changes: [
+          {
+            field: "unknown_field",
+            before: "a",
+            after: "b"
+          }
+        ]
       })
     ).toThrow();
   });

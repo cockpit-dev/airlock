@@ -16,6 +16,30 @@ export type GatewayKeyAuditEventKind =
   | "revoked"
   | "unrevoked";
 
+export type GatewayKeyAuditDiffField =
+  | "label"
+  | "status"
+  | "notBefore"
+  | "expiresAt"
+  | "policy"
+  | "valueHash"
+  | "previousValueHash"
+  | "previousValueHashExpiresAt"
+  | "archivedAt";
+
+export type GatewayKeyAuditDiffValue =
+  | string
+  | number
+  | boolean
+  | null
+  | Record<string, unknown>;
+
+export interface GatewayKeyAuditFieldChange {
+  field: GatewayKeyAuditDiffField;
+  before?: GatewayKeyAuditDiffValue;
+  after?: GatewayKeyAuditDiffValue;
+}
+
 export interface GatewayKeyAuditEvent {
   keyId: string;
   kind: GatewayKeyAuditEventKind;
@@ -24,6 +48,7 @@ export interface GatewayKeyAuditEvent {
   reason?: string;
   actor?: string;
   actorSource?: GatewayKeyAuditActorSource;
+  changes?: GatewayKeyAuditFieldChange[];
 }
 
 export interface GatewayKeyAuditActorContext {
@@ -60,7 +85,75 @@ export function createGatewayKeyAuditEvent(
     ...(event.actor ? { actor: event.actor } : {}),
     ...(event.actor && event.actorSource
       ? { actorSource: event.actorSource }
+      : {}),
+    ...(event.changes && event.changes.length > 0
+      ? {
+          changes: event.changes.map((change) => {
+            return {
+              field: change.field,
+              ...(change.before !== undefined ? { before: change.before } : {}),
+              ...(change.after !== undefined ? { after: change.after } : {})
+            };
+          })
+        }
       : {})
+  };
+}
+
+function isGatewayKeyAuditDiffField(value: unknown): value is GatewayKeyAuditDiffField {
+  return (
+    value === "label" ||
+    value === "status" ||
+    value === "notBefore" ||
+    value === "expiresAt" ||
+    value === "policy" ||
+    value === "valueHash" ||
+    value === "previousValueHash" ||
+    value === "previousValueHashExpiresAt" ||
+    value === "archivedAt"
+  );
+}
+
+function isGatewayKeyAuditDiffValue(
+  value: unknown
+): value is GatewayKeyAuditDiffValue {
+  return (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    isRecord(value)
+  );
+}
+
+function parseGatewayKeyAuditFieldChange(
+  value: unknown
+): GatewayKeyAuditFieldChange {
+  if (!isRecord(value)) {
+    throw new Error("Gateway key audit event change must be an object");
+  }
+
+  if (!isGatewayKeyAuditDiffField(value.field)) {
+    throw new Error("Gateway key audit event change field is invalid");
+  }
+
+  if (value.before === undefined && value.after === undefined) {
+    throw new Error(
+      "Gateway key audit event change must include before or after"
+    );
+  }
+
+  if (
+    (value.before !== undefined && !isGatewayKeyAuditDiffValue(value.before)) ||
+    (value.after !== undefined && !isGatewayKeyAuditDiffValue(value.after))
+  ) {
+    throw new Error("Gateway key audit event change value is invalid");
+  }
+
+  return {
+    field: value.field,
+    ...(value.before !== undefined ? { before: value.before } : {}),
+    ...(value.after !== undefined ? { after: value.after } : {})
   };
 }
 
@@ -69,7 +162,16 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
     throw new Error("Gateway key audit event must be an object");
   }
 
-  const { keyId, kind, ownership, occurredAt, reason, actor, actorSource } = value;
+  const {
+    keyId,
+    kind,
+    ownership,
+    occurredAt,
+    reason,
+    actor,
+    actorSource,
+    changes
+  } = value;
 
   if (typeof keyId !== "string" || keyId.length === 0) {
     throw new Error("Gateway key audit event keyId must be a non-empty string");
@@ -101,6 +203,16 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
   const parsedReason = parseOptionalGatewayKeyAuditReason(reason);
   const parsedActor = parseOptionalGatewayKeyAuditActor(actor);
   const parsedActorSource = parseOptionalGatewayKeyAuditActorSource(actorSource);
+  const parsedChanges =
+    changes === undefined
+      ? undefined
+      : Array.isArray(changes)
+        ? changes.map((change) => {
+            return parseGatewayKeyAuditFieldChange(change);
+          })
+        : (() => {
+            throw new Error("Gateway key audit event changes are invalid");
+          })();
 
   if (parsedActorSource && !parsedActor) {
     throw new Error(
@@ -117,6 +229,9 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
     ...(parsedActor ? { actor: parsedActor } : {}),
     ...(parsedActor && parsedActorSource
       ? { actorSource: parsedActorSource }
+      : {}),
+    ...(parsedChanges && parsedChanges.length > 0
+      ? { changes: parsedChanges }
       : {})
   };
 }

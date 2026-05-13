@@ -44,7 +44,8 @@ import {
   type GatewayKeyRegistryRotateRequest,
   type GatewayKeyRegistryRotationActionRequest,
   type GatewayKeyRegistryStoredDynamicKey,
-  type GatewayKeyRegistryStoredOverride
+  type GatewayKeyRegistryStoredOverride,
+  type GatewayKeyAuditFieldChange
 } from "@airlock/governance";
 import { GatewayError } from "@airlock/shared";
 
@@ -90,6 +91,88 @@ function isStringArray(value: unknown): value is string[] {
       return typeof entry === "string" && entry.trim().length > 0;
     })
   );
+}
+
+function toComparablePolicyValue(
+  value: GatewayKeyRegistryStoredDynamicKey["policy"]
+): Record<string, unknown> | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized: unknown = JSON.parse(JSON.stringify(value));
+
+  if (
+    typeof normalized !== "object" ||
+    normalized === null ||
+    Array.isArray(normalized)
+  ) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function createStoredDynamicKeyFieldDiffs(
+  before: GatewayKeyRegistryStoredDynamicKey,
+  after: GatewayKeyRegistryStoredDynamicKey
+): GatewayKeyAuditFieldChange[] {
+  const diffs: GatewayKeyAuditFieldChange[] = [];
+
+  const pushScalarDiff = (
+    field:
+      | "label"
+      | "status"
+      | "notBefore"
+      | "expiresAt"
+      | "valueHash"
+      | "previousValueHash"
+      | "previousValueHashExpiresAt"
+      | "archivedAt",
+    beforeValue: string | undefined,
+    afterValue: string | undefined
+  ) => {
+    if (beforeValue === afterValue) {
+      return;
+    }
+
+    diffs.push({
+      field,
+      before: beforeValue ?? null,
+      after: afterValue ?? null
+    });
+  };
+
+  pushScalarDiff("label", before.label, after.label);
+  pushScalarDiff("status", before.status, after.status);
+  pushScalarDiff("notBefore", before.notBefore, after.notBefore);
+  pushScalarDiff("expiresAt", before.expiresAt, after.expiresAt);
+
+  const beforePolicy = toComparablePolicyValue(before.policy);
+  const afterPolicy = toComparablePolicyValue(after.policy);
+
+  if (JSON.stringify(beforePolicy) !== JSON.stringify(afterPolicy)) {
+    diffs.push({
+      field: "policy",
+      before: beforePolicy,
+      after: afterPolicy
+    });
+  }
+
+  pushScalarDiff("valueHash", before.valueHash, after.valueHash);
+  pushScalarDiff(
+    "previousValueHash",
+    before.previousValueHash,
+    after.previousValueHash
+  );
+  pushScalarDiff(
+    "previousValueHashExpiresAt",
+    before.previousValueHashExpiresAt,
+    after.previousValueHashExpiresAt
+  );
+  pushScalarDiff("archivedAt", before.archivedAt, after.archivedAt);
+
+  return diffs;
 }
 
 function createGatewayKeyRegistryUnavailableError(
@@ -414,6 +497,12 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       for (const key of updatedKeys) {
+        const previousKey = existingKeysById.get(key.id);
+
+        if (!previousKey) {
+          continue;
+        }
+
         await appendStoredDynamicKeyAuditEvent(
           this.state.storage,
           createGatewayKeyAuditEvent({
@@ -421,6 +510,7 @@ export class GatewayKeyRegistryDurableObject {
             kind: "updated",
             ownership: "registry",
             occurredAt: key.updatedAt,
+            changes: createStoredDynamicKeyFieldDiffs(previousKey, key),
             ...(bulkRequest.auditMetadata.reason
               ? { reason: bulkRequest.auditMetadata.reason }
               : {}),
@@ -691,6 +781,7 @@ export class GatewayKeyRegistryDurableObject {
       );
       const actorContext =
         gatewayKeyAuditActorContextFromRegistryRequest(payload);
+      const previousKey = existingKey;
       await appendStoredDynamicKeyAuditEvent(
         this.state.storage,
         createGatewayKeyAuditEvent({
@@ -698,6 +789,7 @@ export class GatewayKeyRegistryDurableObject {
           kind: "rotated",
           ownership: "registry",
           occurredAt: key.updatedAt,
+          changes: createStoredDynamicKeyFieldDiffs(previousKey, key),
           ...(payload.reason ? { reason: payload.reason } : {}),
           ...(actorContext
             ? toGatewayKeyAuditActorContextRecord(actorContext)
@@ -734,6 +826,7 @@ export class GatewayKeyRegistryDurableObject {
       );
       const actorContext =
         gatewayKeyAuditActorContextFromRegistryRequest(payload);
+      const previousKey = existingKey;
       const key = await updateStoredDynamicKey(
         this.state.storage,
         existingKey,
@@ -747,6 +840,7 @@ export class GatewayKeyRegistryDurableObject {
           kind: "rotation_finalized",
           ownership: "registry",
           occurredAt: key.updatedAt,
+          changes: createStoredDynamicKeyFieldDiffs(previousKey, key),
           ...(payload.reason ? { reason: payload.reason } : {}),
           ...(actorContext
             ? toGatewayKeyAuditActorContextRecord(actorContext)
@@ -787,6 +881,7 @@ export class GatewayKeyRegistryDurableObject {
       );
       const actorContext =
         gatewayKeyAuditActorContextFromRegistryRequest(payload);
+      const previousKey = existingKey;
       const key = await updateStoredDynamicKey(
         this.state.storage,
         {
@@ -803,6 +898,7 @@ export class GatewayKeyRegistryDurableObject {
           kind: "rotation_canceled",
           ownership: "registry",
           occurredAt: key.updatedAt,
+          changes: createStoredDynamicKeyFieldDiffs(previousKey, key),
           ...(payload.reason ? { reason: payload.reason } : {}),
           ...(actorContext
             ? toGatewayKeyAuditActorContextRecord(actorContext)
@@ -876,6 +972,12 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       for (const key of archivedKeys) {
+        const previousKey = existingKeysById.get(key.id);
+
+        if (!previousKey) {
+          continue;
+        }
+
         await appendStoredDynamicKeyAuditEvent(
           this.state.storage,
           createGatewayKeyAuditEvent({
@@ -883,6 +985,7 @@ export class GatewayKeyRegistryDurableObject {
             kind: "archived",
             ownership: "registry",
             occurredAt: key.updatedAt,
+            changes: createStoredDynamicKeyFieldDiffs(previousKey, key),
             ...(bulkRequest.auditMetadata.reason
               ? { reason: bulkRequest.auditMetadata.reason }
               : {}),
@@ -960,6 +1063,12 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       for (const key of restoredKeys) {
+        const previousKey = existingKeysById.get(key.id);
+
+        if (!previousKey) {
+          continue;
+        }
+
         await appendStoredDynamicKeyAuditEvent(
           this.state.storage,
           createGatewayKeyAuditEvent({
@@ -967,6 +1076,7 @@ export class GatewayKeyRegistryDurableObject {
             kind: "restored",
             ownership: "registry",
             occurredAt: key.updatedAt,
+            changes: createStoredDynamicKeyFieldDiffs(previousKey, key),
             ...(bulkRequest.auditMetadata.reason
               ? { reason: bulkRequest.auditMetadata.reason }
               : {}),
@@ -1005,6 +1115,7 @@ export class GatewayKeyRegistryDurableObject {
       );
       const actorContext =
         gatewayKeyAuditActorContextFromRegistryRequest(payload);
+      const previousKey = existingKey;
       const key = await updateStoredDynamicKey(
         this.state.storage,
         {
@@ -1020,6 +1131,7 @@ export class GatewayKeyRegistryDurableObject {
           kind: "archived",
           ownership: "registry",
           occurredAt: key.updatedAt,
+          changes: createStoredDynamicKeyFieldDiffs(previousKey, key),
           ...(payload.reason ? { reason: payload.reason } : {}),
           ...(actorContext
             ? toGatewayKeyAuditActorContextRecord(actorContext)
@@ -1055,6 +1167,7 @@ export class GatewayKeyRegistryDurableObject {
         gatewayKeyAuditActorContextFromRegistryRequest(payload);
       const nextKey = { ...existingKey };
       delete nextKey.archivedAt;
+      const previousKey = existingKey;
       const key = await updateStoredDynamicKey(
         this.state.storage,
         nextKey,
@@ -1068,6 +1181,7 @@ export class GatewayKeyRegistryDurableObject {
           kind: "restored",
           ownership: "registry",
           occurredAt: key.updatedAt,
+          changes: createStoredDynamicKeyFieldDiffs(previousKey, key),
           ...(payload.reason ? { reason: payload.reason } : {}),
           ...(actorContext
             ? toGatewayKeyAuditActorContextRecord(actorContext)
@@ -1153,6 +1267,7 @@ export class GatewayKeyRegistryDurableObject {
             kind: "updated",
             ownership: "registry",
             occurredAt: key.updatedAt,
+            changes: createStoredDynamicKeyFieldDiffs(existingKey, key),
             ...(updateRequest.auditMetadata.reason
               ? { reason: updateRequest.auditMetadata.reason }
               : {}),
