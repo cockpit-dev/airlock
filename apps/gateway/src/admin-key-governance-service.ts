@@ -20,7 +20,6 @@ import {
   getGatewayAdminKeyRegistryView as readGatewayAdminKeyRegistryView,
   getGatewayAdminKeyRevocationStatus as readGatewayAdminKeyRevocationStatus,
   getGatewayAdminKeyStatus as readGatewayAdminKeyStatus,
-  isConfiguredGatewayApiKeyId,
   listGatewayAdminKeys as readGatewayAdminKeys,
   revokeGatewayAdminKey as writeGatewayAdminKeyRevoke,
   restoreGatewayAdminKey as writeGatewayAdminKeyRestore,
@@ -30,52 +29,11 @@ import {
   type GatewayApiKeyMetadataOverride
 } from "@airlock/governance";
 
+import { createAdminKeyGovernanceRuntime } from "./admin-key-governance-runtime.js";
 import {
   resolveAdminMutationActorCommand
 } from "./admin-actor.js";
-import { resolveGatewayConfig } from "./config.js";
 import type { GatewayBindings } from "./env.js";
-import {
-  archiveGatewayRegistryApiKey,
-  bulkArchiveGatewayRegistryApiKeys,
-  bulkCancelGatewayRegistryApiKeyRotations,
-  bulkCreateGatewayRegistryApiKeys,
-  bulkDeleteGatewayRegistryApiKeys,
-  bulkFinalizeGatewayRegistryApiKeyRotations,
-  getGatewayRegistryOperationEvents,
-  bulkRotateGatewayRegistryApiKeys,
-  bulkRestoreGatewayRegistryApiKeys,
-  cancelGatewayRegistryApiKeyRotation,
-  bulkUpdateGatewayRegistryApiKeys,
-  clearGatewayKeyRegistryOverride,
-  createGatewayRegistryApiKey,
-  deleteGatewayRegistryApiKey,
-  finalizeGatewayRegistryApiKeyRotation,
-  rotateGatewayRegistryApiKey,
-  restoreGatewayRegistryApiKey,
-  getGatewayRegistryApiKey,
-  getGatewayRegistryApiKeyEvents,
-  updateGatewayRegistryApiKey,
-  upsertGatewayKeyRegistryOverride
-} from "./gateway-key-registry.js";
-import {
-  clearGatewayKeyRevocationById,
-  getGatewayApiKeyStatusSnapshot,
-  getGatewayKeyRevocationEvents,
-  getGatewayKeyRevocationStatusById,
-  listGatewayApiKeyStatuses,
-  resolveGatewayApiKeyById,
-  resolveGatewayApiKeyByIdWithRegistry,
-  revokeGatewayKeyById
-} from "./gateway-key-revocation.js";
-
-function createConfiguredKeyMembershipChecker(
-  gatewayApiKeys: Parameters<typeof isConfiguredGatewayApiKeyId>[0]
-) {
-  return (candidateKeyId: string) => {
-    return isConfiguredGatewayApiKeyId(gatewayApiKeys, candidateKeyId);
-  };
-}
 
 export async function listAdminGatewayKeys(
   env: GatewayBindings,
@@ -83,17 +41,8 @@ export async function listAdminGatewayKeys(
   requestId: string,
   query: URLSearchParams
 ) {
-  const config = resolveGatewayConfig(env);
-  return readGatewayAdminKeys(query, {
-    listKeySnapshots: (filters) => {
-      return listGatewayApiKeyStatuses(
-        env,
-        config.gatewayApiKeys,
-        requestId,
-        filters
-      );
-    }
-  });
+  const runtime = createAdminKeyGovernanceRuntime(env, requestId);
+  return readGatewayAdminKeys(query, runtime.read);
 }
 
 export async function createAdminGatewayKey(
@@ -102,7 +51,6 @@ export async function createAdminGatewayKey(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
@@ -110,18 +58,13 @@ export async function createAdminGatewayKey(
     requestId,
     "Gateway dynamic key create payload is invalid"
   );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
+  );
 
-  return writeGatewayAdminKeyCreate(mutation.payload, {
-    createRegistryKey: (candidatePayload) => {
-      return createGatewayRegistryApiKey(
-        env,
-        config.gatewayApiKeys,
-        candidatePayload,
-        requestId,
-        mutation.actorContext
-      );
-    }
-  });
+  return writeGatewayAdminKeyCreate(mutation.payload, runtime.write);
 }
 
 export async function bulkCreateAdminGatewayKeys(
@@ -130,13 +73,17 @@ export async function bulkCreateAdminGatewayKeys(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
     requestId,
     "Gateway dynamic key bulk create payload is invalid"
+  );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkCreate(
@@ -153,17 +100,7 @@ export async function bulkCreateAdminGatewayKeys(
       actor?: string;
       actorSource?: "payload" | "trusted_header" | "credential";
     },
-    {
-      bulkCreateRegistryKeys: (candidatePayload) => {
-        return bulkCreateGatewayRegistryApiKeys(
-          env,
-          config.gatewayApiKeys,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -173,13 +110,17 @@ export async function bulkUpdateAdminGatewayKeys(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
     requestId,
     "Gateway dynamic key bulk update payload is invalid"
+  );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkUpdate(
@@ -197,18 +138,7 @@ export async function bulkUpdateAdminGatewayKeys(
       actorSource?: "payload" | "trusted_header" | "credential";
     },
     requestId,
-    {
-      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
-      bulkUpdateRegistryKeys: (candidatePayload) => {
-        return bulkUpdateGatewayRegistryApiKeys(
-          env,
-          config.gatewayApiKeys,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -218,13 +148,17 @@ export async function bulkDeleteAdminGatewayKeys(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
     requestId,
     "Gateway dynamic key bulk delete payload is invalid"
+  );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkDelete(
@@ -235,18 +169,7 @@ export async function bulkDeleteAdminGatewayKeys(
       actorSource?: "payload" | "trusted_header" | "credential";
     },
     requestId,
-    {
-      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
-      bulkDeleteRegistryKeys: (candidatePayload) => {
-        return bulkDeleteGatewayRegistryApiKeys(
-          env,
-          config.gatewayApiKeys,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -256,13 +179,17 @@ export async function bulkRotateAdminGatewayKeys(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
     requestId,
     "Gateway dynamic key bulk rotate payload is invalid"
+  );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkRotate(
@@ -277,18 +204,7 @@ export async function bulkRotateAdminGatewayKeys(
       actorSource?: "payload" | "trusted_header" | "credential";
     },
     requestId,
-    {
-      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
-      bulkRotateRegistryKeys: (candidatePayload) => {
-        return bulkRotateGatewayRegistryApiKeys(
-          env,
-          config.gatewayApiKeys,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -298,13 +214,17 @@ export async function bulkArchiveAdminGatewayKeys(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
     requestId,
     "Gateway dynamic key bulk archive payload is invalid"
+  );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkArchive(
@@ -315,18 +235,7 @@ export async function bulkArchiveAdminGatewayKeys(
       actorSource?: "payload" | "trusted_header" | "credential";
     },
     requestId,
-    {
-      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
-      bulkArchiveRegistryKeys: (candidatePayload) => {
-        return bulkArchiveGatewayRegistryApiKeys(
-          env,
-          config.gatewayApiKeys,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -336,13 +245,17 @@ export async function bulkRestoreAdminGatewayKeys(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
     requestId,
     "Gateway dynamic key bulk restore payload is invalid"
+  );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkRestore(
@@ -353,18 +266,7 @@ export async function bulkRestoreAdminGatewayKeys(
       actorSource?: "payload" | "trusted_header" | "credential";
     },
     requestId,
-    {
-      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
-      bulkRestoreRegistryKeys: (candidatePayload) => {
-        return bulkRestoreGatewayRegistryApiKeys(
-          env,
-          config.gatewayApiKeys,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -374,13 +276,17 @@ export async function bulkFinalizeAdminGatewayKeyRotations(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
     requestId,
     "Gateway dynamic key bulk rotation finalize payload is invalid"
+  );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkRotationFinalize(
@@ -391,18 +297,7 @@ export async function bulkFinalizeAdminGatewayKeyRotations(
       actorSource?: "payload" | "trusted_header" | "credential";
     },
     requestId,
-    {
-      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
-      bulkFinalizeRegistryKeyRotations: (candidatePayload) => {
-        return bulkFinalizeGatewayRegistryApiKeyRotations(
-          env,
-          config.gatewayApiKeys,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -412,13 +307,17 @@ export async function bulkCancelAdminGatewayKeyRotations(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
     requestId,
     "Gateway dynamic key bulk rotation cancel payload is invalid"
+  );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkRotationCancel(
@@ -429,18 +328,7 @@ export async function bulkCancelAdminGatewayKeyRotations(
       actorSource?: "payload" | "trusted_header" | "credential";
     },
     requestId,
-    {
-      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
-      bulkCancelRegistryKeyRotations: (candidatePayload) => {
-        return bulkCancelGatewayRegistryApiKeyRotations(
-          env,
-          config.gatewayApiKeys,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -449,11 +337,8 @@ export async function getAdminGatewayKey(
   keyId: string,
   requestId: string
 ) {
-  return readGatewayAdminKey(keyId, requestId, {
-    getRegistryKey: (candidateKeyId) => {
-      return getGatewayRegistryApiKey(env, candidateKeyId, requestId);
-    }
-  });
+  const runtime = createAdminKeyGovernanceRuntime(env, requestId);
+  return readGatewayAdminKey(keyId, requestId, runtime.read);
 }
 
 export async function updateAdminGatewayKey(
@@ -463,7 +348,6 @@ export async function updateAdminGatewayKey(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
@@ -471,24 +355,17 @@ export async function updateAdminGatewayKey(
     requestId,
     "Gateway dynamic key update payload is invalid"
   );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
+  );
 
   return writeGatewayAdminKeyUpdate(
     keyId,
     mutation.payload,
     requestId,
-    {
-      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
-      updateRegistryKey: (candidateKeyId, candidatePayload) => {
-        return updateGatewayRegistryApiKey(
-          env,
-          config.gatewayApiKeys,
-          candidateKeyId,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -499,7 +376,6 @@ export async function deleteAdminGatewayKey(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
@@ -507,24 +383,17 @@ export async function deleteAdminGatewayKey(
     requestId,
     "Gateway dynamic key delete payload is invalid"
   );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
+  );
 
   return writeGatewayAdminKeyDelete(
     keyId,
     mutation.payload,
     requestId,
-    {
-      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
-      deleteRegistryKey: (candidateKeyId, candidatePayload) => {
-        return deleteGatewayRegistryApiKey(
-          env,
-          config.gatewayApiKeys,
-          candidateKeyId,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -535,7 +404,6 @@ export async function rotateAdminGatewayKey(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
@@ -543,24 +411,17 @@ export async function rotateAdminGatewayKey(
     requestId,
     "Gateway dynamic key rotation payload is invalid"
   );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
+  );
 
   return writeGatewayAdminKeyRotate(
     keyId,
     mutation.payload,
     requestId,
-    {
-      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
-      rotateRegistryKey: (candidateKeyId, candidatePayload) => {
-        return rotateGatewayRegistryApiKey(
-          env,
-          config.gatewayApiKeys,
-          candidateKeyId,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -571,7 +432,6 @@ export async function archiveAdminGatewayKey(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
@@ -579,24 +439,17 @@ export async function archiveAdminGatewayKey(
     requestId,
     "Gateway dynamic key archive payload is invalid"
   );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
+  );
 
   return writeGatewayAdminKeyArchive(
     keyId,
     mutation.payload,
     requestId,
-    {
-      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
-      archiveRegistryKey: (candidateKeyId, candidatePayload) => {
-        return archiveGatewayRegistryApiKey(
-          env,
-          config.gatewayApiKeys,
-          candidateKeyId,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -607,7 +460,6 @@ export async function restoreAdminGatewayKey(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
@@ -615,24 +467,17 @@ export async function restoreAdminGatewayKey(
     requestId,
     "Gateway dynamic key restore payload is invalid"
   );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
+  );
 
   return writeGatewayAdminKeyRestore(
     keyId,
     mutation.payload,
     requestId,
-    {
-      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
-      restoreRegistryKey: (candidateKeyId, candidatePayload) => {
-        return restoreGatewayRegistryApiKey(
-          env,
-          config.gatewayApiKeys,
-          candidateKeyId,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -643,7 +488,6 @@ export async function finalizeAdminGatewayKeyRotation(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
@@ -651,24 +495,17 @@ export async function finalizeAdminGatewayKeyRotation(
     requestId,
     "Gateway dynamic key rotation finalize payload is invalid"
   );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
+  );
 
   return writeGatewayAdminKeyRotationFinalize(
     keyId,
     mutation.payload,
     requestId,
-    {
-      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
-      finalizeRegistryKeyRotation: (candidateKeyId, candidatePayload) => {
-        return finalizeGatewayRegistryApiKeyRotation(
-          env,
-          config.gatewayApiKeys,
-          candidateKeyId,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -679,7 +516,6 @@ export async function cancelAdminGatewayKeyRotation(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
@@ -687,24 +523,17 @@ export async function cancelAdminGatewayKeyRotation(
     requestId,
     "Gateway dynamic key rotation cancel payload is invalid"
   );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
+  );
 
   return writeGatewayAdminKeyRotationCancel(
     keyId,
     mutation.payload,
     requestId,
-    {
-      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
-      cancelRegistryKeyRotation: (candidateKeyId, candidatePayload) => {
-        return cancelGatewayRegistryApiKeyRotation(
-          env,
-          config.gatewayApiKeys,
-          candidateKeyId,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
 
@@ -713,17 +542,8 @@ export async function getAdminGatewayKeyRevocationStatus(
   keyId: string,
   requestId: string
 ) {
-  const config = resolveGatewayConfig(env);
-  return readGatewayAdminKeyRevocationStatus(keyId, {
-    getKeyRevocationStatus: (candidateKeyId) => {
-      return getGatewayKeyRevocationStatusById(
-        env,
-        config.gatewayApiKeys,
-        candidateKeyId,
-        requestId
-      );
-    }
-  });
+  const runtime = createAdminKeyGovernanceRuntime(env, requestId);
+  return readGatewayAdminKeyRevocationStatus(keyId, runtime.read);
 }
 
 export async function getAdminGatewayKeyStatus(
@@ -731,25 +551,8 @@ export async function getAdminGatewayKeyStatus(
   keyId: string,
   requestId: string
 ) {
-  const config = resolveGatewayConfig(env);
-  return readGatewayAdminKeyStatus(keyId, {
-    getKeyStatusSnapshot: async (candidateKeyId) => {
-      const { gatewayApiKey, ownership } =
-        await resolveGatewayApiKeyByIdWithRegistry(
-          env,
-          config.gatewayApiKeys,
-          candidateKeyId,
-          requestId
-        );
-
-      return getGatewayApiKeyStatusSnapshot(
-        env,
-        gatewayApiKey,
-        requestId,
-        ownership
-      );
-    }
-  });
+  const runtime = createAdminKeyGovernanceRuntime(env, requestId);
+  return readGatewayAdminKeyStatus(keyId, runtime.read);
 }
 
 export async function getAdminGatewayKeyEvents(
@@ -757,23 +560,8 @@ export async function getAdminGatewayKeyEvents(
   keyId: string,
   requestId: string
 ) {
-  const config = resolveGatewayConfig(env);
-  return readGatewayAdminKeyEvents(keyId, {
-    getRegistryEvents: (candidateKeyId) => {
-      return getGatewayRegistryApiKeyEvents(env, candidateKeyId, requestId);
-    },
-    getRevocationEvents: (candidateKeyId) => {
-      return getGatewayKeyRevocationEvents(env, candidateKeyId, requestId);
-    },
-    assertKeyExists: async (candidateKeyId) => {
-      await resolveGatewayApiKeyByIdWithRegistry(
-        env,
-        config.gatewayApiKeys,
-        candidateKeyId,
-        requestId
-      );
-    }
-  });
+  const runtime = createAdminKeyGovernanceRuntime(env, requestId);
+  return readGatewayAdminKeyEvents(keyId, runtime.read);
 }
 
 export async function getAdminGatewayKeyOperationEvents(
@@ -781,15 +569,8 @@ export async function getAdminGatewayKeyOperationEvents(
   operationId: string,
   requestId: string
 ) {
-  return readGatewayAdminKeyOperationEvents(operationId, requestId, {
-    getOperationEvents: (candidateOperationId) => {
-      return getGatewayRegistryOperationEvents(
-        env,
-        candidateOperationId,
-        requestId
-      );
-    }
-  });
+  const runtime = createAdminKeyGovernanceRuntime(env, requestId);
+  return readGatewayAdminKeyOperationEvents(operationId, requestId, runtime.read);
 }
 
 export async function getAdminGatewayKeyRegistryView(
@@ -799,27 +580,21 @@ export async function getAdminGatewayKeyRegistryView(
 ): Promise<{
   keyId: string;
   configured: Awaited<
-    ReturnType<typeof getGatewayApiKeyStatusSnapshot>
+    ReturnType<
+      ReturnType<typeof createAdminKeyGovernanceRuntime>["read"]["getConfiguredKeyStatusSnapshot"]
+    >
   >["configured"];
   runtime: Awaited<
-    ReturnType<typeof getGatewayApiKeyStatusSnapshot>
+    ReturnType<
+      ReturnType<typeof createAdminKeyGovernanceRuntime>["read"]["getConfiguredKeyStatusSnapshot"]
+    >
   >["runtime"];
   override: GatewayApiKeyMetadataOverride & { updatedAt: string } | null;
   registryOverrideApplied: boolean;
   registryUpdatedAt?: string;
 }> {
-  const config = resolveGatewayConfig(env);
-  return readGatewayAdminKeyRegistryView(keyId, {
-    getConfiguredKeyStatusSnapshot: async (candidateKeyId) => {
-      const gatewayApiKey = resolveGatewayApiKeyById(
-        config.gatewayApiKeys,
-        candidateKeyId,
-        requestId
-      );
-
-      return getGatewayApiKeyStatusSnapshot(env, gatewayApiKey, requestId);
-    }
-  });
+  const runtime = createAdminKeyGovernanceRuntime(env, requestId);
+  return readGatewayAdminKeyRegistryView(keyId, runtime.read);
 }
 
 export async function updateAdminGatewayKeyRegistryOverride(
@@ -831,23 +606,8 @@ export async function updateAdminGatewayKeyRegistryOverride(
   keyId: string;
   override: GatewayApiKeyMetadataOverride & { updatedAt: string };
 }> {
-  const config = resolveGatewayConfig(env);
-  return writeGatewayAdminKeyRegistryOverrideUpdate(keyId, payload, {
-    updateRegistryOverride: async (candidateKeyId, candidatePayload) => {
-      const gatewayApiKey = resolveGatewayApiKeyById(
-        config.gatewayApiKeys,
-        candidateKeyId,
-        requestId
-      );
-
-      return upsertGatewayKeyRegistryOverride(
-        env,
-        gatewayApiKey,
-        candidatePayload,
-        requestId
-      );
-    }
-  });
+  const runtime = createAdminKeyGovernanceRuntime(env, requestId);
+  return writeGatewayAdminKeyRegistryOverrideUpdate(keyId, payload, runtime.write);
 }
 
 export async function clearAdminGatewayKeyRegistryOverride(
@@ -855,18 +615,8 @@ export async function clearAdminGatewayKeyRegistryOverride(
   keyId: string,
   requestId: string
 ) {
-  const config = resolveGatewayConfig(env);
-  return writeGatewayAdminKeyRegistryOverrideClear(keyId, {
-    clearRegistryOverride: async (candidateKeyId) => {
-      const gatewayApiKey = resolveGatewayApiKeyById(
-        config.gatewayApiKeys,
-        candidateKeyId,
-        requestId
-      );
-
-      await clearGatewayKeyRegistryOverride(env, gatewayApiKey, requestId);
-    }
-  });
+  const runtime = createAdminKeyGovernanceRuntime(env, requestId);
+  return writeGatewayAdminKeyRegistryOverrideClear(keyId, runtime.write);
 }
 
 export async function revokeAdminGatewayKey(
@@ -876,7 +626,6 @@ export async function revokeAdminGatewayKey(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
@@ -884,23 +633,13 @@ export async function revokeAdminGatewayKey(
     requestId,
     "Gateway key revocation payload is invalid"
   );
-
-  return writeGatewayAdminKeyRevoke(
-    keyId,
-    mutation.payload,
-    {
-      revokeKey: (candidateKeyId, candidatePayload) => {
-        return revokeGatewayKeyById(
-          env,
-          config.gatewayApiKeys,
-          candidateKeyId,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
   );
+
+  return writeGatewayAdminKeyRevoke(keyId, mutation.payload, runtime.write);
 }
 
 export async function clearAdminGatewayKeyRevocation(
@@ -910,7 +649,6 @@ export async function clearAdminGatewayKeyRevocation(
   requestId: string,
   payload: unknown
 ) {
-  const config = resolveGatewayConfig(env);
   const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
@@ -918,21 +656,15 @@ export async function clearAdminGatewayKeyRevocation(
     requestId,
     "Gateway key revocation payload is invalid"
   );
+  const runtime = createAdminKeyGovernanceRuntime(
+    env,
+    requestId,
+    mutation.actorContext
+  );
 
   return writeGatewayAdminKeyRevocationClear(
     keyId,
     mutation.payload,
-    {
-      clearKeyRevocation: (candidateKeyId, candidatePayload) => {
-        return clearGatewayKeyRevocationById(
-          env,
-          config.gatewayApiKeys,
-          candidateKeyId,
-          candidatePayload,
-          requestId,
-          mutation.actorContext
-        );
-      }
-    }
+    runtime.write
   );
 }
