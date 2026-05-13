@@ -25,8 +25,11 @@ import {
 import { enforceGatewayKeyRequestQuota } from "../gateway-key-quota.js";
 import {
   assertGatewayKeyTokenUsageAvailable,
-  chargeGatewayKeyTokenQuota,
   enforceGatewayKeyTokenQuotaPrecheck
+  ,
+  reconcileGatewayKeyTokenQuotaReservation,
+  releaseGatewayKeyTokenQuotaReservation,
+  reserveGatewayKeyTokenQuota
 } from "../gateway-key-token-quota.js";
 import {
   executeRoutedRequest,
@@ -79,6 +82,13 @@ export async function handleResponses(
     parsed.airlock?.requestShaping
   );
   await enforceGatewayKeyTokenQuotaPrecheck(context.env, gatewayApiKey, requestId);
+  const tokenReservation = await reserveGatewayKeyTokenQuota(
+    context.env,
+    gatewayApiKey,
+    requestId,
+    canonicalRequest.maxOutputTokens ?? 0,
+    config.providerTimeoutMs + 5_000
+  );
   await enforceGatewayKeyRequestQuota(context.env, gatewayApiKey, requestId);
   const concurrencyLeaseId = await acquireGatewayKeyConcurrencyLease(
     context.env,
@@ -130,10 +140,11 @@ export async function handleResponses(
               );
 
               if (event.usage) {
-                await chargeGatewayKeyTokenQuota(
+                await reconcileGatewayKeyTokenQuotaReservation(
                   context.env,
                   gatewayApiKey,
                   requestId,
+                  tokenReservation,
                   event.usage.totalTokens
                 );
                 streamUsage = event.usage;
@@ -167,6 +178,12 @@ export async function handleResponses(
             ...(streamUsage ? { usage: streamUsage } : {})
           });
         } catch (error) {
+          await releaseGatewayKeyTokenQuotaReservation(
+            context.env,
+            gatewayApiKey,
+            requestId,
+            tokenReservation
+          );
           if (error instanceof GatewayError) {
             await emitGatewayRequestErrorTelemetry(
               {
@@ -230,6 +247,12 @@ export async function handleResponses(
       ...(fetcher ? { fetcher } : {})
     });
   } catch (error) {
+    await releaseGatewayKeyTokenQuotaReservation(
+      context.env,
+      gatewayApiKey,
+      requestId,
+      tokenReservation
+    );
     if (error instanceof GatewayError) {
       context.set("telemetryErrorEmitted", true);
       await emitGatewayRequestErrorTelemetry(
@@ -269,10 +292,11 @@ export async function handleResponses(
     requestId
   );
   if (canonicalResponse.usage) {
-    await chargeGatewayKeyTokenQuota(
+    await reconcileGatewayKeyTokenQuotaReservation(
       context.env,
       gatewayApiKey,
       requestId,
+      tokenReservation,
       canonicalResponse.usage.totalTokens
     );
   }

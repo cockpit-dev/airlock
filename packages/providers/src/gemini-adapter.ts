@@ -432,7 +432,14 @@ function buildGeminiRequestBody(request: CanonicalRequest) {
           }
         }
       : {}),
-    contents
+    contents,
+    ...(request.maxOutputTokens !== undefined
+      ? {
+          generationConfig: {
+            maxOutputTokens: request.maxOutputTokens
+          }
+        }
+      : {})
   };
 }
 

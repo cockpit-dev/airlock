@@ -7,6 +7,7 @@ export interface CanonicalRequest {
   model: string;
   messages: CanonicalMessage[];
   stream: boolean;
+  maxOutputTokens?: number;
 }
 
 export interface CanonicalRequestCapabilityRequirements {

@@ -11,6 +11,7 @@ interface GatewayKeyTokenQuotaDecision {
   limit: number;
   remaining: number;
   used: number;
+  reserved: number;
   resetAt: string;
   retryAfterSeconds: number;
 }
@@ -28,9 +29,40 @@ interface GatewayKeyTokenQuotaChargeRequest {
   tokens: number;
 }
 
+interface GatewayKeyTokenQuotaReserveRequest {
+  kind: "reserve";
+  limit: number;
+  windowSeconds: number;
+  reservationId: string;
+  tokens: number;
+  ttlMs: number;
+}
+
+interface GatewayKeyTokenQuotaReleaseRequest {
+  kind: "release";
+  limit: number;
+  windowSeconds: number;
+  reservationId: string;
+}
+
+interface GatewayKeyTokenQuotaReconcileRequest {
+  kind: "reconcile";
+  limit: number;
+  windowSeconds: number;
+  reservationId: string;
+  actualTokens: number;
+}
+
+interface GatewayKeyTokenQuotaReservation {
+  reservationId: string;
+  tokens: number;
+  expiresAt: number;
+}
+
 interface GatewayKeyTokenQuotaStorage {
   windowStartedAt?: number;
   usedTokens?: number;
+  reservations?: GatewayKeyTokenQuotaReservation[];
 }
 
 interface DurableObjectStateLike {
@@ -39,6 +71,18 @@ interface DurableObjectStateLike {
     put<T>(key: string, value: T): Promise<void>;
   };
 }
+
+export interface GatewayKeyTokenReservationHandle {
+  reservationId: string;
+  reservedTokens: number;
+}
+
+type GatewayKeyTokenQuotaRequest =
+  | GatewayKeyTokenQuotaPrecheckRequest
+  | GatewayKeyTokenQuotaChargeRequest
+  | GatewayKeyTokenQuotaReserveRequest
+  | GatewayKeyTokenQuotaReleaseRequest
+  | GatewayKeyTokenQuotaReconcileRequest;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -49,7 +93,15 @@ function parseTokenQuotaDecision(value: unknown): GatewayKeyTokenQuotaDecision {
     throw new Error("Token quota decision must be an object");
   }
 
-  const { allowed, limit, remaining, used, resetAt, retryAfterSeconds } = value;
+  const {
+    allowed,
+    limit,
+    remaining,
+    used,
+    reserved,
+    resetAt,
+    retryAfterSeconds
+  } = value;
 
   if (
     typeof allowed !== "boolean" ||
@@ -62,6 +114,9 @@ function parseTokenQuotaDecision(value: unknown): GatewayKeyTokenQuotaDecision {
     typeof used !== "number" ||
     !Number.isInteger(used) ||
     used < 0 ||
+    typeof reserved !== "number" ||
+    !Number.isInteger(reserved) ||
+    reserved < 0 ||
     typeof resetAt !== "string" ||
     Number.isNaN(Date.parse(resetAt)) ||
     typeof retryAfterSeconds !== "number" ||
@@ -76,6 +131,7 @@ function parseTokenQuotaDecision(value: unknown): GatewayKeyTokenQuotaDecision {
     limit,
     remaining,
     used,
+    reserved,
     resetAt,
     retryAfterSeconds
   };
@@ -83,36 +139,55 @@ function parseTokenQuotaDecision(value: unknown): GatewayKeyTokenQuotaDecision {
 
 function createWindowState(
   existing: GatewayKeyTokenQuotaStorage | undefined,
-  windowStartedAt: number
+  windowStartedAt: number,
+  now: number
 ): {
   windowStartedAt: number;
   usedTokens: number;
+  reservations: GatewayKeyTokenQuotaReservation[];
 } {
-  return existing?.windowStartedAt === windowStartedAt
-    ? {
-        windowStartedAt,
-        usedTokens: existing.usedTokens ?? 0
-      }
-    : {
-        windowStartedAt,
-        usedTokens: 0
-      };
+  if (existing?.windowStartedAt !== windowStartedAt) {
+    return {
+      windowStartedAt,
+      usedTokens: 0,
+      reservations: []
+    };
+  }
+
+  return {
+    windowStartedAt,
+    usedTokens: existing.usedTokens ?? 0,
+    reservations: (existing.reservations ?? []).filter((reservation) => {
+      return reservation.expiresAt > now;
+    })
+  };
+}
+
+function getReservedTokens(
+  reservations: GatewayKeyTokenQuotaReservation[]
+): number {
+  return reservations.reduce((sum, reservation) => {
+    return sum + reservation.tokens;
+  }, 0);
 }
 
 function createTokenQuotaDecision(
   policy: GatewayApiKeyTokenQuotaPolicy,
   usedTokens: number,
+  reservedTokens: number,
   now: number
 ): GatewayKeyTokenQuotaDecision {
   const windowMs = policy.windowSeconds * 1000;
   const windowStartedAt = now - (now % windowMs);
   const resetAtTimestamp = windowStartedAt + windowMs;
+  const committedAndReserved = usedTokens + reservedTokens;
 
   return {
-    allowed: usedTokens < policy.limit,
+    allowed: committedAndReserved < policy.limit,
     limit: policy.limit,
-    remaining: Math.max(0, policy.limit - usedTokens),
+    remaining: Math.max(0, policy.limit - committedAndReserved),
     used: usedTokens,
+    reserved: reservedTokens,
     resetAt: new Date(resetAtTimestamp).toISOString(),
     retryAfterSeconds: Math.max(
       0,
@@ -121,23 +196,44 @@ function createTokenQuotaDecision(
   };
 }
 
+function createTokenQuotaReservationId(requestId: string): string {
+  return `tkq_${requestId}`;
+}
+
 export class GatewayKeyTokenQuotaDurableObject {
   constructor(private readonly state: DurableObjectStateLike) {}
 
   async fetch(request: Request): Promise<Response> {
-    const body = (await request.json()) as
-      | GatewayKeyTokenQuotaPrecheckRequest
-      | GatewayKeyTokenQuotaChargeRequest;
+    const body = (await request.json()) as GatewayKeyTokenQuotaRequest;
 
-    if (body.kind === "precheck") {
-      return Response.json(
-        await precheckGatewayKeyTokenQuotaFromStorage(this.state.storage, body)
-      );
+    switch (body.kind) {
+      case "precheck":
+        return Response.json(
+          await precheckGatewayKeyTokenQuotaFromStorage(this.state.storage, body)
+        );
+      case "charge":
+        return Response.json(
+          await chargeGatewayKeyTokenQuotaFromStorage(this.state.storage, body)
+        );
+      case "reserve":
+        return Response.json(
+          await reserveGatewayKeyTokenQuotaFromStorage(this.state.storage, body)
+        );
+      case "release":
+        return Response.json(
+          await releaseGatewayKeyTokenQuotaReservationFromStorage(
+            this.state.storage,
+            body
+          )
+        );
+      case "reconcile":
+        return Response.json(
+          await reconcileGatewayKeyTokenQuotaReservationFromStorage(
+            this.state.storage,
+            body
+          )
+        );
     }
-
-    return Response.json(
-      await chargeGatewayKeyTokenQuotaFromStorage(this.state.storage, body)
-    );
   }
 }
 
@@ -145,7 +241,7 @@ async function callGatewayKeyTokenQuota(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string,
-  body: GatewayKeyTokenQuotaPrecheckRequest | GatewayKeyTokenQuotaChargeRequest
+  body: GatewayKeyTokenQuotaRequest
 ): Promise<GatewayKeyTokenQuotaDecision> {
   const namespace = env.AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA;
 
@@ -234,11 +330,69 @@ export async function enforceGatewayKeyTokenQuotaPrecheck(
   throw createGatewayKeyTokenQuotaExceededError(decision, requestId);
 }
 
-export async function chargeGatewayKeyTokenQuota(
+export async function reserveGatewayKeyTokenQuota(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string,
-  tokens: number
+  tokens: number,
+  ttlMs: number
+): Promise<GatewayKeyTokenReservationHandle | undefined> {
+  const tokenQuota = gatewayApiKey.policy?.tokenQuota;
+
+  if (!tokenQuota) {
+    return undefined;
+  }
+
+  if (!Number.isInteger(tokens) || tokens <= 0) {
+    return undefined;
+  }
+
+  const reservationId = createTokenQuotaReservationId(requestId);
+  const decision = await callGatewayKeyTokenQuota(env, gatewayApiKey, requestId, {
+    kind: "reserve",
+    limit: tokenQuota.limit,
+    windowSeconds: tokenQuota.windowSeconds,
+    reservationId,
+    tokens,
+    ttlMs
+  });
+
+  if (!decision.allowed) {
+    throw createGatewayKeyTokenQuotaExceededError(decision, requestId);
+  }
+
+  return {
+    reservationId,
+    reservedTokens: tokens
+  };
+}
+
+export async function releaseGatewayKeyTokenQuotaReservation(
+  env: GatewayBindings,
+  gatewayApiKey: GatewayApiKeyRecord,
+  requestId: string,
+  reservation: GatewayKeyTokenReservationHandle | undefined
+): Promise<void> {
+  const tokenQuota = gatewayApiKey.policy?.tokenQuota;
+
+  if (!tokenQuota || !reservation) {
+    return;
+  }
+
+  await callGatewayKeyTokenQuota(env, gatewayApiKey, requestId, {
+    kind: "release",
+    limit: tokenQuota.limit,
+    windowSeconds: tokenQuota.windowSeconds,
+    reservationId: reservation.reservationId
+  });
+}
+
+export async function reconcileGatewayKeyTokenQuotaReservation(
+  env: GatewayBindings,
+  gatewayApiKey: GatewayApiKeyRecord,
+  requestId: string,
+  reservation: GatewayKeyTokenReservationHandle | undefined,
+  actualTokens: number
 ): Promise<void> {
   const tokenQuota = gatewayApiKey.policy?.tokenQuota;
 
@@ -246,7 +400,7 @@ export async function chargeGatewayKeyTokenQuota(
     return;
   }
 
-  if (!Number.isInteger(tokens) || tokens < 0) {
+  if (!Number.isInteger(actualTokens) || actualTokens < 0) {
     throw new GatewayError("Gateway key token usage is invalid", {
       code: "gateway_key_token_quota_invalid_usage",
       category: "governance",
@@ -256,12 +410,38 @@ export async function chargeGatewayKeyTokenQuota(
     });
   }
 
+  if (!reservation) {
+    await callGatewayKeyTokenQuota(env, gatewayApiKey, requestId, {
+      kind: "charge",
+      limit: tokenQuota.limit,
+      windowSeconds: tokenQuota.windowSeconds,
+      tokens: actualTokens
+    });
+    return;
+  }
+
   await callGatewayKeyTokenQuota(env, gatewayApiKey, requestId, {
-    kind: "charge",
+    kind: "reconcile",
     limit: tokenQuota.limit,
     windowSeconds: tokenQuota.windowSeconds,
-    tokens
+    reservationId: reservation.reservationId,
+    actualTokens
   });
+}
+
+export async function chargeGatewayKeyTokenQuota(
+  env: GatewayBindings,
+  gatewayApiKey: GatewayApiKeyRecord,
+  requestId: string,
+  tokens: number
+): Promise<void> {
+  await reconcileGatewayKeyTokenQuotaReservation(
+    env,
+    gatewayApiKey,
+    requestId,
+    undefined,
+    tokens
+  );
 }
 
 export function assertGatewayKeyTokenUsageAvailable(
@@ -327,10 +507,136 @@ export async function precheckGatewayKeyTokenQuotaFromStorage(
   const windowStartedAt = now - (now % windowMs);
   const current = createWindowState(
     await storage.get<GatewayKeyTokenQuotaStorage>("token_quota"),
-    windowStartedAt
+    windowStartedAt,
+    now
   );
 
-  return createTokenQuotaDecision(policy, current.usedTokens, now);
+  return createTokenQuotaDecision(
+    policy,
+    current.usedTokens,
+    getReservedTokens(current.reservations),
+    now
+  );
+}
+
+export async function reserveGatewayKeyTokenQuotaFromStorage(
+  storage: DurableObjectStateLike["storage"],
+  request: GatewayKeyTokenQuotaReserveRequest,
+  now = Date.now()
+): Promise<GatewayKeyTokenQuotaDecision> {
+  const policy = {
+    limit: request.limit,
+    windowSeconds: request.windowSeconds
+  } satisfies GatewayApiKeyTokenQuotaPolicy;
+  const windowMs = policy.windowSeconds * 1000;
+  const windowStartedAt = now - (now % windowMs);
+  const current = createWindowState(
+    await storage.get<GatewayKeyTokenQuotaStorage>("token_quota"),
+    windowStartedAt,
+    now
+  );
+  const nextReservations = [
+    ...current.reservations.filter((reservation) => {
+      return reservation.reservationId !== request.reservationId;
+    }),
+    {
+      reservationId: request.reservationId,
+      tokens: request.tokens,
+      expiresAt: now + request.ttlMs
+    }
+  ];
+  const reservedTokens = getReservedTokens(nextReservations);
+  const decision = createTokenQuotaDecision(
+    policy,
+    current.usedTokens,
+    reservedTokens,
+    now
+  );
+
+  if (!decision.allowed) {
+    return decision;
+  }
+
+  await storage.put("token_quota", {
+    windowStartedAt,
+    usedTokens: current.usedTokens,
+    reservations: nextReservations
+  });
+
+  return decision;
+}
+
+export async function releaseGatewayKeyTokenQuotaReservationFromStorage(
+  storage: DurableObjectStateLike["storage"],
+  request: GatewayKeyTokenQuotaReleaseRequest,
+  now = Date.now()
+): Promise<GatewayKeyTokenQuotaDecision> {
+  const policy = {
+    limit: request.limit,
+    windowSeconds: request.windowSeconds
+  } satisfies GatewayApiKeyTokenQuotaPolicy;
+  const windowMs = policy.windowSeconds * 1000;
+  const windowStartedAt = now - (now % windowMs);
+  const current = createWindowState(
+    await storage.get<GatewayKeyTokenQuotaStorage>("token_quota"),
+    windowStartedAt,
+    now
+  );
+  const nextReservations = current.reservations.filter((reservation) => {
+    return reservation.reservationId !== request.reservationId;
+  });
+
+  await storage.put("token_quota", {
+    windowStartedAt,
+    usedTokens: current.usedTokens,
+    reservations: nextReservations
+  });
+
+  return createTokenQuotaDecision(
+    policy,
+    current.usedTokens,
+    getReservedTokens(nextReservations),
+    now
+  );
+}
+
+export async function reconcileGatewayKeyTokenQuotaReservationFromStorage(
+  storage: DurableObjectStateLike["storage"],
+  request: GatewayKeyTokenQuotaReconcileRequest,
+  now = Date.now()
+): Promise<GatewayKeyTokenQuotaDecision> {
+  const policy = {
+    limit: request.limit,
+    windowSeconds: request.windowSeconds
+  } satisfies GatewayApiKeyTokenQuotaPolicy;
+  const windowMs = policy.windowSeconds * 1000;
+  const windowStartedAt = now - (now % windowMs);
+  const current = createWindowState(
+    await storage.get<GatewayKeyTokenQuotaStorage>("token_quota"),
+    windowStartedAt,
+    now
+  );
+  const reservation = current.reservations.find((candidate) => {
+    return candidate.reservationId === request.reservationId;
+  });
+  const nextReservations = current.reservations.filter((candidate) => {
+    return candidate.reservationId !== request.reservationId;
+  });
+  const nextUsedTokens =
+    current.usedTokens + request.actualTokens - (reservation?.tokens ?? 0);
+
+  await storage.put("token_quota", {
+    windowStartedAt,
+    usedTokens: Math.max(0, nextUsedTokens),
+    reservations: nextReservations
+  });
+
+  return createTokenQuotaDecision(
+    policy,
+    Math.max(0, nextUsedTokens),
+    getReservedTokens(nextReservations),
+    now
+  );
 }
 
 export async function chargeGatewayKeyTokenQuotaFromStorage(
@@ -346,14 +652,21 @@ export async function chargeGatewayKeyTokenQuotaFromStorage(
   const windowStartedAt = now - (now % windowMs);
   const current = createWindowState(
     await storage.get<GatewayKeyTokenQuotaStorage>("token_quota"),
-    windowStartedAt
+    windowStartedAt,
+    now
   );
   const usedTokens = current.usedTokens + request.tokens;
 
   await storage.put("token_quota", {
     windowStartedAt,
-    usedTokens
+    usedTokens,
+    reservations: current.reservations
   });
 
-  return createTokenQuotaDecision(policy, usedTokens, now);
+  return createTokenQuotaDecision(
+    policy,
+    usedTokens,
+    getReservedTokens(current.reservations),
+    now
+  );
 }

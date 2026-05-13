@@ -16,6 +16,9 @@ export function normalizeOpenAIChatRequest(
   return {
     model: request.model,
     stream: request.stream,
+    ...(request.max_tokens !== undefined
+      ? { maxOutputTokens: request.max_tokens }
+      : {}),
     messages: request.messages.map((message) => ({
       role: message.role,
       content: message.content
@@ -37,6 +40,9 @@ export function normalizeOpenAIResponsesRequest(
   return {
     model: request.model,
     stream: request.stream,
+    ...(request.max_output_tokens !== undefined
+      ? { maxOutputTokens: request.max_output_tokens }
+      : {}),
     messages
   };
 }
@@ -61,6 +67,7 @@ export function normalizeAnthropicMessagesRequest(
   return {
     model: request.model,
     stream: request.stream,
+    maxOutputTokens: request.max_tokens,
     messages: [...systemMessages, ...messages]
   };
 }

@@ -71,6 +71,11 @@ function createTokenQuotaNamespace() {
     {
       windowStartedAt: number;
       usedTokens: number;
+      reservations: Array<{
+        reservationId: string;
+        tokens: number;
+        expiresAt: number;
+      }>;
     }
   >();
 
@@ -92,6 +97,27 @@ function createTokenQuotaNamespace() {
                 limit: number;
                 windowSeconds: number;
                 tokens: number;
+              }
+            | {
+                kind: "reserve";
+                limit: number;
+                windowSeconds: number;
+                reservationId: string;
+                tokens: number;
+                ttlMs: number;
+              }
+            | {
+                kind: "release";
+                limit: number;
+                windowSeconds: number;
+                reservationId: string;
+              }
+            | {
+                kind: "reconcile";
+                limit: number;
+                windowSeconds: number;
+                reservationId: string;
+                actualTokens: number;
               };
           const now = Date.now();
           const windowMs = body.windowSeconds * 1000;
@@ -102,36 +128,117 @@ function createTokenQuotaNamespace() {
               ? existing
               : {
                   windowStartedAt,
-                  usedTokens: 0
+                  usedTokens: 0,
+                  reservations: []
                 };
+          current.reservations = current.reservations.filter((reservation) => {
+            return reservation.expiresAt > now;
+          });
           const resetAt = new Date(windowStartedAt + windowMs).toISOString();
           const retryAfterSeconds = Math.max(
             0,
             Math.ceil((windowStartedAt + windowMs - now) / 1000)
           );
+          const reserved = current.reservations.reduce((sum, reservation) => {
+            return sum + reservation.tokens;
+          }, 0);
 
-          if (body.kind === "precheck") {
-            return Response.json({
-              allowed: current.usedTokens < body.limit,
+          const decision = (used: number, nextReserved: number, allowed: boolean) => {
+            return {
+              allowed,
               limit: body.limit,
-              remaining: Math.max(0, body.limit - current.usedTokens),
-              used: current.usedTokens,
+              remaining: Math.max(0, body.limit - used - nextReserved),
+              used,
+              reserved: nextReserved,
               resetAt,
               retryAfterSeconds
-            });
+            };
+          };
+
+          if (body.kind === "precheck") {
+            return Response.json(
+              decision(
+                current.usedTokens,
+                reserved,
+                current.usedTokens + reserved < body.limit
+              )
+            );
           }
 
-          current.usedTokens += body.tokens;
-          state.set(id.name, current);
+          if (body.kind === "charge") {
+            current.usedTokens += body.tokens;
+            state.set(id.name, current);
+            const nextReserved = current.reservations.reduce((sum, reservation) => {
+              return sum + reservation.tokens;
+            }, 0);
 
-          return Response.json({
-            allowed: true,
-            limit: body.limit,
-            remaining: Math.max(0, body.limit - current.usedTokens),
-            used: current.usedTokens,
-            resetAt,
-            retryAfterSeconds
+            return Response.json(
+              decision(current.usedTokens, nextReserved, true)
+            );
+          }
+
+          if (body.kind === "reserve") {
+            const nextReservations = [
+              ...current.reservations.filter((reservation) => {
+                return reservation.reservationId !== body.reservationId;
+              }),
+              {
+                reservationId: body.reservationId,
+                tokens: body.tokens,
+                expiresAt: now + body.ttlMs
+              }
+            ];
+            const nextReserved = nextReservations.reduce((sum, reservation) => {
+              return sum + reservation.tokens;
+            }, 0);
+            const allowed = current.usedTokens + nextReserved < body.limit;
+
+            if (!allowed) {
+              return Response.json(
+                decision(current.usedTokens, nextReserved, false)
+              );
+            }
+
+            current.reservations = nextReservations;
+            state.set(id.name, current);
+
+            return Response.json(
+              decision(current.usedTokens, nextReserved, true)
+            );
+          }
+
+          if (body.kind === "release") {
+            current.reservations = current.reservations.filter((reservation) => {
+              return reservation.reservationId !== body.reservationId;
+            });
+            state.set(id.name, current);
+            const nextReserved = current.reservations.reduce((sum, reservation) => {
+              return sum + reservation.tokens;
+            }, 0);
+
+            return Response.json(
+              decision(current.usedTokens, nextReserved, true)
+            );
+          }
+
+          const reservation = current.reservations.find((candidate) => {
+            return candidate.reservationId === body.reservationId;
           });
+          current.reservations = current.reservations.filter((candidate) => {
+            return candidate.reservationId !== body.reservationId;
+          });
+          current.usedTokens = Math.max(
+            0,
+            current.usedTokens + body.actualTokens - (reservation?.tokens ?? 0)
+          );
+          state.set(id.name, current);
+          const nextReserved = current.reservations.reduce((sum, nextReservation) => {
+            return sum + nextReservation.tokens;
+          }, 0);
+
+          return Response.json(
+            decision(current.usedTokens, nextReserved, true)
+          );
         }
       };
     }
@@ -2315,6 +2422,393 @@ describe("gateway app", () => {
       }
     });
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves an explicit chat completions max_tokens limit when forwarding upstream", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 4,
+            total_tokens: 14
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          max_tokens: 128,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      max_tokens: 128
+    });
+  });
+
+  it("preserves an explicit anthropic max_tokens limit when forwarding upstream", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ],
+          usage: {
+            input_tokens: 10,
+            output_tokens: 4
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 64,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      max_tokens: 64
+    });
+  });
+
+  it("reserves explicit output token budget before committed usage alone would block a later request", async () => {
+    let releaseFirstRequest: (() => void) | undefined;
+    const fetcher = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              releaseFirstRequest = () => {
+                controller.enqueue(
+                  new TextEncoder().encode(
+                    JSON.stringify({
+                      id: "chatcmpl_123",
+                      object: "chat.completion",
+                      created: 1,
+                      model: "gpt-4.1-mini",
+                      choices: [
+                        {
+                          index: 0,
+                          finish_reason: "stop",
+                          message: {
+                            role: "assistant",
+                            content: "hello there"
+                          }
+                        }
+                      ],
+                      usage: {
+                        prompt_tokens: 8,
+                        completion_tokens: 4,
+                        total_tokens: 12
+                      }
+                    })
+                  )
+                );
+                controller.close();
+              };
+            }
+          }).pipeThrough(
+            new TransformStream<Uint8Array, Uint8Array>({
+              transform(chunk, controller) {
+                controller.enqueue(chunk);
+              }
+            })
+          ),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        );
+      })
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_456",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "should not run"
+                }
+              }
+            ],
+            usage: {
+              prompt_tokens: 1,
+              completion_tokens: 1,
+              total_tokens: 2
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_token_quota",
+          label: "Token Quota Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            tokenQuota: {
+              limit: 20,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA: createTokenQuotaNamespace()
+    };
+
+    const firstResponsePromise = app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          max_tokens: 16,
+          messages: [{ role: "user", content: "first" }]
+        })
+      },
+      bindings
+    );
+
+    await Promise.resolve();
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          max_tokens: 16,
+          messages: [{ role: "user", content: "second" }]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      error: {
+        code: "quota_tokens_exceeded"
+      }
+    });
+
+    releaseFirstRequest?.();
+    const firstResponse = await firstResponsePromise;
+
+    expect(firstResponse.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases reserved token budget when a buffered upstream request fails", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "upstream failed"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_123",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "recovered"
+                }
+              }
+            ],
+            usage: {
+              prompt_tokens: 8,
+              completion_tokens: 4,
+              total_tokens: 12
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_token_quota",
+          label: "Token Quota Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            tokenQuota: {
+              limit: 20,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA: createTokenQuotaNamespace()
+    };
+
+    const failedResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          max_tokens: 16,
+          messages: [{ role: "user", content: "fail" }]
+        })
+      },
+      bindings
+    );
+
+    expect(failedResponse.status).toBe(429);
+
+    const recoveredResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          max_tokens: 16,
+          messages: [{ role: "user", content: "recover" }]
+        })
+      },
+      bindings
+    );
+
+    expect(recoveredResponse.status).toBe(200);
   });
 
   it("rejects missing admin auth on internal key revocation routes", async () => {

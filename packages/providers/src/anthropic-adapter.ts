@@ -72,7 +72,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
           query: {},
           jsonBody: {
             model: request.model,
-            max_tokens: this.#defaultMaxTokens,
+            max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
             ...(systemMessage ? { system: systemMessage.content } : {}),
             messages
           }
@@ -204,7 +204,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
           query: {},
           jsonBody: {
             model: request.model,
-            max_tokens: this.#defaultMaxTokens,
+            max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
             stream: true,
             ...(systemMessage ? { system: systemMessage.content } : {}),
             messages

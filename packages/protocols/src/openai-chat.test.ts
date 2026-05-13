@@ -75,6 +75,7 @@ describe("openAIChatCompletionRequestSchema", () => {
     const parsed = openAIChatCompletionRequestSchema.parse({
       model: "gpt-4.1-mini",
       stream: true,
+      max_tokens: 128,
       messages: [
         {
           role: "user",
@@ -84,6 +85,7 @@ describe("openAIChatCompletionRequestSchema", () => {
     });
 
     expect(parsed.stream).toBe(true);
+    expect(parsed.max_tokens).toBe(128);
   });
 });
 
@@ -138,10 +140,12 @@ describe("openAIResponsesRequestSchema", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",
       input: "hello",
-      stream: true
+      stream: true,
+      max_output_tokens: 96
     });
 
     expect(parsed.stream).toBe(true);
+    expect(parsed.max_output_tokens).toBe(96);
   });
 });
 

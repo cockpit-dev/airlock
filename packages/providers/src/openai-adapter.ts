@@ -60,6 +60,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
             model: request.model,
             stream: false,
             messages: request.messages
+            ,
+            ...(request.maxOutputTokens !== undefined
+              ? { max_tokens: request.maxOutputTokens }
+              : {})
           }
         },
         authStrategy,
@@ -181,6 +185,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
             model: request.model,
             stream: true,
             messages: request.messages,
+            ...(request.maxOutputTokens !== undefined
+              ? { max_tokens: request.maxOutputTokens }
+              : {}),
             stream_options: {
               include_usage: true
             }

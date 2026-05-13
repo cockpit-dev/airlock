@@ -26,6 +26,7 @@ describe("normalizeOpenAIChatRequest", () => {
     const canonical = normalizeOpenAIChatRequest({
       model: "gpt-4.1-mini",
       stream: true,
+      max_tokens: 128,
       messages: [
         {
           role: "user",
@@ -35,6 +36,7 @@ describe("normalizeOpenAIChatRequest", () => {
     });
 
     expect(canonical.stream).toBe(true);
+    expect(canonical.maxOutputTokens).toBe(128);
   });
 });
 
@@ -164,10 +166,12 @@ describe("normalizeOpenAIResponsesRequest", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",
       input: "hello",
-      stream: true
+      stream: true,
+      max_output_tokens: 96
     });
 
     expect(canonical.stream).toBe(true);
+    expect(canonical.maxOutputTokens).toBe(96);
   });
 });
 
@@ -285,6 +289,7 @@ describe("normalizeAnthropicMessagesRequest", () => {
     });
 
     expect(canonical.stream).toBe(true);
+    expect(canonical.maxOutputTokens).toBe(256);
   });
 });
 
