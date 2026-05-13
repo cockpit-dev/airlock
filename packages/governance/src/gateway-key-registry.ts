@@ -55,6 +55,10 @@ export interface GatewayKeyRegistryDeleteResponse {
   deleted: boolean;
 }
 
+export interface GatewayKeyRegistryBulkDeleteResponse {
+  keys: GatewayKeyRegistryDeleteResponse[];
+}
+
 export interface GatewayKeyRegistryCreateRequest extends GatewayApiKeyRecord {
   actor?: string;
   actorSource?: GatewayKeyAuditActorSource;
@@ -98,6 +102,11 @@ export interface GatewayKeyRegistryBulkUpdateItem {
 
 export interface GatewayKeyRegistryBulkUpdateRequest {
   updates: GatewayKeyRegistryBulkUpdateItem[];
+  auditMetadata: GatewayKeyRegistryUpdateAuditMetadata;
+}
+
+export interface GatewayKeyRegistryBulkDeleteRequest {
+  keyIds: string[];
   auditMetadata: GatewayKeyRegistryUpdateAuditMetadata;
 }
 
@@ -367,6 +376,20 @@ export function parseGatewayKeyRegistryDeleteResponse(
   };
 }
 
+export function parseGatewayKeyRegistryBulkDeleteResponse(
+  value: unknown
+): GatewayKeyRegistryBulkDeleteResponse {
+  if (!isRecord(value) || !Array.isArray(value.keys)) {
+    throw new Error("Registry bulk delete response is invalid");
+  }
+
+  return {
+    keys: value.keys.map((entry) => {
+      return parseGatewayKeyRegistryDeleteResponse(entry);
+    })
+  };
+}
+
 export function parseGatewayKeyRegistryRotateRequest(
   value: unknown
 ): GatewayKeyRegistryRotateRequest {
@@ -624,6 +647,74 @@ export function parseGatewayKeyRegistryBulkUpdateRequest(
 
   return {
     updates,
+    auditMetadata: {
+      ...(value.reason !== undefined
+        ? {
+            reason: parseRequiredGatewayKeyRegistryReason(value.reason, message)
+          }
+        : {}),
+      ...(value.actor !== undefined
+        ? {
+            ...toGatewayKeyAuditActorContextRecord(
+              parseRequiredGatewayKeyRegistryActorContext(
+                value.actor,
+                "actorSource" in value ? value.actorSource : undefined,
+                message
+              )
+            )
+          }
+        : {})
+    }
+  };
+}
+
+export function parseGatewayKeyRegistryBulkDeleteRequest(
+  value: unknown
+): GatewayKeyRegistryBulkDeleteRequest {
+  const message = "Gateway dynamic key bulk delete payload is invalid";
+
+  if (!isRecord(value) || !Array.isArray(value.keyIds)) {
+    throw createGatewayKeyRegistryPayloadError(message);
+  }
+
+  if (value.keyIds.length === 0) {
+    throw createGatewayKeyRegistryPayloadError(
+      message,
+      new Error("keyIds must be a non-empty array")
+    );
+  }
+
+  if (value.actorSource !== undefined && value.actor === undefined) {
+    throw createGatewayKeyRegistryPayloadError(
+      message,
+      new Error("actorSource requires actor")
+    );
+  }
+
+  const seenKeyIds = new Set<string>();
+  const keyIds = value.keyIds.map((entry) => {
+    const keyId = typeof entry === "string" ? entry.trim() : "";
+
+    if (keyId.length === 0) {
+      throw createGatewayKeyRegistryPayloadError(
+        message,
+        new Error("Each keyId must be a non-empty string")
+      );
+    }
+
+    if (seenKeyIds.has(keyId)) {
+      throw createGatewayKeyRegistryPayloadError(
+        message,
+        new Error("Duplicate keyId values are not allowed")
+      );
+    }
+
+    seenKeyIds.add(keyId);
+    return keyId;
+  });
+
+  return {
+    keyIds,
     auditMetadata: {
       ...(value.reason !== undefined
         ? {

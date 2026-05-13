@@ -3,7 +3,9 @@ import { GatewayError } from "@airlock/shared";
 import type { GatewayApiKeyMetadataOverride } from "./gateway-auth.js";
 import type { GatewayKeyAuditActorContext } from "./gateway-key-audit.js";
 import type {
+  GatewayKeyRegistryBulkDeleteRequest,
   GatewayKeyRegistryBulkUpdateRequest,
+  GatewayKeyRegistryDeleteResponse,
   GatewayKeyRegistryDynamicKeyView
 } from "./gateway-key-registry.js";
 
@@ -58,6 +60,15 @@ export interface BulkUpdateGatewayAdminKeysPort {
       }>;
     }
   ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
+}
+
+export interface BulkDeleteGatewayAdminKeysPort {
+  isConfiguredKey(keyId: string): boolean;
+  bulkDeleteRegistryKeys(
+    payload: GatewayKeyRegistryBulkDeleteRequest["auditMetadata"] & {
+      keyIds: string[];
+    }
+  ): Promise<GatewayKeyRegistryDeleteResponse[]>;
 }
 
 export interface FinalizeGatewayAdminKeyRotationPort {
@@ -176,6 +187,26 @@ export async function bulkUpdateGatewayAdminKeys(
 
   return {
     keys: await port.bulkUpdateRegistryKeys(payload)
+  };
+}
+
+export async function bulkDeleteGatewayAdminKeys(
+  payload: GatewayKeyRegistryBulkDeleteRequest["auditMetadata"] & {
+    keyIds: string[];
+  },
+  requestId: string,
+  port: BulkDeleteGatewayAdminKeysPort
+): Promise<{
+  keys: GatewayKeyRegistryDeleteResponse[];
+}> {
+  for (const keyId of payload.keyIds) {
+    if (port.isConfiguredKey(keyId)) {
+      throw createGatewayKeyNotRegistryOwnedError(requestId);
+    }
+  }
+
+  return {
+    keys: await port.bulkDeleteRegistryKeys(payload)
   };
 }
 

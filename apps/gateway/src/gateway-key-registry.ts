@@ -3,6 +3,8 @@ import {
   createGatewayKeyRegistryDynamicKeyView,
   createGatewayKeyAuditEvent,
   gatewayKeyAuditActorContextFromRegistryRequest,
+  parseGatewayKeyRegistryBulkDeleteRequest,
+  parseGatewayKeyRegistryBulkDeleteResponse,
   parseGatewayKeyRegistryCreateRequest,
   parseGatewayKeyRegistryBulkUpdateRequest,
   parseGatewayKeyRegistryDeleteRequest,
@@ -24,6 +26,7 @@ import {
   type GatewayKeyAuditEvent,
   type GatewayKeyAuditEventsResponse,
   type GatewayApiKeyRecord,
+  type GatewayKeyRegistryBulkDeleteResponse,
   type GatewayKeyRegistryCreateRequest,
   type GatewayKeyRegistryDeleteRequest,
   type GatewayKeyRegistryDeleteResponse,
@@ -47,6 +50,7 @@ const REGISTRY_KIND_DYNAMIC = "dynamic";
 const REGISTRY_KIND_DYNAMIC_LIST = "dynamic_list";
 const REGISTRY_KIND_DYNAMIC_LOOKUP = "dynamic_lookup";
 const REGISTRY_KIND_DYNAMIC_BULK_UPDATE = "dynamic_bulk_update";
+const REGISTRY_KIND_DYNAMIC_BULK_DELETE = "dynamic_bulk_delete";
 const REGISTRY_KIND_DYNAMIC_ROTATE = "dynamic_rotate";
 const REGISTRY_KIND_DYNAMIC_ROTATE_FINALIZE = "dynamic_rotate_finalize";
 const REGISTRY_KIND_DYNAMIC_ROTATE_CANCEL = "dynamic_rotate_cancel";
@@ -375,6 +379,72 @@ export class GatewayKeyRegistryDurableObject {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
       } satisfies GatewayKeyRegistryDynamicKeyListResponse);
+    }
+
+    if (kind === REGISTRY_KIND_DYNAMIC_BULK_DELETE) {
+      if (request.method !== "POST") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      const bulkRequest = parseGatewayKeyRegistryBulkDeleteRequest(
+        await request.json()
+      );
+      const dynamicKeys = await listStoredDynamicKeys(this.state.storage);
+      const existingKeysById = new Map(
+        dynamicKeys.map((entry) => {
+          return [entry.id, entry] as const;
+        })
+      );
+
+      if (
+        bulkRequest.keyIds.some((keyId) => {
+          return !existingKeysById.has(keyId);
+        })
+      ) {
+        return new Response("Not found", { status: 404 });
+      }
+
+      const actorContext = gatewayKeyAuditActorContextFromRegistryRequest(
+        bulkRequest.auditMetadata
+      );
+      const occurredAt = new Date().toISOString();
+
+      for (const keyId of bulkRequest.keyIds) {
+        await clearStoredDynamicKey(this.state.storage, keyId);
+      }
+
+      for (const keyId of bulkRequest.keyIds) {
+        const existingKey = existingKeysById.get(keyId);
+
+        if (!existingKey) {
+          continue;
+        }
+
+        await appendStoredDynamicKeyAuditEvent(
+          this.state.storage,
+          createGatewayKeyAuditEvent({
+            keyId: existingKey.id,
+            kind: "deleted",
+            ownership: "registry",
+            occurredAt,
+            ...(bulkRequest.auditMetadata.reason
+              ? { reason: bulkRequest.auditMetadata.reason }
+              : {}),
+            ...(actorContext
+              ? toGatewayKeyAuditActorContextRecord(actorContext)
+              : {})
+          })
+        );
+      }
+
+      return Response.json({
+        keys: bulkRequest.keyIds.map((keyId) => {
+          return {
+            keyId,
+            deleted: true
+          };
+        })
+      } satisfies GatewayKeyRegistryBulkDeleteResponse);
     }
 
     if (kind === REGISTRY_KIND_DYNAMIC_ROTATE) {
@@ -1136,6 +1206,99 @@ export async function bulkUpdateGatewayRegistryApiKeys(
 
   try {
     return parseGatewayKeyRegistryDynamicKeyListResponse(await response.json());
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
+  }
+}
+
+export async function bulkDeleteGatewayRegistryApiKeys(
+  env: GatewayBindings,
+  configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
+  payload: unknown,
+  requestId: string,
+  actorContext?: GatewayKeyAuditActorContext
+): Promise<GatewayKeyRegistryDeleteResponse[]> {
+  const bulkRequest = parseGatewayKeyRegistryBulkDeleteRequest(payload);
+
+  for (const keyId of bulkRequest.keyIds) {
+    if (
+      configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)
+    ) {
+      throw createGatewayKeyNotRegistryOwnedError(requestId);
+    }
+  }
+
+  const existingKeys = await Promise.all(
+    bulkRequest.keyIds.map(async (keyId) => {
+      return [keyId, await getGatewayRegistryApiKey(env, keyId, requestId)] as const;
+    })
+  );
+
+  for (const [, existingKey] of existingKeys) {
+    if (!existingKey) {
+      throw createGatewayKeyNotFoundError(requestId);
+    }
+  }
+
+  for (const [, existingKey] of existingKeys) {
+    if (!existingKey) {
+      continue;
+    }
+
+    await clearGatewayKeyRevocationOverlayState(
+      env,
+      existingKey.key,
+      requestId
+    );
+  }
+
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_DELETE, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          keyIds: bulkRequest.keyIds,
+          ...(bulkRequest.auditMetadata.reason
+            ? { reason: bulkRequest.auditMetadata.reason }
+            : {}),
+          ...(actorContext
+            ? toGatewayKeyAuditActorContextRecord(actorContext)
+            : bulkRequest.auditMetadata.actor
+              ? toGatewayKeyAuditActorContextRecord(
+                  gatewayKeyAuditActorContextFromRegistryRequest(
+                    bulkRequest.auditMetadata
+                  )!
+                )
+              : {})
+        } satisfies {
+          keyIds: string[];
+          reason?: string;
+          actor?: string;
+          actorSource?: "payload" | "trusted_header" | "credential";
+        })
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (response.status === 404) {
+    throw createGatewayKeyNotFoundError(requestId);
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    return parseGatewayKeyRegistryBulkDeleteResponse(await response.json()).keys;
   } catch (cause) {
     throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
   }

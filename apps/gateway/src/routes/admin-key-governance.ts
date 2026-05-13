@@ -7,6 +7,7 @@ import {
 } from "@airlock/governance";
 
 import {
+  bulkDeleteAdminGatewayKeys,
   cancelAdminGatewayKeyRotation,
   bulkUpdateAdminGatewayKeys,
   clearAdminGatewayKeyRegistryOverride,
@@ -98,6 +99,20 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
 
     return context.json(
       await bulkUpdateAdminGatewayKeys(
+        context.env,
+        context.req.raw,
+        requestId,
+        await context.req.json()
+      )
+    );
+  });
+
+  app.post("/_airlock/keys/bulk-delete", async (context) => {
+    const requestId = context.get("requestId");
+    await requireAdminScope(context, "keys.write");
+
+    return context.json(
+      await bulkDeleteAdminGatewayKeys(
         context.env,
         context.req.raw,
         requestId,

@@ -1,4 +1,5 @@
 import {
+  bulkDeleteGatewayAdminKeys as writeGatewayAdminKeyBulkDelete,
   cancelGatewayAdminKeyRotation as writeGatewayAdminKeyRotationCancel,
   clearGatewayAdminKeyRegistryOverride as writeGatewayAdminKeyRegistryOverrideClear,
   clearGatewayAdminKeyRevocation as writeGatewayAdminKeyRevocationClear,
@@ -25,6 +26,7 @@ import {
 import { resolveGatewayConfig } from "./config.js";
 import type { GatewayBindings } from "./env.js";
 import {
+  bulkDeleteGatewayRegistryApiKeys,
   cancelGatewayRegistryApiKeyRotation,
   bulkUpdateGatewayRegistryApiKeys,
   clearGatewayKeyRegistryOverride,
@@ -133,6 +135,48 @@ export async function bulkUpdateAdminGatewayKeys(
       },
       bulkUpdateRegistryKeys: (candidatePayload) => {
         return bulkUpdateGatewayRegistryApiKeys(
+          env,
+          config.gatewayApiKeys,
+          candidatePayload,
+          requestId,
+          mutation.actorContext
+        );
+      }
+    }
+  );
+}
+
+export async function bulkDeleteAdminGatewayKeys(
+  env: GatewayBindings,
+  request: Request,
+  requestId: string,
+  payload: unknown
+) {
+  const config = resolveGatewayConfig(env);
+  const mutation = await resolveAdminMutationActorCommand(
+    request,
+    env,
+    payload,
+    requestId,
+    "Gateway dynamic key bulk delete payload is invalid"
+  );
+
+  return writeGatewayAdminKeyBulkDelete(
+    mutation.payload as {
+      keyIds: string[];
+      reason?: string;
+      actor?: string;
+      actorSource?: "payload" | "trusted_header" | "credential";
+    },
+    requestId,
+    {
+      isConfiguredKey: (candidateKeyId) => {
+        return config.gatewayApiKeys.some((gatewayApiKey) => {
+          return gatewayApiKey.id === candidateKeyId;
+        });
+      },
+      bulkDeleteRegistryKeys: (candidatePayload) => {
+        return bulkDeleteGatewayRegistryApiKeys(
           env,
           config.gatewayApiKeys,
           candidatePayload,

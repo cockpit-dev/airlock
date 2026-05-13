@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   createGatewayKeyRegistryDynamicKeyView,
+  parseGatewayKeyRegistryBulkDeleteRequest,
+  parseGatewayKeyRegistryBulkDeleteResponse,
   gatewayKeyAuditActorContextFromRegistryRequest,
   parseGatewayKeyRegistryCreateRequest,
   parseGatewayKeyRegistryDeleteRequest,
@@ -188,6 +190,32 @@ describe("registry response parsers", () => {
       keyId: "key_dynamic",
       deleted: true
     });
+
+    expect(
+      parseGatewayKeyRegistryBulkDeleteResponse({
+        keys: [
+          {
+            keyId: "key_dynamic_a",
+            deleted: true
+          },
+          {
+            keyId: "key_dynamic_b",
+            deleted: true
+          }
+        ]
+      })
+    ).toEqual({
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          deleted: true
+        },
+        {
+          keyId: "key_dynamic_b",
+          deleted: true
+        }
+      ]
+    });
   });
 
   it("returns null for an empty dynamic-key response", () => {
@@ -343,6 +371,22 @@ describe("registry payload parsers", () => {
         actorSource: "credential"
       }
     });
+
+    expect(
+      parseGatewayKeyRegistryBulkDeleteRequest({
+        keyIds: ["key_dynamic_a", " key_dynamic_b "],
+        reason: "tenant offboarding",
+        actor: "ops@example.com",
+        actorSource: "trusted_header"
+      })
+    ).toEqual({
+      keyIds: ["key_dynamic_a", "key_dynamic_b"],
+      auditMetadata: {
+        reason: "tenant offboarding",
+        actor: "ops@example.com",
+        actorSource: "trusted_header"
+      }
+    });
   });
 
   it("rejects invalid overlapSeconds and actorSource values", () => {
@@ -380,6 +424,25 @@ describe("registry payload parsers", () => {
     expect(() =>
       parseGatewayKeyRegistryBulkUpdateRequest({
         updates: []
+      })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkDeleteRequest({
+        keyIds: []
+      })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkDeleteRequest({
+        keyIds: ["key_dynamic_a", "key_dynamic_a"]
+      })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkDeleteRequest({
+        keyIds: ["key_dynamic_a"],
+        actorSource: "payload"
       })
     ).toThrow();
 

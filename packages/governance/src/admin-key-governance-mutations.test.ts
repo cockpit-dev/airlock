@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  bulkDeleteGatewayAdminKeys,
   clearGatewayAdminKeyRegistryOverride,
   clearGatewayAdminKeyRevocation,
   createGatewayAdminKey,
@@ -234,6 +235,68 @@ describe("bulkUpdateGatewayAdminKeys", () => {
         {
           isConfiguredKey: vi.fn((keyId: string) => keyId === "key_env"),
           bulkUpdateRegistryKeys: vi.fn()
+        }
+      )
+    ).rejects.toMatchObject({
+      code: "gateway_key_not_registry_owned"
+    });
+  });
+});
+
+describe("bulkDeleteGatewayAdminKeys", () => {
+  it("passes bulk delete payloads through for registry-owned keys", async () => {
+    const bulkDeleteRegistryKeys = vi.fn().mockResolvedValue([
+      {
+        keyId: "key_dynamic_a",
+        deleted: true
+      },
+      {
+        keyId: "key_dynamic_b",
+        deleted: true
+      }
+    ]);
+
+    await expect(
+      bulkDeleteGatewayAdminKeys(
+        {
+          keyIds: ["key_dynamic_a", "key_dynamic_b"],
+          reason: "tenant offboarding"
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn().mockReturnValue(false),
+          bulkDeleteRegistryKeys
+        }
+      )
+    ).resolves.toEqual({
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          deleted: true
+        },
+        {
+          keyId: "key_dynamic_b",
+          deleted: true
+        }
+      ]
+    });
+
+    expect(bulkDeleteRegistryKeys).toHaveBeenCalledWith({
+      keyIds: ["key_dynamic_a", "key_dynamic_b"],
+      reason: "tenant offboarding"
+    });
+  });
+
+  it("rejects batches that include configured keys", async () => {
+    await expect(
+      bulkDeleteGatewayAdminKeys(
+        {
+          keyIds: ["key_dynamic_a", "key_env"]
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn((keyId: string) => keyId === "key_env"),
+          bulkDeleteRegistryKeys: vi.fn()
         }
       )
     ).rejects.toMatchObject({

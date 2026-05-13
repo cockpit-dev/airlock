@@ -6887,6 +6887,287 @@ describe("gateway app", () => {
     });
   });
 
+  it("can bulk delete registry-owned dynamic keys atomically and clear runtime access", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello runtime"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    for (const payload of [
+      {
+        id: "key_dynamic_a",
+        label: "Dynamic Key A",
+        valueHash:
+          "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+        status: "active"
+      },
+      {
+        id: "key_dynamic_b",
+        label: "Dynamic Key B",
+        valueHash:
+          "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+        status: "active"
+      }
+    ]) {
+      expect(
+        (
+          await app.request(
+            "http://localhost/_airlock/keys",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: "Bearer admin-secret"
+              },
+              body: JSON.stringify(payload)
+            },
+            bindings
+          )
+        ).status
+      ).toBe(200);
+    }
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys/key_dynamic_b/revocation",
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer admin-secret"
+            }
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    const bulkDeleteResponse = await app.request(
+      "http://localhost/_airlock/keys/bulk-delete",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          keyIds: ["key_dynamic_a", "key_dynamic_b"],
+          reason: "tenant offboarding",
+          actor: "ops@example.com"
+        })
+      },
+      bindings
+    );
+
+    expect(bulkDeleteResponse.status).toBe(200);
+    await expect(readJson(bulkDeleteResponse)).resolves.toMatchObject({
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          deleted: true
+        },
+        {
+          keyId: "key_dynamic_b",
+          deleted: true
+        }
+      ]
+    });
+
+    const listResponse = await app.request(
+      "http://localhost/_airlock/keys",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(listResponse.status).toBe(200);
+    const listPayload = await readJson(listResponse);
+    expect(isRecord(listPayload)).toBe(true);
+
+    if (!isRecord(listPayload) || !isRecordArray(listPayload.keys)) {
+      return;
+    }
+
+    expect(
+      listPayload.keys.some((entry) => entry.keyId === "key_dynamic_a")
+    ).toBe(false);
+    expect(
+      listPayload.keys.some((entry) => entry.keyId === "key_dynamic_b")
+    ).toBe(false);
+
+    for (const token of ["runtime-secret", "rotated-secret"]) {
+      const authResponse = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            stream: false,
+            messages: [{ role: "user", content: "hi" }]
+          })
+        },
+        bindings
+      );
+
+      expect(authResponse.status).toBe(401);
+      await expect(readJson(authResponse)).resolves.toMatchObject({
+        error: {
+          code: "auth_invalid_api_key"
+        }
+      });
+    }
+
+    const eventsResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic_b/events",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(eventsResponse.status).toBe(200);
+    const eventsPayload = await readJson(eventsResponse);
+    expect(isGatewayKeyEventsPayload(eventsPayload)).toBe(true);
+
+    if (!isGatewayKeyEventsPayload(eventsPayload)) {
+      return;
+    }
+
+    expect(eventsPayload.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          keyId: "key_dynamic_b",
+          kind: "deleted",
+          reason: "tenant offboarding",
+          actor: "ops@example.com",
+          actorSource: "payload"
+        })
+      ])
+    );
+  });
+
+  it("rejects mixed configured and registry-owned bulk deletes atomically", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_env",
+          label: "Configured Gateway Key",
+          value: "gateway-secret",
+          status: "active"
+        }
+      ])
+    };
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              id: "key_dynamic_a",
+              label: "Dynamic Key A",
+              valueHash:
+                "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+              status: "active"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    const bulkDeleteResponse = await app.request(
+      "http://localhost/_airlock/keys/bulk-delete",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          keyIds: ["key_dynamic_a", "key_env"]
+        })
+      },
+      bindings
+    );
+
+    expect(bulkDeleteResponse.status).toBe(409);
+    await expect(readJson(bulkDeleteResponse)).resolves.toMatchObject({
+      error: {
+        code: "gateway_key_not_registry_owned"
+      }
+    });
+
+    const readResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic_a",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(readResponse.status).toBe(200);
+    await expect(readJson(readResponse)).resolves.toMatchObject({
+      keyId: "key_dynamic_a",
+      ownership: "registry"
+    });
+  });
+
   it("authorizes hashed structured gateway keys on chat completions requests", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
