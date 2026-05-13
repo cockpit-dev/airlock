@@ -502,6 +502,68 @@ function parseStructuredGatewayApiKeys(value: string): GatewayApiKeyRecord[] | u
   });
 }
 
+export function parseGatewayDynamicApiKeyRecord(
+  value: unknown,
+  existingGatewayApiKeys: readonly GatewayApiKeyRecord[] = []
+): GatewayApiKeyRecord {
+  if (!isRecord(value)) {
+    throw createInvalidGatewayKeyConfigError(
+      "Gateway API key record must be an object"
+    );
+  }
+
+  const id = typeof value.id === "string" ? value.id.trim() : "";
+  const label = typeof value.label === "string" ? value.label.trim() : "";
+  const rawValueHash =
+    typeof value.valueHash === "string" ? value.valueHash.trim().toLowerCase() : "";
+  const status = value.status;
+  const notBefore =
+    typeof value.notBefore === "string" ? value.notBefore.trim() : undefined;
+  const expiresAt =
+    typeof value.expiresAt === "string" ? value.expiresAt.trim() : undefined;
+
+  if (id.length === 0 || label.length === 0) {
+    throw createInvalidGatewayKeyConfigError(
+      "Gateway API key records must include non-empty id and label"
+    );
+  }
+
+  if (value.value !== undefined) {
+    throw createInvalidGatewayKeyConfigError(
+      "Gateway dynamic API key records must not define plaintext value"
+    );
+  }
+
+  if (rawValueHash.length === 0 || !isSha256Hex(rawValueHash)) {
+    throw createInvalidGatewayKeyConfigError(
+      "Gateway API key record valueHash must be a lowercase 64-character SHA-256 hex digest"
+    );
+  }
+
+  validateLifecycleWindow(notBefore, expiresAt);
+
+  if (status !== "active" && status !== "revoked") {
+    throw createInvalidGatewayKeyConfigError(
+      "Gateway API key records must use a valid status"
+    );
+  }
+
+  const policy = parseGatewayApiKeyPolicy(value.policy);
+  const record: GatewayApiKeyRecord = {
+    id,
+    label,
+    valueHash: rawValueHash,
+    status,
+    ...(notBefore !== undefined ? { notBefore } : {}),
+    ...(expiresAt !== undefined ? { expiresAt } : {}),
+    ...(policy !== undefined ? { policy } : {})
+  };
+
+  validateGatewayApiKeyRecords([...existingGatewayApiKeys, record]);
+
+  return record;
+}
+
 function validateGatewayApiKeyRecords(records: GatewayApiKeyRecord[]) {
   const ids = new Set<string>();
   const secretMaterial = new Set<string>();

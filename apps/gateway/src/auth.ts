@@ -13,7 +13,10 @@ import type { ModelRoute } from "@airlock/routing";
 import type { GatewayConfig } from "./config.js";
 import type { CreateAppOptions } from "./app.js";
 import type { GatewayBindings } from "./env.js";
-import { resolveGatewayRuntimeApiKey } from "./gateway-key-registry.js";
+import {
+  findGatewayRegistryApiKeyByToken,
+  resolveGatewayRuntimeApiKey
+} from "./gateway-key-registry.js";
 import { assertGatewayKeyNotRevoked } from "./gateway-key-revocation.js";
 
 export async function requireGatewayAuthorization(
@@ -39,7 +42,23 @@ export async function requireGatewayAuthorization(
           config.gatewayApiKeys
         );
 
-        if (!matchedGatewayApiKey) {
+        if (matchedGatewayApiKey) {
+          const { runtimeGatewayApiKey } = await resolveGatewayRuntimeApiKey(
+            context.env,
+            matchedGatewayApiKey,
+            requestId
+          );
+
+          return assertGatewayApiKeyIsActive(runtimeGatewayApiKey, requestId);
+        }
+
+        const registryGatewayApiKey = await findGatewayRegistryApiKeyByToken(
+          context.env,
+          bearerToken,
+          requestId
+        );
+
+        if (!registryGatewayApiKey) {
           throw new GatewayError("Unauthorized", {
             code: "auth_invalid_api_key",
             category: "authentication",
@@ -49,13 +68,7 @@ export async function requireGatewayAuthorization(
           });
         }
 
-        const { runtimeGatewayApiKey } = await resolveGatewayRuntimeApiKey(
-          context.env,
-          matchedGatewayApiKey,
-          requestId
-        );
-
-        return assertGatewayApiKeyIsActive(runtimeGatewayApiKey, requestId);
+        return assertGatewayApiKeyIsActive(registryGatewayApiKey, requestId);
       })()
     : await (async () => {
         const bearerToken = extractBearerToken(authorization, requestId);

@@ -11,9 +11,13 @@ import {
   getGatewayKeyRevocationStatus,
   listGatewayApiKeyStatuses,
   resolveGatewayApiKeyById,
+  resolveGatewayApiKeyByIdWithRegistry,
   revokeGatewayKey
 } from "./gateway-key-revocation.js";
 import {
+  createGatewayRegistryApiKey,
+  deleteGatewayRegistryApiKey,
+  getGatewayRegistryApiKey,
   clearGatewayKeyRegistryOverride,
   upsertGatewayKeyRegistryOverride
 } from "./gateway-key-registry.js";
@@ -132,6 +136,71 @@ export function createApp(options: CreateAppOptions = {}) {
       )
     });
   });
+  app.post("/_airlock/keys", async (context) => {
+    const requestId = context.get("requestId");
+    assertInternalAdminAuthorization(
+      context.req.header("authorization"),
+      context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      requestId
+    );
+
+    const config = resolveGatewayConfig(context.env);
+    const key = await createGatewayRegistryApiKey(
+      context.env,
+      config.gatewayApiKeys,
+      await context.req.json(),
+      requestId
+    );
+
+    return context.json(key);
+  });
+  app.get("/_airlock/keys/:keyId", async (context) => {
+    const requestId = context.get("requestId");
+    assertInternalAdminAuthorization(
+      context.req.header("authorization"),
+      context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      requestId
+    );
+
+    const key = await getGatewayRegistryApiKey(
+      context.env,
+      context.req.param("keyId"),
+      requestId
+    );
+
+    if (!key) {
+      throw new GatewayError("Gateway API key not found", {
+        code: "gateway_key_not_found",
+        category: "governance",
+        httpStatus: 404,
+        retryable: false,
+        requestId
+      });
+    }
+
+    return context.json(key);
+  });
+  app.delete("/_airlock/keys/:keyId", async (context) => {
+    const requestId = context.get("requestId");
+    assertInternalAdminAuthorization(
+      context.req.header("authorization"),
+      context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      requestId
+    );
+
+    const config = resolveGatewayConfig(context.env);
+    await deleteGatewayRegistryApiKey(
+      context.env,
+      config.gatewayApiKeys,
+      context.req.param("keyId"),
+      requestId
+    );
+
+    return context.json({
+      keyId: context.req.param("keyId"),
+      deleted: true
+    });
+  });
   app.get("/_airlock/keys/:keyId/revocation", async (context) => {
     const requestId = context.get("requestId");
     assertInternalAdminAuthorization(
@@ -164,7 +233,8 @@ export function createApp(options: CreateAppOptions = {}) {
     );
 
     const config = resolveGatewayConfig(context.env);
-    const gatewayApiKey = resolveGatewayApiKeyById(
+    const { gatewayApiKey, ownership } = await resolveGatewayApiKeyByIdWithRegistry(
+      context.env,
       config.gatewayApiKeys,
       context.req.param("keyId"),
       requestId
@@ -174,7 +244,8 @@ export function createApp(options: CreateAppOptions = {}) {
       await getGatewayApiKeyStatusSnapshot(
         context.env,
         gatewayApiKey,
-        requestId
+        requestId,
+        ownership
       )
     );
   });

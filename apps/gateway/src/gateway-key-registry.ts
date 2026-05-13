@@ -1,6 +1,7 @@
 import {
   applyGatewayApiKeyMetadataOverride,
   parseGatewayApiKeyMetadataOverride,
+  parseGatewayDynamicApiKeyRecord,
   type GatewayApiKeyLifecycleStatus,
   type GatewayApiKeyMetadataOverride,
   type GatewayApiKeyRecord
@@ -10,6 +11,11 @@ import { GatewayError } from "@airlock/shared";
 import type { GatewayBindings } from "./env.js";
 
 const REGISTRY_OBJECT_NAME = "gateway-key-registry";
+const REGISTRY_KIND_OVERRIDE = "override";
+const REGISTRY_KIND_DYNAMIC = "dynamic";
+const REGISTRY_KIND_DYNAMIC_LIST = "dynamic_list";
+const REGISTRY_KIND_DYNAMIC_LOOKUP = "dynamic_lookup";
+const DYNAMIC_KEY_INDEX = "dynamic:index";
 
 interface DurableObjectStateLike {
   storage: {
@@ -23,9 +29,42 @@ interface GatewayKeyRegistryStoredOverride extends GatewayApiKeyMetadataOverride
   updatedAt: string;
 }
 
+export type GatewayApiKeyOwnership = "configured" | "registry";
+
+export interface GatewayKeyRegistryDynamicKeyView {
+  keyId: string;
+  ownership: "registry";
+  key: GatewayApiKeyRecord;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface GatewayKeyRegistryStoredDynamicKey extends GatewayApiKeyRecord {
+  valueHash: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface GatewayKeyRegistryRecordResponse {
   keyId: string;
   override: GatewayKeyRegistryStoredOverride | null;
+}
+
+interface GatewayKeyRegistryDynamicKeyResponse {
+  key: GatewayKeyRegistryDynamicKeyView | null;
+}
+
+interface GatewayKeyRegistryDynamicKeyListResponse {
+  keys: GatewayKeyRegistryDynamicKeyView[];
+}
+
+interface GatewayKeyRegistryDeleteResponse {
+  keyId: string;
+  deleted: boolean;
+}
+
+interface GatewayKeyRegistryLookupRequest {
+  bearerToken: string;
 }
 
 export interface GatewayApiKeyStatusView {
@@ -43,6 +82,7 @@ export interface GatewayApiKeyStatusView {
 
 export interface GatewayApiKeyRegistrySnapshot {
   keyId: string;
+  ownership: GatewayApiKeyOwnership;
   label: string;
   configuredStatus: GatewayApiKeyRecord["status"];
   notBefore?: string;
@@ -63,6 +103,70 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isValidTimestamp(value: string): boolean {
+  return !Number.isNaN(Date.parse(value));
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every((entry) => {
+      return typeof entry === "string" && entry.trim().length > 0;
+    })
+  );
+}
+
+function createGatewayKeyRegistryUnavailableError(
+  requestId: string,
+  cause?: unknown
+): GatewayError {
+  return new GatewayError("Gateway key registry subsystem is unavailable", {
+    code: "gateway_key_registry_unavailable",
+    category: "governance",
+    httpStatus: 503,
+    retryable: true,
+    requestId,
+    ...(cause ? { cause } : {})
+  });
+}
+
+function createGatewayKeyRegistryInvalidResponseError(
+  requestId: string,
+  cause?: unknown
+): GatewayError {
+  return new GatewayError(
+    "Gateway key registry subsystem returned an invalid response",
+    {
+      code: "gateway_key_registry_invalid_response",
+      category: "governance",
+      httpStatus: 503,
+      retryable: true,
+      requestId,
+      ...(cause ? { cause } : {})
+    }
+  );
+}
+
+function createGatewayKeyNotRegistryOwnedError(requestId: string): GatewayError {
+  return new GatewayError("Gateway API key is not registry owned", {
+    code: "gateway_key_not_registry_owned",
+    category: "governance",
+    httpStatus: 409,
+    retryable: false,
+    requestId
+  });
+}
+
+function createGatewayKeyNotFoundError(requestId: string): GatewayError {
+  return new GatewayError("Gateway API key not found", {
+    code: "gateway_key_not_found",
+    category: "governance",
+    httpStatus: 404,
+    retryable: false,
+    requestId
+  });
+}
+
 function parseStoredOverride(value: unknown): GatewayKeyRegistryStoredOverride {
   if (!isRecord(value)) {
     throw new Error("Registry override must be an object");
@@ -70,12 +174,85 @@ function parseStoredOverride(value: unknown): GatewayKeyRegistryStoredOverride {
 
   const { updatedAt, ...overrideValue } = value;
 
-  if (typeof updatedAt !== "string" || Number.isNaN(Date.parse(updatedAt))) {
+  if (typeof updatedAt !== "string" || !isValidTimestamp(updatedAt)) {
     throw new Error("Registry override updatedAt must be a valid timestamp");
   }
 
   return {
     ...parseGatewayApiKeyMetadataOverride(overrideValue),
+    updatedAt
+  };
+}
+
+function parseStoredDynamicKey(value: unknown): GatewayKeyRegistryStoredDynamicKey {
+  if (!isRecord(value)) {
+    throw new Error("Registry dynamic key must be an object");
+  }
+
+  const record = parseGatewayDynamicApiKeyRecord(value);
+  const createdAt = value.createdAt;
+  const updatedAt = value.updatedAt;
+
+  if (
+    typeof createdAt !== "string" ||
+    !isValidTimestamp(createdAt) ||
+    typeof updatedAt !== "string" ||
+    !isValidTimestamp(updatedAt)
+  ) {
+    throw new Error("Registry dynamic key timestamps are invalid");
+  }
+
+  return {
+    ...record,
+    valueHash: record.valueHash!,
+    createdAt,
+    updatedAt
+  };
+}
+
+function toDynamicKeyView(
+  key: GatewayKeyRegistryStoredDynamicKey
+): GatewayKeyRegistryDynamicKeyView {
+  return {
+    keyId: key.id,
+    ownership: "registry",
+    key: {
+      id: key.id,
+      label: key.label,
+      valueHash: key.valueHash,
+      status: key.status,
+      ...(key.notBefore ? { notBefore: key.notBefore } : {}),
+      ...(key.expiresAt ? { expiresAt: key.expiresAt } : {}),
+      ...(key.policy ? { policy: key.policy } : {})
+    },
+    createdAt: key.createdAt,
+    updatedAt: key.updatedAt
+  };
+}
+
+function parseDynamicKeyView(value: unknown): GatewayKeyRegistryDynamicKeyView {
+  if (!isRecord(value) || typeof value.keyId !== "string") {
+    throw new Error("Registry dynamic key view must include keyId");
+  }
+
+  const key = parseGatewayDynamicApiKeyRecord(value.key);
+  const createdAt = value.createdAt;
+  const updatedAt = value.updatedAt;
+
+  if (
+    typeof createdAt !== "string" ||
+    !isValidTimestamp(createdAt) ||
+    typeof updatedAt !== "string" ||
+    !isValidTimestamp(updatedAt)
+  ) {
+    throw new Error("Registry dynamic key timestamps are invalid");
+  }
+
+  return {
+    keyId: value.keyId,
+    ownership: "registry",
+    key,
+    createdAt,
     updatedAt
   };
 }
@@ -98,6 +275,70 @@ function parseRegistryResponse(value: unknown): GatewayKeyRegistryRecordResponse
   };
 }
 
+function parseDynamicKeyResponse(
+  value: unknown
+): GatewayKeyRegistryDynamicKeyView | null {
+  if (!isRecord(value) || !("key" in value)) {
+    throw new Error("Registry dynamic key response must include key");
+  }
+
+  if (value.key === null) {
+    return null;
+  }
+
+  return parseDynamicKeyView(value.key);
+}
+
+function parseDynamicKeyListResponse(
+  value: unknown
+): GatewayKeyRegistryDynamicKeyView[] {
+  if (!isRecord(value) || !Array.isArray(value.keys)) {
+    throw new Error("Registry dynamic key list response must include keys");
+  }
+
+  return value.keys.map((entry) => {
+    return parseDynamicKeyView(entry);
+  });
+}
+
+function parseDeleteResponse(value: unknown): GatewayKeyRegistryDeleteResponse {
+  if (
+    !isRecord(value) ||
+    typeof value.keyId !== "string" ||
+    typeof value.deleted !== "boolean"
+  ) {
+    throw new Error("Registry delete response is invalid");
+  }
+
+  return {
+    keyId: value.keyId,
+    deleted: value.deleted
+  };
+}
+
+function buildRegistryRequest(
+  requestId: string,
+  kind: string,
+  init: RequestInit & {
+    keyId?: string;
+  }
+): Request {
+  const url = new URL("https://airlock.internal/gateway-key-registry");
+  url.searchParams.set("kind", kind);
+
+  if (init.keyId) {
+    url.searchParams.set("keyId", init.keyId);
+  }
+
+  return new Request(url, {
+    ...init,
+    headers: {
+      "x-airlock-request-id": requestId,
+      ...(init.headers ?? {})
+    }
+  });
+}
+
 function requireGatewayKeyRegistryNamespace(
   env: GatewayBindings,
   requestId: string
@@ -105,16 +346,74 @@ function requireGatewayKeyRegistryNamespace(
   const namespace = env.AIRLOCK_GATEWAY_KEY_REGISTRY;
 
   if (!namespace) {
-    throw new GatewayError("Gateway key registry subsystem is unavailable", {
-      code: "gateway_key_registry_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  return namespace;
+}
+
+function requireDynamicGatewayKeyRegistryNamespace(
+  env: GatewayBindings,
+  requestId: string
+) {
+  if (!isGatewayKeyRegistryEnabled(env)) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  return requireGatewayKeyRegistryNamespace(env, requestId);
+}
+
+function assertGatewayKeyRuntimeDependencies(
+  env: GatewayBindings,
+  gatewayApiKey: GatewayApiKeyRecord,
+  requestId: string
+) {
+  if (gatewayApiKey.policy?.requestQuota && !env.AIRLOCK_GATEWAY_KEY_QUOTA) {
+    throw new GatewayError("Gateway key quota binding is required", {
+      code: "config_missing_gateway_key_quota",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false,
       requestId
     });
   }
 
-  return namespace;
+  if (
+    gatewayApiKey.policy?.tokenQuota &&
+    !env.AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA
+  ) {
+    throw new GatewayError("Gateway key token quota binding is required", {
+      code: "config_missing_gateway_key_token_quota",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false,
+      requestId
+    });
+  }
+
+  if (
+    gatewayApiKey.policy?.concurrencyQuota &&
+    !env.AIRLOCK_GATEWAY_KEY_CONCURRENCY
+  ) {
+    throw new GatewayError("Gateway key concurrency binding is required", {
+      code: "config_missing_gateway_key_concurrency",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false,
+      requestId
+    });
+  }
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const encoded = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => {
+      return byte.toString(16).padStart(2, "0");
+    })
+    .join("");
 }
 
 export class GatewayKeyRegistryDurableObject {
@@ -122,7 +421,87 @@ export class GatewayKeyRegistryDurableObject {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    const kind = url.searchParams.get("kind") ?? REGISTRY_KIND_OVERRIDE;
     const keyId = url.searchParams.get("keyId");
+
+    if (kind === REGISTRY_KIND_DYNAMIC_LIST) {
+      if (request.method !== "GET") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      return Response.json({
+        keys: (await listStoredDynamicKeys(this.state.storage)).map((key) => {
+          return toDynamicKeyView(key);
+        })
+      } satisfies GatewayKeyRegistryDynamicKeyListResponse);
+    }
+
+    if (kind === REGISTRY_KIND_DYNAMIC_LOOKUP) {
+      if (request.method !== "POST") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      const body = (await request.json()) as GatewayKeyRegistryLookupRequest;
+
+      if (typeof body.bearerToken !== "string" || body.bearerToken.length === 0) {
+        return new Response("Invalid bearerToken", { status: 400 });
+      }
+
+      const bearerTokenHash = await sha256Hex(body.bearerToken);
+      const key = await findStoredDynamicKeyByValueHash(
+        this.state.storage,
+        bearerTokenHash
+      );
+
+      return Response.json({
+        key: key ? toDynamicKeyView(key) : null
+      } satisfies GatewayKeyRegistryDynamicKeyResponse);
+    }
+
+    if (kind === REGISTRY_KIND_DYNAMIC) {
+      if (request.method === "POST") {
+        const dynamicKeys = await listStoredDynamicKeys(this.state.storage);
+        const key = await createStoredDynamicKey(
+          this.state.storage,
+          parseGatewayDynamicApiKeyRecord(await request.json(), dynamicKeys)
+        );
+
+        return Response.json({
+          key: toDynamicKeyView(key)
+        } satisfies GatewayKeyRegistryDynamicKeyResponse);
+      }
+
+      if (!keyId) {
+        return new Response("Missing keyId", { status: 400 });
+      }
+
+      if (request.method === "GET") {
+        const key = await readStoredDynamicKey(this.state.storage, keyId);
+
+        if (!key) {
+          return new Response("Not found", { status: 404 });
+        }
+
+        return Response.json({
+          key: toDynamicKeyView(key)
+        } satisfies GatewayKeyRegistryDynamicKeyResponse);
+      }
+
+      if (request.method === "DELETE") {
+        const deleted = await clearStoredDynamicKey(this.state.storage, keyId);
+
+        if (!deleted) {
+          return new Response("Not found", { status: 404 });
+        }
+
+        return Response.json({
+          keyId,
+          deleted: true
+        } satisfies GatewayKeyRegistryDeleteResponse);
+      }
+
+      return new Response("Method not allowed", { status: 405 });
+    }
 
     if (!keyId) {
       return new Response("Missing keyId", { status: 400 });
@@ -133,7 +512,7 @@ export class GatewayKeyRegistryDurableObject {
         return Response.json({
           keyId,
           override: await readStoredOverride(this.state.storage, keyId)
-        });
+        } satisfies GatewayKeyRegistryRecordResponse);
       case "PUT":
         return Response.json({
           keyId,
@@ -142,13 +521,13 @@ export class GatewayKeyRegistryDurableObject {
             keyId,
             parseGatewayApiKeyMetadataOverride(await request.json())
           )
-        });
+        } satisfies GatewayKeyRegistryRecordResponse);
       case "DELETE":
         await clearStoredOverride(this.state.storage, keyId);
         return Response.json({
           keyId,
           override: null
-        });
+        } satisfies GatewayKeyRegistryRecordResponse);
       default:
         return new Response("Method not allowed", { status: 405 });
     }
@@ -177,49 +556,24 @@ export async function getGatewayKeyRegistryOverride(
 
   try {
     response = await stub.fetch(
-      new Request(
-        `https://airlock.internal/gateway-key-registry?keyId=${encodeURIComponent(gatewayApiKey.id)}`,
-        {
-          method: "GET"
-        }
-      )
+      buildRegistryRequest(requestId, REGISTRY_KIND_OVERRIDE, {
+        method: "GET",
+        keyId: gatewayApiKey.id
+      })
     );
   } catch (cause) {
-    throw new GatewayError("Gateway key registry subsystem is unavailable", {
-      code: "gateway_key_registry_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId,
-      cause
-    });
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
   }
 
   if (!response.ok) {
-    throw new GatewayError("Gateway key registry subsystem is unavailable", {
-      code: "gateway_key_registry_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId
-    });
+    throw createGatewayKeyRegistryUnavailableError(requestId);
   }
 
   try {
     const parsed = parseRegistryResponse(await response.json());
     return parsed.override;
   } catch (cause) {
-    throw new GatewayError(
-      "Gateway key registry subsystem returned an invalid response",
-      {
-        code: "gateway_key_registry_invalid_response",
-        category: "governance",
-        httpStatus: 503,
-        retryable: true,
-        requestId,
-        cause
-      }
-    );
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
   }
 }
 
@@ -236,51 +590,27 @@ export async function upsertGatewayKeyRegistryOverride(
 
   try {
     response = await stub.fetch(
-      new Request(
-        `https://airlock.internal/gateway-key-registry?keyId=${encodeURIComponent(gatewayApiKey.id)}`,
-        {
-          method: "PUT",
-          headers: {
-            "content-type": "application/json"
-          },
-          body: JSON.stringify(override)
-        }
-      )
+      buildRegistryRequest(requestId, REGISTRY_KIND_OVERRIDE, {
+        method: "PUT",
+        keyId: gatewayApiKey.id,
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(override)
+      })
     );
   } catch (cause) {
-    throw new GatewayError("Gateway key registry subsystem is unavailable", {
-      code: "gateway_key_registry_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId,
-      cause
-    });
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
   }
 
   if (!response.ok) {
-    throw new GatewayError("Gateway key registry subsystem is unavailable", {
-      code: "gateway_key_registry_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId
-    });
+    throw createGatewayKeyRegistryUnavailableError(requestId);
   }
 
   const parsed = parseRegistryResponse(await response.json());
 
   if (!parsed.override) {
-    throw new GatewayError(
-      "Gateway key registry subsystem returned an invalid response",
-      {
-        code: "gateway_key_registry_invalid_response",
-        category: "governance",
-        httpStatus: 503,
-        retryable: true,
-        requestId
-      }
-    );
+    throw createGatewayKeyRegistryInvalidResponseError(requestId);
   }
 
   return parsed.override;
@@ -293,37 +623,227 @@ export async function clearGatewayKeyRegistryOverride(
 ): Promise<void> {
   const namespace = requireGatewayKeyRegistryNamespace(env, requestId);
   const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-
   let response: Response;
 
   try {
     response = await stub.fetch(
-      new Request(
-        `https://airlock.internal/gateway-key-registry?keyId=${encodeURIComponent(gatewayApiKey.id)}`,
-        {
-          method: "DELETE"
-        }
-      )
+      buildRegistryRequest(requestId, REGISTRY_KIND_OVERRIDE, {
+        method: "DELETE",
+        keyId: gatewayApiKey.id
+      })
     );
   } catch (cause) {
-    throw new GatewayError("Gateway key registry subsystem is unavailable", {
-      code: "gateway_key_registry_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId,
-      cause
-    });
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
   }
 
   if (!response.ok) {
-    throw new GatewayError("Gateway key registry subsystem is unavailable", {
-      code: "gateway_key_registry_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId
-    });
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+}
+
+export async function createGatewayRegistryApiKey(
+  env: GatewayBindings,
+  configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
+  payload: unknown,
+  requestId: string
+): Promise<GatewayKeyRegistryDynamicKeyView> {
+  const existingDynamicKeys = await listGatewayRegistryApiKeys(env, requestId);
+  const gatewayApiKey = parseGatewayDynamicApiKeyRecord(payload, [
+    ...configuredGatewayApiKeys,
+    ...existingDynamicKeys.map((entry) => {
+      return entry.key;
+    })
+  ]);
+  assertGatewayKeyRuntimeDependencies(env, gatewayApiKey, requestId);
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(gatewayApiKey)
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    const key = parseDynamicKeyResponse(await response.json());
+
+    if (!key) {
+      throw new Error("Created dynamic key response was empty");
+    }
+
+    return key;
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
+  }
+}
+
+export async function getGatewayRegistryApiKey(
+  env: GatewayBindings,
+  keyId: string,
+  requestId: string
+): Promise<GatewayKeyRegistryDynamicKeyView | null> {
+  if (!isGatewayKeyRegistryEnabled(env)) {
+    return null;
+  }
+
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC, {
+        method: "GET",
+        keyId
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    return parseDynamicKeyResponse(await response.json());
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
+  }
+}
+
+export async function deleteGatewayRegistryApiKey(
+  env: GatewayBindings,
+  configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
+  keyId: string,
+  requestId: string
+): Promise<void> {
+  if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
+    throw createGatewayKeyNotRegistryOwnedError(requestId);
+  }
+
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC, {
+        method: "DELETE",
+        keyId
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (response.status === 404) {
+    throw createGatewayKeyNotFoundError(requestId);
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    const parsed = parseDeleteResponse(await response.json());
+
+    if (!parsed.deleted) {
+      throw new Error("Dynamic key delete was not acknowledged");
+    }
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
+  }
+}
+
+export async function listGatewayRegistryApiKeys(
+  env: GatewayBindings,
+  requestId: string
+): Promise<GatewayKeyRegistryDynamicKeyView[]> {
+  if (!isGatewayKeyRegistryEnabled(env)) {
+    return [];
+  }
+
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_LIST, {
+        method: "GET"
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    return parseDynamicKeyListResponse(await response.json());
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
+  }
+}
+
+export async function findGatewayRegistryApiKeyByToken(
+  env: GatewayBindings,
+  bearerToken: string,
+  requestId: string
+): Promise<GatewayApiKeyRecord | undefined> {
+  if (!isGatewayKeyRegistryEnabled(env)) {
+    return undefined;
+  }
+
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_LOOKUP, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          bearerToken
+        } satisfies GatewayKeyRegistryLookupRequest)
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    const key = parseDynamicKeyResponse(await response.json());
+    return key?.key;
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
   }
 }
 
@@ -357,15 +877,38 @@ export async function createGatewayApiKeyRegistrySnapshot(
   resolveStatus: (
     gatewayApiKeyRecord: GatewayApiKeyRecord,
     requestId: string
-  ) => Promise<GatewayApiKeyStatusView>
+  ) => Promise<GatewayApiKeyStatusView>,
+  ownership: GatewayApiKeyOwnership = "configured"
 ): Promise<GatewayApiKeyRegistrySnapshot> {
   const configured = await resolveStatus(gatewayApiKey, requestId);
+
+  if (ownership === "registry") {
+    return {
+      keyId: gatewayApiKey.id,
+      ownership,
+      label: configured.label,
+      configuredStatus: configured.configuredStatus,
+      ...(configured.notBefore ? { notBefore: configured.notBefore } : {}),
+      ...(configured.expiresAt ? { expiresAt: configured.expiresAt } : {}),
+      lifecycleStatus: configured.lifecycleStatus,
+      overlayRevoked: configured.overlayRevoked,
+      overlayUpdatedAt: configured.overlayUpdatedAt,
+      effectiveStatus: configured.effectiveStatus,
+      acceptedNow: configured.acceptedNow,
+      configured,
+      runtime: configured,
+      registryOverride: null,
+      registryOverrideApplied: false
+    };
+  }
+
   const { runtimeGatewayApiKey, registryOverride } =
     await resolveGatewayRuntimeApiKey(env, gatewayApiKey, requestId);
   const runtime = await resolveStatus(runtimeGatewayApiKey, requestId);
 
   return {
     keyId: gatewayApiKey.id,
+    ownership,
     label: runtime.label,
     configuredStatus: runtime.configuredStatus,
     ...(runtime.notBefore ? { notBefore: runtime.notBefore } : {}),
@@ -419,4 +962,122 @@ async function clearStoredOverride(
   keyId: string
 ): Promise<void> {
   await storage.delete(`registry:${keyId}`);
+}
+
+async function readStoredDynamicKeyIndex(
+  storage: DurableObjectStateLike["storage"]
+): Promise<string[]> {
+  const value = await storage.get<unknown>(DYNAMIC_KEY_INDEX);
+
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!isStringArray(value)) {
+    throw new Error("Registry dynamic key index is invalid");
+  }
+
+  return Array.from(new Set(value));
+}
+
+async function writeStoredDynamicKeyIndex(
+  storage: DurableObjectStateLike["storage"],
+  keyIds: readonly string[]
+): Promise<void> {
+  const uniqueKeyIds = Array.from(new Set(keyIds)).sort();
+  await storage.put(DYNAMIC_KEY_INDEX, uniqueKeyIds);
+}
+
+async function readStoredDynamicKey(
+  storage: DurableObjectStateLike["storage"],
+  keyId: string
+): Promise<GatewayKeyRegistryStoredDynamicKey | null> {
+  const value = await storage.get<unknown>(`dynamic:${keyId}`);
+
+  if (value === undefined) {
+    return null;
+  }
+
+  return parseStoredDynamicKey(value);
+}
+
+async function listStoredDynamicKeys(
+  storage: DurableObjectStateLike["storage"]
+): Promise<GatewayKeyRegistryStoredDynamicKey[]> {
+  const keyIds = await readStoredDynamicKeyIndex(storage);
+  const keys = await Promise.all(
+    keyIds.map(async (keyId) => {
+      return readStoredDynamicKey(storage, keyId);
+    })
+  );
+
+  return keys.filter((key): key is GatewayKeyRegistryStoredDynamicKey => {
+    return key !== null;
+  });
+}
+
+async function findStoredDynamicKeyByValueHash(
+  storage: DurableObjectStateLike["storage"],
+  valueHash: string
+): Promise<GatewayKeyRegistryStoredDynamicKey | null> {
+  const keys = await listStoredDynamicKeys(storage);
+
+  return (
+    keys.find((key) => {
+      return key.valueHash === valueHash;
+    }) ?? null
+  );
+}
+
+async function createStoredDynamicKey(
+  storage: DurableObjectStateLike["storage"],
+  gatewayApiKey: GatewayApiKeyRecord
+): Promise<GatewayKeyRegistryStoredDynamicKey> {
+  const existing = await readStoredDynamicKey(storage, gatewayApiKey.id);
+
+  if (existing) {
+    throw new GatewayError("Gateway API key already exists", {
+      code: "config_invalid_gateway_api_keys",
+      category: "configuration",
+      httpStatus: 409,
+      retryable: false
+    });
+  }
+
+  const now = new Date().toISOString();
+  const next: GatewayKeyRegistryStoredDynamicKey = {
+    ...gatewayApiKey,
+    valueHash: gatewayApiKey.valueHash!,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  await storage.put(`dynamic:${gatewayApiKey.id}`, next);
+  await writeStoredDynamicKeyIndex(storage, [
+    ...(await readStoredDynamicKeyIndex(storage)),
+    gatewayApiKey.id
+  ]);
+
+  return next;
+}
+
+async function clearStoredDynamicKey(
+  storage: DurableObjectStateLike["storage"],
+  keyId: string
+): Promise<boolean> {
+  const existing = await readStoredDynamicKey(storage, keyId);
+
+  if (!existing) {
+    return false;
+  }
+
+  await storage.delete(`dynamic:${keyId}`);
+  await writeStoredDynamicKeyIndex(
+    storage,
+    (await readStoredDynamicKeyIndex(storage)).filter((candidate) => {
+      return candidate !== keyId;
+    })
+  );
+
+  return true;
 }

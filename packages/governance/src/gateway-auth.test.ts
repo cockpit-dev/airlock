@@ -6,6 +6,7 @@ import {
   applyGatewayApiKeyMetadataOverride,
   extractBearerToken,
   parseGatewayApiKeyMetadataOverride,
+  parseGatewayDynamicApiKeyRecord,
   parseGatewayApiKeys,
   requireGatewayAuthorization,
   validateGatewayApiKey
@@ -762,6 +763,76 @@ describe("parseGatewayApiKeyMetadataOverride", () => {
       parseGatewayApiKeyMetadataOverride({
         status: "disabled"
       })
+    ).toThrow(GatewayError);
+  });
+});
+
+describe("parseGatewayDynamicApiKeyRecord", () => {
+  it("parses a valid registry-owned hashed gateway key record", () => {
+    expect(
+      parseGatewayDynamicApiKeyRecord({
+        id: "dyn_1",
+        label: "Runtime Key 1",
+        valueHash: gatewaySecretHash,
+        status: "active",
+        notBefore: "2026-05-13T00:00:00.000Z",
+        expiresAt: "2026-06-13T00:00:00.000Z",
+        policy: {
+          tier: "runtime",
+          allowedProviders: ["openai"],
+          requestQuota: {
+            limit: 10,
+            windowSeconds: 60
+          }
+        }
+      })
+    ).toEqual({
+      id: "dyn_1",
+      label: "Runtime Key 1",
+      valueHash: gatewaySecretHash,
+      status: "active",
+      notBefore: "2026-05-13T00:00:00.000Z",
+      expiresAt: "2026-06-13T00:00:00.000Z",
+      policy: {
+        tier: "runtime",
+        allowedProviders: ["openai"],
+        requestQuota: {
+          limit: 10,
+          windowSeconds: 60
+        }
+      }
+    });
+  });
+
+  it("rejects plaintext value material for registry-owned dynamic records", () => {
+    expect(() =>
+      parseGatewayDynamicApiKeyRecord({
+        id: "dyn_1",
+        label: "Runtime Key 1",
+        value: "runtime-secret",
+        status: "active"
+      })
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects dynamic records that collide with configured ids", () => {
+    expect(() =>
+      parseGatewayDynamicApiKeyRecord(
+        {
+          id: "key_1",
+          label: "Runtime Key 1",
+          valueHash: gatewaySecretHash,
+          status: "active"
+        },
+        [
+          {
+            id: "key_1",
+            label: "Configured Key 1",
+            value: "gateway-secret",
+            status: "active"
+          }
+        ]
+      )
     ).toThrow(GatewayError);
   });
 });

@@ -8,6 +8,8 @@ import { GatewayError } from "@airlock/shared";
 import type { GatewayBindings } from "./env.js";
 import {
   createGatewayApiKeyRegistrySnapshot,
+  getGatewayRegistryApiKey,
+  listGatewayRegistryApiKeys,
   type GatewayApiKeyRegistrySnapshot,
   type GatewayApiKeyStatusView
 } from "./gateway-key-registry.js";
@@ -191,6 +193,48 @@ export function resolveGatewayApiKeyById(
   return gatewayApiKey;
 }
 
+export async function resolveGatewayApiKeyByIdWithRegistry(
+  env: GatewayBindings,
+  gatewayApiKeys: readonly GatewayApiKeyRecord[],
+  keyId: string,
+  requestId: string
+): Promise<{
+  gatewayApiKey: GatewayApiKeyRecord;
+  ownership: "configured" | "registry";
+}> {
+  const configuredGatewayApiKey = gatewayApiKeys.find((candidate) => {
+    return candidate.id === keyId;
+  });
+
+  if (configuredGatewayApiKey) {
+    return {
+      gatewayApiKey: configuredGatewayApiKey,
+      ownership: "configured"
+    };
+  }
+
+  const registryGatewayApiKey = await getGatewayRegistryApiKey(
+    env,
+    keyId,
+    requestId
+  );
+
+  if (registryGatewayApiKey) {
+    return {
+      gatewayApiKey: registryGatewayApiKey.key,
+      ownership: "registry"
+    };
+  }
+
+  throw new GatewayError("Gateway API key not found", {
+    code: "gateway_key_not_found",
+    category: "governance",
+    httpStatus: 404,
+    retryable: false,
+    requestId
+  });
+}
+
 export async function getGatewayKeyRevocationStatus(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
@@ -236,7 +280,8 @@ export async function getGatewayApiKeyStatus(
 export async function getGatewayApiKeyStatusSnapshot(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
-  requestId: string
+  requestId: string,
+  ownership: "configured" | "registry" = "configured"
 ): Promise<GatewayApiKeyRegistrySnapshot> {
   return createGatewayApiKeyRegistrySnapshot(
     env,
@@ -244,7 +289,8 @@ export async function getGatewayApiKeyStatusSnapshot(
     requestId,
     async (gatewayApiKeyRecord, nextRequestId) => {
       return getGatewayApiKeyStatus(env, gatewayApiKeyRecord, nextRequestId);
-    }
+    },
+    ownership
   );
 }
 
@@ -266,11 +312,27 @@ export async function listGatewayApiKeyStatuses(
     registryUpdatedAt?: string;
   }>
 > {
-  const entries = await Promise.all(
+  const configuredEntries = await Promise.all(
     gatewayApiKeys.map(async (gatewayApiKey) => {
-      return getGatewayApiKeyStatusSnapshot(env, gatewayApiKey, requestId);
+      return getGatewayApiKeyStatusSnapshot(
+        env,
+        gatewayApiKey,
+        requestId,
+        "configured"
+      );
     })
   );
+  const registryEntries = await Promise.all(
+    (await listGatewayRegistryApiKeys(env, requestId)).map(async (entry) => {
+      return getGatewayApiKeyStatusSnapshot(
+        env,
+        entry.key,
+        requestId,
+        "registry"
+      );
+    })
+  );
+  const entries = [...configuredEntries, ...registryEntries];
 
   return entries.filter((entry) => {
     if (

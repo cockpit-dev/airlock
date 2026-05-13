@@ -4,6 +4,7 @@ import type { TelemetrySink } from "@airlock/telemetry";
 
 import { createApp } from "./app.js";
 import { resetProviderCircuitBreakerState } from "./circuit-breaker.js";
+import { GatewayKeyRegistryDurableObject } from "./gateway-key-registry.js";
 
 async function readJson(response: Response): Promise<unknown> {
   return response.json();
@@ -517,17 +518,22 @@ function createPersistentBreakerNamespace() {
 }
 
 function createRegistryNamespace() {
-  const state = new Map<
-    string,
-    {
-      label?: string;
-      status?: "active" | "revoked";
-      notBefore?: string | null;
-      expiresAt?: string | null;
-      policy?: Record<string, unknown> | null;
-      updatedAt: string;
+  const state = new Map<string, unknown>();
+  const storage = {
+    get<T>(key: string) {
+      return Promise.resolve(state.get(key) as T | undefined);
+    },
+    put<T>(key: string, value: T) {
+      state.set(key, value);
+      return Promise.resolve();
+    },
+    delete(key: string) {
+      return Promise.resolve(state.delete(key));
     }
-  >();
+  };
+  const registry = new GatewayKeyRegistryDurableObject({
+    storage
+  });
 
   const namespace: DurableObjectNamespaceLike = {
     idFromName(name: string) {
@@ -540,43 +546,7 @@ function createRegistryNamespace() {
             return new Response("Not found", { status: 404 });
           }
 
-          const url = new URL(request.url);
-          const keyId = url.searchParams.get("keyId");
-
-          if (!keyId) {
-            return new Response("Missing keyId", { status: 400 });
-          }
-
-          if (request.method === "GET") {
-            const current = state.get(keyId);
-            return Response.json({
-              keyId,
-              override: current ?? null
-            });
-          }
-
-          if (request.method === "PUT") {
-            const body = (await request.json()) as Record<string, unknown>;
-            const next = {
-              ...body,
-              updatedAt: new Date().toISOString()
-            };
-            state.set(keyId, next);
-            return Response.json({
-              keyId,
-              override: next
-            });
-          }
-
-          if (request.method === "DELETE") {
-            state.delete(keyId);
-            return Response.json({
-              keyId,
-              override: null
-            });
-          }
-
-          return new Response("Method not allowed", { status: 405 });
+          return registry.fetch(request);
         }
       };
     }
@@ -3589,6 +3559,247 @@ describe("gateway app", () => {
           registryOverrideApplied: true
         }
       ]
+    });
+  });
+
+  it("supports creating, authenticating, listing, inspecting, and deleting dynamic hashed registry keys", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello runtime"
+              }
+            }
+          ],
+          usage: {
+            prompt_tokens: 12,
+            completion_tokens: 8,
+            total_tokens: 20
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_env",
+          label: "Configured Gateway Key",
+          value: "gateway-secret",
+          status: "active"
+        }
+      ])
+    };
+
+    const createResponse = await app.request(
+      "http://localhost/_airlock/keys",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          id: "key_dynamic",
+          label: "Dynamic Runtime Key",
+          valueHash:
+            "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+          status: "active",
+          policy: {
+            tier: "runtime"
+          }
+        })
+      },
+      bindings
+    );
+
+    expect(createResponse.status).toBe(200);
+    await expect(readJson(createResponse)).resolves.toMatchObject({
+      keyId: "key_dynamic",
+      ownership: "registry",
+      key: {
+        id: "key_dynamic",
+        label: "Dynamic Runtime Key",
+        valueHash:
+          "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+        status: "active"
+      }
+    });
+
+    const dynamicReadResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(dynamicReadResponse.status).toBe(200);
+    await expect(readJson(dynamicReadResponse)).resolves.toMatchObject({
+      keyId: "key_dynamic",
+      ownership: "registry",
+      key: {
+        id: "key_dynamic",
+        label: "Dynamic Runtime Key",
+        status: "active"
+      }
+    });
+
+    const authResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer runtime-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      bindings
+    );
+
+    expect(authResponse.status).toBe(200);
+    await expect(readJson(authResponse)).resolves.toMatchObject({
+      id: "chatcmpl_123"
+    });
+
+    const statusResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/status",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(statusResponse.status).toBe(200);
+    await expect(readJson(statusResponse)).resolves.toMatchObject({
+      keyId: "key_dynamic",
+      runtime: {
+        label: "Dynamic Runtime Key",
+        configuredStatus: "active",
+        acceptedNow: true
+      }
+    });
+
+    const inventoryResponse = await app.request(
+      "http://localhost/_airlock/keys",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(inventoryResponse.status).toBe(200);
+    const inventoryPayload = (await readJson(inventoryResponse)) as {
+      keys: Array<{
+        keyId: string;
+        runtime?: {
+          label?: string;
+          acceptedNow?: boolean;
+        };
+      }>;
+    };
+
+    const configuredEntry = inventoryPayload.keys.find((entry) => {
+      return entry.keyId === "key_env";
+    });
+    const dynamicEntry = inventoryPayload.keys.find((entry) => {
+      return entry.keyId === "key_dynamic";
+    });
+
+    expect(configuredEntry).toBeDefined();
+    expect(dynamicEntry).toMatchObject({
+      runtime: {
+        label: "Dynamic Runtime Key",
+        acceptedNow: true
+      }
+    });
+
+    const deleteResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic",
+      {
+        method: "DELETE",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(deleteResponse.status).toBe(200);
+    await expect(readJson(deleteResponse)).resolves.toMatchObject({
+      keyId: "key_dynamic",
+      deleted: true
+    });
+  });
+
+  it("rejects deleting env-configured keys through the dynamic registry delete route", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_env",
+          label: "Configured Gateway Key",
+          value: "gateway-secret",
+          status: "active"
+        }
+      ])
+    };
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys/key_env",
+      {
+        method: "DELETE",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(409);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "gateway_key_not_registry_owned"
+      }
     });
   });
 
