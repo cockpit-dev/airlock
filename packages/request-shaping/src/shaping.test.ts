@@ -6,9 +6,11 @@ import {
   applyAuthStrategy,
   applyRequestShaping,
   buildRequestUrl,
+  isTargetScopedRouteShapingProfile,
   mergeRequestShapingProfiles,
   parseRouteRequestShaping,
   parseRequestRequestShaping,
+  resolveRouteRequestShapingForTarget,
   type OutboundRequestShape
 } from "./shaping.js";
 
@@ -240,6 +242,44 @@ describe("parseRouteRequestShaping", () => {
       )
     ).toThrow(GatewayError);
   });
+
+  it("parses target-scoped route shaping profiles", () => {
+    expect(
+      parseRouteRequestShaping(
+        JSON.stringify({
+          "assistant-default": {
+            targets: {
+              "openai:gpt-4.1-mini": {
+                headers: {
+                  "openai-beta": "responses=v1"
+                }
+              },
+              "anthropic:claude-haiku-4-5": {
+                query: {
+                  trace: "1"
+                }
+              }
+            }
+          }
+        })
+      )
+    ).toEqual({
+      "assistant-default": {
+        targets: {
+          "openai:gpt-4.1-mini": {
+            headers: {
+              "openai-beta": "responses=v1"
+            }
+          },
+          "anthropic:claude-haiku-4-5": {
+            query: {
+              trace: "1"
+            }
+          }
+        }
+      }
+    });
+  });
 });
 
 describe("parseRequestRequestShaping", () => {
@@ -325,6 +365,68 @@ describe("mergeRequestShapingProfiles", () => {
       jsonBody: {
         temperature: 0.8,
         metadata: "route"
+      }
+    });
+  });
+});
+
+describe("resolveRouteRequestShapingForTarget", () => {
+  it("applies legacy route shaping only within the primary provider boundary", () => {
+    expect(
+      resolveRouteRequestShapingForTarget(
+        {
+          headers: {
+            "openai-beta": "responses=v1"
+          }
+        },
+        "openai:gpt-4.1-mini",
+        "openai:gpt-4.1-nano"
+      )
+    ).toEqual({
+      headers: {
+        "openai-beta": "responses=v1"
+      }
+    });
+
+    expect(
+      resolveRouteRequestShapingForTarget(
+        {
+          headers: {
+            "openai-beta": "responses=v1"
+          }
+        },
+        "openai:gpt-4.1-mini",
+        "anthropic:claude-haiku-4-5"
+      )
+    ).toBeUndefined();
+  });
+
+  it("resolves explicit target-scoped shaping profiles by target key", () => {
+    const shaping = {
+      targets: {
+        "openai:gpt-4.1-mini": {
+          headers: {
+            "openai-beta": "responses=v1"
+          }
+        },
+        "anthropic:claude-haiku-4-5": {
+          query: {
+            trace: "1"
+          }
+        }
+      }
+    };
+
+    expect(isTargetScopedRouteShapingProfile(shaping)).toBe(true);
+    expect(
+      resolveRouteRequestShapingForTarget(
+        shaping,
+        "openai:gpt-4.1-mini",
+        "anthropic:claude-haiku-4-5"
+      )
+    ).toEqual({
+      query: {
+        trace: "1"
       }
     });
   });

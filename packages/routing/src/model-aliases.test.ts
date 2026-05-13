@@ -224,6 +224,66 @@ describe("attachRouteRequestShaping", () => {
       )
     ).toThrow(GatewayError);
   });
+
+  it("attaches target-scoped shaping profiles while preserving backward compatibility", () => {
+    expect(
+      attachRouteRequestShaping(
+        attachRouteFallbacks(
+          parseModelAliases(
+            "assistant-default=openai:gpt-4.1-mini",
+            "gpt-4.1-mini"
+          ),
+          {
+            "assistant-default": ["anthropic:claude-haiku-4-5"]
+          }
+        ),
+        {
+          "assistant-default": {
+            targets: {
+              "openai:gpt-4.1-mini": {
+                headers: {
+                  "openai-beta": "responses=v1"
+                }
+              },
+              "anthropic:claude-haiku-4-5": {
+                query: {
+                  trace: "1"
+                }
+              }
+            }
+          }
+        }
+      )
+    ).toEqual([
+      {
+        externalModel: "assistant-default",
+        target: {
+          provider: "openai",
+          providerModel: "gpt-4.1-mini"
+        },
+        fallbacks: [
+          {
+            provider: "anthropic",
+            providerModel: "claude-haiku-4-5"
+          }
+        ],
+        shaping: {
+          targets: {
+            "openai:gpt-4.1-mini": {
+              headers: {
+                "openai-beta": "responses=v1"
+              }
+            },
+            "anthropic:claude-haiku-4-5": {
+              query: {
+                trace: "1"
+              }
+            }
+          }
+        }
+      }
+    ]);
+  });
 });
 
 describe("parseRouteFallbacks", () => {
@@ -453,6 +513,66 @@ describe("attachRouteFallbacks", () => {
         }
       )
     ).toThrow(GatewayError);
+  });
+
+  it("allows cross-provider fallback targets for shaped routes when target-scoped shaping exists for every target", () => {
+    expect(
+      attachRouteFallbacks(
+        attachRouteRequestShaping(
+          parseModelAliases(
+            "assistant-default=openai:gpt-4.1-mini",
+            "gpt-4.1-mini"
+          ),
+          {
+            "assistant-default": {
+              targets: {
+                "openai:gpt-4.1-mini": {
+                  headers: {
+                    "openai-beta": "responses=v1"
+                  }
+                },
+                "anthropic:claude-haiku-4-5": {
+                  query: {
+                    trace: "1"
+                  }
+                }
+              }
+            }
+          }
+        ),
+        {
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }
+      )
+    ).toEqual([
+      {
+        externalModel: "assistant-default",
+        target: {
+          provider: "openai",
+          providerModel: "gpt-4.1-mini"
+        },
+        shaping: {
+          targets: {
+            "openai:gpt-4.1-mini": {
+              headers: {
+                "openai-beta": "responses=v1"
+              }
+            },
+            "anthropic:claude-haiku-4-5": {
+              query: {
+                trace: "1"
+              }
+            }
+          }
+        },
+        fallbacks: [
+          {
+            provider: "anthropic",
+            providerModel: "claude-haiku-4-5"
+          }
+        ]
+      }
+    ]);
   });
 });
 

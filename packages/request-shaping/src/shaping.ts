@@ -14,6 +14,10 @@ export interface RequestShapingProfile {
   jsonBody?: Record<string, unknown>;
 }
 
+export interface TargetScopedRouteShapingProfile {
+  targets: Record<string, RequestShapingProfile>;
+}
+
 export interface SecretRef {
   secretRef: string;
 }
@@ -34,7 +38,11 @@ export type OutboundAuthStrategy =
   | HeaderBearerAuthStrategy
   | HeaderValueAuthStrategy;
 
-export type RouteRequestShapingMap = Record<string, RequestShapingProfile>;
+export type RouteRequestShapingProfile =
+  | RequestShapingProfile
+  | TargetScopedRouteShapingProfile;
+
+export type RouteRequestShapingMap = Record<string, RouteRequestShapingProfile>;
 
 const RESERVED_HEADER_NAMES = new Set([
   "authorization",
@@ -188,6 +196,41 @@ export function parseRouteRequestShaping(
   const shapingByRoute: RouteRequestShapingMap = {};
 
   for (const [externalModel, profile] of Object.entries(parsed)) {
+    if (
+      isRecord(profile) &&
+      "targets" in profile &&
+      profile.targets !== undefined
+    ) {
+      if (!isRecord(profile.targets)) {
+        throw createInvalidShapingError(
+          'Request shaping "targets" field must be an object'
+        );
+      }
+
+      const targets: Record<string, RequestShapingProfile> = {};
+
+      for (const [targetKey, targetProfile] of Object.entries(profile.targets)) {
+        if (targetKey.trim().length === 0) {
+          throw createInvalidShapingError(
+            "Target-scoped request shaping keys must be non-empty strings"
+          );
+        }
+
+        targets[targetKey.trim()] = validateRequestShapingProfile(targetProfile);
+      }
+
+      if (Object.keys(targets).length === 0) {
+        throw createInvalidShapingError(
+          'Target-scoped request shaping must define at least one target profile'
+        );
+      }
+
+      shapingByRoute[externalModel] = {
+        targets
+      };
+      continue;
+    }
+
     shapingByRoute[externalModel] = validateRequestShapingProfile(profile);
   }
 
@@ -233,6 +276,31 @@ export function mergeRequestShapingProfiles(
         }
       : {})
   };
+}
+
+export function isTargetScopedRouteShapingProfile(
+  value: RouteRequestShapingProfile | undefined
+): value is TargetScopedRouteShapingProfile {
+  return isRecord(value) && "targets" in value;
+}
+
+export function resolveRouteRequestShapingForTarget(
+  shaping: RouteRequestShapingProfile | undefined,
+  primaryTargetKey: string,
+  activeTargetKey: string
+): RequestShapingProfile | undefined {
+  if (!shaping) {
+    return undefined;
+  }
+
+  if (isTargetScopedRouteShapingProfile(shaping)) {
+    return shaping.targets[activeTargetKey];
+  }
+
+  const primaryProvider = primaryTargetKey.split(":")[0];
+  const activeProvider = activeTargetKey.split(":")[0];
+
+  return primaryProvider === activeProvider ? shaping : undefined;
 }
 
 export function applyRequestShaping(

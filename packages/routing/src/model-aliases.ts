@@ -1,9 +1,10 @@
 import { GatewayError } from "@airlock/shared";
 import type { ProviderId } from "@airlock/shared";
 import type {
-  RequestShapingProfile,
-  RouteRequestShapingMap
+  RouteRequestShapingMap,
+  RouteRequestShapingProfile
 } from "@airlock/request-shaping";
+import { isTargetScopedRouteShapingProfile } from "@airlock/request-shaping";
 
 export interface ProviderTarget {
   provider: ProviderId;
@@ -32,7 +33,7 @@ export type RouteTargetSelection =
 export interface ModelRoute {
   externalModel: string;
   target: ProviderTarget;
-  shaping?: RequestShapingProfile;
+  shaping?: RouteRequestShapingProfile;
   fallbacks?: ProviderTarget[];
   targetSelection?: RouteTargetSelection;
   requiredKeyTier?: string;
@@ -547,9 +548,23 @@ export function attachRouteFallbacks(
       const isCrossProvider = parsedTarget.provider !== route.target.provider;
 
       if (isCrossProvider && route.shaping) {
-        throw createInvalidRouteFallbackError(
-          "Cross-provider fallback requires routes without shaping"
-        );
+        if (!isTargetScopedRouteShapingProfile(route.shaping)) {
+          throw createInvalidRouteFallbackError(
+            "Cross-provider fallback requires routes without shaping"
+          );
+        }
+
+        const primaryTargetKey = serializeProviderTarget(route.target);
+        const fallbackTargetKey = serializeProviderTarget(parsedTarget);
+
+        if (
+          !route.shaping.targets[primaryTargetKey] ||
+          !route.shaping.targets[fallbackTargetKey]
+        ) {
+          throw createInvalidRouteFallbackError(
+            "Cross-provider fallback requires explicit target-scoped shaping for every target"
+          );
+        }
       }
 
       if (

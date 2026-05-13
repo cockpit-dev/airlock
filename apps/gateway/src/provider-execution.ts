@@ -13,7 +13,10 @@ import {
   type ProviderAdapter
 } from "@airlock/providers";
 import type { GatewayApiKeyRecord } from "@airlock/governance";
-import type { RequestShapingProfile } from "@airlock/request-shaping";
+import {
+  resolveRouteRequestShapingForTarget,
+  type RequestShapingProfile
+} from "@airlock/request-shaping";
 import {
   serializeProviderTarget,
   type ModelRoute,
@@ -158,13 +161,18 @@ function createProviderAdapter(
 ): ProviderAdapter {
   const descriptor = getProviderDescriptor(target.provider);
   assertProviderSupportsCanonicalRequest(descriptor, request, requestId);
+  const routeShaping = resolveRouteRequestShapingForTarget(
+    route.shaping,
+    serializeProviderTarget(route.target),
+    serializeProviderTarget(target)
+  );
 
   if (target.provider === "anthropic") {
     return new AnthropicProviderAdapter({
       apiKey: config.anthropic?.apiKey ?? "",
       baseUrl: config.anthropic?.baseUrl ?? "",
       defaultMaxTokens: config.anthropic?.defaultMaxTokens ?? 256,
-      ...(route.shaping ? { shaping: route.shaping } : {}),
+      ...(routeShaping ? { shaping: routeShaping } : {}),
       ...(fetcher ? { fetcher } : {})
     });
   }
@@ -173,7 +181,7 @@ function createProviderAdapter(
     return new GeminiProviderAdapter({
       apiKey: config.gemini?.apiKey ?? "",
       baseUrl: config.gemini?.baseUrl ?? "",
-      ...(route.shaping ? { shaping: route.shaping } : {}),
+      ...(routeShaping ? { shaping: routeShaping } : {}),
       ...(fetcher ? { fetcher } : {})
     });
   }
@@ -181,7 +189,7 @@ function createProviderAdapter(
   return new OpenAIProviderAdapter({
     apiKey: config.openAI.apiKey,
     baseUrl: config.openAI.baseUrl,
-    ...(route.shaping ? { shaping: route.shaping } : {}),
+    ...(routeShaping ? { shaping: routeShaping } : {}),
     ...(fetcher ? { fetcher } : {})
   });
 }
@@ -191,6 +199,41 @@ function createAttemptRequest(
   target: ProviderTarget
 ): CanonicalRequest {
   return buildAttemptRequest(request, target);
+}
+
+function assertCrossProviderRequestShapingSafety(
+  route: ModelRoute,
+  requestShaping: RequestShapingProfile | undefined,
+  requestId: string
+) {
+  if (!requestShaping || !(route.fallbacks?.length)) {
+    return;
+  }
+
+  const hasCrossProviderFallback = route.fallbacks.some((target) => {
+    return target.provider !== route.target.provider;
+  });
+
+  if (!hasCrossProviderFallback) {
+    return;
+  }
+
+  const hasTargetScopedShaping =
+    route.shaping !== undefined &&
+    "targets" in route.shaping;
+
+  if (!hasTargetScopedShaping) {
+    throw new GatewayError(
+      "Request-scoped shaping cannot be used with cross-provider fallback without target-scoped route shaping",
+      {
+        code: "request_invalid_request_shaping",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
+  }
 }
 
 function hashString(value: string): number {
@@ -426,6 +469,7 @@ export async function executeRoutedRequest(
     circuitBreakerBackend = createInMemoryCircuitBreakerBackend()
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
+  assertCrossProviderRequestShapingSafety(route, requestShaping, requestId);
   const targets = await selectEligibleTargets(
     route,
     request,
@@ -563,6 +607,7 @@ export async function* executeRoutedStreamRequest(
     circuitBreakerBackend = createInMemoryCircuitBreakerBackend()
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
+  assertCrossProviderRequestShapingSafety(route, requestShaping, requestId);
   const targets = (
     await selectEligibleTargets(
     route,
