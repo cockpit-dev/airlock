@@ -33,6 +33,14 @@ export interface RotateGatewayAdminKeyPort {
   ): Promise<GatewayKeyRegistryDynamicKeyView>;
 }
 
+export interface UpdateGatewayAdminKeyPort {
+  isConfiguredKey(keyId: string): boolean;
+  updateRegistryKey(
+    keyId: string,
+    payload: unknown
+  ): Promise<GatewayKeyRegistryDynamicKeyView>;
+}
+
 export interface FinalizeGatewayAdminKeyRotationPort {
   isConfiguredKey(keyId: string): boolean;
   finalizeRegistryKeyRotation(
@@ -110,6 +118,19 @@ export async function rotateGatewayAdminKey(
   }
 
   return port.rotateRegistryKey(keyId, payload);
+}
+
+export async function updateGatewayAdminKey(
+  keyId: string,
+  payload: unknown,
+  requestId: string,
+  port: UpdateGatewayAdminKeyPort
+): Promise<GatewayKeyRegistryDynamicKeyView> {
+  if (port.isConfiguredKey(keyId)) {
+    throw createGatewayKeyNotRegistryOwnedError(requestId);
+  }
+
+  return port.updateRegistryKey(keyId, payload);
 }
 
 export async function finalizeGatewayAdminKeyRotation(

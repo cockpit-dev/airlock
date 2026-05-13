@@ -13,6 +13,7 @@ import {
   listGatewayAdminKeys as readGatewayAdminKeys,
   revokeGatewayAdminKey as writeGatewayAdminKeyRevoke,
   rotateGatewayAdminKey as writeGatewayAdminKeyRotate,
+  updateGatewayAdminKey as writeGatewayAdminKeyUpdate,
   updateGatewayAdminKeyRegistryOverride as writeGatewayAdminKeyRegistryOverrideUpdate,
   type GatewayApiKeyMetadataOverride
 } from "@airlock/governance";
@@ -31,6 +32,7 @@ import {
   rotateGatewayRegistryApiKey,
   getGatewayRegistryApiKey,
   getGatewayRegistryApiKeyEvents,
+  updateGatewayRegistryApiKey,
   upsertGatewayKeyRegistryOverride
 } from "./gateway-key-registry.js";
 import {
@@ -101,6 +103,46 @@ export async function getAdminGatewayKey(
       return getGatewayRegistryApiKey(env, candidateKeyId, requestId);
     }
   });
+}
+
+export async function updateAdminGatewayKey(
+  env: GatewayBindings,
+  request: Request,
+  keyId: string,
+  requestId: string,
+  payload: unknown
+) {
+  const config = resolveGatewayConfig(env);
+  const mutation = await resolveAdminMutationActorCommand(
+    request,
+    env,
+    payload,
+    requestId,
+    "Gateway dynamic key update payload is invalid"
+  );
+
+  return writeGatewayAdminKeyUpdate(
+    keyId,
+    mutation.payload,
+    requestId,
+    {
+      isConfiguredKey: (candidateKeyId) => {
+        return config.gatewayApiKeys.some((gatewayApiKey) => {
+          return gatewayApiKey.id === candidateKeyId;
+        });
+      },
+      updateRegistryKey: (candidateKeyId, candidatePayload) => {
+        return updateGatewayRegistryApiKey(
+          env,
+          config.gatewayApiKeys,
+          candidateKeyId,
+          candidatePayload,
+          requestId,
+          mutation.actorContext
+        );
+      }
+    }
+  );
 }
 
 export async function deleteAdminGatewayKey(

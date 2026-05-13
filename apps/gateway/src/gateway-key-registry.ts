@@ -11,6 +11,7 @@ import {
   parseGatewayKeyRegistryRecordResponse,
   parseGatewayKeyRegistryRotateRequest,
   parseGatewayKeyRegistryRotationActionRequest,
+  parseGatewayKeyRegistryUpdateRequest,
   parseGatewayKeyRegistryStoredDynamicKey,
   toGatewayKeyAuditActorContextRecord,
   MAX_GATEWAY_KEY_AUDIT_EVENTS,
@@ -507,6 +508,46 @@ export class GatewayKeyRegistryDurableObject {
         } satisfies GatewayKeyRegistryDynamicKeyResponse);
       }
 
+      if (request.method === "PUT") {
+        const existingKey = await readStoredDynamicKey(this.state.storage, keyId);
+
+        if (!existingKey) {
+          return new Response("Not found", { status: 404 });
+        }
+
+        const updateRequest = parseGatewayKeyRegistryUpdateRequest(
+          await request.json()
+        );
+        const actorContext = gatewayKeyAuditActorContextFromRegistryRequest(
+          updateRequest.auditMetadata
+        );
+        const key = await updateStoredDynamicKey(
+          this.state.storage,
+          applyGatewayApiKeyMetadataOverride(existingKey, updateRequest.update),
+          await listStoredDynamicKeys(this.state.storage)
+        );
+
+        await appendStoredDynamicKeyAuditEvent(
+          this.state.storage,
+          createGatewayKeyAuditEvent({
+            keyId: key.id,
+            kind: "updated",
+            ownership: "registry",
+            occurredAt: key.updatedAt,
+            ...(updateRequest.auditMetadata.reason
+              ? { reason: updateRequest.auditMetadata.reason }
+              : {}),
+            ...(actorContext
+              ? toGatewayKeyAuditActorContextRecord(actorContext)
+              : {})
+          })
+        );
+
+        return Response.json({
+          key: createGatewayKeyRegistryDynamicKeyView(key)
+        } satisfies GatewayKeyRegistryDynamicKeyResponse);
+      }
+
       if (request.method === "DELETE") {
         const existingKey = await readStoredDynamicKey(this.state.storage, keyId);
         const payload =
@@ -841,6 +882,85 @@ export async function deleteGatewayRegistryApiKey(
     if (!parsed.deleted) {
       throw new Error("Dynamic key delete was not acknowledged");
     }
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
+  }
+}
+
+export async function updateGatewayRegistryApiKey(
+  env: GatewayBindings,
+  configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
+  keyId: string,
+  payload: unknown,
+  requestId: string,
+  actorContext?: GatewayKeyAuditActorContext
+): Promise<GatewayKeyRegistryDynamicKeyView> {
+  if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
+    throw createGatewayKeyNotRegistryOwnedError(requestId);
+  }
+
+  const updateRequest = parseGatewayKeyRegistryUpdateRequest(payload);
+  const existingKey = await getGatewayRegistryApiKey(env, keyId, requestId);
+
+  if (!existingKey) {
+    throw createGatewayKeyNotFoundError(requestId);
+  }
+
+  const updatedGatewayApiKey = applyGatewayApiKeyMetadataOverride(
+    existingKey.key,
+    updateRequest.update
+  );
+  assertGatewayKeyRuntimeDependencies(env, updatedGatewayApiKey, requestId);
+
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC, {
+        method: "PUT",
+        keyId,
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          ...updateRequest.update,
+          ...(updateRequest.auditMetadata.reason
+            ? { reason: updateRequest.auditMetadata.reason }
+            : {}),
+          ...(actorContext
+            ? toGatewayKeyAuditActorContextRecord(actorContext)
+            : updateRequest.auditMetadata.actor
+              ? toGatewayKeyAuditActorContextRecord(
+                  gatewayKeyAuditActorContextFromRegistryRequest(
+                    updateRequest.auditMetadata
+                  )!
+                )
+              : {})
+        })
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (response.status === 404) {
+    throw createGatewayKeyNotFoundError(requestId);
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    const key = parseGatewayKeyRegistryDynamicKeyResponse(await response.json());
+
+    if (!key) {
+      throw new Error("Updated dynamic key response was empty");
+    }
+
+    return key;
   } catch (cause) {
     throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
   }

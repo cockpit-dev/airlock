@@ -11,6 +11,7 @@ import {
   parseGatewayKeyRegistryRecordResponse,
   parseGatewayKeyRegistryRotateRequest,
   parseGatewayKeyRegistryRotationActionRequest,
+  parseGatewayKeyRegistryUpdateRequest,
   parseGatewayKeyRegistryStoredDynamicKey,
   parseGatewayKeyRegistryStoredOverride,
   stripGatewayKeyAuditActorMetadata,
@@ -271,6 +272,32 @@ describe("registry payload parsers", () => {
       actor: "ops@example.com",
       actorSource: "trusted_header"
     });
+
+    expect(
+      parseGatewayKeyRegistryUpdateRequest({
+        label: "Renamed Runtime Key",
+        status: "revoked",
+        notBefore: null,
+        expiresAt: "2026-05-15T00:00:00.000Z",
+        policy: null,
+        reason: "temporary hold",
+        actor: "ops@example.com",
+        actorSource: "trusted_header"
+      })
+    ).toEqual({
+      update: {
+        label: "Renamed Runtime Key",
+        status: "revoked",
+        notBefore: null,
+        expiresAt: "2026-05-15T00:00:00.000Z",
+        policy: null
+      },
+      auditMetadata: {
+        reason: "temporary hold",
+        actor: "ops@example.com",
+        actorSource: "trusted_header"
+      }
+    });
   });
 
   it("rejects invalid overlapSeconds and actorSource values", () => {
@@ -290,6 +317,19 @@ describe("registry payload parsers", () => {
         },
         "rotation action payload is invalid"
       )
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryUpdateRequest({
+        valueHash:
+          "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6"
+      })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryUpdateRequest({
+        actorSource: "payload"
+      })
     ).toThrow();
   });
 });

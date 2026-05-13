@@ -80,6 +80,17 @@ export interface GatewayKeyRegistryDeleteRequest {
   actorSource?: GatewayKeyAuditActorSource;
 }
 
+export interface GatewayKeyRegistryUpdateAuditMetadata {
+  reason?: string;
+  actor?: string;
+  actorSource?: GatewayKeyAuditActorSource;
+}
+
+export interface GatewayKeyRegistryUpdateRequest {
+  update: GatewayApiKeyMetadataOverride;
+  auditMetadata: GatewayKeyRegistryUpdateAuditMetadata;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -137,6 +148,19 @@ function parseRequiredGatewayKeyRegistryActorContext(
       cause
     });
   }
+}
+
+function createGatewayKeyRegistryPayloadError(
+  message: string,
+  cause?: unknown
+): GatewayError {
+  return new GatewayError(message, {
+    code: "config_invalid_gateway_api_keys",
+    category: "configuration",
+    httpStatus: 400,
+    retryable: false,
+    ...(cause ? { cause } : {})
+  });
 }
 
 export function parseGatewayKeyRegistryStoredOverride(
@@ -449,6 +473,87 @@ export function parseGatewayKeyRegistryDeleteRequest(
   };
 }
 
+export function parseGatewayKeyRegistryUpdateRequest(
+  value: unknown
+): GatewayKeyRegistryUpdateRequest {
+  const message = "Gateway dynamic key update payload is invalid";
+
+  if (!isRecord(value)) {
+    throw createGatewayKeyRegistryPayloadError(message);
+  }
+
+  const allowedKeys = new Set([
+    "label",
+    "status",
+    "notBefore",
+    "expiresAt",
+    "policy",
+    "reason",
+    "actor",
+    "actorSource"
+  ]);
+
+  for (const key of Object.keys(value)) {
+    if (!allowedKeys.has(key)) {
+      throw createGatewayKeyRegistryPayloadError(
+        message,
+        new Error(`Unsupported field: ${key}`)
+      );
+    }
+  }
+
+  if (value.actorSource !== undefined && value.actor === undefined) {
+    throw createGatewayKeyRegistryPayloadError(
+      message,
+      new Error("actorSource requires actor")
+    );
+  }
+
+  const hasUpdateField =
+    value.label !== undefined ||
+    value.status !== undefined ||
+    value.notBefore !== undefined ||
+    value.expiresAt !== undefined ||
+    value.policy !== undefined;
+
+  if (!hasUpdateField) {
+    throw createGatewayKeyRegistryPayloadError(
+      message,
+      new Error("At least one mutable metadata field is required")
+    );
+  }
+
+  let update: GatewayApiKeyMetadataOverride;
+
+  try {
+    update = parseGatewayApiKeyMetadataOverride(value);
+  } catch (cause) {
+    throw createGatewayKeyRegistryPayloadError(message, cause);
+  }
+
+  return {
+    update,
+    auditMetadata: {
+      ...(value.reason !== undefined
+        ? {
+            reason: parseRequiredGatewayKeyRegistryReason(value.reason, message)
+          }
+        : {}),
+      ...(value.actor !== undefined
+        ? {
+            ...toGatewayKeyAuditActorContextRecord(
+              parseRequiredGatewayKeyRegistryActorContext(
+                value.actor,
+                "actorSource" in value ? value.actorSource : undefined,
+                message
+              )
+            )
+          }
+        : {})
+    }
+  };
+}
+
 export function parseGatewayKeyRegistryRotationActionRequest(
   value: unknown,
   message: string
@@ -501,6 +606,7 @@ export function gatewayKeyAuditActorContextFromRegistryRequest(
     | GatewayKeyRegistryRotateRequest
     | GatewayKeyRegistryRotationActionRequest
     | GatewayKeyRegistryDeleteRequest
+    | GatewayKeyRegistryUpdateAuditMetadata
 ): GatewayKeyAuditActorContext | undefined {
   if (!request.actor) {
     return undefined;

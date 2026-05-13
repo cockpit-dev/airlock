@@ -21,6 +21,7 @@ import {
   listAdminGatewayKeys,
   revokeAdminGatewayKey,
   rotateAdminGatewayKey,
+  updateAdminGatewayKey,
   updateAdminGatewayKeyRegistryOverride
 } from "../admin-key-governance-service.js";
 import type { GatewayBindings } from "../env.js";
@@ -99,6 +100,21 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
         context.env,
         context.req.param("keyId"),
         requestId
+      )
+    );
+  });
+
+  app.put("/_airlock/keys/:keyId", async (context) => {
+    const requestId = context.get("requestId");
+    await requireAdminScope(context, "keys.write");
+
+    return context.json(
+      await updateAdminGatewayKey(
+        context.env,
+        context.req.raw,
+        context.req.param("keyId"),
+        requestId,
+        await context.req.json()
       )
     );
   });

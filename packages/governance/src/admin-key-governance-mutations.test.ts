@@ -7,7 +7,8 @@ import {
   deleteGatewayAdminKey,
   finalizeGatewayAdminKeyRotation,
   revokeGatewayAdminKey,
-  rotateGatewayAdminKey
+  rotateGatewayAdminKey,
+  updateGatewayAdminKey
 } from "./admin-key-governance-mutations.js";
 
 const gatewaySecretHash =
@@ -123,6 +124,59 @@ describe("rotateGatewayAdminKey", () => {
         {
           isConfiguredKey: vi.fn().mockReturnValue(true),
           rotateRegistryKey: vi.fn()
+        }
+      )
+    ).rejects.toMatchObject({
+      code: "gateway_key_not_registry_owned"
+    });
+  });
+});
+
+describe("updateGatewayAdminKey", () => {
+  it("passes update payloads through for registry-owned keys", async () => {
+    const updateRegistryKey = vi.fn().mockResolvedValue({
+      keyId: "key_dynamic",
+      ownership: "registry",
+      key: {
+        id: "key_dynamic",
+        label: "Renamed Runtime Key",
+        valueHash: gatewaySecretHash,
+        status: "revoked"
+      },
+      createdAt: "2026-05-14T00:00:00.000Z",
+      updatedAt: "2026-05-14T01:00:00.000Z"
+    });
+
+    await updateGatewayAdminKey(
+      "key_dynamic",
+      {
+        label: "Renamed Runtime Key",
+        status: "revoked",
+        reason: "temporary hold"
+      },
+      "req_123",
+      {
+        isConfiguredKey: vi.fn().mockReturnValue(false),
+        updateRegistryKey
+      }
+    );
+
+    expect(updateRegistryKey).toHaveBeenCalledWith("key_dynamic", {
+      label: "Renamed Runtime Key",
+      status: "revoked",
+      reason: "temporary hold"
+    });
+  });
+
+  it("rejects updates for configured keys", async () => {
+    await expect(
+      updateGatewayAdminKey(
+        "key_env",
+        { label: "Nope" },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn().mockReturnValue(true),
+          updateRegistryKey: vi.fn()
         }
       )
     ).rejects.toMatchObject({
