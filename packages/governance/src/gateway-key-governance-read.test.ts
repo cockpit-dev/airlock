@@ -223,33 +223,53 @@ describe("getGatewayAdminKeyOperationEvents", () => {
             kind: "updated",
             ownership: "registry",
             occurredAt: "2026-05-13T00:00:00.000Z",
-            operationId: "req_bulk_123"
+            operationId: "req_bulk_123",
+            actor: "ops@example.com",
+            actorSource: "credential"
           },
           {
             keyId: "key_2",
             kind: "updated",
             ownership: "registry",
             occurredAt: "2026-05-14T00:00:00.000Z",
-            operationId: "req_bulk_123"
+            operationId: "req_bulk_123",
+            actor: "ops@example.com",
+            actorSource: "credential"
           }
         ])
       })
     ).resolves.toEqual({
       operationId: "req_bulk_123",
+      summary: {
+        operationId: "req_bulk_123",
+        keyIds: ["key_1", "key_2"],
+        keyCount: 2,
+        eventCount: 2,
+        eventKinds: ["updated"],
+        ownerships: ["registry"],
+        firstOccurredAt: "2026-05-13T00:00:00.000Z",
+        lastOccurredAt: "2026-05-14T00:00:00.000Z",
+        actor: "ops@example.com",
+        actorSource: "credential"
+      },
       events: [
         {
           keyId: "key_2",
           kind: "updated",
           ownership: "registry",
           occurredAt: "2026-05-14T00:00:00.000Z",
-          operationId: "req_bulk_123"
+          operationId: "req_bulk_123",
+          actor: "ops@example.com",
+          actorSource: "credential"
         },
         {
           keyId: "key_1",
           kind: "updated",
           ownership: "registry",
           occurredAt: "2026-05-13T00:00:00.000Z",
-          operationId: "req_bulk_123"
+          operationId: "req_bulk_123",
+          actor: "ops@example.com",
+          actorSource: "credential"
         }
       ]
     });

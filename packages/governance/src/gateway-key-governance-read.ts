@@ -6,6 +6,7 @@ import type {
   GatewayApiKeyRegistrySnapshot
 } from "./gateway-auth.js";
 import {
+  createGatewayKeyOperationSummary,
   sortGatewayKeyAuditEventsDescending,
   type GatewayKeyAuditEvent
 } from "./gateway-key-audit.js";
@@ -179,6 +180,7 @@ export async function getGatewayAdminKeyOperationEvents(
   port: GatewayAdminKeyOperationEventsReadPort
 ): Promise<{
   operationId: string;
+  summary: ReturnType<typeof createGatewayKeyOperationSummary>;
   events: GatewayKeyAuditEvent[];
 }> {
   const events = await port.getOperationEvents(operationId);
@@ -187,9 +189,12 @@ export async function getGatewayAdminKeyOperationEvents(
     throw createGatewayKeyNotFoundError(requestId);
   }
 
+  const sortedEvents = sortGatewayKeyAuditEventsDescending(events);
+
   return {
     operationId,
-    events: sortGatewayKeyAuditEventsDescending(events)
+    summary: createGatewayKeyOperationSummary(operationId, events),
+    events: sortedEvents
   };
 }
 

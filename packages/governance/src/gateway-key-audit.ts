@@ -64,7 +64,45 @@ export interface GatewayKeyAuditEventsResponse {
 
 export interface GatewayKeyOperationEventsResponse {
   operationId: string;
+  summary?: GatewayKeyOperationSummary;
   events: GatewayKeyAuditEvent[];
+}
+
+export interface GatewayKeyOperationSummary {
+  operationId: string;
+  keyIds: string[];
+  keyCount: number;
+  eventCount: number;
+  eventKinds: GatewayKeyAuditEventKind[];
+  ownerships: GatewayKeyAuditOwnership[];
+  firstOccurredAt: string;
+  lastOccurredAt: string;
+  reason?: string;
+  actor?: string;
+  actorSource?: GatewayKeyAuditActorSource;
+}
+
+function isGatewayKeyAuditEventKind(
+  value: unknown
+): value is GatewayKeyAuditEventKind {
+  return (
+    value === "created" ||
+    value === "updated" ||
+    value === "archived" ||
+    value === "restored" ||
+    value === "rotated" ||
+    value === "rotation_finalized" ||
+    value === "rotation_canceled" ||
+    value === "deleted" ||
+    value === "revoked" ||
+    value === "unrevoked"
+  );
+}
+
+function isGatewayKeyAuditOwnership(
+  value: unknown
+): value is GatewayKeyAuditOwnership {
+  return value === "configured" || value === "registry";
 }
 
 export const MAX_GATEWAY_KEY_AUDIT_EVENTS = 64;
@@ -307,7 +345,85 @@ export function parseGatewayKeyOperationEventsResponse(
 
   return {
     operationId,
+    ...(isRecord(value.summary)
+      ? {
+          summary: {
+            operationId,
+            keyIds: Array.isArray(value.summary.keyIds)
+              ? value.summary.keyIds.filter((entry) => typeof entry === "string")
+              : [],
+            keyCount:
+              typeof value.summary.keyCount === "number" ? value.summary.keyCount : 0,
+            eventCount:
+              typeof value.summary.eventCount === "number"
+                ? value.summary.eventCount
+                : events.length,
+            eventKinds: Array.isArray(value.summary.eventKinds)
+              ? value.summary.eventKinds.filter((entry) =>
+                  isGatewayKeyAuditEventKind(entry)
+                )
+              : [],
+            ownerships: Array.isArray(value.summary.ownerships)
+              ? value.summary.ownerships.filter((entry) =>
+                  isGatewayKeyAuditOwnership(entry)
+                )
+              : [],
+            firstOccurredAt:
+              typeof value.summary.firstOccurredAt === "string"
+                ? value.summary.firstOccurredAt
+                : events[events.length - 1]?.occurredAt ?? operationId,
+            lastOccurredAt:
+              typeof value.summary.lastOccurredAt === "string"
+                ? value.summary.lastOccurredAt
+                : events[0]?.occurredAt ?? operationId,
+            ...(typeof value.summary.reason === "string"
+              ? { reason: value.summary.reason }
+              : {}),
+            ...(typeof value.summary.actor === "string"
+              ? { actor: value.summary.actor }
+              : {}),
+            ...(typeof value.summary.actorSource === "string"
+              ? { actorSource: value.summary.actorSource as GatewayKeyAuditActorSource }
+              : {})
+          } satisfies GatewayKeyOperationSummary
+        }
+      : {}),
     events
+  };
+}
+
+export function createGatewayKeyOperationSummary(
+  operationId: string,
+  events: readonly GatewayKeyAuditEvent[]
+): GatewayKeyOperationSummary {
+  const sortedKeyIds = [...new Set(events.map((event) => event.keyId))].sort();
+  const sortedEventKinds = [...new Set(events.map((event) => event.kind))].sort(
+    (left, right) => left.localeCompare(right)
+  );
+  const sortedOwnerships = [...new Set(events.map((event) => event.ownership))].sort(
+    (left, right) => left.localeCompare(right)
+  );
+  const occurredAtValues = events.map((event) => event.occurredAt).sort();
+  const reasons = [...new Set(events.map((event) => event.reason).filter(Boolean))];
+  const actors = [...new Set(events.map((event) => event.actor).filter(Boolean))];
+  const actorSources = [
+    ...new Set(events.map((event) => event.actorSource).filter(Boolean))
+  ];
+
+  return {
+    operationId,
+    keyIds: sortedKeyIds,
+    keyCount: sortedKeyIds.length,
+    eventCount: events.length,
+    eventKinds: sortedEventKinds,
+    ownerships: sortedOwnerships,
+    firstOccurredAt: occurredAtValues[0]!,
+    lastOccurredAt: occurredAtValues[occurredAtValues.length - 1]!,
+    ...(reasons.length === 1 ? { reason: reasons[0]! } : {}),
+    ...(actors.length === 1 ? { actor: actors[0]! } : {}),
+    ...(actors.length === 1 && actorSources.length === 1
+      ? { actorSource: actorSources[0]! }
+      : {})
   };
 }
 

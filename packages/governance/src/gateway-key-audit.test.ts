@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createGatewayKeyOperationSummary,
   createGatewayKeyAuditEvent,
   parseGatewayKeyAuditEvent,
   parseGatewayKeyAuditEventsResponse,
@@ -242,6 +243,93 @@ describe("parseGatewayKeyOperationEventsResponse", () => {
         ]
       })
     ).toThrow();
+  });
+});
+
+describe("createGatewayKeyOperationSummary", () => {
+  it("aggregates counts, unique dimensions, time bounds, and uniform metadata", () => {
+    expect(
+      createGatewayKeyOperationSummary("req_bulk_123", [
+        {
+          keyId: "key_b",
+          kind: "deleted",
+          ownership: "registry",
+          occurredAt: "2026-05-13T00:00:02.000Z",
+          operationId: "req_bulk_123",
+          reason: "tenant sunset",
+          actor: "ops@example.com",
+          actorSource: "credential"
+        },
+        {
+          keyId: "key_a",
+          kind: "deleted",
+          ownership: "registry",
+          occurredAt: "2026-05-13T00:00:01.000Z",
+          operationId: "req_bulk_123",
+          reason: "tenant sunset",
+          actor: "ops@example.com",
+          actorSource: "credential"
+        },
+        {
+          keyId: "key_a",
+          kind: "deleted",
+          ownership: "registry",
+          occurredAt: "2026-05-13T00:00:03.000Z",
+          operationId: "req_bulk_123",
+          reason: "tenant sunset",
+          actor: "ops@example.com",
+          actorSource: "credential"
+        }
+      ])
+    ).toEqual({
+      operationId: "req_bulk_123",
+      keyIds: ["key_a", "key_b"],
+      keyCount: 2,
+      eventCount: 3,
+      eventKinds: ["deleted"],
+      ownerships: ["registry"],
+      firstOccurredAt: "2026-05-13T00:00:01.000Z",
+      lastOccurredAt: "2026-05-13T00:00:03.000Z",
+      reason: "tenant sunset",
+      actor: "ops@example.com",
+      actorSource: "credential"
+    });
+  });
+
+  it("drops non-uniform reason and actor metadata", () => {
+    expect(
+      createGatewayKeyOperationSummary("req_bulk_123", [
+        {
+          keyId: "key_a",
+          kind: "updated",
+          ownership: "registry",
+          occurredAt: "2026-05-13T00:00:01.000Z",
+          operationId: "req_bulk_123",
+          reason: "phase 1",
+          actor: "ops-a@example.com",
+          actorSource: "credential"
+        },
+        {
+          keyId: "key_b",
+          kind: "deleted",
+          ownership: "registry",
+          occurredAt: "2026-05-13T00:00:02.000Z",
+          operationId: "req_bulk_123",
+          reason: "phase 2",
+          actor: "ops-b@example.com",
+          actorSource: "credential"
+        }
+      ])
+    ).toEqual({
+      operationId: "req_bulk_123",
+      keyIds: ["key_a", "key_b"],
+      keyCount: 2,
+      eventCount: 2,
+      eventKinds: ["deleted", "updated"],
+      ownerships: ["registry"],
+      firstOccurredAt: "2026-05-13T00:00:01.000Z",
+      lastOccurredAt: "2026-05-13T00:00:02.000Z"
+    });
   });
 });
 

@@ -9675,6 +9675,16 @@ describe("gateway app", () => {
     }
 
     expect(operationEventsPayload.operationId).toBe(bulkDeletePayload.operationId);
+    expect(operationEventsPayload).toMatchObject({
+      summary: {
+        operationId: bulkDeletePayload.operationId,
+        keyIds: ["key_dynamic_a", "key_dynamic_b"],
+        keyCount: 2,
+        eventKinds: ["deleted"],
+        ownerships: ["registry"],
+        reason: "tenant sunset"
+      }
+    });
     expect(operationEventsPayload.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
