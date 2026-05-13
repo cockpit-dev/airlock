@@ -5,6 +5,7 @@ export * from "./gateway-key-access.js";
 export * from "./gateway-key-audit.js";
 export * from "./gateway-key-identity.js";
 export * from "./gateway-key-governance-read.js";
+export * from "./gateway-key-runtime-dependencies.js";
 export * from "./gateway-key-registry.js";
 export * from "./gateway-key-registry-lifecycle.js";
 export * from "./gateway-key-registry-mutations.js";

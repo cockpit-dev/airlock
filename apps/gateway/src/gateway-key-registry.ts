@@ -1,4 +1,5 @@
 import {
+  assertGatewayApiKeyRuntimeDependencies,
   applyGatewayApiKeyMetadataOverride,
   archiveGatewayRegistryKey as archiveGatewayRegistryKeyUseCase,
   bulkCreateGatewayRegistryKeys as bulkCreateGatewayRegistryKeysUseCase,
@@ -336,41 +337,15 @@ function assertGatewayKeyRuntimeDependencies(
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string
 ) {
-  if (gatewayApiKey.policy?.requestQuota && !env.AIRLOCK_GATEWAY_KEY_QUOTA) {
-    throw new GatewayError("Gateway key quota binding is required", {
-      code: "config_missing_gateway_key_quota",
-      category: "configuration",
-      httpStatus: 500,
-      retryable: false,
-      requestId
-    });
-  }
-
-  if (
-    gatewayApiKey.policy?.tokenQuota &&
-    !env.AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA
-  ) {
-    throw new GatewayError("Gateway key token quota binding is required", {
-      code: "config_missing_gateway_key_token_quota",
-      category: "configuration",
-      httpStatus: 500,
-      retryable: false,
-      requestId
-    });
-  }
-
-  if (
-    gatewayApiKey.policy?.concurrencyQuota &&
-    !env.AIRLOCK_GATEWAY_KEY_CONCURRENCY
-  ) {
-    throw new GatewayError("Gateway key concurrency binding is required", {
-      code: "config_missing_gateway_key_concurrency",
-      category: "configuration",
-      httpStatus: 500,
-      retryable: false,
-      requestId
-    });
-  }
+  assertGatewayApiKeyRuntimeDependencies(
+    gatewayApiKey,
+    {
+      gatewayKeyQuota: env.AIRLOCK_GATEWAY_KEY_QUOTA !== undefined,
+      gatewayKeyTokenQuota: env.AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA !== undefined,
+      gatewayKeyConcurrency: env.AIRLOCK_GATEWAY_KEY_CONCURRENCY !== undefined
+    },
+    requestId
+  );
 }
 
 async function sha256Hex(value: string): Promise<string> {
