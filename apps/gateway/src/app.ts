@@ -18,6 +18,7 @@ import {
   createGatewayRegistryApiKey,
   deleteGatewayRegistryApiKey,
   getGatewayRegistryApiKey,
+  rotateGatewayRegistryApiKey,
   clearGatewayKeyRegistryOverride,
   upsertGatewayKeyRegistryOverride
 } from "./gateway-key-registry.js";
@@ -200,6 +201,25 @@ export function createApp(options: CreateAppOptions = {}) {
       keyId: context.req.param("keyId"),
       deleted: true
     });
+  });
+  app.post("/_airlock/keys/:keyId/rotate", async (context) => {
+    const requestId = context.get("requestId");
+    assertInternalAdminAuthorization(
+      context.req.header("authorization"),
+      context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      requestId
+    );
+
+    const config = resolveGatewayConfig(context.env);
+    const key = await rotateGatewayRegistryApiKey(
+      context.env,
+      config.gatewayApiKeys,
+      context.req.param("keyId"),
+      await context.req.json(),
+      requestId
+    );
+
+    return context.json(key);
   });
   app.get("/_airlock/keys/:keyId/revocation", async (context) => {
     const requestId = context.get("requestId");

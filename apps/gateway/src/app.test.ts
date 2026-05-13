@@ -3216,6 +3216,201 @@ describe("gateway app", () => {
     expect(allowedResponse.status).toBe(200);
   });
 
+  it("can rotate a registry-owned dynamic key in place and cut auth over to the new secret", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello runtime"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    const createResponse = await app.request(
+      "http://localhost/_airlock/keys",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          id: "key_dynamic",
+          label: "Dynamic Runtime Key",
+          valueHash:
+            "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+          status: "active"
+        })
+      },
+      bindings
+    );
+
+    expect(createResponse.status).toBe(200);
+
+    const revokeResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/revocation",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(revokeResponse.status).toBe(200);
+
+    const rotateResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/rotate",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          valueHash:
+            "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388"
+        })
+      },
+      bindings
+    );
+
+    expect(rotateResponse.status).toBe(200);
+    await expect(readJson(rotateResponse)).resolves.toMatchObject({
+      keyId: "key_dynamic",
+      ownership: "registry",
+      key: {
+        id: "key_dynamic",
+        valueHash:
+          "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388"
+      }
+    });
+
+    const oldSecretResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer runtime-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "old secret" }]
+        })
+      },
+      bindings
+    );
+
+    expect(oldSecretResponse.status).toBe(401);
+
+    const newSecretResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer rotated-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "new secret" }]
+        })
+      },
+      bindings
+    );
+
+    expect(newSecretResponse.status).toBe(200);
+
+    const revocationStatus = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/revocation",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(revocationStatus.status).toBe(200);
+    await expect(readJson(revocationStatus)).resolves.toMatchObject({
+      keyId: "key_dynamic",
+      revoked: false
+    });
+  });
+
+  it("rejects rotating env-configured keys through the runtime rotation route", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_env",
+          label: "Configured Gateway Key",
+          value: "gateway-secret",
+          status: "active"
+        }
+      ])
+    };
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys/key_env/rotate",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          valueHash:
+            "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388"
+        })
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(409);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "gateway_key_not_registry_owned"
+      }
+    });
+  });
+
   it("rejects a not-yet-active structured gateway key on the request path", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
