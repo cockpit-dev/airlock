@@ -12,7 +12,8 @@ import {
   parseRouteRequestShaping,
   parseRequestRequestShaping,
   resolveRouteRequestShapingForTarget,
-  type OutboundRequestShape
+  type OutboundRequestShape,
+  type RouteRequestShapingProfile
 } from "./shaping.js";
 
 function createOutboundRequestShape(): OutboundRequestShape {
@@ -342,6 +343,11 @@ describe("parseRouteRequestShaping", () => {
       parseRouteRequestShaping(
         JSON.stringify({
           "assistant-default": {
+            defaults: {
+              query: {
+                trace: "shared"
+              }
+            },
             targets: {
               "openai:gpt-4.1-mini": {
                 headers: {
@@ -367,6 +373,11 @@ describe("parseRouteRequestShaping", () => {
       )
     ).toEqual({
       "assistant-default": {
+        defaults: {
+          query: {
+            trace: "shared"
+          }
+        },
         targets: {
           "openai:gpt-4.1-mini": {
             headers: {
@@ -535,6 +546,11 @@ describe("resolveRouteRequestShapingForTarget", () => {
 
   it("resolves explicit target-scoped shaping profiles by target key", () => {
     const shaping = {
+      defaults: {
+        query: {
+          trace: "shared"
+        }
+      },
       targets: {
         "openai:gpt-4.1-mini": {
           headers: {
@@ -559,6 +575,100 @@ describe("resolveRouteRequestShapingForTarget", () => {
     ).toEqual({
       query: {
         trace: "1"
+      }
+    });
+  });
+
+  it("merges target-scoped defaults with target-specific overrides", () => {
+    const shaping: RouteRequestShapingProfile = {
+      defaults: {
+        query: {
+          trace: "shared"
+        },
+        jsonBody: {
+          temperature: 0.2
+        },
+        signing: {
+          type: "hmac_sha256_header" as const,
+          headerName: "x-airlock-signature",
+          secret: {
+            secretRef: "shared-signing-secret"
+          },
+          components: ["method", "path"] as const
+        }
+      },
+      targets: {
+        "anthropic:claude-haiku-4-5": {
+          query: {
+            trace: "target"
+          },
+          jsonBody: {
+            metadata: "fallback"
+          },
+          signing: {
+            type: "hmac_sha256_header" as const,
+            headerName: "x-fallback-signature",
+            secret: {
+              secretRef: "fallback-signing-secret"
+            },
+            components: ["method", "path", "query"] as const
+          }
+        }
+      }
+    };
+
+    expect(
+      resolveRouteRequestShapingForTarget(
+        shaping,
+        "openai:gpt-4.1-mini",
+        "anthropic:claude-haiku-4-5"
+      )
+    ).toEqual({
+      query: {
+        trace: "target"
+      },
+      jsonBody: {
+        temperature: 0.2,
+        metadata: "fallback"
+      },
+      signing: {
+        type: "hmac_sha256_header",
+        headerName: "x-fallback-signature",
+        secret: {
+          secretRef: "fallback-signing-secret"
+        },
+        components: ["method", "path", "query"]
+      }
+    });
+  });
+
+  it("falls back to target-scoped defaults when an active target has no specific override", () => {
+    const shaping = {
+      defaults: {
+        headers: {
+          "openai-beta": "responses=v1"
+        },
+        query: {
+          trace: "shared"
+        }
+      },
+      targets: {
+        "openai:gpt-4.1-mini": {}
+      }
+    };
+
+    expect(
+      resolveRouteRequestShapingForTarget(
+        shaping,
+        "openai:gpt-4.1-mini",
+        "openai:gpt-4.1-nano"
+      )
+    ).toEqual({
+      headers: {
+        "openai-beta": "responses=v1"
+      },
+      query: {
+        trace: "shared"
       }
     });
   });

@@ -12088,6 +12088,136 @@ describe("gateway app", () => {
     });
   });
 
+  it("inherits shared target-scoped shaping defaults across provider attempts", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_fallback",
+            model: "claude-haiku-4-5",
+            content: [
+              {
+                type: "text",
+                text: "fallback hello"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        ANTHROPIC_API_KEY: "anthropic-secret",
+        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+        AIRLOCK_REQUEST_SIGNING_SECRETS: JSON.stringify({
+          "shared-signing-secret": "signing-secret",
+          "anthropic-signing-secret": "signing-secret"
+        }),
+        AIRLOCK_MODEL_ALIASES: "assistant-default=openai:gpt-4.1-mini",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_SHAPING: JSON.stringify({
+          "assistant-default": {
+            defaults: {
+              query: {
+                trace: "shared"
+              },
+              signing: {
+                type: "hmac_sha256_header",
+                headerName: "x-airlock-signature",
+                prefix: "sha256=",
+                secret: {
+                  secretRef: "shared-signing-secret"
+                },
+                components: ["method", "path", "query"]
+              }
+            },
+            targets: {
+              "openai:gpt-4.1-mini": {
+                headers: {
+                  "openai-beta": "responses=v1"
+                }
+              },
+              "anthropic:claude-haiku-4-5": {
+                query: {
+                  provider: "anthropic"
+                },
+                signing: {
+                  type: "hmac_sha256_header",
+                  headerName: "x-airlock-signature",
+                  prefix: "sha256=",
+                  secret: {
+                    secretRef: "anthropic-signing-secret"
+                  },
+                  components: ["method", "path", "query"]
+                }
+              }
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const [, firstInit] = fetcher.mock.calls[0] as [string, RequestInit];
+    const [, secondInit] = fetcher.mock.calls[1] as [string, RequestInit];
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions?trace=shared"
+    );
+    expect(firstInit.headers).toMatchObject({
+      "openai-beta": "responses=v1",
+      "x-airlock-signature":
+        "sha256=4d432e4aa3d36e0e91faa4b0ebb003ec287f8f9bd7fe4f431fb7a4828ba37018"
+    });
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages?trace=shared&provider=anthropic"
+    );
+    expect(secondInit.headers).toMatchObject({
+      "x-airlock-signature":
+        "sha256=f408bb0a683e842baa465257a10d1e30231f6c0cacd925fbad5824f51cfe5cd7"
+    });
+  });
+
   it("rejects cross-provider fallback at request time when request-scoped shaping lacks a target-scoped shaping contract", async () => {
     const fetcher = vi
       .fn()

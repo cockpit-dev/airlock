@@ -16,6 +16,7 @@ export interface RequestShapingProfile {
 }
 
 export interface TargetScopedRouteShapingProfile {
+  defaults?: RequestShapingProfile;
   targets: Record<string, RequestShapingProfile>;
 }
 
@@ -331,6 +332,14 @@ export function parseRouteRequestShaping(
       "targets" in profile &&
       profile.targets !== undefined
     ) {
+      for (const key of Object.keys(profile)) {
+        if (key !== "targets" && key !== "defaults") {
+          throw createInvalidShapingError(
+            `Request shaping profile contains unsupported field: ${key}`
+          );
+        }
+      }
+
       if (!isRecord(profile.targets)) {
         throw createInvalidShapingError(
           'Request shaping "targets" field must be an object'
@@ -338,6 +347,10 @@ export function parseRouteRequestShaping(
       }
 
       const targets: Record<string, RequestShapingProfile> = {};
+      const defaults =
+        profile.defaults !== undefined
+          ? validateRequestShapingProfile(profile.defaults)
+          : undefined;
 
       for (const [targetKey, targetProfile] of Object.entries(profile.targets)) {
         if (targetKey.trim().length === 0) {
@@ -356,6 +369,7 @@ export function parseRouteRequestShaping(
       }
 
       shapingByRoute[externalModel] = {
+        ...(defaults ? { defaults } : {}),
         targets
       };
       continue;
@@ -380,6 +394,8 @@ export function mergeRequestShapingProfiles(
   base: RequestShapingProfile | undefined,
   override: RequestShapingProfile | undefined
 ): RequestShapingProfile {
+  const resolvedSigning = override?.signing ?? base?.signing;
+
   return {
     ...(base?.headers || override?.headers
       ? {
@@ -405,7 +421,11 @@ export function mergeRequestShapingProfiles(
           }
         }
       : {}),
-    ...(base?.signing ? { signing: base.signing } : {})
+    ...(resolvedSigning
+      ? {
+          signing: resolvedSigning
+        }
+      : {})
   };
 }
 
@@ -425,7 +445,20 @@ export function resolveRouteRequestShapingForTarget(
   }
 
   if (isTargetScopedRouteShapingProfile(shaping)) {
-    return shaping.targets[activeTargetKey];
+    const activeTargetShaping = shaping.targets[activeTargetKey];
+
+    if (activeTargetShaping) {
+      return mergeRequestShapingProfiles(shaping.defaults, activeTargetShaping);
+    }
+
+    const primaryProvider = primaryTargetKey.split(":")[0];
+    const activeProvider = activeTargetKey.split(":")[0];
+
+    if (primaryProvider === activeProvider) {
+      return shaping.defaults;
+    }
+
+    return undefined;
   }
 
   const primaryProvider = primaryTargetKey.split(":")[0];
