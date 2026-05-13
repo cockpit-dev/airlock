@@ -9,6 +9,7 @@ import {
 import { GatewayError } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
+import { clearGatewayKeyRevocationOverlayState } from "./gateway-key-revocation.js";
 
 const REGISTRY_OBJECT_NAME = "gateway-key-registry";
 const REGISTRY_KIND_OVERRIDE = "override";
@@ -739,6 +740,18 @@ export async function deleteGatewayRegistryApiKey(
     throw createGatewayKeyNotRegistryOwnedError(requestId);
   }
 
+  const existingKey = await getGatewayRegistryApiKey(env, keyId, requestId);
+
+  if (!existingKey) {
+    throw createGatewayKeyNotFoundError(requestId);
+  }
+
+  await clearGatewayKeyRevocationOverlayState(
+    env,
+    existingKey.key,
+    requestId
+  );
+
   const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
   const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
   let response: Response;
@@ -752,10 +765,6 @@ export async function deleteGatewayRegistryApiKey(
     );
   } catch (cause) {
     throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-  }
-
-  if (response.status === 404) {
-    throw createGatewayKeyNotFoundError(requestId);
   }
 
   if (!response.ok) {

@@ -6,13 +6,13 @@ import { toErrorResponse } from "./errors.js";
 import type { GatewayBindings } from "./env.js";
 import {
   assertInternalAdminAuthorization,
-  clearGatewayKeyRevocation,
+  clearGatewayKeyRevocationById,
   getGatewayApiKeyStatusSnapshot,
-  getGatewayKeyRevocationStatus,
+  getGatewayKeyRevocationStatusById,
   listGatewayApiKeyStatuses,
   resolveGatewayApiKeyById,
   resolveGatewayApiKeyByIdWithRegistry,
-  revokeGatewayKey
+  revokeGatewayKeyById
 } from "./gateway-key-revocation.js";
 import {
   createGatewayRegistryApiKey,
@@ -210,16 +210,11 @@ export function createApp(options: CreateAppOptions = {}) {
     );
 
     const config = resolveGatewayConfig(context.env);
-    const gatewayApiKey = resolveGatewayApiKeyById(
-      config.gatewayApiKeys,
-      context.req.param("keyId"),
-      requestId
-    );
-
     return context.json(
-      await getGatewayKeyRevocationStatus(
+      await getGatewayKeyRevocationStatusById(
         context.env,
-        gatewayApiKey,
+        config.gatewayApiKeys,
+        context.req.param("keyId"),
         requestId
       )
     );
@@ -341,16 +336,11 @@ export function createApp(options: CreateAppOptions = {}) {
     );
 
     const config = resolveGatewayConfig(context.env);
-    const gatewayApiKey = resolveGatewayApiKeyById(
-      config.gatewayApiKeys,
-      context.req.param("keyId"),
-      requestId
-    );
-
     return context.json(
-      await revokeGatewayKey(
+      await revokeGatewayKeyById(
         context.env,
-        gatewayApiKey,
+        config.gatewayApiKeys,
+        context.req.param("keyId"),
         requestId
       )
     );
@@ -364,16 +354,11 @@ export function createApp(options: CreateAppOptions = {}) {
     );
 
     const config = resolveGatewayConfig(context.env);
-    const gatewayApiKey = resolveGatewayApiKeyById(
-      config.gatewayApiKeys,
-      context.req.param("keyId"),
-      requestId
-    );
-
     return context.json(
-      await clearGatewayKeyRevocation(
+      await clearGatewayKeyRevocationById(
         context.env,
-        gatewayApiKey,
+        config.gatewayApiKeys,
+        context.req.param("keyId"),
         requestId
       )
     );

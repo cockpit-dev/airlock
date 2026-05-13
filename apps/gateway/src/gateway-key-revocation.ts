@@ -249,6 +249,22 @@ export async function getGatewayKeyRevocationStatus(
   };
 }
 
+export async function getGatewayKeyRevocationStatusById(
+  env: GatewayBindings,
+  gatewayApiKeys: readonly GatewayApiKeyRecord[],
+  keyId: string,
+  requestId: string
+): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
+  const { gatewayApiKey } = await resolveGatewayApiKeyByIdWithRegistry(
+    env,
+    gatewayApiKeys,
+    keyId,
+    requestId
+  );
+
+  return getGatewayKeyRevocationStatus(env, gatewayApiKey, requestId);
+}
+
 export async function getGatewayApiKeyStatus(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
@@ -372,6 +388,22 @@ export async function revokeGatewayKey(
   };
 }
 
+export async function revokeGatewayKeyById(
+  env: GatewayBindings,
+  gatewayApiKeys: readonly GatewayApiKeyRecord[],
+  keyId: string,
+  requestId: string
+): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
+  const { gatewayApiKey } = await resolveGatewayApiKeyByIdWithRegistry(
+    env,
+    gatewayApiKeys,
+    keyId,
+    requestId
+  );
+
+  return revokeGatewayKey(env, gatewayApiKey, requestId);
+}
+
 export async function clearGatewayKeyRevocation(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
@@ -389,6 +421,35 @@ export async function clearGatewayKeyRevocation(
     revoked: state.revoked,
     updatedAt: state.updatedAt
   };
+}
+
+export async function clearGatewayKeyRevocationById(
+  env: GatewayBindings,
+  gatewayApiKeys: readonly GatewayApiKeyRecord[],
+  keyId: string,
+  requestId: string
+): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
+  const { gatewayApiKey } = await resolveGatewayApiKeyByIdWithRegistry(
+    env,
+    gatewayApiKeys,
+    keyId,
+    requestId
+  );
+
+  return clearGatewayKeyRevocation(env, gatewayApiKey, requestId);
+}
+
+export async function clearGatewayKeyRevocationOverlayState(
+  env: GatewayBindings,
+  gatewayApiKey: GatewayApiKeyRecord,
+  requestId: string
+): Promise<void> {
+  await writeGatewayKeyRevocationStateForKey(
+    env,
+    gatewayApiKey,
+    false,
+    requestId
+  );
 }
 
 async function readGatewayKeyRevocationStateForKey(
