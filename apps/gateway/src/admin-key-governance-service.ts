@@ -9,9 +9,7 @@ import {
 } from "@airlock/governance";
 
 import {
-  parseOptionalPayloadActor,
-  resolveAdminActorContext,
-  stripAdminActorPayload
+  resolveAdminMutationActorCommand
 } from "./admin-actor.js";
 import { resolveGatewayConfig } from "./config.js";
 import type { GatewayBindings } from "./env.js";
@@ -63,7 +61,7 @@ export async function createAdminGatewayKey(
   payload: unknown
 ) {
   const config = resolveGatewayConfig(env);
-  const actorContext = await resolveActorContext(
+  const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
@@ -74,9 +72,9 @@ export async function createAdminGatewayKey(
   return createGatewayRegistryApiKey(
     env,
     config.gatewayApiKeys,
-    actorContext ? stripAdminActorPayload(payload) : payload,
+    mutation.payload,
     requestId,
-    actorContext
+    mutation.actorContext
   );
 }
 
@@ -100,7 +98,7 @@ export async function deleteAdminGatewayKey(
   payload: unknown
 ) {
   const config = resolveGatewayConfig(env);
-  const actorContext = await resolveActorContext(
+  const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
@@ -112,9 +110,9 @@ export async function deleteAdminGatewayKey(
     env,
     config.gatewayApiKeys,
     keyId,
-    actorContext ? stripAdminActorPayload(payload) : payload,
+    mutation.payload,
     requestId,
-    actorContext
+    mutation.actorContext
   );
 
   return {
@@ -131,7 +129,7 @@ export async function rotateAdminGatewayKey(
   payload: unknown
 ) {
   const config = resolveGatewayConfig(env);
-  const actorContext = await resolveActorContext(
+  const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
@@ -143,9 +141,9 @@ export async function rotateAdminGatewayKey(
     env,
     config.gatewayApiKeys,
     keyId,
-    actorContext ? stripAdminActorPayload(payload) : payload,
+    mutation.payload,
     requestId,
-    actorContext
+    mutation.actorContext
   );
 }
 
@@ -157,7 +155,7 @@ export async function finalizeAdminGatewayKeyRotation(
   payload: unknown
 ) {
   const config = resolveGatewayConfig(env);
-  const actorContext = await resolveActorContext(
+  const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
@@ -169,9 +167,9 @@ export async function finalizeAdminGatewayKeyRotation(
     env,
     config.gatewayApiKeys,
     keyId,
-    actorContext ? stripAdminActorPayload(payload) : payload,
+    mutation.payload,
     requestId,
-    actorContext
+    mutation.actorContext
   );
 }
 
@@ -183,7 +181,7 @@ export async function cancelAdminGatewayKeyRotation(
   payload: unknown
 ) {
   const config = resolveGatewayConfig(env);
-  const actorContext = await resolveActorContext(
+  const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
@@ -195,9 +193,9 @@ export async function cancelAdminGatewayKeyRotation(
     env,
     config.gatewayApiKeys,
     keyId,
-    actorContext ? stripAdminActorPayload(payload) : payload,
+    mutation.payload,
     requestId,
-    actorContext
+    mutation.actorContext
   );
 }
 
@@ -355,7 +353,7 @@ export async function revokeAdminGatewayKey(
   payload: unknown
 ) {
   const config = resolveGatewayConfig(env);
-  const actorContext = await resolveActorContext(
+  const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
@@ -367,9 +365,9 @@ export async function revokeAdminGatewayKey(
     env,
     config.gatewayApiKeys,
     keyId,
-    actorContext ? stripAdminActorPayload(payload) : payload,
+    mutation.payload,
     requestId,
-    actorContext
+    mutation.actorContext
   );
 }
 
@@ -381,7 +379,7 @@ export async function clearAdminGatewayKeyRevocation(
   payload: unknown
 ) {
   const config = resolveGatewayConfig(env);
-  const actorContext = await resolveActorContext(
+  const mutation = await resolveAdminMutationActorCommand(
     request,
     env,
     payload,
@@ -393,23 +391,8 @@ export async function clearAdminGatewayKeyRevocation(
     env,
     config.gatewayApiKeys,
     keyId,
-    actorContext ? stripAdminActorPayload(payload) : payload,
+    mutation.payload,
     requestId,
-    actorContext
-  );
-}
-
-async function resolveActorContext(
-  request: Request,
-  env: GatewayBindings,
-  payload: unknown,
-  requestId: string,
-  message: string
-) {
-  return resolveAdminActorContext(
-    request,
-    env,
-    parseOptionalPayloadActor(payload, message),
-    requestId
+    mutation.actorContext
   );
 }

@@ -1,8 +1,10 @@
 import { GatewayError } from "@airlock/shared";
 import {
+  buildAdminMutationActorCommand,
   parseInternalAdminCredentials,
   parseOptionalGatewayKeyAuditActor,
   type GatewayKeyAuditActorContext,
+  resolveAdminActorContextFromInputs,
   resolveInternalAdminAuthorization
 } from "@airlock/governance";
 
@@ -59,13 +61,6 @@ export function resolveAdminActorContext(
       requestId
     );
 
-    if (adminAuthorization) {
-      return {
-        actor: adminAuthorization.actor,
-        actorSource: "credential"
-      };
-    }
-
     const trustedHeaderName = normalizeHeaderName(
       env.AIRLOCK_INTERNAL_ADMIN_ACTOR_HEADER
     );
@@ -88,31 +83,13 @@ export function resolveAdminActorContext(
       });
     }
 
-    if (trustedHeaderActor) {
-      return {
-        actor: trustedHeaderActor,
-        actorSource: "trusted_header"
-      };
-    }
-
-    if (payloadActor) {
-      return {
-        actor: payloadActor,
-        actorSource: "payload"
-      };
-    }
-
-    if (env.AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED) {
-      throw new GatewayError("Admin actor metadata is required", {
-        code: "auth_admin_actor_required",
-        category: "authentication",
-        httpStatus: 400,
-        retryable: false,
-        requestId
-      });
-    }
-
-    return undefined;
+    return resolveAdminActorContextFromInputs({
+      credentialActor: adminAuthorization?.actor,
+      trustedHeaderActor,
+      payloadActor,
+      actorRequired: env.AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED,
+      requestId
+    });
   })();
 }
 
@@ -132,13 +109,50 @@ export async function resolveAdminAuthorizationContext(
   });
 }
 
-export function stripAdminActorPayload(payload: unknown): unknown {
-  if (!isRecord(payload)) {
-    return payload;
+export async function resolveAdminMutationActorCommand(
+  request: Request,
+  env: GatewayBindings,
+  payload: unknown,
+  requestId: string,
+  message: string
+): Promise<{
+  actorContext?: GatewayKeyAuditActorContext;
+  payload: unknown;
+}> {
+  const payloadActor = parseOptionalPayloadActor(payload, message);
+  const adminAuthorization = await resolveAdminAuthorizationContext(
+    request,
+    env,
+    requestId
+  );
+  const trustedHeaderName = normalizeHeaderName(
+    env.AIRLOCK_INTERNAL_ADMIN_ACTOR_HEADER
+  );
+  let trustedHeaderActor: string | undefined;
+
+  try {
+    trustedHeaderActor = trustedHeaderName
+      ? parseOptionalGatewayKeyAuditActor(
+          request.headers.get(trustedHeaderName) ?? undefined
+        )
+      : undefined;
+  } catch (cause) {
+    throw new GatewayError("Admin actor header is invalid", {
+      code: "auth_invalid_admin_actor",
+      category: "authentication",
+      httpStatus: 400,
+      retryable: false,
+      requestId,
+      cause
+    });
   }
 
-  const rest = { ...payload };
-  delete rest.actor;
-  delete rest.actorSource;
-  return rest;
+  return buildAdminMutationActorCommand({
+    payload,
+    credentialActor: adminAuthorization?.actor,
+    trustedHeaderActor,
+    payloadActor,
+    actorRequired: env.AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED,
+    requestId
+  });
 }
