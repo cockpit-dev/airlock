@@ -1,4 +1,5 @@
 export * from "./gateway-auth.js";
+export * from "./admin-key-governance-mutations.js";
 export * from "./admin-key-governance-write.js";
 export * from "./gateway-key-audit.js";
 export * from "./gateway-key-governance-read.js";

@@ -1,10 +1,19 @@
 import {
+  cancelGatewayAdminKeyRotation as writeGatewayAdminKeyRotationCancel,
+  clearGatewayAdminKeyRegistryOverride as writeGatewayAdminKeyRegistryOverrideClear,
+  clearGatewayAdminKeyRevocation as writeGatewayAdminKeyRevocationClear,
+  createGatewayAdminKey as writeGatewayAdminKeyCreate,
+  deleteGatewayAdminKey as writeGatewayAdminKeyDelete,
+  finalizeGatewayAdminKeyRotation as writeGatewayAdminKeyRotationFinalize,
   getGatewayAdminKey as readGatewayAdminKey,
   getGatewayAdminKeyEvents as readGatewayAdminKeyEvents,
   getGatewayAdminKeyRegistryView as readGatewayAdminKeyRegistryView,
   getGatewayAdminKeyRevocationStatus as readGatewayAdminKeyRevocationStatus,
   getGatewayAdminKeyStatus as readGatewayAdminKeyStatus,
   listGatewayAdminKeys as readGatewayAdminKeys,
+  revokeGatewayAdminKey as writeGatewayAdminKeyRevoke,
+  rotateGatewayAdminKey as writeGatewayAdminKeyRotate,
+  updateGatewayAdminKeyRegistryOverride as writeGatewayAdminKeyRegistryOverrideUpdate,
   type GatewayApiKeyMetadataOverride
 } from "@airlock/governance";
 
@@ -69,13 +78,17 @@ export async function createAdminGatewayKey(
     "Gateway dynamic key create payload is invalid"
   );
 
-  return createGatewayRegistryApiKey(
-    env,
-    config.gatewayApiKeys,
-    mutation.payload,
-    requestId,
-    mutation.actorContext
-  );
+  return writeGatewayAdminKeyCreate(mutation.payload, {
+    createRegistryKey: (candidatePayload) => {
+      return createGatewayRegistryApiKey(
+        env,
+        config.gatewayApiKeys,
+        candidatePayload,
+        requestId,
+        mutation.actorContext
+      );
+    }
+  });
 }
 
 export async function getAdminGatewayKey(
@@ -106,19 +119,28 @@ export async function deleteAdminGatewayKey(
     "Gateway dynamic key delete payload is invalid"
   );
 
-  await deleteGatewayRegistryApiKey(
-    env,
-    config.gatewayApiKeys,
+  return writeGatewayAdminKeyDelete(
     keyId,
     mutation.payload,
     requestId,
-    mutation.actorContext
+    {
+      isConfiguredKey: (candidateKeyId) => {
+        return config.gatewayApiKeys.some((gatewayApiKey) => {
+          return gatewayApiKey.id === candidateKeyId;
+        });
+      },
+      deleteRegistryKey: (candidateKeyId, candidatePayload) => {
+        return deleteGatewayRegistryApiKey(
+          env,
+          config.gatewayApiKeys,
+          candidateKeyId,
+          candidatePayload,
+          requestId,
+          mutation.actorContext
+        );
+      }
+    }
   );
-
-  return {
-    keyId,
-    deleted: true
-  };
 }
 
 export async function rotateAdminGatewayKey(
@@ -137,13 +159,27 @@ export async function rotateAdminGatewayKey(
     "Gateway dynamic key rotation payload is invalid"
   );
 
-  return rotateGatewayRegistryApiKey(
-    env,
-    config.gatewayApiKeys,
+  return writeGatewayAdminKeyRotate(
     keyId,
     mutation.payload,
     requestId,
-    mutation.actorContext
+    {
+      isConfiguredKey: (candidateKeyId) => {
+        return config.gatewayApiKeys.some((gatewayApiKey) => {
+          return gatewayApiKey.id === candidateKeyId;
+        });
+      },
+      rotateRegistryKey: (candidateKeyId, candidatePayload) => {
+        return rotateGatewayRegistryApiKey(
+          env,
+          config.gatewayApiKeys,
+          candidateKeyId,
+          candidatePayload,
+          requestId,
+          mutation.actorContext
+        );
+      }
+    }
   );
 }
 
@@ -163,13 +199,27 @@ export async function finalizeAdminGatewayKeyRotation(
     "Gateway dynamic key rotation finalize payload is invalid"
   );
 
-  return finalizeGatewayRegistryApiKeyRotation(
-    env,
-    config.gatewayApiKeys,
+  return writeGatewayAdminKeyRotationFinalize(
     keyId,
     mutation.payload,
     requestId,
-    mutation.actorContext
+    {
+      isConfiguredKey: (candidateKeyId) => {
+        return config.gatewayApiKeys.some((gatewayApiKey) => {
+          return gatewayApiKey.id === candidateKeyId;
+        });
+      },
+      finalizeRegistryKeyRotation: (candidateKeyId, candidatePayload) => {
+        return finalizeGatewayRegistryApiKeyRotation(
+          env,
+          config.gatewayApiKeys,
+          candidateKeyId,
+          candidatePayload,
+          requestId,
+          mutation.actorContext
+        );
+      }
+    }
   );
 }
 
@@ -189,13 +239,27 @@ export async function cancelAdminGatewayKeyRotation(
     "Gateway dynamic key rotation cancel payload is invalid"
   );
 
-  return cancelGatewayRegistryApiKeyRotation(
-    env,
-    config.gatewayApiKeys,
+  return writeGatewayAdminKeyRotationCancel(
     keyId,
     mutation.payload,
     requestId,
-    mutation.actorContext
+    {
+      isConfiguredKey: (candidateKeyId) => {
+        return config.gatewayApiKeys.some((gatewayApiKey) => {
+          return gatewayApiKey.id === candidateKeyId;
+        });
+      },
+      cancelRegistryKeyRotation: (candidateKeyId, candidatePayload) => {
+        return cancelGatewayRegistryApiKeyRotation(
+          env,
+          config.gatewayApiKeys,
+          candidateKeyId,
+          candidatePayload,
+          requestId,
+          mutation.actorContext
+        );
+      }
+    }
   );
 }
 
@@ -307,22 +371,22 @@ export async function updateAdminGatewayKeyRegistryOverride(
   override: GatewayApiKeyMetadataOverride & { updatedAt: string };
 }> {
   const config = resolveGatewayConfig(env);
-  const gatewayApiKey = resolveGatewayApiKeyById(
-    config.gatewayApiKeys,
-    keyId,
-    requestId
-  );
-  const override = await upsertGatewayKeyRegistryOverride(
-    env,
-    gatewayApiKey,
-    payload,
-    requestId
-  );
+  return writeGatewayAdminKeyRegistryOverrideUpdate(keyId, payload, {
+    updateRegistryOverride: async (candidateKeyId, candidatePayload) => {
+      const gatewayApiKey = resolveGatewayApiKeyById(
+        config.gatewayApiKeys,
+        candidateKeyId,
+        requestId
+      );
 
-  return {
-    keyId: gatewayApiKey.id,
-    override
-  };
+      return upsertGatewayKeyRegistryOverride(
+        env,
+        gatewayApiKey,
+        candidatePayload,
+        requestId
+      );
+    }
+  });
 }
 
 export async function clearAdminGatewayKeyRegistryOverride(
@@ -331,18 +395,17 @@ export async function clearAdminGatewayKeyRegistryOverride(
   requestId: string
 ) {
   const config = resolveGatewayConfig(env);
-  const gatewayApiKey = resolveGatewayApiKeyById(
-    config.gatewayApiKeys,
-    keyId,
-    requestId
-  );
+  return writeGatewayAdminKeyRegistryOverrideClear(keyId, {
+    clearRegistryOverride: async (candidateKeyId) => {
+      const gatewayApiKey = resolveGatewayApiKeyById(
+        config.gatewayApiKeys,
+        candidateKeyId,
+        requestId
+      );
 
-  await clearGatewayKeyRegistryOverride(env, gatewayApiKey, requestId);
-
-  return {
-    keyId: gatewayApiKey.id,
-    override: null
-  };
+      await clearGatewayKeyRegistryOverride(env, gatewayApiKey, requestId);
+    }
+  });
 }
 
 export async function revokeAdminGatewayKey(
@@ -361,13 +424,21 @@ export async function revokeAdminGatewayKey(
     "Gateway key revocation payload is invalid"
   );
 
-  return revokeGatewayKeyById(
-    env,
-    config.gatewayApiKeys,
+  return writeGatewayAdminKeyRevoke(
     keyId,
     mutation.payload,
-    requestId,
-    mutation.actorContext
+    {
+      revokeKey: (candidateKeyId, candidatePayload) => {
+        return revokeGatewayKeyById(
+          env,
+          config.gatewayApiKeys,
+          candidateKeyId,
+          candidatePayload,
+          requestId,
+          mutation.actorContext
+        );
+      }
+    }
   );
 }
 
@@ -387,12 +458,20 @@ export async function clearAdminGatewayKeyRevocation(
     "Gateway key revocation payload is invalid"
   );
 
-  return clearGatewayKeyRevocationById(
-    env,
-    config.gatewayApiKeys,
+  return writeGatewayAdminKeyRevocationClear(
     keyId,
     mutation.payload,
-    requestId,
-    mutation.actorContext
+    {
+      clearKeyRevocation: (candidateKeyId, candidatePayload) => {
+        return clearGatewayKeyRevocationById(
+          env,
+          config.gatewayApiKeys,
+          candidateKeyId,
+          candidatePayload,
+          requestId,
+          mutation.actorContext
+        );
+      }
+    }
   );
 }
