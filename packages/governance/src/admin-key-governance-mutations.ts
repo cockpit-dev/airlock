@@ -3,8 +3,10 @@ import { GatewayError } from "@airlock/shared";
 import type { GatewayApiKeyMetadataOverride } from "./gateway-auth.js";
 import type { GatewayKeyAuditActorContext } from "./gateway-key-audit.js";
 import type {
+  GatewayKeyRegistryBulkArchiveRequest,
   GatewayKeyRegistryBulkDeleteRequest,
   GatewayKeyRegistryBulkRotateRequest,
+  GatewayKeyRegistryBulkRestoreRequest,
   GatewayKeyRegistryBulkUpdateRequest,
   GatewayKeyRegistryDeleteResponse,
   GatewayKeyRegistryDynamicKeyView
@@ -104,6 +106,24 @@ export interface BulkDeleteGatewayAdminKeysPort {
       keyIds: string[];
     }
   ): Promise<GatewayKeyRegistryDeleteResponse[]>;
+}
+
+export interface BulkArchiveGatewayAdminKeysPort {
+  isConfiguredKey(keyId: string): boolean;
+  bulkArchiveRegistryKeys(
+    payload: GatewayKeyRegistryBulkArchiveRequest["auditMetadata"] & {
+      keyIds: string[];
+    }
+  ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
+}
+
+export interface BulkRestoreGatewayAdminKeysPort {
+  isConfiguredKey(keyId: string): boolean;
+  bulkRestoreRegistryKeys(
+    payload: GatewayKeyRegistryBulkRestoreRequest["auditMetadata"] & {
+      keyIds: string[];
+    }
+  ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
 }
 
 export interface BulkRotateGatewayAdminKeysPort {
@@ -328,6 +348,46 @@ export async function bulkRotateGatewayAdminKeys(
 
   return {
     keys: await port.bulkRotateRegistryKeys(payload)
+  };
+}
+
+export async function bulkArchiveGatewayAdminKeys(
+  payload: GatewayKeyRegistryBulkArchiveRequest["auditMetadata"] & {
+    keyIds: string[];
+  },
+  requestId: string,
+  port: BulkArchiveGatewayAdminKeysPort
+): Promise<{
+  keys: GatewayKeyRegistryDynamicKeyView[];
+}> {
+  for (const keyId of payload.keyIds) {
+    if (port.isConfiguredKey(keyId)) {
+      throw createGatewayKeyNotRegistryOwnedError(requestId);
+    }
+  }
+
+  return {
+    keys: await port.bulkArchiveRegistryKeys(payload)
+  };
+}
+
+export async function bulkRestoreGatewayAdminKeys(
+  payload: GatewayKeyRegistryBulkRestoreRequest["auditMetadata"] & {
+    keyIds: string[];
+  },
+  requestId: string,
+  port: BulkRestoreGatewayAdminKeysPort
+): Promise<{
+  keys: GatewayKeyRegistryDynamicKeyView[];
+}> {
+  for (const keyId of payload.keyIds) {
+    if (port.isConfiguredKey(keyId)) {
+      throw createGatewayKeyNotRegistryOwnedError(requestId);
+    }
+  }
+
+  return {
+    keys: await port.bulkRestoreRegistryKeys(payload)
   };
 }
 

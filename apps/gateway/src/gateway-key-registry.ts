@@ -4,10 +4,12 @@ import {
   createGatewayKeyAuditEvent,
   gatewayKeyAuditActorContextFromRegistryRequest,
   parseGatewayKeyRegistryBulkCreateRequest,
+  parseGatewayKeyRegistryBulkArchiveRequest,
   parseGatewayKeyRegistryBulkCreateResponse,
   parseGatewayKeyRegistryBulkDeleteRequest,
   parseGatewayKeyRegistryBulkDeleteResponse,
   parseGatewayKeyRegistryBulkRotateRequest,
+  parseGatewayKeyRegistryBulkRestoreRequest,
   parseGatewayKeyRegistryCreateRequest,
   parseGatewayKeyRegistryBulkUpdateRequest,
   parseGatewayKeyRegistryDeleteRequest,
@@ -58,6 +60,8 @@ const REGISTRY_KIND_DYNAMIC_BULK_CREATE = "dynamic_bulk_create";
 const REGISTRY_KIND_DYNAMIC_BULK_UPDATE = "dynamic_bulk_update";
 const REGISTRY_KIND_DYNAMIC_BULK_DELETE = "dynamic_bulk_delete";
 const REGISTRY_KIND_DYNAMIC_BULK_ROTATE = "dynamic_bulk_rotate";
+const REGISTRY_KIND_DYNAMIC_BULK_ARCHIVE = "dynamic_bulk_archive";
+const REGISTRY_KIND_DYNAMIC_BULK_RESTORE = "dynamic_bulk_restore";
 const REGISTRY_KIND_DYNAMIC_ROTATE = "dynamic_rotate";
 const REGISTRY_KIND_DYNAMIC_ROTATE_FINALIZE = "dynamic_rotate_finalize";
 const REGISTRY_KIND_DYNAMIC_ROTATE_CANCEL = "dynamic_rotate_cancel";
@@ -809,6 +813,175 @@ export class GatewayKeyRegistryDurableObject {
       return Response.json({
         key: createGatewayKeyRegistryDynamicKeyView(key)
       } satisfies GatewayKeyRegistryDynamicKeyResponse);
+    }
+
+    if (kind === REGISTRY_KIND_DYNAMIC_BULK_ARCHIVE) {
+      if (request.method !== "POST") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      const bulkRequest = parseGatewayKeyRegistryBulkArchiveRequest(
+        await request.json()
+      );
+      const dynamicKeys = await listStoredDynamicKeys(this.state.storage);
+      const existingKeysById = new Map(
+        dynamicKeys.map((entry) => {
+          return [entry.id, entry] as const;
+        })
+      );
+      const archivePlan = bulkRequest.keyIds.map((candidateKeyId) => {
+        const existingKey = existingKeysById.get(candidateKeyId);
+
+        if (!existingKey) {
+          return null;
+        }
+
+        if (existingKey.archivedAt) {
+          return "already_archived" as const;
+        }
+
+        return {
+          nextKey: {
+            ...existingKey,
+            archivedAt: new Date().toISOString()
+          }
+        };
+      });
+
+      if (archivePlan.some((entry) => entry === null)) {
+        return new Response("Not found", { status: 404 });
+      }
+
+      if (archivePlan.some((entry) => entry === "already_archived")) {
+        return new Response("Already archived", { status: 409 });
+      }
+
+      const actorContext = gatewayKeyAuditActorContextFromRegistryRequest(
+        bulkRequest.auditMetadata
+      );
+      const archivedKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
+
+      for (const plan of archivePlan) {
+        if (!plan || plan === "already_archived") {
+          continue;
+        }
+
+        archivedKeys.push(
+          await updateStoredDynamicKey(
+            this.state.storage,
+            plan.nextKey,
+            dynamicKeys
+          )
+        );
+      }
+
+      for (const key of archivedKeys) {
+        await appendStoredDynamicKeyAuditEvent(
+          this.state.storage,
+          createGatewayKeyAuditEvent({
+            keyId: key.id,
+            kind: "archived",
+            ownership: "registry",
+            occurredAt: key.updatedAt,
+            ...(bulkRequest.auditMetadata.reason
+              ? { reason: bulkRequest.auditMetadata.reason }
+              : {}),
+            ...(actorContext
+              ? toGatewayKeyAuditActorContextRecord(actorContext)
+              : {})
+          })
+        );
+      }
+
+      return Response.json({
+        keys: archivedKeys.map((entry) => {
+          return createGatewayKeyRegistryDynamicKeyView(entry);
+        })
+      } satisfies GatewayKeyRegistryDynamicKeyListResponse);
+    }
+
+    if (kind === REGISTRY_KIND_DYNAMIC_BULK_RESTORE) {
+      if (request.method !== "POST") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      const bulkRequest = parseGatewayKeyRegistryBulkRestoreRequest(
+        await request.json()
+      );
+      const dynamicKeys = await listStoredDynamicKeys(this.state.storage);
+      const existingKeysById = new Map(
+        dynamicKeys.map((entry) => {
+          return [entry.id, entry] as const;
+        })
+      );
+      const restorePlan = bulkRequest.keyIds.map((candidateKeyId) => {
+        const existingKey = existingKeysById.get(candidateKeyId);
+
+        if (!existingKey) {
+          return null;
+        }
+
+        if (!existingKey.archivedAt) {
+          return "not_archived" as const;
+        }
+
+        const nextKey = { ...existingKey };
+        delete nextKey.archivedAt;
+
+        return { nextKey };
+      });
+
+      if (restorePlan.some((entry) => entry === null)) {
+        return new Response("Not found", { status: 404 });
+      }
+
+      if (restorePlan.some((entry) => entry === "not_archived")) {
+        return new Response("Not archived", { status: 409 });
+      }
+
+      const actorContext = gatewayKeyAuditActorContextFromRegistryRequest(
+        bulkRequest.auditMetadata
+      );
+      const restoredKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
+
+      for (const plan of restorePlan) {
+        if (!plan || plan === "not_archived") {
+          continue;
+        }
+
+        restoredKeys.push(
+          await updateStoredDynamicKey(
+            this.state.storage,
+            plan.nextKey,
+            dynamicKeys,
+            { clearArchivedAt: true }
+          )
+        );
+      }
+
+      for (const key of restoredKeys) {
+        await appendStoredDynamicKeyAuditEvent(
+          this.state.storage,
+          createGatewayKeyAuditEvent({
+            keyId: key.id,
+            kind: "restored",
+            ownership: "registry",
+            occurredAt: key.updatedAt,
+            ...(bulkRequest.auditMetadata.reason
+              ? { reason: bulkRequest.auditMetadata.reason }
+              : {}),
+            ...(actorContext
+              ? toGatewayKeyAuditActorContextRecord(actorContext)
+              : {})
+          })
+        );
+      }
+
+      return Response.json({
+        keys: restoredKeys.map((entry) => {
+          return createGatewayKeyRegistryDynamicKeyView(entry);
+        })
+      } satisfies GatewayKeyRegistryDynamicKeyListResponse);
     }
 
     if (kind === REGISTRY_KIND_DYNAMIC_ARCHIVE) {
@@ -1788,6 +1961,184 @@ export async function bulkRotateGatewayRegistryApiKeys(
 
   if (response.status === 404) {
     throw createGatewayKeyNotFoundError(requestId);
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    return parseGatewayKeyRegistryDynamicKeyListResponse(await response.json());
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
+  }
+}
+
+export async function bulkArchiveGatewayRegistryApiKeys(
+  env: GatewayBindings,
+  configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
+  payload: unknown,
+  requestId: string,
+  actorContext?: GatewayKeyAuditActorContext
+): Promise<GatewayKeyRegistryDynamicKeyView[]> {
+  const bulkRequest = parseGatewayKeyRegistryBulkArchiveRequest(payload);
+
+  for (const keyId of bulkRequest.keyIds) {
+    if (
+      configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)
+    ) {
+      throw createGatewayKeyNotRegistryOwnedError(requestId);
+    }
+  }
+
+  const existingKeys = await Promise.all(
+    bulkRequest.keyIds.map(async (keyId) => {
+      return [keyId, await getGatewayRegistryApiKey(env, keyId, requestId)] as const;
+    })
+  );
+
+  for (const [, existingKey] of existingKeys) {
+    if (!existingKey) {
+      throw createGatewayKeyNotFoundError(requestId);
+    }
+
+    if (existingKey.archivedAt) {
+      throw createGatewayKeyAlreadyArchivedError(requestId);
+    }
+  }
+
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_ARCHIVE, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          keyIds: bulkRequest.keyIds,
+          ...(bulkRequest.auditMetadata.reason
+            ? { reason: bulkRequest.auditMetadata.reason }
+            : {}),
+          ...(actorContext
+            ? toGatewayKeyAuditActorContextRecord(actorContext)
+            : bulkRequest.auditMetadata.actor
+              ? toGatewayKeyAuditActorContextRecord(
+                  gatewayKeyAuditActorContextFromRegistryRequest(
+                    bulkRequest.auditMetadata
+                  )!
+                )
+              : {})
+        } satisfies {
+          keyIds: string[];
+          reason?: string;
+          actor?: string;
+          actorSource?: "payload" | "trusted_header" | "credential";
+        })
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (response.status === 404) {
+    throw createGatewayKeyNotFoundError(requestId);
+  }
+
+  if (response.status === 409) {
+    throw createGatewayKeyAlreadyArchivedError(requestId);
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    return parseGatewayKeyRegistryDynamicKeyListResponse(await response.json());
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
+  }
+}
+
+export async function bulkRestoreGatewayRegistryApiKeys(
+  env: GatewayBindings,
+  configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
+  payload: unknown,
+  requestId: string,
+  actorContext?: GatewayKeyAuditActorContext
+): Promise<GatewayKeyRegistryDynamicKeyView[]> {
+  const bulkRequest = parseGatewayKeyRegistryBulkRestoreRequest(payload);
+
+  for (const keyId of bulkRequest.keyIds) {
+    if (
+      configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)
+    ) {
+      throw createGatewayKeyNotRegistryOwnedError(requestId);
+    }
+  }
+
+  const existingKeys = await Promise.all(
+    bulkRequest.keyIds.map(async (keyId) => {
+      return [keyId, await getGatewayRegistryApiKey(env, keyId, requestId)] as const;
+    })
+  );
+
+  for (const [, existingKey] of existingKeys) {
+    if (!existingKey) {
+      throw createGatewayKeyNotFoundError(requestId);
+    }
+
+    if (!existingKey.archivedAt) {
+      throw createGatewayKeyNotArchivedError(requestId);
+    }
+  }
+
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_RESTORE, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          keyIds: bulkRequest.keyIds,
+          ...(bulkRequest.auditMetadata.reason
+            ? { reason: bulkRequest.auditMetadata.reason }
+            : {}),
+          ...(actorContext
+            ? toGatewayKeyAuditActorContextRecord(actorContext)
+            : bulkRequest.auditMetadata.actor
+              ? toGatewayKeyAuditActorContextRecord(
+                  gatewayKeyAuditActorContextFromRegistryRequest(
+                    bulkRequest.auditMetadata
+                  )!
+                )
+              : {})
+        } satisfies {
+          keyIds: string[];
+          reason?: string;
+          actor?: string;
+          actorSource?: "payload" | "trusted_header" | "credential";
+        })
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (response.status === 404) {
+    throw createGatewayKeyNotFoundError(requestId);
+  }
+
+  if (response.status === 409) {
+    throw createGatewayKeyNotArchivedError(requestId);
   }
 
   if (!response.ok) {

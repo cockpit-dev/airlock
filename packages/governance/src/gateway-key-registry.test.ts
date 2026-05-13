@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  parseGatewayKeyRegistryBulkArchiveRequest,
   createGatewayKeyRegistryDynamicKeyView,
   parseGatewayKeyRegistryBulkCreateRequest,
   parseGatewayKeyRegistryBulkDeleteRequest,
   parseGatewayKeyRegistryBulkDeleteResponse,
+  parseGatewayKeyRegistryBulkRestoreRequest,
   parseGatewayKeyRegistryBulkRotateRequest,
   gatewayKeyAuditActorContextFromRegistryRequest,
   parseGatewayKeyRegistryCreateRequest,
@@ -507,6 +509,37 @@ describe("registry payload parsers", () => {
         actorSource: "trusted_header"
       }
     });
+
+    expect(
+      parseGatewayKeyRegistryBulkArchiveRequest({
+        keyIds: ["key_dynamic_a", " key_dynamic_b "],
+        reason: "tenant paused",
+        actor: "ops@example.com",
+        actorSource: "trusted_header"
+      })
+    ).toEqual({
+      keyIds: ["key_dynamic_a", "key_dynamic_b"],
+      auditMetadata: {
+        reason: "tenant paused",
+        actor: "ops@example.com",
+        actorSource: "trusted_header"
+      }
+    });
+
+    expect(
+      parseGatewayKeyRegistryBulkRestoreRequest({
+        keyIds: ["key_dynamic_a", "key_dynamic_b"],
+        reason: "tenant resumed",
+        actor: "ops@example.com"
+      })
+    ).toEqual({
+      keyIds: ["key_dynamic_a", "key_dynamic_b"],
+      auditMetadata: {
+        reason: "tenant resumed",
+        actor: "ops@example.com",
+        actorSource: "payload"
+      }
+    });
   });
 
   it("rejects invalid overlapSeconds and actorSource values", () => {
@@ -555,6 +588,18 @@ describe("registry payload parsers", () => {
 
     expect(() =>
       parseGatewayKeyRegistryBulkDeleteRequest({
+        keyIds: ["key_dynamic_a", "key_dynamic_a"]
+      })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkArchiveRequest({
+        keyIds: ["key_dynamic_a", "key_dynamic_a"]
+      })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryBulkRestoreRequest({
         keyIds: ["key_dynamic_a", "key_dynamic_a"]
       })
     ).toThrow();

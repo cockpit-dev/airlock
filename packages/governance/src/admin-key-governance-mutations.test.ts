@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   archiveGatewayAdminKey,
+  bulkArchiveGatewayAdminKeys,
   bulkCreateGatewayAdminKeys,
   bulkDeleteGatewayAdminKeys,
   bulkRotateGatewayAdminKeys,
+  bulkRestoreGatewayAdminKeys,
   restoreGatewayAdminKey,
   clearGatewayAdminKeyRegistryOverride,
   clearGatewayAdminKeyRevocation,
@@ -520,6 +522,148 @@ describe("bulkRotateGatewayAdminKeys", () => {
         {
           isConfiguredKey: vi.fn((keyId: string) => keyId === "key_env"),
           bulkRotateRegistryKeys: vi.fn()
+        }
+      )
+    ).rejects.toMatchObject({
+      code: "gateway_key_not_registry_owned"
+    });
+  });
+});
+
+describe("bulkArchiveGatewayAdminKeys", () => {
+  it("passes bulk archive payloads through for registry-owned keys", async () => {
+    const bulkArchiveRegistryKeys = vi.fn().mockResolvedValue([
+      {
+        keyId: "key_dynamic_a",
+        ownership: "registry",
+        key: {
+          id: "key_dynamic_a",
+          label: "Key A",
+          valueHash: gatewaySecretHash,
+          status: "active"
+        },
+        archivedAt: "2026-05-14T01:00:00.000Z",
+        createdAt: "2026-05-14T00:00:00.000Z",
+        updatedAt: "2026-05-14T01:00:00.000Z"
+      }
+    ]);
+
+    await expect(
+      bulkArchiveGatewayAdminKeys(
+        {
+          keyIds: ["key_dynamic_a"],
+          reason: "tenant paused"
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn().mockReturnValue(false),
+          bulkArchiveRegistryKeys
+        }
+      )
+    ).resolves.toEqual({
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          ownership: "registry",
+          key: {
+            id: "key_dynamic_a",
+            label: "Key A",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          },
+          archivedAt: "2026-05-14T01:00:00.000Z",
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T01:00:00.000Z"
+        }
+      ]
+    });
+
+    expect(bulkArchiveRegistryKeys).toHaveBeenCalledWith({
+      keyIds: ["key_dynamic_a"],
+      reason: "tenant paused"
+    });
+  });
+
+  it("rejects batches that include configured keys", async () => {
+    await expect(
+      bulkArchiveGatewayAdminKeys(
+        {
+          keyIds: ["key_dynamic_a", "key_env"]
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn((keyId: string) => keyId === "key_env"),
+          bulkArchiveRegistryKeys: vi.fn()
+        }
+      )
+    ).rejects.toMatchObject({
+      code: "gateway_key_not_registry_owned"
+    });
+  });
+});
+
+describe("bulkRestoreGatewayAdminKeys", () => {
+  it("passes bulk restore payloads through for registry-owned keys", async () => {
+    const bulkRestoreRegistryKeys = vi.fn().mockResolvedValue([
+      {
+        keyId: "key_dynamic_a",
+        ownership: "registry",
+        key: {
+          id: "key_dynamic_a",
+          label: "Key A",
+          valueHash: gatewaySecretHash,
+          status: "active"
+        },
+        createdAt: "2026-05-14T00:00:00.000Z",
+        updatedAt: "2026-05-14T02:00:00.000Z"
+      }
+    ]);
+
+    await expect(
+      bulkRestoreGatewayAdminKeys(
+        {
+          keyIds: ["key_dynamic_a"],
+          reason: "tenant resumed"
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn().mockReturnValue(false),
+          bulkRestoreRegistryKeys
+        }
+      )
+    ).resolves.toEqual({
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          ownership: "registry",
+          key: {
+            id: "key_dynamic_a",
+            label: "Key A",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          },
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T02:00:00.000Z"
+        }
+      ]
+    });
+
+    expect(bulkRestoreRegistryKeys).toHaveBeenCalledWith({
+      keyIds: ["key_dynamic_a"],
+      reason: "tenant resumed"
+    });
+  });
+
+  it("rejects batches that include configured keys", async () => {
+    await expect(
+      bulkRestoreGatewayAdminKeys(
+        {
+          keyIds: ["key_dynamic_a", "key_env"]
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn((keyId: string) => keyId === "key_env"),
+          bulkRestoreRegistryKeys: vi.fn()
         }
       )
     ).rejects.toMatchObject({
