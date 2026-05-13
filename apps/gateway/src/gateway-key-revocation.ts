@@ -1,6 +1,10 @@
 import {
-  evaluateGatewayApiKeyLifecycle,
+  createGatewayApiKeyRegistrySnapshot,
+  deriveGatewayApiKeyStatusView,
+  type GatewayApiKeyRegistrySnapshot,
+  type GatewayApiKeyStatusView,
   type GatewayApiKeyLifecycleStatus,
+  type GatewayKeyRevocationOverlayState,
   type GatewayApiKeyRecord
 } from "@airlock/governance";
 import { GatewayError } from "@airlock/shared";
@@ -19,11 +23,9 @@ import {
   type GatewayKeyAuditOwnership
 } from "./gateway-key-audit.js";
 import {
-  createGatewayApiKeyRegistrySnapshot,
   getGatewayRegistryApiKey,
   listGatewayRegistryApiKeys,
-  type GatewayApiKeyRegistrySnapshot,
-  type GatewayApiKeyStatusView
+  resolveGatewayRuntimeApiKey
 } from "./gateway-key-registry.js";
 
 interface GatewayKeyRevocationState {
@@ -285,27 +287,14 @@ export async function getGatewayApiKeyStatus(
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string
 ): Promise<GatewayApiKeyStatusView> {
-  const lifecycleStatus = evaluateGatewayApiKeyLifecycle(gatewayApiKey);
   const overlayState = env.AIRLOCK_GATEWAY_KEY_REVOCATION
     ? await readGatewayKeyRevocationStateForKey(env, gatewayApiKey, requestId)
     : DEFAULT_REVOCATION_STATE;
-  const effectiveStatus =
-    overlayState.revoked || lifecycleStatus === "revoked"
-      ? "revoked"
-      : lifecycleStatus;
 
-  return {
-    keyId: gatewayApiKey.id,
-    label: gatewayApiKey.label,
-    configuredStatus: gatewayApiKey.status,
-    ...(gatewayApiKey.notBefore ? { notBefore: gatewayApiKey.notBefore } : {}),
-    ...(gatewayApiKey.expiresAt ? { expiresAt: gatewayApiKey.expiresAt } : {}),
-    lifecycleStatus,
-    overlayRevoked: overlayState.revoked,
-    overlayUpdatedAt: overlayState.updatedAt,
-    effectiveStatus,
-    acceptedNow: effectiveStatus === "active"
-  };
+  return deriveGatewayApiKeyStatusView(
+    gatewayApiKey,
+    overlayState satisfies GatewayKeyRevocationOverlayState
+  );
 }
 
 export async function getGatewayApiKeyStatusSnapshot(
@@ -314,15 +303,32 @@ export async function getGatewayApiKeyStatusSnapshot(
   requestId: string,
   ownership: "configured" | "registry" = "configured"
 ): Promise<GatewayApiKeyRegistrySnapshot> {
-  return createGatewayApiKeyRegistrySnapshot(
+  const configuredStatus = await getGatewayApiKeyStatus(env, gatewayApiKey, requestId);
+
+  if (ownership === "registry") {
+    return createGatewayApiKeyRegistrySnapshot({
+      ownership,
+      configuredKey: gatewayApiKey,
+      configuredStatus
+    });
+  }
+
+  const { runtimeGatewayApiKey, registryOverride } =
+    await resolveGatewayRuntimeApiKey(env, gatewayApiKey, requestId);
+  const runtimeStatus = await getGatewayApiKeyStatus(
     env,
-    gatewayApiKey,
-    requestId,
-    async (gatewayApiKeyRecord, nextRequestId) => {
-      return getGatewayApiKeyStatus(env, gatewayApiKeyRecord, nextRequestId);
-    },
-    ownership
+    runtimeGatewayApiKey,
+    requestId
   );
+
+  return createGatewayApiKeyRegistrySnapshot({
+    ownership,
+    configuredKey: gatewayApiKey,
+    configuredStatus,
+    runtimeKey: runtimeGatewayApiKey,
+    runtimeStatus,
+    registryOverride
+  });
 }
 
 export async function listGatewayApiKeyStatuses(

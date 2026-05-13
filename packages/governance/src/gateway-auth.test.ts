@@ -5,6 +5,8 @@ import { GatewayError } from "@airlock/shared";
 import {
   authorizeInternalAdminRequest,
   applyGatewayApiKeyMetadataOverride,
+  createGatewayApiKeyRegistrySnapshot,
+  deriveGatewayApiKeyStatusView,
   extractBearerToken,
   parseInternalAdminCredentials,
   parseGatewayApiKeyMetadataOverride,
@@ -1034,6 +1036,230 @@ describe("authorizeInternalAdminRequest", () => {
     ).rejects.toMatchObject({
       code: "auth_invalid_api_key"
     });
+  });
+});
+
+describe("deriveGatewayApiKeyStatusView", () => {
+  it("derives an active effective status when lifecycle is active and overlay is clear", () => {
+    expect(
+      deriveGatewayApiKeyStatusView(
+        {
+          id: "gak_1",
+          label: "Gateway Key 1",
+          valueHash: gatewaySecretHash,
+          status: "active"
+        },
+        {
+          revoked: false,
+          updatedAt: "2026-05-13T00:00:00.000Z"
+        }
+      )
+    ).toEqual({
+      keyId: "gak_1",
+      label: "Gateway Key 1",
+      configuredStatus: "active",
+      lifecycleStatus: "active",
+      overlayRevoked: false,
+      overlayUpdatedAt: "2026-05-13T00:00:00.000Z",
+      effectiveStatus: "active",
+      acceptedNow: true
+    });
+  });
+
+  it("derives a revoked effective status when overlay revokes an otherwise active key", () => {
+    expect(
+      deriveGatewayApiKeyStatusView(
+        {
+          id: "gak_1",
+          label: "Gateway Key 1",
+          valueHash: gatewaySecretHash,
+          status: "active"
+        },
+        {
+          revoked: true,
+          updatedAt: "2026-05-13T00:00:00.000Z"
+        }
+      )
+    ).toMatchObject({
+      lifecycleStatus: "active",
+      overlayRevoked: true,
+      effectiveStatus: "revoked",
+      acceptedNow: false
+    });
+  });
+
+  it("preserves a non-active lifecycle status when overlay is clear", () => {
+    expect(
+      deriveGatewayApiKeyStatusView(
+        {
+          id: "gak_1",
+          label: "Gateway Key 1",
+          valueHash: gatewaySecretHash,
+          status: "active",
+          notBefore: "2099-01-01T00:00:00.000Z"
+        },
+        {
+          revoked: false,
+          updatedAt: "2026-05-13T00:00:00.000Z"
+        }
+      ).effectiveStatus
+    ).toBe("not_yet_active");
+
+    expect(
+      deriveGatewayApiKeyStatusView(
+        {
+          id: "gak_2",
+          label: "Gateway Key 2",
+          valueHash: gatewaySecretHash,
+          status: "active",
+          expiresAt: "2000-01-01T00:00:00.000Z"
+        },
+        {
+          revoked: false,
+          updatedAt: "2026-05-13T00:00:00.000Z"
+        }
+      ).effectiveStatus
+    ).toBe("expired");
+  });
+});
+
+describe("createGatewayApiKeyRegistrySnapshot", () => {
+  it("builds a configured-key snapshot with runtime override data at the top level", () => {
+    const configuredKey = {
+      id: "gak_1",
+      label: "Configured Key",
+      valueHash: gatewaySecretHash,
+      status: "active" as const
+    };
+    const runtimeKey = {
+      ...configuredKey,
+      label: "Runtime Key",
+      status: "revoked" as const,
+      expiresAt: "2026-06-01T00:00:00.000Z"
+    };
+    const configuredStatus = deriveGatewayApiKeyStatusView(configuredKey, {
+      revoked: false,
+      updatedAt: "2026-05-13T00:00:00.000Z"
+    });
+    const runtimeStatus = deriveGatewayApiKeyStatusView(runtimeKey, {
+      revoked: false,
+      updatedAt: "2026-05-13T00:00:00.000Z"
+    });
+
+    expect(
+      createGatewayApiKeyRegistrySnapshot({
+        ownership: "configured",
+        configuredKey,
+        configuredStatus,
+        runtimeKey,
+        runtimeStatus,
+        registryOverride: {
+          label: "Runtime Key",
+          status: "revoked",
+          updatedAt: "2026-05-13T01:00:00.000Z"
+        }
+      })
+    ).toEqual({
+      keyId: "gak_1",
+      ownership: "configured",
+      label: "Runtime Key",
+      configuredStatus: "revoked",
+      expiresAt: "2026-06-01T00:00:00.000Z",
+      lifecycleStatus: "revoked",
+      overlayRevoked: false,
+      overlayUpdatedAt: "2026-05-13T00:00:00.000Z",
+      effectiveStatus: "revoked",
+      acceptedNow: false,
+      configured: {
+        keyId: "gak_1",
+        label: "Configured Key",
+        configuredStatus: "active",
+        lifecycleStatus: "active",
+        overlayRevoked: false,
+        overlayUpdatedAt: "2026-05-13T00:00:00.000Z",
+        effectiveStatus: "active",
+        acceptedNow: true
+      },
+      runtime: {
+        keyId: "gak_1",
+        label: "Runtime Key",
+        configuredStatus: "revoked",
+        expiresAt: "2026-06-01T00:00:00.000Z",
+        lifecycleStatus: "revoked",
+        overlayRevoked: false,
+        overlayUpdatedAt: "2026-05-13T00:00:00.000Z",
+        effectiveStatus: "revoked",
+        acceptedNow: false
+      },
+      registryOverride: {
+        label: "Runtime Key",
+        status: "revoked",
+        updatedAt: "2026-05-13T01:00:00.000Z"
+      },
+      registryOverrideApplied: true,
+      registryUpdatedAt: "2026-05-13T01:00:00.000Z"
+    });
+  });
+
+  it("builds a registry-owned snapshot with identical configured/runtime views", () => {
+    const registryKey = {
+      id: "dyn_1",
+      label: "Runtime Key",
+      valueHash: gatewaySecretHash,
+      status: "active" as const
+    };
+    const status = deriveGatewayApiKeyStatusView(registryKey, {
+      revoked: false,
+      updatedAt: "2026-05-13T00:00:00.000Z"
+    });
+
+    expect(
+      createGatewayApiKeyRegistrySnapshot({
+        ownership: "registry",
+        configuredKey: registryKey,
+        configuredStatus: status
+      })
+    ).toEqual({
+      keyId: "dyn_1",
+      ownership: "registry",
+      label: "Runtime Key",
+      configuredStatus: "active",
+      lifecycleStatus: "active",
+      overlayRevoked: false,
+      overlayUpdatedAt: "2026-05-13T00:00:00.000Z",
+      effectiveStatus: "active",
+      acceptedNow: true,
+      configured: status,
+      runtime: status,
+      registryOverride: null,
+      registryOverrideApplied: false
+    });
+  });
+
+  it("rejects configured-key snapshots without runtime inputs", () => {
+    expect(() =>
+      createGatewayApiKeyRegistrySnapshot({
+        ownership: "configured",
+        configuredKey: {
+          id: "gak_1",
+          label: "Configured Key",
+          valueHash: gatewaySecretHash,
+          status: "active"
+        },
+        configuredStatus: deriveGatewayApiKeyStatusView(
+          {
+            id: "gak_1",
+            label: "Configured Key",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          },
+          {
+            revoked: false,
+            updatedAt: "2026-05-13T00:00:00.000Z"
+          }
+        )
+      })
+    ).toThrow(GatewayError);
   });
 });
 

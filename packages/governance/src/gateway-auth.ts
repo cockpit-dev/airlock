@@ -51,6 +51,56 @@ export interface GatewayApiKeyMetadataOverride {
   policy?: GatewayApiKeyPolicy | null;
 }
 
+export type GatewayApiKeyOwnership = "configured" | "registry";
+
+export interface GatewayKeyRevocationOverlayState {
+  revoked: boolean;
+  updatedAt: string;
+}
+
+export interface GatewayApiKeyStatusView {
+  keyId: string;
+  label: string;
+  configuredStatus: GatewayApiKeyRecord["status"];
+  notBefore?: string;
+  expiresAt?: string;
+  lifecycleStatus: GatewayApiKeyLifecycleStatus;
+  overlayRevoked: boolean;
+  overlayUpdatedAt: string;
+  effectiveStatus: GatewayApiKeyLifecycleStatus;
+  acceptedNow: boolean;
+}
+
+export interface GatewayApiKeyRegistrySnapshot {
+  keyId: string;
+  ownership: GatewayApiKeyOwnership;
+  label: string;
+  configuredStatus: GatewayApiKeyRecord["status"];
+  notBefore?: string;
+  expiresAt?: string;
+  lifecycleStatus: GatewayApiKeyLifecycleStatus;
+  overlayRevoked: boolean;
+  overlayUpdatedAt: string;
+  effectiveStatus: GatewayApiKeyLifecycleStatus;
+  acceptedNow: boolean;
+  configured: GatewayApiKeyStatusView;
+  runtime: GatewayApiKeyStatusView;
+  registryOverride:
+    | (GatewayApiKeyMetadataOverride & { updatedAt: string })
+    | null;
+  registryOverrideApplied: boolean;
+  registryUpdatedAt?: string;
+}
+
+export interface GatewayApiKeyRegistrySnapshotInput {
+  ownership: GatewayApiKeyOwnership;
+  configuredKey: GatewayApiKeyRecord;
+  configuredStatus: GatewayApiKeyStatusView;
+  runtimeKey?: GatewayApiKeyRecord;
+  runtimeStatus?: GatewayApiKeyStatusView;
+  registryOverride?: (GatewayApiKeyMetadataOverride & { updatedAt: string }) | null;
+}
+
 export interface InternalAdminCredential {
   id: string;
   tokenHash: string;
@@ -818,6 +868,101 @@ export function applyGatewayApiKeyMetadataOverride(
   validateLifecycleWindow(next.notBefore, next.expiresAt);
 
   return next;
+}
+
+export function deriveGatewayApiKeyStatusView(
+  gatewayApiKey: GatewayApiKeyRecord,
+  overlayState: GatewayKeyRevocationOverlayState,
+  now?: number
+): GatewayApiKeyStatusView {
+  const lifecycleStatus = evaluateGatewayApiKeyLifecycle(gatewayApiKey, now);
+  const effectiveStatus =
+    overlayState.revoked || lifecycleStatus === "revoked"
+      ? "revoked"
+      : lifecycleStatus;
+
+  return {
+    keyId: gatewayApiKey.id,
+    label: gatewayApiKey.label,
+    configuredStatus: gatewayApiKey.status,
+    ...(gatewayApiKey.notBefore ? { notBefore: gatewayApiKey.notBefore } : {}),
+    ...(gatewayApiKey.expiresAt ? { expiresAt: gatewayApiKey.expiresAt } : {}),
+    lifecycleStatus,
+    overlayRevoked: overlayState.revoked,
+    overlayUpdatedAt: overlayState.updatedAt,
+    effectiveStatus,
+    acceptedNow: effectiveStatus === "active"
+  };
+}
+
+export function createGatewayApiKeyRegistrySnapshot(
+  input: GatewayApiKeyRegistrySnapshotInput
+): GatewayApiKeyRegistrySnapshot {
+  if (input.ownership === "registry") {
+    return {
+      keyId: input.configuredKey.id,
+      ownership: input.ownership,
+      label: input.configuredStatus.label,
+      configuredStatus: input.configuredStatus.configuredStatus,
+      ...(input.configuredStatus.notBefore
+        ? { notBefore: input.configuredStatus.notBefore }
+        : {}),
+      ...(input.configuredStatus.expiresAt
+        ? { expiresAt: input.configuredStatus.expiresAt }
+        : {}),
+      lifecycleStatus: input.configuredStatus.lifecycleStatus,
+      overlayRevoked: input.configuredStatus.overlayRevoked,
+      overlayUpdatedAt: input.configuredStatus.overlayUpdatedAt,
+      effectiveStatus: input.configuredStatus.effectiveStatus,
+      acceptedNow: input.configuredStatus.acceptedNow,
+      configured: input.configuredStatus,
+      runtime: input.configuredStatus,
+      registryOverride: null,
+      registryOverrideApplied: false
+    };
+  }
+
+  if (!input.runtimeKey || !input.runtimeStatus) {
+    throw createInvalidGatewayKeyConfigError(
+      "Configured key snapshots require runtime key and runtime status"
+    );
+  }
+
+  return {
+    keyId: input.configuredKey.id,
+    ownership: input.ownership,
+    label: input.runtimeStatus.label,
+    configuredStatus: input.runtimeStatus.configuredStatus,
+    ...(input.runtimeStatus.notBefore
+      ? { notBefore: input.runtimeStatus.notBefore }
+      : {}),
+    ...(input.runtimeStatus.expiresAt
+      ? { expiresAt: input.runtimeStatus.expiresAt }
+      : {}),
+    lifecycleStatus: input.runtimeStatus.lifecycleStatus,
+    overlayRevoked: input.runtimeStatus.overlayRevoked,
+    overlayUpdatedAt: input.runtimeStatus.overlayUpdatedAt,
+    effectiveStatus: input.runtimeStatus.effectiveStatus,
+    acceptedNow: input.runtimeStatus.acceptedNow,
+    configured: {
+      ...input.configuredStatus,
+      label: input.configuredKey.label,
+      configuredStatus: input.configuredKey.status,
+      ...(input.configuredKey.notBefore
+        ? { notBefore: input.configuredKey.notBefore }
+        : {}),
+      ...(input.configuredKey.expiresAt
+        ? { expiresAt: input.configuredKey.expiresAt }
+        : {})
+    },
+    runtime: input.runtimeStatus,
+    registryOverride: input.registryOverride ?? null,
+    registryOverrideApplied:
+      input.registryOverride !== undefined && input.registryOverride !== null,
+    ...(input.registryOverride
+      ? { registryUpdatedAt: input.registryOverride.updatedAt }
+      : {})
+  };
 }
 
 async function sha256Hex(value: string): Promise<string> {

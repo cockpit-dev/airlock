@@ -2,7 +2,6 @@ import {
   applyGatewayApiKeyMetadataOverride,
   parseGatewayApiKeyMetadataOverride,
   parseGatewayDynamicApiKeyRecord,
-  type GatewayApiKeyLifecycleStatus,
   type GatewayApiKeyMetadataOverride,
   type GatewayApiKeyRecord
 } from "@airlock/governance";
@@ -45,8 +44,6 @@ interface DurableObjectStateLike {
 interface GatewayKeyRegistryStoredOverride extends GatewayApiKeyMetadataOverride {
   updatedAt: string;
 }
-
-export type GatewayApiKeyOwnership = "configured" | "registry";
 
 export interface GatewayKeyRegistryDynamicKeyView {
   keyId: string;
@@ -111,38 +108,6 @@ interface GatewayKeyRegistryDeleteRequest {
   reason?: string;
   actor?: string;
   actorSource?: "payload" | "trusted_header" | "credential";
-}
-
-export interface GatewayApiKeyStatusView {
-  keyId: string;
-  label: string;
-  configuredStatus: GatewayApiKeyRecord["status"];
-  notBefore?: string;
-  expiresAt?: string;
-  lifecycleStatus: GatewayApiKeyLifecycleStatus;
-  overlayRevoked: boolean;
-  overlayUpdatedAt: string;
-  effectiveStatus: GatewayApiKeyLifecycleStatus;
-  acceptedNow: boolean;
-}
-
-export interface GatewayApiKeyRegistrySnapshot {
-  keyId: string;
-  ownership: GatewayApiKeyOwnership;
-  label: string;
-  configuredStatus: GatewayApiKeyRecord["status"];
-  notBefore?: string;
-  expiresAt?: string;
-  lifecycleStatus: GatewayApiKeyLifecycleStatus;
-  overlayRevoked: boolean;
-  overlayUpdatedAt: string;
-  effectiveStatus: GatewayApiKeyLifecycleStatus;
-  acceptedNow: boolean;
-  configured: GatewayApiKeyStatusView;
-  runtime: GatewayApiKeyStatusView;
-  registryOverride: GatewayKeyRegistryStoredOverride | null;
-  registryOverrideApplied: boolean;
-  registryUpdatedAt?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1704,68 +1669,6 @@ export async function resolveGatewayRuntimeApiKey(
       registryOverride ?? undefined
     ),
     registryOverride
-  };
-}
-
-export async function createGatewayApiKeyRegistrySnapshot(
-  env: GatewayBindings,
-  gatewayApiKey: GatewayApiKeyRecord,
-  requestId: string,
-  resolveStatus: (
-    gatewayApiKeyRecord: GatewayApiKeyRecord,
-    requestId: string
-  ) => Promise<GatewayApiKeyStatusView>,
-  ownership: GatewayApiKeyOwnership = "configured"
-): Promise<GatewayApiKeyRegistrySnapshot> {
-  const configured = await resolveStatus(gatewayApiKey, requestId);
-
-  if (ownership === "registry") {
-    return {
-      keyId: gatewayApiKey.id,
-      ownership,
-      label: configured.label,
-      configuredStatus: configured.configuredStatus,
-      ...(configured.notBefore ? { notBefore: configured.notBefore } : {}),
-      ...(configured.expiresAt ? { expiresAt: configured.expiresAt } : {}),
-      lifecycleStatus: configured.lifecycleStatus,
-      overlayRevoked: configured.overlayRevoked,
-      overlayUpdatedAt: configured.overlayUpdatedAt,
-      effectiveStatus: configured.effectiveStatus,
-      acceptedNow: configured.acceptedNow,
-      configured,
-      runtime: configured,
-      registryOverride: null,
-      registryOverrideApplied: false
-    };
-  }
-
-  const { runtimeGatewayApiKey, registryOverride } =
-    await resolveGatewayRuntimeApiKey(env, gatewayApiKey, requestId);
-  const runtime = await resolveStatus(runtimeGatewayApiKey, requestId);
-
-  return {
-    keyId: gatewayApiKey.id,
-    ownership,
-    label: runtime.label,
-    configuredStatus: runtime.configuredStatus,
-    ...(runtime.notBefore ? { notBefore: runtime.notBefore } : {}),
-    ...(runtime.expiresAt ? { expiresAt: runtime.expiresAt } : {}),
-    lifecycleStatus: runtime.lifecycleStatus,
-    overlayRevoked: runtime.overlayRevoked,
-    overlayUpdatedAt: runtime.overlayUpdatedAt,
-    effectiveStatus: runtime.effectiveStatus,
-    acceptedNow: runtime.acceptedNow,
-    configured: {
-      ...configured,
-      label: gatewayApiKey.label,
-      configuredStatus: gatewayApiKey.status,
-      ...(gatewayApiKey.notBefore ? { notBefore: gatewayApiKey.notBefore } : {}),
-      ...(gatewayApiKey.expiresAt ? { expiresAt: gatewayApiKey.expiresAt } : {})
-    },
-    runtime,
-    registryOverride,
-    registryOverrideApplied: registryOverride !== null,
-    ...(registryOverride ? { registryUpdatedAt: registryOverride.updatedAt } : {})
   };
 }
 
