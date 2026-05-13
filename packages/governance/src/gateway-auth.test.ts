@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { GatewayError } from "@airlock/shared";
 
 import {
+  authorizeInternalAdminRequest,
   applyGatewayApiKeyMetadataOverride,
   extractBearerToken,
   parseInternalAdminCredentials,
@@ -908,6 +909,131 @@ describe("parseInternalAdminCredentials", () => {
         scopes: ["keys.read", "keys.write"]
       }
     ]);
+  });
+});
+
+describe("authorizeInternalAdminRequest", () => {
+  it("authorizes a structured credential with the required scope", async () => {
+    await expect(
+      authorizeInternalAdminRequest({
+        authorization: "Bearer gateway-secret",
+        adminToken: undefined,
+        adminCredentials: parseInternalAdminCredentials(
+          JSON.stringify([
+            {
+              id: "ops_reader",
+              tokenHash: gatewaySecretHash,
+              actor: "reader@example.com",
+              scopes: ["keys.read"]
+            }
+          ])
+        ),
+        structuredCredentialsConfig: JSON.stringify([
+          {
+            id: "ops_reader",
+            tokenHash: gatewaySecretHash,
+            actor: "reader@example.com",
+            scopes: ["keys.read"]
+          }
+        ]),
+        requiredScope: "keys.read",
+        requestId: "req_123"
+      })
+    ).resolves.toEqual({
+      credentialId: "ops_reader",
+      actor: "reader@example.com",
+      scopes: ["keys.read"]
+    });
+  });
+
+  it("rejects a structured credential without the required scope", async () => {
+    await expect(
+      authorizeInternalAdminRequest({
+        authorization: "Bearer gateway-secret",
+        adminToken: undefined,
+        adminCredentials: parseInternalAdminCredentials(
+          JSON.stringify([
+            {
+              id: "ops_reader",
+              tokenHash: gatewaySecretHash,
+              actor: "reader@example.com",
+              scopes: ["keys.read"]
+            }
+          ])
+        ),
+        structuredCredentialsConfig: JSON.stringify([
+          {
+            id: "ops_reader",
+            tokenHash: gatewaySecretHash,
+            actor: "reader@example.com",
+            scopes: ["keys.read"]
+          }
+        ]),
+        requiredScope: "keys.write",
+        requestId: "req_123"
+      })
+    ).rejects.toMatchObject({
+      code: "auth_admin_scope_denied"
+    });
+  });
+
+  it("falls back to the legacy admin token when structured credentials are absent", async () => {
+    await expect(
+      authorizeInternalAdminRequest({
+        authorization: "Bearer admin-secret",
+        adminToken: "admin-secret",
+        adminCredentials: [],
+        structuredCredentialsConfig: undefined,
+        requiredScope: "keys.write",
+        requestId: "req_123"
+      })
+    ).resolves.toBeUndefined();
+  });
+
+  it("prefers structured credentials over the legacy admin token when both are configured", async () => {
+    await expect(
+      authorizeInternalAdminRequest({
+        authorization: "Bearer admin-secret",
+        adminToken: "admin-secret",
+        adminCredentials: parseInternalAdminCredentials(
+          JSON.stringify([
+            {
+              id: "ops_writer",
+              tokenHash: gatewaySecretHash,
+              actor: "writer@example.com",
+              scopes: ["keys.write"]
+            }
+          ])
+        ),
+        structuredCredentialsConfig: JSON.stringify([
+          {
+            id: "ops_writer",
+            tokenHash: gatewaySecretHash,
+            actor: "writer@example.com",
+            scopes: ["keys.write"]
+          }
+        ]),
+        requiredScope: "keys.write",
+        requestId: "req_123"
+      })
+    ).rejects.toMatchObject({
+      code: "auth_invalid_api_key"
+    });
+  });
+
+  it("does not fall back to the legacy admin token when structured credentials are explicitly configured as empty", async () => {
+    await expect(
+      authorizeInternalAdminRequest({
+        authorization: "Bearer admin-secret",
+        adminToken: "admin-secret",
+        adminCredentials: [],
+        structuredCredentialsConfig: "[]",
+        requiredScope: "keys.write",
+        requestId: "req_123"
+      })
+    ).rejects.toMatchObject({
+      code: "auth_invalid_api_key"
+    });
   });
 });
 

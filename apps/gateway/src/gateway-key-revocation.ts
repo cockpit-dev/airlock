@@ -1,12 +1,7 @@
 import {
   evaluateGatewayApiKeyLifecycle,
-  extractBearerToken,
-  requireInternalAdminScope,
-  validateInternalAdminCredential,
   type GatewayApiKeyLifecycleStatus,
-  type InternalAdminScope,
-  type GatewayApiKeyRecord,
-  type InternalAdminCredential
+  type GatewayApiKeyRecord
 } from "@airlock/governance";
 import { GatewayError } from "@airlock/shared";
 
@@ -191,61 +186,6 @@ export async function assertGatewayKeyNotRevoked(
   if (state.revoked) {
     throw createUnauthorizedGatewayKeyError(requestId);
   }
-}
-
-export function assertInternalAdminAuthorization(
-  authorization: string | undefined,
-  adminToken: string | undefined,
-  requestId: string
-) {
-  if (!adminToken) {
-    throw new GatewayError("Internal admin token is not configured", {
-      code: "config_missing_internal_admin_token",
-      category: "configuration",
-      httpStatus: 500,
-      retryable: false,
-      requestId
-    });
-  }
-
-  if (authorization !== `Bearer ${adminToken}`) {
-    throw new GatewayError("Unauthorized", {
-      code: "auth_invalid_admin_token",
-      category: "authentication",
-      httpStatus: 401,
-      retryable: false,
-      requestId
-    });
-  }
-}
-
-export async function authorizeInternalAdminRequest(
-  authorization: string | undefined,
-  adminToken: string | undefined,
-  adminCredentials: readonly InternalAdminCredential[],
-  structuredCredentialsConfigured: boolean,
-  requiredScope: InternalAdminScope | undefined,
-  requestId: string
-): Promise<void> {
-  if (structuredCredentialsConfigured) {
-    const bearerToken = extractBearerToken(authorization, requestId);
-    const adminAuthorization = await validateInternalAdminCredential(
-      bearerToken,
-      adminCredentials,
-      requestId
-    );
-
-    if (requiredScope) {
-      requireInternalAdminScope(
-        adminAuthorization,
-        requiredScope,
-        requestId
-      );
-    }
-    return;
-  }
-
-  assertInternalAdminAuthorization(authorization, adminToken, requestId);
 }
 
 export function resolveGatewayApiKeyById(

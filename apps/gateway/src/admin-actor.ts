@@ -1,8 +1,7 @@
 import { GatewayError } from "@airlock/shared";
 import {
-  extractBearerToken,
   parseInternalAdminCredentials,
-  validateInternalAdminCredential
+  resolveInternalAdminAuthorization
 } from "@airlock/governance";
 
 import type { GatewayBindings } from "./env.js";
@@ -124,24 +123,15 @@ export async function resolveAdminAuthorizationContext(
   env: GatewayBindings,
   requestId: string
 ): Promise<{ credentialId: string; actor: string } | undefined> {
-  const internalAdminCredentials = parseInternalAdminCredentials(
-    env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS
-  );
-
-  if (internalAdminCredentials.length === 0) {
-    return undefined;
-  }
-
-  const bearerToken = extractBearerToken(
-    request.headers.get("authorization") ?? undefined,
+  return resolveInternalAdminAuthorization({
+    authorization: request.headers.get("authorization") ?? undefined,
+    adminToken: undefined,
+    adminCredentials: parseInternalAdminCredentials(
+      env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS
+    ),
+    structuredCredentialsConfig: env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS,
     requestId
-  );
-
-  return validateInternalAdminCredential(
-    bearerToken,
-    internalAdminCredentials,
-    requestId
-  );
+  });
 }
 
 export function stripAdminActorPayload(payload: unknown): unknown {

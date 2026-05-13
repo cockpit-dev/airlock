@@ -65,6 +65,16 @@ export interface InternalAdminAuthorization {
 }
 
 export type InternalAdminScope = "keys.read" | "keys.write";
+
+export interface InternalAdminAuthorizationRequest {
+  authorization: string | undefined;
+  adminToken: string | undefined;
+  adminCredentials: readonly InternalAdminCredential[];
+  structuredCredentialsConfig: string | undefined;
+  requiredScope?: InternalAdminScope;
+  requestId: string;
+}
+
 const DEFAULT_INTERNAL_ADMIN_SCOPES: InternalAdminScope[] = [
   "keys.read",
   "keys.write"
@@ -73,6 +83,16 @@ const DEFAULT_INTERNAL_ADMIN_SCOPES: InternalAdminScope[] = [
 function createUnauthorizedError(requestId: string): GatewayError {
   return new GatewayError("Unauthorized", {
     code: "auth_invalid_api_key",
+    category: "authentication",
+    httpStatus: 401,
+    retryable: false,
+    requestId
+  });
+}
+
+function createInvalidAdminTokenError(requestId: string): GatewayError {
+  return new GatewayError("Unauthorized", {
+    code: "auth_invalid_admin_token",
     category: "authentication",
     httpStatus: 401,
     retryable: false,
@@ -830,6 +850,75 @@ export async function validateInternalAdminCredential(
     actor: matchedCredential.actor,
     scopes: matchedCredential.scopes
   };
+}
+
+function hasStructuredAdminCredentialsConfig(
+  value: string | undefined
+): boolean {
+  return typeof value === "string" && value.length > 0;
+}
+
+export function assertInternalAdminAuthorization(
+  authorization: string | undefined,
+  adminToken: string | undefined,
+  requestId: string
+): void {
+  if (!adminToken) {
+    throw new GatewayError("Internal admin token is not configured", {
+      code: "config_missing_internal_admin_token",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false,
+      requestId
+    });
+  }
+
+  if (authorization !== `Bearer ${adminToken}`) {
+    throw createInvalidAdminTokenError(requestId);
+  }
+}
+
+export async function resolveInternalAdminAuthorization(
+  request: InternalAdminAuthorizationRequest
+): Promise<InternalAdminAuthorization | undefined> {
+  if (!hasStructuredAdminCredentialsConfig(request.structuredCredentialsConfig)) {
+    return undefined;
+  }
+
+  const bearerToken = extractBearerToken(request.authorization, request.requestId);
+  const authorization = await validateInternalAdminCredential(
+    bearerToken,
+    request.adminCredentials,
+    request.requestId
+  );
+
+  if (request.requiredScope) {
+    requireInternalAdminScope(
+      authorization,
+      request.requiredScope,
+      request.requestId
+    );
+  }
+
+  return authorization;
+}
+
+export async function authorizeInternalAdminRequest(
+  request: InternalAdminAuthorizationRequest
+): Promise<InternalAdminAuthorization | undefined> {
+  const authorization = await resolveInternalAdminAuthorization(request);
+
+  if (authorization) {
+    return authorization;
+  }
+
+  assertInternalAdminAuthorization(
+    request.authorization,
+    request.adminToken,
+    request.requestId
+  );
+
+  return undefined;
 }
 
 export function requireInternalAdminScope(
