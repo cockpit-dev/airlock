@@ -9,6 +9,13 @@ import {
 import { GatewayError } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
+import {
+  createGatewayKeyAuditEvent,
+  MAX_GATEWAY_KEY_AUDIT_EVENTS,
+  parseGatewayKeyAuditEventsResponse,
+  type GatewayKeyAuditEvent,
+  type GatewayKeyAuditEventsResponse
+} from "./gateway-key-audit.js";
 import { clearGatewayKeyRevocationOverlayState } from "./gateway-key-revocation.js";
 
 const REGISTRY_OBJECT_NAME = "gateway-key-registry";
@@ -17,7 +24,9 @@ const REGISTRY_KIND_DYNAMIC = "dynamic";
 const REGISTRY_KIND_DYNAMIC_LIST = "dynamic_list";
 const REGISTRY_KIND_DYNAMIC_LOOKUP = "dynamic_lookup";
 const REGISTRY_KIND_DYNAMIC_ROTATE = "dynamic_rotate";
+const REGISTRY_KIND_EVENTS = "events";
 const DYNAMIC_KEY_INDEX = "dynamic:index";
+const DYNAMIC_KEY_AUDIT_EVENTS_PREFIX = "dynamic_events:";
 
 interface DurableObjectStateLike {
   storage: {
@@ -486,6 +495,17 @@ export class GatewayKeyRegistryDurableObject {
       } satisfies GatewayKeyRegistryDynamicKeyResponse);
     }
 
+    if (kind === REGISTRY_KIND_EVENTS) {
+      if (request.method !== "GET" || !keyId) {
+        return new Response("Method not allowed", { status: keyId ? 405 : 400 });
+      }
+
+      return Response.json({
+        keyId,
+        events: await readStoredDynamicKeyAuditEvents(this.state.storage, keyId)
+      } satisfies GatewayKeyAuditEventsResponse);
+    }
+
     if (kind === REGISTRY_KIND_DYNAMIC_ROTATE) {
       if (request.method !== "POST" || !keyId) {
         return new Response("Method not allowed", { status: keyId ? 405 : 400 });
@@ -507,6 +527,15 @@ export class GatewayKeyRegistryDurableObject {
         },
         dynamicKeys
       );
+      await appendStoredDynamicKeyAuditEvent(
+        this.state.storage,
+        createGatewayKeyAuditEvent({
+          keyId: key.id,
+          kind: "rotated",
+          ownership: "registry",
+          occurredAt: key.updatedAt
+        })
+      );
 
       return Response.json({
         key: toDynamicKeyView(key)
@@ -519,6 +548,15 @@ export class GatewayKeyRegistryDurableObject {
         const key = await createStoredDynamicKey(
           this.state.storage,
           parseGatewayDynamicApiKeyRecord(await request.json(), dynamicKeys)
+        );
+        await appendStoredDynamicKeyAuditEvent(
+          this.state.storage,
+          createGatewayKeyAuditEvent({
+            keyId: key.id,
+            kind: "created",
+            ownership: "registry",
+            occurredAt: key.createdAt
+          })
         );
 
         return Response.json({
@@ -543,10 +581,23 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       if (request.method === "DELETE") {
+        const existingKey = await readStoredDynamicKey(this.state.storage, keyId);
         const deleted = await clearStoredDynamicKey(this.state.storage, keyId);
 
         if (!deleted) {
           return new Response("Not found", { status: 404 });
+        }
+
+        if (existingKey) {
+          await appendStoredDynamicKeyAuditEvent(
+            this.state.storage,
+            createGatewayKeyAuditEvent({
+              keyId: existingKey.id,
+              kind: "deleted",
+              ownership: "registry",
+              occurredAt: new Date().toISOString()
+            })
+          );
         }
 
         return Response.json({
@@ -864,6 +915,41 @@ export async function listGatewayRegistryApiKeys(
 
   try {
     return parseDynamicKeyListResponse(await response.json());
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
+  }
+}
+
+export async function getGatewayRegistryApiKeyEvents(
+  env: GatewayBindings,
+  keyId: string,
+  requestId: string
+): Promise<GatewayKeyAuditEvent[]> {
+  if (!isGatewayKeyRegistryEnabled(env)) {
+    return [];
+  }
+
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildRegistryRequest(requestId, REGISTRY_KIND_EVENTS, {
+        method: "GET",
+        keyId
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    return parseGatewayKeyAuditEventsResponse(await response.json()).events;
   } catch (cause) {
     throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
   }
@@ -1256,4 +1342,44 @@ async function clearStoredDynamicKey(
   );
 
   return true;
+}
+
+async function readStoredDynamicKeyAuditEvents(
+  storage: DurableObjectStateLike["storage"],
+  keyId: string
+): Promise<GatewayKeyAuditEvent[]> {
+  const value = await storage.get<unknown>(`${DYNAMIC_KEY_AUDIT_EVENTS_PREFIX}${keyId}`);
+
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error("Registry dynamic key audit events are invalid");
+  }
+
+  return value.map((entry) => {
+    const parsedEvent = parseGatewayKeyAuditEventsResponse({
+      keyId,
+      events: [entry]
+    }).events[0];
+
+    if (!parsedEvent) {
+      throw new Error("Registry dynamic key audit event is missing");
+    }
+
+    return createGatewayKeyAuditEvent(parsedEvent);
+  });
+}
+
+async function appendStoredDynamicKeyAuditEvent(
+  storage: DurableObjectStateLike["storage"],
+  event: GatewayKeyAuditEvent
+): Promise<void> {
+  const events = await readStoredDynamicKeyAuditEvents(storage, event.keyId);
+
+  await storage.put(`${DYNAMIC_KEY_AUDIT_EVENTS_PREFIX}${event.keyId}`, [
+    ...events,
+    createGatewayKeyAuditEvent(event)
+  ].slice(-MAX_GATEWAY_KEY_AUDIT_EVENTS));
 }

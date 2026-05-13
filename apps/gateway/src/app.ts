@@ -7,6 +7,7 @@ import type { GatewayBindings } from "./env.js";
 import {
   assertInternalAdminAuthorization,
   clearGatewayKeyRevocationById,
+  getGatewayKeyRevocationEvents,
   getGatewayApiKeyStatusSnapshot,
   getGatewayKeyRevocationStatusById,
   listGatewayApiKeyStatuses,
@@ -17,11 +18,13 @@ import {
 import {
   createGatewayRegistryApiKey,
   deleteGatewayRegistryApiKey,
+  getGatewayRegistryApiKeyEvents,
   getGatewayRegistryApiKey,
   rotateGatewayRegistryApiKey,
   clearGatewayKeyRegistryOverride,
   upsertGatewayKeyRegistryOverride
 } from "./gateway-key-registry.js";
+import { sortGatewayKeyAuditEventsDescending } from "./gateway-key-audit.js";
 import { createRequestId } from "./request-id.js";
 import { handleChatCompletions } from "./routes/chat-completions.js";
 import { handleHealth } from "./routes/health.js";
@@ -263,6 +266,38 @@ export function createApp(options: CreateAppOptions = {}) {
         ownership
       )
     );
+  });
+  app.get("/_airlock/keys/:keyId/events", async (context) => {
+    const requestId = context.get("requestId");
+    assertInternalAdminAuthorization(
+      context.req.header("authorization"),
+      context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      requestId
+    );
+
+    const keyId = context.req.param("keyId");
+    const config = resolveGatewayConfig(context.env);
+    const [registryEvents, revocationEvents] = await Promise.all([
+      getGatewayRegistryApiKeyEvents(context.env, keyId, requestId),
+      getGatewayKeyRevocationEvents(context.env, keyId, requestId)
+    ]);
+
+    if (registryEvents.length === 0 && revocationEvents.length === 0) {
+      await resolveGatewayApiKeyByIdWithRegistry(
+        context.env,
+        config.gatewayApiKeys,
+        keyId,
+        requestId
+      );
+    }
+
+    return context.json({
+      keyId,
+      events: sortGatewayKeyAuditEventsDescending([
+        ...registryEvents,
+        ...revocationEvents
+      ])
+    });
   });
   app.get("/_airlock/keys/:keyId/registry", async (context) => {
     const requestId = context.get("requestId");

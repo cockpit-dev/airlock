@@ -7,6 +7,14 @@ import { GatewayError } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
 import {
+  createGatewayKeyAuditEvent,
+  MAX_GATEWAY_KEY_AUDIT_EVENTS,
+  parseGatewayKeyAuditEventsResponse,
+  type GatewayKeyAuditEvent,
+  type GatewayKeyAuditEventsResponse,
+  type GatewayKeyAuditOwnership
+} from "./gateway-key-audit.js";
+import {
   createGatewayApiKeyRegistrySnapshot,
   getGatewayRegistryApiKey,
   listGatewayRegistryApiKeys,
@@ -17,6 +25,12 @@ import {
 interface GatewayKeyRevocationState {
   revoked: boolean;
   updatedAt: string;
+}
+
+interface GatewayKeyRevocationWriteRequest {
+  keyId?: string;
+  recordEvent?: boolean;
+  ownership?: GatewayKeyAuditOwnership;
 }
 
 interface DurableObjectStateLike {
@@ -30,6 +44,7 @@ const DEFAULT_REVOCATION_STATE: GatewayKeyRevocationState = {
   revoked: false,
   updatedAt: new Date(0).toISOString()
 };
+const REVOCATION_EVENTS_KEY = "revocation_events";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -60,19 +75,38 @@ export class GatewayKeyRevocationDurableObject {
   constructor(private readonly state: DurableObjectStateLike) {}
 
   async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (request.method === "GET" && url.searchParams.get("kind") === "events") {
+      const keyId = url.searchParams.get("keyId");
+
+      if (!keyId) {
+        return new Response("Missing keyId", { status: 400 });
+      }
+
+      return Response.json({
+        keyId,
+        events: await readGatewayKeyRevocationEvents(this.state.storage, keyId)
+      } satisfies GatewayKeyAuditEventsResponse);
+    }
+
     switch (request.method) {
       case "GET":
         return Response.json(
           await readGatewayKeyRevocationState(this.state.storage)
         );
-      case "POST":
+      case "POST": {
+        const body = await readGatewayKeyRevocationWriteRequest(request);
         return Response.json(
-          await writeGatewayKeyRevocationState(this.state.storage, true)
+          await writeGatewayKeyRevocationState(this.state.storage, true, body)
         );
-      case "DELETE":
+      }
+      case "DELETE": {
+        const body = await readGatewayKeyRevocationWriteRequest(request);
         return Response.json(
-          await writeGatewayKeyRevocationState(this.state.storage, false)
+          await writeGatewayKeyRevocationState(this.state.storage, false, body)
         );
+      }
       default:
         return new Response("Method not allowed", { status: 405 });
     }
@@ -394,14 +428,29 @@ export async function revokeGatewayKeyById(
   keyId: string,
   requestId: string
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
-  const { gatewayApiKey } = await resolveGatewayApiKeyByIdWithRegistry(
+  const { gatewayApiKey, ownership } = await resolveGatewayApiKeyByIdWithRegistry(
     env,
     gatewayApiKeys,
     keyId,
     requestId
   );
 
-  return revokeGatewayKey(env, gatewayApiKey, requestId);
+  const state = await writeGatewayKeyRevocationStateForKey(
+    env,
+    gatewayApiKey,
+    true,
+    requestId,
+    {
+      keyId,
+      ownership
+    }
+  );
+
+  return {
+    keyId: gatewayApiKey.id,
+    revoked: state.revoked,
+    updatedAt: state.updatedAt
+  };
 }
 
 export async function clearGatewayKeyRevocation(
@@ -429,14 +478,29 @@ export async function clearGatewayKeyRevocationById(
   keyId: string,
   requestId: string
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
-  const { gatewayApiKey } = await resolveGatewayApiKeyByIdWithRegistry(
+  const { gatewayApiKey, ownership } = await resolveGatewayApiKeyByIdWithRegistry(
     env,
     gatewayApiKeys,
     keyId,
     requestId
   );
 
-  return clearGatewayKeyRevocation(env, gatewayApiKey, requestId);
+  const state = await writeGatewayKeyRevocationStateForKey(
+    env,
+    gatewayApiKey,
+    false,
+    requestId,
+    {
+      keyId,
+      ownership
+    }
+  );
+
+  return {
+    keyId: gatewayApiKey.id,
+    revoked: state.revoked,
+    updatedAt: state.updatedAt
+  };
 }
 
 export async function clearGatewayKeyRevocationOverlayState(
@@ -444,12 +508,61 @@ export async function clearGatewayKeyRevocationOverlayState(
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string
 ): Promise<void> {
-  await writeGatewayKeyRevocationStateForKey(
-    env,
-    gatewayApiKey,
-    false,
-    requestId
-  );
+  await writeGatewayKeyRevocationStateForKey(env, gatewayApiKey, false, requestId, {
+    keyId: gatewayApiKey.id,
+    recordEvent: false
+  });
+}
+
+export async function getGatewayKeyRevocationEvents(
+  env: GatewayBindings,
+  keyId: string,
+  requestId: string
+): Promise<GatewayKeyAuditEvent[]> {
+  const namespace = requireGatewayKeyRevocationNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(keyId));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildGatewayKeyRevocationEventsRequest(keyId)
+    );
+  } catch (cause) {
+    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
+      code: "gateway_key_revocation_unavailable",
+      category: "governance",
+      httpStatus: 503,
+      retryable: true,
+      requestId,
+      cause
+    });
+  }
+
+  if (!response.ok) {
+    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
+      code: "gateway_key_revocation_unavailable",
+      category: "governance",
+      httpStatus: 503,
+      retryable: true,
+      requestId
+    });
+  }
+
+  try {
+    return parseGatewayKeyAuditEventsResponse(await response.json()).events;
+  } catch (cause) {
+    throw new GatewayError(
+      "Gateway key revocation subsystem returned an invalid response",
+      {
+        code: "gateway_key_revocation_invalid_response",
+        category: "governance",
+        httpStatus: 503,
+        retryable: true,
+        requestId,
+        cause
+      }
+    );
+  }
 }
 
 async function readGatewayKeyRevocationStateForKey(
@@ -495,7 +608,8 @@ async function writeGatewayKeyRevocationStateForKey(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
   revoked: boolean,
-  requestId: string
+  requestId: string,
+  options?: GatewayKeyRevocationWriteRequest
 ): Promise<GatewayKeyRevocationState> {
   const namespace = requireGatewayKeyRevocationNamespace(env, requestId);
   const stub = namespace.get(namespace.idFromName(gatewayApiKey.id));
@@ -504,7 +618,25 @@ async function writeGatewayKeyRevocationStateForKey(
   try {
     response = await stub.fetch(
       new Request("https://airlock.internal/gateway-key-revocation", {
-        method: revoked ? "POST" : "DELETE"
+        method: revoked ? "POST" : "DELETE",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          keyId: gatewayApiKey.id,
+          recordEvent: options?.recordEvent ?? true,
+          ...((options?.recordEvent ?? true)
+            ? {
+                ownership:
+                  options?.ownership ??
+                  (await resolveGatewayKeyAuditOwnership(
+                    env,
+                    gatewayApiKey,
+                    requestId
+                  ))
+              }
+            : {})
+        } satisfies GatewayKeyRevocationWriteRequest)
       })
     );
   } catch (cause) {
@@ -560,6 +692,7 @@ async function readGatewayKeyRevocationState(
 async function writeGatewayKeyRevocationState(
   storage: DurableObjectStateLike["storage"],
   revoked: boolean,
+  request: GatewayKeyRevocationWriteRequest = {},
   now = new Date().toISOString()
 ): Promise<GatewayKeyRevocationState> {
   const nextState = {
@@ -568,7 +701,137 @@ async function writeGatewayKeyRevocationState(
   };
 
   await storage.put("revocation_state", nextState);
+
+  if (request.recordEvent ?? true) {
+    await appendGatewayKeyRevocationEvent(
+      storage,
+      createGatewayKeyAuditEvent({
+        keyId: requestKeyIdFromOwnershipRequest(request),
+        kind: revoked ? "revoked" : "unrevoked",
+        ownership: request.ownership ?? "configured",
+        occurredAt: now
+      })
+    );
+  }
+
   return nextState;
+}
+
+async function readGatewayKeyRevocationEvents(
+  storage: DurableObjectStateLike["storage"],
+  keyId: string
+): Promise<GatewayKeyAuditEvent[]> {
+  const value = await storage.get<unknown>(REVOCATION_EVENTS_KEY);
+
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error("Revocation events are invalid");
+  }
+
+  return value.map((event) => {
+    const parsedEvent = parseGatewayKeyAuditEventsResponse({
+      keyId,
+      events: [event]
+    }).events[0];
+
+    if (!parsedEvent) {
+      throw new Error("Revocation event is missing");
+    }
+
+    return createGatewayKeyAuditEvent(parsedEvent);
+  });
+}
+
+async function appendGatewayKeyRevocationEvent(
+  storage: DurableObjectStateLike["storage"],
+  event: GatewayKeyAuditEvent
+): Promise<void> {
+  const events = await readGatewayKeyRevocationEvents(storage, event.keyId);
+
+  await storage.put(REVOCATION_EVENTS_KEY, [
+    ...events,
+    createGatewayKeyAuditEvent(event)
+  ].slice(-MAX_GATEWAY_KEY_AUDIT_EVENTS));
+}
+
+async function readGatewayKeyRevocationWriteRequest(
+  request: Request
+): Promise<GatewayKeyRevocationWriteRequest> {
+  const contentType = request.headers.get("content-type");
+
+  if (!contentType?.includes("application/json")) {
+    return {};
+  }
+
+  const body = (await request.json()) as GatewayKeyRevocationWriteRequest;
+
+  if (!isRecord(body)) {
+    throw new Error("Revocation write request must be an object");
+  }
+
+  const { keyId, recordEvent, ownership } = body;
+
+  if (keyId !== undefined && (typeof keyId !== "string" || keyId.length === 0)) {
+    throw new Error("Revocation write request keyId is invalid");
+  }
+
+  if (recordEvent !== undefined && typeof recordEvent !== "boolean") {
+    throw new Error("Revocation write request recordEvent is invalid");
+  }
+
+  if (
+    ownership !== undefined &&
+    ownership !== "configured" &&
+    ownership !== "registry"
+  ) {
+    throw new Error("Revocation write request ownership is invalid");
+  }
+
+  return {
+    ...(keyId !== undefined ? { keyId } : {}),
+    ...(recordEvent !== undefined ? { recordEvent } : {}),
+    ...(ownership !== undefined ? { ownership } : {})
+  };
+}
+
+function buildGatewayKeyRevocationEventsRequest(keyId: string): Request {
+  const url = new URL("https://airlock.internal/gateway-key-revocation");
+  url.searchParams.set("kind", "events");
+  url.searchParams.set("keyId", keyId);
+
+  return new Request(url, {
+    method: "GET"
+  });
+}
+
+async function resolveGatewayKeyAuditOwnership(
+  env: GatewayBindings,
+  gatewayApiKey: GatewayApiKeyRecord,
+  requestId: string
+): Promise<GatewayKeyAuditOwnership> {
+  const registryKey = await getGatewayRegistryApiKey(
+    env,
+    gatewayApiKey.id,
+    requestId
+  );
+
+  return registryKey ? "registry" : "configured";
+}
+
+function requestKeyIdFromOwnershipRequest(
+  request: GatewayKeyRevocationWriteRequest
+): string {
+  const keyId = (request as GatewayKeyRevocationWriteRequest & { keyId?: unknown })
+    .keyId;
+
+  if (typeof keyId !== "string" || keyId.length === 0) {
+    throw new Error("Revocation write request keyId is invalid");
+  }
+
+  return keyId;
 }
 
 function createUnauthorizedGatewayKeyError(requestId: string): GatewayError {
