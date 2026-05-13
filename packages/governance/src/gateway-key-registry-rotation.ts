@@ -2,6 +2,8 @@ import { GatewayError } from "@airlock/shared";
 
 import { parseGatewayDynamicApiKeyRecord, type GatewayApiKeyRecord } from "./gateway-auth.js";
 import {
+  parseGatewayKeyRegistryBulkRotateRequest,
+  parseGatewayKeyRegistryBulkRotationActionRequest,
   parseGatewayKeyRegistryRotateRequest,
   parseGatewayKeyRegistryRotationActionRequest,
   type GatewayKeyRegistryDynamicKeyView
@@ -85,6 +87,56 @@ export interface CancelGatewayRegistryKeyRotationPort {
   ): Promise<GatewayKeyRegistryDynamicKeyView>;
 }
 
+export interface BulkRotateGatewayRegistryKeysPort {
+  isConfiguredKey(keyId: string): boolean;
+  getRegistryKeys(
+    keyIds: readonly string[]
+  ): Promise<Array<GatewayKeyRegistryDynamicKeyView | null>>;
+  listComparableKeysForRotation(): Promise<GatewayApiKeyRecord[]>;
+  validateRotatedKey(
+    existingKey: GatewayKeyRegistryDynamicKeyView,
+    valueHash: string,
+    comparableKeys: readonly GatewayApiKeyRecord[]
+  ): GatewayApiKeyRecord;
+  clearRevocationOverlay(key: GatewayKeyRegistryDynamicKeyView): Promise<void>;
+  bulkRotateRegistryKeys(payload: ReturnType<typeof parseGatewayKeyRegistryBulkRotateRequest>): Promise<{
+    operationId?: string;
+    keys: GatewayKeyRegistryDynamicKeyView[];
+  }>;
+}
+
+export interface BulkFinalizeGatewayRegistryKeyRotationsPort {
+  isConfiguredKey(keyId: string): boolean;
+  getRegistryKeys(
+    keyIds: readonly string[]
+  ): Promise<Array<GatewayKeyRegistryDynamicKeyView | null>>;
+  bulkFinalizeRegistryKeyRotations(payload: {
+    keyIds: string[];
+    auditMetadata: ReturnType<
+      typeof parseGatewayKeyRegistryBulkRotationActionRequest
+    >["auditMetadata"];
+  }): Promise<{
+    operationId?: string;
+    keys: GatewayKeyRegistryDynamicKeyView[];
+  }>;
+}
+
+export interface BulkCancelGatewayRegistryKeyRotationsPort {
+  isConfiguredKey(keyId: string): boolean;
+  getRegistryKeys(
+    keyIds: readonly string[]
+  ): Promise<Array<GatewayKeyRegistryDynamicKeyView | null>>;
+  bulkCancelRegistryKeyRotations(payload: {
+    keyIds: string[];
+    auditMetadata: ReturnType<
+      typeof parseGatewayKeyRegistryBulkRotationActionRequest
+    >["auditMetadata"];
+  }): Promise<{
+    operationId?: string;
+    keys: GatewayKeyRegistryDynamicKeyView[];
+  }>;
+}
+
 function assertRegistryOwnedKeyId(
   keyId: string,
   requestId: string,
@@ -118,6 +170,38 @@ function assertStagedRotation(
   if (!key.previousValueHash || !key.previousValueHashExpiresAt) {
     throw createGatewayKeyRotationNotStagedError(requestId);
   }
+}
+
+function assertRegistryOwnedKeyIds(
+  keyIds: readonly string[],
+  requestId: string,
+  isConfiguredKey: (keyId: string) => boolean
+) {
+  for (const keyId of keyIds) {
+    assertRegistryOwnedKeyId(keyId, requestId, isConfiguredKey);
+  }
+}
+
+async function requireRegistryKeys(
+  keyIds: readonly string[],
+  requestId: string,
+  getRegistryKeys: (
+    keyIds: readonly string[]
+  ) => Promise<Array<GatewayKeyRegistryDynamicKeyView | null>>
+) {
+  const keys = await getRegistryKeys(keyIds);
+
+  if (keys.length !== keyIds.length) {
+    throw new Error("Registry key batch response length mismatch");
+  }
+
+  for (const key of keys) {
+    if (!key) {
+      throw createGatewayKeyNotFoundError(requestId);
+    }
+  }
+
+  return keys as GatewayKeyRegistryDynamicKeyView[];
 }
 
 export async function rotateGatewayRegistryKey(
@@ -217,4 +301,125 @@ export function validateGatewayRegistryRotatedKeyCandidate(
     },
     comparableKeys
   );
+}
+
+export async function bulkRotateGatewayRegistryKeys(
+  payload: unknown,
+  requestId: string,
+  port: BulkRotateGatewayRegistryKeysPort
+): Promise<{
+  operationId?: string;
+  keys: GatewayKeyRegistryDynamicKeyView[];
+}> {
+  const parsed = parseGatewayKeyRegistryBulkRotateRequest(payload);
+
+  assertRegistryOwnedKeyIds(
+    parsed.rotations.map((entry) => entry.keyId),
+    requestId,
+    (candidateKeyId) => {
+      return port.isConfiguredKey(candidateKeyId);
+    }
+  );
+
+  const existingKeys = await requireRegistryKeys(
+    parsed.rotations.map((entry) => entry.keyId),
+    requestId,
+    async (keyIds) => {
+      return port.getRegistryKeys(keyIds);
+    }
+  );
+  let simulatedKeys = await port.listComparableKeysForRotation();
+
+  for (const entry of parsed.rotations) {
+    const existingKey = existingKeys.find((key) => key.keyId === entry.keyId);
+
+    if (!existingKey) {
+      throw createGatewayKeyNotFoundError(requestId);
+    }
+
+    const rotatedGatewayApiKey = port.validateRotatedKey(
+      existingKey,
+      entry.valueHash,
+      simulatedKeys.filter((candidate) => candidate.id !== entry.keyId)
+    );
+
+    simulatedKeys = simulatedKeys
+      .filter((candidate) => candidate.id !== entry.keyId)
+      .concat(rotatedGatewayApiKey);
+  }
+
+  for (const existingKey of existingKeys) {
+    await port.clearRevocationOverlay(existingKey);
+  }
+
+  return port.bulkRotateRegistryKeys(parsed);
+}
+
+export async function bulkFinalizeGatewayRegistryKeyRotations(
+  payload: unknown,
+  requestId: string,
+  port: BulkFinalizeGatewayRegistryKeyRotationsPort
+): Promise<{
+  operationId?: string;
+  keys: GatewayKeyRegistryDynamicKeyView[];
+}> {
+  const parsed = parseGatewayKeyRegistryBulkRotationActionRequest(
+    payload,
+    "Gateway dynamic key bulk rotation finalize payload is invalid"
+  );
+
+  assertRegistryOwnedKeyIds(parsed.keyIds, requestId, (candidateKeyId) => {
+    return port.isConfiguredKey(candidateKeyId);
+  });
+
+  const existingKeys = await requireRegistryKeys(
+    parsed.keyIds,
+    requestId,
+    async (keyIds) => {
+      return port.getRegistryKeys(keyIds);
+    }
+  );
+
+  for (const existingKey of existingKeys) {
+    assertStagedRotation(existingKey, requestId);
+  }
+
+  return port.bulkFinalizeRegistryKeyRotations(parsed);
+}
+
+export async function bulkCancelGatewayRegistryKeyRotations(
+  payload: unknown,
+  requestId: string,
+  port: BulkCancelGatewayRegistryKeyRotationsPort,
+  now = Date.now()
+): Promise<{
+  operationId?: string;
+  keys: GatewayKeyRegistryDynamicKeyView[];
+}> {
+  const parsed = parseGatewayKeyRegistryBulkRotationActionRequest(
+    payload,
+    "Gateway dynamic key bulk rotation cancel payload is invalid"
+  );
+
+  assertRegistryOwnedKeyIds(parsed.keyIds, requestId, (candidateKeyId) => {
+    return port.isConfiguredKey(candidateKeyId);
+  });
+
+  const existingKeys = await requireRegistryKeys(
+    parsed.keyIds,
+    requestId,
+    async (keyIds) => {
+      return port.getRegistryKeys(keyIds);
+    }
+  );
+
+  for (const existingKey of existingKeys) {
+    assertStagedRotation(existingKey, requestId);
+
+    if (now >= Date.parse(existingKey.previousValueHashExpiresAt!)) {
+      throw createGatewayKeyRotationNotCancelableError(requestId);
+    }
+  }
+
+  return port.bulkCancelRegistryKeyRotations(parsed);
 }

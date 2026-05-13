@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  bulkCancelGatewayRegistryKeyRotations,
+  bulkFinalizeGatewayRegistryKeyRotations,
+  bulkRotateGatewayRegistryKeys,
   cancelGatewayRegistryKeyRotation,
   finalizeGatewayRegistryKeyRotation,
   rotateGatewayRegistryKey
 } from "./gateway-key-registry-rotation.js";
+import type { GatewayApiKeyRecord } from "./gateway-auth.js";
+import type { GatewayKeyRegistryDynamicKeyView } from "./gateway-key-registry.js";
 
 const currentHash =
   "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6";
@@ -201,6 +206,256 @@ describe("cancelGatewayRegistryKeyRotation", () => {
             })
           ),
           cancelRegistryKeyRotation: vi.fn()
+        },
+        Date.parse("2026-05-14T01:00:00.000Z")
+      )
+    ).rejects.toMatchObject({
+      code: "gateway_key_rotation_not_cancelable"
+    });
+  });
+});
+
+describe("bulkRotateGatewayRegistryKeys", () => {
+  it("rejects batches that include configured key ids", async () => {
+    await expect(
+      bulkRotateGatewayRegistryKeys(
+        {
+          rotations: [
+            {
+              keyId: "key_env",
+              valueHash: nextHash
+            }
+          ]
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn().mockReturnValue(true),
+          getRegistryKeys: vi.fn(),
+          listComparableKeysForRotation: vi.fn(),
+          validateRotatedKey: vi.fn(),
+          clearRevocationOverlay: vi.fn(),
+          bulkRotateRegistryKeys: vi.fn()
+        }
+      )
+    ).rejects.toMatchObject({
+      code: "gateway_key_not_registry_owned"
+    });
+  });
+
+  it("validates rotate candidates in request order and clears overlays before delegating", async () => {
+    const validateRotatedKey = vi.fn().mockImplementation(
+      (
+        existingKey: GatewayKeyRegistryDynamicKeyView,
+        valueHash: string
+      ): GatewayApiKeyRecord => {
+        return {
+          ...existingKey.key,
+          valueHash
+        };
+      }
+    );
+    const clearRevocationOverlay = vi.fn().mockResolvedValue(undefined);
+    const bulkRotateRegistryKeysWrite = vi.fn().mockResolvedValue({
+      operationId: "req_bulk_rotate_123",
+      keys: [
+        createRegistryView({
+          key: {
+            id: "key_dynamic",
+            valueHash: nextHash
+          }
+        }),
+        {
+          ...createRegistryView({
+            key: {
+              id: "key_dynamic_b",
+              label: "Dynamic Key B",
+              valueHash:
+                "4e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+              status: "active"
+            }
+          }),
+          keyId: "key_dynamic_b"
+        }
+      ]
+    });
+
+    const result = await bulkRotateGatewayRegistryKeys(
+      {
+        rotations: [
+          {
+            keyId: "key_dynamic",
+            valueHash: nextHash,
+            overlapSeconds: 60
+          },
+          {
+            keyId: "key_dynamic_b",
+            valueHash:
+              "4e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6"
+          }
+        ],
+        reason: "fleet rollover"
+      },
+      "req_123",
+      {
+        isConfiguredKey: vi.fn().mockReturnValue(false),
+        getRegistryKeys: vi.fn().mockResolvedValue([
+          createRegistryView(),
+          {
+            ...createRegistryView({
+              key: {
+                id: "key_dynamic_b",
+                label: "Dynamic Key B",
+                valueHash:
+                  "3e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+                status: "active"
+              }
+            }),
+            keyId: "key_dynamic_b"
+          }
+        ]),
+        listComparableKeysForRotation: vi.fn().mockResolvedValue([
+          {
+            id: "key_configured",
+            label: "Configured Key",
+            valueHash:
+              "9e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+            status: "active"
+          }
+        ]),
+        validateRotatedKey,
+        clearRevocationOverlay,
+        bulkRotateRegistryKeys: bulkRotateRegistryKeysWrite
+      }
+    );
+
+    expect(result).toMatchObject({
+      operationId: "req_bulk_rotate_123"
+    });
+    expect(validateRotatedKey).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        keyId: "key_dynamic"
+      }),
+      nextHash,
+      [
+        {
+          id: "key_configured",
+          label: "Configured Key",
+          valueHash:
+            "9e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+          status: "active"
+        }
+      ]
+    );
+    expect(validateRotatedKey).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        keyId: "key_dynamic_b"
+      }),
+      "4e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+      [
+        {
+          id: "key_configured",
+          label: "Configured Key",
+          valueHash:
+            "9e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+          status: "active"
+        },
+        {
+          id: "key_dynamic",
+          label: "Dynamic Key",
+          valueHash: nextHash,
+          status: "active"
+        }
+      ]
+    );
+    expect(clearRevocationOverlay).toHaveBeenCalledTimes(2);
+    expect(bulkRotateRegistryKeysWrite).toHaveBeenCalledWith({
+      rotations: [
+        {
+          keyId: "key_dynamic",
+          valueHash: nextHash,
+          overlapSeconds: 60
+        },
+        {
+          keyId: "key_dynamic_b",
+          valueHash:
+            "4e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6"
+        }
+      ],
+      auditMetadata: {
+        reason: "fleet rollover"
+      }
+    });
+  });
+});
+
+describe("bulkFinalizeGatewayRegistryKeyRotations", () => {
+  it("rejects non-staged keys atomically", async () => {
+    await expect(
+      bulkFinalizeGatewayRegistryKeyRotations(
+        {
+          keyIds: ["key_dynamic", "key_dynamic_b"]
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn().mockReturnValue(false),
+          getRegistryKeys: vi.fn().mockResolvedValue([
+            createRegistryView({
+              previousValueHash: currentHash,
+              previousValueHashExpiresAt: "2026-05-14T01:00:00.000Z"
+            }),
+            {
+              ...createRegistryView({
+                key: {
+                  id: "key_dynamic_b",
+                  label: "Dynamic Key B",
+                  valueHash: nextHash,
+                  status: "active"
+                }
+              }),
+              keyId: "key_dynamic_b"
+            }
+          ]),
+          bulkFinalizeRegistryKeyRotations: vi.fn()
+        }
+      )
+    ).rejects.toMatchObject({
+      code: "gateway_key_rotation_not_staged"
+    });
+  });
+});
+
+describe("bulkCancelGatewayRegistryKeyRotations", () => {
+  it("rejects expired overlaps atomically", async () => {
+    await expect(
+      bulkCancelGatewayRegistryKeyRotations(
+        {
+          keyIds: ["key_dynamic", "key_dynamic_b"]
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn().mockReturnValue(false),
+          getRegistryKeys: vi.fn().mockResolvedValue([
+            createRegistryView({
+              previousValueHash: currentHash,
+              previousValueHashExpiresAt: "2026-05-14T00:30:00.000Z"
+            }),
+            {
+              ...createRegistryView({
+                key: {
+                  id: "key_dynamic_b",
+                  label: "Dynamic Key B",
+                  valueHash: nextHash,
+                  status: "active"
+                }
+              }),
+              keyId: "key_dynamic_b",
+              previousValueHash: currentHash,
+              previousValueHashExpiresAt: "2026-05-14T01:30:00.000Z"
+            }
+          ]),
+          bulkCancelRegistryKeyRotations: vi.fn()
         },
         Date.parse("2026-05-14T01:00:00.000Z")
       )
