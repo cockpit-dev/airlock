@@ -6,3 +6,4 @@ export * from "./gateway-key-identity.js";
 export * from "./gateway-key-governance-read.js";
 export * from "./gateway-key-registry.js";
 export * from "./gateway-key-revocation.js";
+export * from "./gateway-key-status.js";

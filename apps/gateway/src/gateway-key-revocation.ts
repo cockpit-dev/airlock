@@ -1,10 +1,14 @@
 import {
+  createGatewayKeyStatusByIdReadPort,
   clearGatewayKeyRevocationById as clearGatewayKeyRevocationByIdUseCase,
   buildGatewayKeyRevocationStateTransition,
-  createGatewayApiKeyRegistrySnapshot,
   createGatewayKeyAuditEvent,
   DEFAULT_GATEWAY_KEY_REVOCATION_STATE,
-  deriveGatewayApiKeyStatusView,
+  getGatewayApiKeyStatus as getGatewayApiKeyStatusUseCase,
+  getGatewayApiKeyStatusSnapshot as getGatewayApiKeyStatusSnapshotUseCase,
+  getGatewayKeyRevocationStatus as getGatewayKeyRevocationStatusUseCase,
+  getGatewayKeyRevocationStatusById as getGatewayKeyRevocationStatusByIdUseCase,
+  listGatewayApiKeyStatuses as listGatewayApiKeyStatusesUseCase,
   requireConfiguredGatewayApiKeyById,
   resolveGatewayApiKeyByIdWithOwnership,
   MAX_GATEWAY_KEY_AUDIT_EVENTS,
@@ -15,7 +19,6 @@ import {
   type GatewayApiKeyRegistrySnapshot,
   type GatewayApiKeyStatusView,
   type GatewayApiKeyLifecycleStatus,
-  type GatewayKeyRevocationOverlayState,
   type GatewayKeyRevocationState,
   type GatewayKeyRevocationWriteRequest,
   type GatewayKeyAuditActorContext,
@@ -185,13 +188,15 @@ export async function getGatewayKeyRevocationStatus(
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
-  const state = await readGatewayKeyRevocationStateForKey(env, gatewayApiKey, requestId);
-
-  return {
-    keyId: gatewayApiKey.id,
-    revoked: state.revoked,
-    updatedAt: state.updatedAt
-  };
+  return getGatewayKeyRevocationStatusUseCase(gatewayApiKey, {
+    readOverlayState: async (candidateGatewayApiKey) => {
+      return readGatewayKeyRevocationStateForKey(
+        env,
+        candidateGatewayApiKey,
+        requestId
+      );
+    }
+  });
 }
 
 export async function getGatewayKeyRevocationStatusById(
@@ -200,14 +205,20 @@ export async function getGatewayKeyRevocationStatusById(
   keyId: string,
   requestId: string
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
-  const { gatewayApiKey } = await resolveGatewayApiKeyByIdWithRegistry(
-    env,
+  return getGatewayKeyRevocationStatusByIdUseCase(keyId, createGatewayKeyStatusByIdReadPort(
     gatewayApiKeys,
-    keyId,
+    async (candidateGatewayApiKey) => {
+      return readGatewayKeyRevocationStateForKey(
+        env,
+        candidateGatewayApiKey,
+        requestId
+      );
+    },
+    async (candidateKeyId) => {
+      return getGatewayRegistryApiKey(env, candidateKeyId, requestId);
+    },
     requestId
-  );
-
-  return getGatewayKeyRevocationStatus(env, gatewayApiKey, requestId);
+  ));
 }
 
 export async function getGatewayApiKeyStatus(
@@ -215,14 +226,17 @@ export async function getGatewayApiKeyStatus(
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string
 ): Promise<GatewayApiKeyStatusView> {
-  const overlayState = env.AIRLOCK_GATEWAY_KEY_REVOCATION
-    ? await readGatewayKeyRevocationStateForKey(env, gatewayApiKey, requestId)
-    : DEFAULT_GATEWAY_KEY_REVOCATION_STATE;
-
-  return deriveGatewayApiKeyStatusView(
-    gatewayApiKey,
-    overlayState satisfies GatewayKeyRevocationOverlayState
-  );
+  return getGatewayApiKeyStatusUseCase(gatewayApiKey, {
+    readOverlayState: async (candidateGatewayApiKey) => {
+      return env.AIRLOCK_GATEWAY_KEY_REVOCATION
+        ? readGatewayKeyRevocationStateForKey(
+            env,
+            candidateGatewayApiKey,
+            requestId
+          )
+        : DEFAULT_GATEWAY_KEY_REVOCATION_STATE;
+    }
+  });
 }
 
 export async function getGatewayApiKeyStatusSnapshot(
@@ -231,32 +245,24 @@ export async function getGatewayApiKeyStatusSnapshot(
   requestId: string,
   ownership: "configured" | "registry" = "configured"
 ): Promise<GatewayApiKeyRegistrySnapshot> {
-  const configuredStatus = await getGatewayApiKeyStatus(env, gatewayApiKey, requestId);
-
-  if (ownership === "registry") {
-    return createGatewayApiKeyRegistrySnapshot({
-      ownership,
-      configuredKey: gatewayApiKey,
-      configuredStatus
-    });
-  }
-
-  const { runtimeGatewayApiKey, registryOverride } =
-    await resolveGatewayRuntimeApiKey(env, gatewayApiKey, requestId);
-  const runtimeStatus = await getGatewayApiKeyStatus(
-    env,
-    runtimeGatewayApiKey,
-    requestId
-  );
-
-  return createGatewayApiKeyRegistrySnapshot({
+  return getGatewayApiKeyStatusSnapshotUseCase(
+    gatewayApiKey,
     ownership,
-    configuredKey: gatewayApiKey,
-    configuredStatus,
-    runtimeKey: runtimeGatewayApiKey,
-    runtimeStatus,
-    registryOverride
-  });
+    {
+      readOverlayState: async (candidateGatewayApiKey) => {
+        return env.AIRLOCK_GATEWAY_KEY_REVOCATION
+          ? readGatewayKeyRevocationStateForKey(
+              env,
+              candidateGatewayApiKey,
+              requestId
+            )
+          : DEFAULT_GATEWAY_KEY_REVOCATION_STATE;
+      },
+      resolveRuntimeKey: async (candidateGatewayApiKey) => {
+        return resolveGatewayRuntimeApiKey(env, candidateGatewayApiKey, requestId);
+      }
+    }
+  );
 }
 
 export async function listGatewayApiKeyStatuses(
@@ -269,53 +275,27 @@ export async function listGatewayApiKeyStatuses(
     includeArchived?: boolean;
   }
 ): Promise<GatewayApiKeyRegistrySnapshot[]> {
-  const configuredEntries = await Promise.all(
-    gatewayApiKeys.map(async (gatewayApiKey) => {
-      return getGatewayApiKeyStatusSnapshot(
-        env,
-        gatewayApiKey,
-        requestId,
-        "configured"
-      );
-    })
+  return listGatewayApiKeyStatusesUseCase(
+    gatewayApiKeys,
+    {
+      listRegistryKeys: async () => {
+        return listGatewayRegistryApiKeys(env, requestId);
+      },
+      readOverlayState: async (candidateGatewayApiKey) => {
+        return env.AIRLOCK_GATEWAY_KEY_REVOCATION
+          ? readGatewayKeyRevocationStateForKey(
+              env,
+              candidateGatewayApiKey,
+              requestId
+            )
+          : DEFAULT_GATEWAY_KEY_REVOCATION_STATE;
+      },
+      resolveRuntimeKey: async (candidateGatewayApiKey) => {
+        return resolveGatewayRuntimeApiKey(env, candidateGatewayApiKey, requestId);
+      }
+    },
+    filters
   );
-  const registryEntries = await Promise.all(
-    (await listGatewayRegistryApiKeys(env, requestId)).map(async (entry) => {
-      return getGatewayApiKeyStatusSnapshot(
-        env,
-        entry.key,
-        requestId,
-        "registry"
-      );
-    })
-  );
-  const entries = [...configuredEntries, ...registryEntries];
-
-  return entries.filter((entry) => {
-    if (
-      entry.ownership === "registry" &&
-      entry.runtime.effectiveStatus === "archived" &&
-      filters?.includeArchived !== true
-    ) {
-      return false;
-    }
-
-    if (
-      filters?.acceptedNow !== undefined &&
-      entry.runtime.acceptedNow !== filters.acceptedNow
-    ) {
-      return false;
-    }
-
-    if (
-      filters?.effectiveStatus !== undefined &&
-      entry.runtime.effectiveStatus !== filters.effectiveStatus
-    ) {
-      return false;
-    }
-
-    return true;
-  });
 }
 
 export async function revokeGatewayKey(
