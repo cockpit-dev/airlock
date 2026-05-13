@@ -1,27 +1,25 @@
 import {
   createGatewayApiKeyRegistrySnapshot,
+  createGatewayKeyAuditEvent,
   deriveGatewayApiKeyStatusView,
+  MAX_GATEWAY_KEY_AUDIT_EVENTS,
+  parseGatewayKeyAuditEventsResponse,
+  parseOptionalGatewayKeyAuditActor,
+  parseOptionalGatewayKeyAuditActorSource,
+  parseOptionalGatewayKeyAuditReason,
   type GatewayApiKeyRegistrySnapshot,
   type GatewayApiKeyStatusView,
   type GatewayApiKeyLifecycleStatus,
   type GatewayKeyRevocationOverlayState,
+  type GatewayKeyAuditActorContext,
+  type GatewayKeyAuditEvent,
+  type GatewayKeyAuditEventsResponse,
+  type GatewayKeyAuditOwnership,
   type GatewayApiKeyRecord
 } from "@airlock/governance";
 import { GatewayError } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
-import {
-  createGatewayKeyAuditEvent,
-  MAX_GATEWAY_KEY_AUDIT_EVENTS,
-  parseOptionalGatewayKeyAuditActor,
-  parseOptionalGatewayKeyAuditActorSource,
-  parseOptionalGatewayKeyAuditReason,
-  parseGatewayKeyAuditEventsResponse,
-  type GatewayKeyAuditActorContext,
-  type GatewayKeyAuditEvent,
-  type GatewayKeyAuditEventsResponse,
-  type GatewayKeyAuditOwnership
-} from "./gateway-key-audit.js";
 import {
   getGatewayRegistryApiKey,
   listGatewayRegistryApiKeys,

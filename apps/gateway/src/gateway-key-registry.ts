@@ -1,24 +1,22 @@
 import {
   applyGatewayApiKeyMetadataOverride,
+  createGatewayKeyAuditEvent,
+  MAX_GATEWAY_KEY_AUDIT_EVENTS,
+  parseGatewayKeyAuditEventsResponse,
+  parseOptionalGatewayKeyAuditActor,
+  parseOptionalGatewayKeyAuditActorSource,
+  parseOptionalGatewayKeyAuditReason,
   parseGatewayApiKeyMetadataOverride,
   parseGatewayDynamicApiKeyRecord,
   type GatewayApiKeyMetadataOverride,
+  type GatewayKeyAuditActorContext,
+  type GatewayKeyAuditEvent,
+  type GatewayKeyAuditEventsResponse,
   type GatewayApiKeyRecord
 } from "@airlock/governance";
 import { GatewayError } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
-import {
-  createGatewayKeyAuditEvent,
-  MAX_GATEWAY_KEY_AUDIT_EVENTS,
-  parseOptionalGatewayKeyAuditActor,
-  parseOptionalGatewayKeyAuditActorSource,
-  parseOptionalGatewayKeyAuditReason,
-  parseGatewayKeyAuditEventsResponse,
-  type GatewayKeyAuditActorContext,
-  type GatewayKeyAuditEvent,
-  type GatewayKeyAuditEventsResponse
-} from "./gateway-key-audit.js";
 import { clearGatewayKeyRevocationOverlayState } from "./gateway-key-revocation.js";
 
 const REGISTRY_OBJECT_NAME = "gateway-key-registry";

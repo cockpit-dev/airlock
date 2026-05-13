@@ -1,4 +1,7 @@
-import type { GatewayApiKeyMetadataOverride } from "@airlock/governance";
+import {
+  sortGatewayKeyAuditEventsDescending,
+  type GatewayApiKeyMetadataOverride
+} from "@airlock/governance";
 import { GatewayError } from "@airlock/shared";
 
 import {
@@ -8,7 +11,6 @@ import {
 } from "./admin-actor.js";
 import { resolveGatewayConfig } from "./config.js";
 import type { GatewayBindings } from "./env.js";
-import { sortGatewayKeyAuditEventsDescending } from "./gateway-key-audit.js";
 import {
   cancelGatewayRegistryApiKeyRotation,
   clearGatewayKeyRegistryOverride,

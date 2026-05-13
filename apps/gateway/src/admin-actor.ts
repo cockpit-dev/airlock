@@ -1,14 +1,12 @@
 import { GatewayError } from "@airlock/shared";
 import {
   parseInternalAdminCredentials,
+  parseOptionalGatewayKeyAuditActor,
+  type GatewayKeyAuditActorContext,
   resolveInternalAdminAuthorization
 } from "@airlock/governance";
 
 import type { GatewayBindings } from "./env.js";
-import {
-  parseOptionalGatewayKeyAuditActor,
-  type GatewayKeyAuditActorContext
-} from "./gateway-key-audit.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
