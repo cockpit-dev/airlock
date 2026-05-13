@@ -8,6 +8,7 @@ import {
   createGatewayAdminKeyRegistryView,
   getGatewayAdminKey,
   getGatewayAdminKeyEvents,
+  getGatewayAdminKeyOperationEvents,
   getGatewayAdminKeyRegistryView,
   getGatewayAdminKeyRevocationStatus,
   getGatewayAdminKeyStatus,
@@ -209,6 +210,59 @@ describe("getGatewayAdminKeyEvents", () => {
     });
 
     expect(assertKeyExists).toHaveBeenCalledWith("key_1");
+  });
+});
+
+describe("getGatewayAdminKeyOperationEvents", () => {
+  it("returns operation-correlated events newest-first", async () => {
+    await expect(
+      getGatewayAdminKeyOperationEvents("req_bulk_123", "req_read_123", {
+        getOperationEvents: vi.fn().mockResolvedValue([
+          {
+            keyId: "key_1",
+            kind: "updated",
+            ownership: "registry",
+            occurredAt: "2026-05-13T00:00:00.000Z",
+            operationId: "req_bulk_123"
+          },
+          {
+            keyId: "key_2",
+            kind: "updated",
+            ownership: "registry",
+            occurredAt: "2026-05-14T00:00:00.000Z",
+            operationId: "req_bulk_123"
+          }
+        ])
+      })
+    ).resolves.toEqual({
+      operationId: "req_bulk_123",
+      events: [
+        {
+          keyId: "key_2",
+          kind: "updated",
+          ownership: "registry",
+          occurredAt: "2026-05-14T00:00:00.000Z",
+          operationId: "req_bulk_123"
+        },
+        {
+          keyId: "key_1",
+          kind: "updated",
+          ownership: "registry",
+          occurredAt: "2026-05-13T00:00:00.000Z",
+          operationId: "req_bulk_123"
+        }
+      ]
+    });
+  });
+
+  it("rejects operation reads when the port returns no events", async () => {
+    await expect(
+      getGatewayAdminKeyOperationEvents("req_bulk_missing", "req_read_404", {
+        getOperationEvents: vi.fn().mockResolvedValue([])
+      })
+    ).rejects.toMatchObject({
+      code: "gateway_key_not_found"
+    });
   });
 });
 

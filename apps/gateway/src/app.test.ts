@@ -93,6 +93,34 @@ function isGatewayKeyEventsPayload(
   );
 }
 
+function isGatewayKeyOperationEventsPayload(
+  value: unknown
+): value is {
+  operationId: string;
+  events: Array<{
+    keyId: string;
+    kind: string;
+    operationId?: string;
+    occurredAt?: string;
+  }>;
+} {
+  return (
+    isRecord(value) &&
+    typeof value.operationId === "string" &&
+    Array.isArray(value.events) &&
+    value.events.every((event) => {
+      return (
+        isRecord(event) &&
+        typeof event.keyId === "string" &&
+        typeof event.kind === "string" &&
+        (event.operationId === undefined ||
+          typeof event.operationId === "string") &&
+        (event.occurredAt === undefined || typeof event.occurredAt === "string")
+      );
+    })
+  );
+}
+
 function createBindings() {
   return {
     AIRLOCK_MODE: "free",
@@ -9546,6 +9574,146 @@ describe("gateway app", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("returns operation-level key audit correlation for bulk governance actions", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    const bulkCreateResponse = await app.request(
+      "http://localhost/_airlock/keys/bulk-create",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          keys: [
+            {
+              id: "key_dynamic_a",
+              label: "Dynamic Key A",
+              valueHash:
+                "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+              status: "active"
+            },
+            {
+              id: "key_dynamic_b",
+              label: "Dynamic Key B",
+              valueHash:
+                "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+              status: "active"
+            }
+          ],
+          actor: "ops@example.com"
+        })
+      },
+      bindings
+    );
+
+    expect(bulkCreateResponse.status).toBe(200);
+    const bulkCreatePayload = await readJson(bulkCreateResponse);
+    expect(isRecord(bulkCreatePayload)).toBe(true);
+
+    if (
+      !isRecord(bulkCreatePayload) ||
+      typeof bulkCreatePayload.operationId !== "string"
+    ) {
+      throw new Error("bulk create response did not expose operationId");
+    }
+
+    const bulkDeleteResponse = await app.request(
+      "http://localhost/_airlock/keys/bulk-delete",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          keyIds: ["key_dynamic_a", "key_dynamic_b"],
+          reason: "tenant sunset"
+        })
+      },
+      bindings
+    );
+
+    expect(bulkDeleteResponse.status).toBe(200);
+    const bulkDeletePayload = await readJson(bulkDeleteResponse);
+    expect(isRecord(bulkDeletePayload)).toBe(true);
+
+    if (
+      !isRecord(bulkDeletePayload) ||
+      typeof bulkDeletePayload.operationId !== "string"
+    ) {
+      throw new Error("bulk delete response did not expose operationId");
+    }
+
+    const operationEventsResponse = await app.request(
+      `http://localhost/_airlock/keys/operations/${bulkDeletePayload.operationId}/events`,
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(operationEventsResponse.status).toBe(200);
+    const operationEventsPayload = await readJson(operationEventsResponse);
+    expect(isGatewayKeyOperationEventsPayload(operationEventsPayload)).toBe(true);
+
+    if (!isGatewayKeyOperationEventsPayload(operationEventsPayload)) {
+      throw new Error("operation events response shape was invalid");
+    }
+
+    expect(operationEventsPayload.operationId).toBe(bulkDeletePayload.operationId);
+    expect(operationEventsPayload.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          keyId: "key_dynamic_a",
+          kind: "deleted",
+          operationId: bulkDeletePayload.operationId
+        }),
+        expect.objectContaining({
+          keyId: "key_dynamic_b",
+          kind: "deleted",
+          operationId: bulkDeletePayload.operationId
+        })
+      ])
+    );
+  });
+
+  it("returns not found for operation-level audit reads when registry support is disabled", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys/operations/req_bulk_missing/events",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret"
+      }
+    );
+
+    expect(response.status).toBe(404);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "gateway_key_not_found"
+      }
+    });
   });
 
   it("rejects mixed configured and registry-owned bulk rotates atomically", async () => {

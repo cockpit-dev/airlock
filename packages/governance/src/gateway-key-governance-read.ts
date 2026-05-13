@@ -47,6 +47,10 @@ export interface GatewayAdminKeyEventsReadPort {
   assertKeyExists(keyId: string): Promise<void>;
 }
 
+export interface GatewayAdminKeyOperationEventsReadPort {
+  getOperationEvents(operationId: string): Promise<GatewayKeyAuditEvent[]>;
+}
+
 export interface GatewayAdminConfiguredKeyRegistryViewPort {
   getConfiguredKeyStatusSnapshot(
     keyId: string
@@ -166,6 +170,26 @@ export async function getGatewayAdminKeyEvents(
       ...registryEvents,
       ...revocationEvents
     ])
+  };
+}
+
+export async function getGatewayAdminKeyOperationEvents(
+  operationId: string,
+  requestId: string,
+  port: GatewayAdminKeyOperationEventsReadPort
+): Promise<{
+  operationId: string;
+  events: GatewayKeyAuditEvent[];
+}> {
+  const events = await port.getOperationEvents(operationId);
+
+  if (events.length === 0) {
+    throw createGatewayKeyNotFoundError(requestId);
+  }
+
+  return {
+    operationId,
+    events: sortGatewayKeyAuditEventsDescending(events)
   };
 }
 

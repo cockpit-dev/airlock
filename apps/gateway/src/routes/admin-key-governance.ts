@@ -24,6 +24,7 @@ import {
   finalizeAdminGatewayKeyRotation,
   getAdminGatewayKey,
   getAdminGatewayKeyEvents,
+  getAdminGatewayKeyOperationEvents,
   getAdminGatewayKeyRegistryView,
   getAdminGatewayKeyRevocationStatus,
   getAdminGatewayKeyStatus,
@@ -370,6 +371,19 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
       await getAdminGatewayKeyEvents(
         context.env,
         context.req.param("keyId"),
+        requestId
+      )
+    );
+  });
+
+  app.get("/_airlock/keys/operations/:operationId/events", async (context) => {
+    const requestId = context.get("requestId");
+    await requireAdminScope(context, "keys.read");
+
+    return context.json(
+      await getAdminGatewayKeyOperationEvents(
+        context.env,
+        context.req.param("operationId"),
         requestId
       )
     );

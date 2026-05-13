@@ -4,6 +4,7 @@ import {
   parseGatewayKeyRegistryBulkArchiveRequest,
   parseGatewayKeyRegistryBulkRotationActionRequest,
   createGatewayKeyRegistryDynamicKeyView,
+  parseGatewayKeyRegistryBulkCreateResponse,
   parseGatewayKeyRegistryBulkCreateRequest,
   parseGatewayKeyRegistryBulkDeleteRequest,
   parseGatewayKeyRegistryBulkDeleteResponse,
@@ -199,6 +200,7 @@ describe("registry response parsers", () => {
 
     expect(
       parseGatewayKeyRegistryDynamicKeyListResponse({
+        operationId: "req_bulk_update_123",
         keys: [
           {
             keyId: "key_dynamic",
@@ -215,7 +217,15 @@ describe("registry response parsers", () => {
           }
         ]
       })
-    ).toHaveLength(1);
+    ).toEqual({
+      operationId: "req_bulk_update_123",
+      keys: [
+        expect.objectContaining({
+          keyId: "key_dynamic",
+          ownership: "registry"
+        })
+      ]
+    });
 
     expect(
       parseGatewayKeyRegistryDeleteResponse({
@@ -229,6 +239,7 @@ describe("registry response parsers", () => {
 
     expect(
       parseGatewayKeyRegistryBulkDeleteResponse({
+        operationId: "req_bulk_delete_123",
         keys: [
           {
             keyId: "key_dynamic_a",
@@ -241,6 +252,7 @@ describe("registry response parsers", () => {
         ]
       })
     ).toEqual({
+      operationId: "req_bulk_delete_123",
       keys: [
         {
           keyId: "key_dynamic_a",
@@ -250,6 +262,35 @@ describe("registry response parsers", () => {
           keyId: "key_dynamic_b",
           deleted: true
         }
+      ]
+    });
+
+    expect(
+      parseGatewayKeyRegistryBulkCreateResponse({
+        operationId: "req_bulk_create_123",
+        keys: [
+          {
+            keyId: "key_dynamic",
+            ownership: "registry",
+            key: {
+              id: "key_dynamic",
+              label: "Dynamic Key",
+              valueHash:
+                "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+              status: "active"
+            },
+            createdAt: "2026-05-13T00:00:00.000Z",
+            updatedAt: "2026-05-13T01:00:00.000Z"
+          }
+        ]
+      })
+    ).toEqual({
+      operationId: "req_bulk_create_123",
+      keys: [
+        expect.objectContaining({
+          keyId: "key_dynamic",
+          ownership: "registry"
+        })
       ]
     });
   });

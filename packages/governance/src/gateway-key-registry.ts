@@ -49,6 +49,7 @@ export interface GatewayKeyRegistryDynamicKeyResponse {
 }
 
 export interface GatewayKeyRegistryDynamicKeyListResponse {
+  operationId?: string;
   keys: GatewayKeyRegistryDynamicKeyView[];
 }
 
@@ -58,10 +59,12 @@ export interface GatewayKeyRegistryDeleteResponse {
 }
 
 export interface GatewayKeyRegistryBulkDeleteResponse {
+  operationId?: string;
   keys: GatewayKeyRegistryDeleteResponse[];
 }
 
 export interface GatewayKeyRegistryBulkCreateResponse {
+  operationId?: string;
   keys: GatewayKeyRegistryDynamicKeyView[];
 }
 
@@ -418,14 +421,26 @@ export function parseGatewayKeyRegistryDynamicKeyResponse(
 
 export function parseGatewayKeyRegistryDynamicKeyListResponse(
   value: unknown
-): GatewayKeyRegistryDynamicKeyView[] {
+): GatewayKeyRegistryDynamicKeyListResponse {
   if (!isRecord(value) || !Array.isArray(value.keys)) {
     throw new Error("Registry dynamic key list response must include keys");
   }
 
-  return value.keys.map((entry) => {
-    return parseGatewayKeyRegistryDynamicKeyView(entry);
-  });
+  if (
+    value.operationId !== undefined &&
+    (typeof value.operationId !== "string" || value.operationId.trim().length === 0)
+  ) {
+    throw new Error("Registry dynamic key list response operationId is invalid");
+  }
+
+  return {
+    ...(typeof value.operationId === "string"
+      ? { operationId: value.operationId.trim() }
+      : {}),
+    keys: value.keys.map((entry) => {
+      return parseGatewayKeyRegistryDynamicKeyView(entry);
+    })
+  };
 }
 
 export function parseGatewayKeyRegistryDeleteResponse(
@@ -452,7 +467,17 @@ export function parseGatewayKeyRegistryBulkDeleteResponse(
     throw new Error("Registry bulk delete response is invalid");
   }
 
+  if (
+    value.operationId !== undefined &&
+    (typeof value.operationId !== "string" || value.operationId.trim().length === 0)
+  ) {
+    throw new Error("Registry bulk delete response operationId is invalid");
+  }
+
   return {
+    ...(typeof value.operationId === "string"
+      ? { operationId: value.operationId.trim() }
+      : {}),
     keys: value.keys.map((entry) => {
       return parseGatewayKeyRegistryDeleteResponse(entry);
     })
@@ -466,7 +491,17 @@ export function parseGatewayKeyRegistryBulkCreateResponse(
     throw new Error("Registry bulk create response is invalid");
   }
 
+  if (
+    value.operationId !== undefined &&
+    (typeof value.operationId !== "string" || value.operationId.trim().length === 0)
+  ) {
+    throw new Error("Registry bulk create response operationId is invalid");
+  }
+
   return {
+    ...(typeof value.operationId === "string"
+      ? { operationId: value.operationId.trim() }
+      : {}),
     keys: value.keys.map((entry) => {
       return parseGatewayKeyRegistryDynamicKeyView(entry);
     })

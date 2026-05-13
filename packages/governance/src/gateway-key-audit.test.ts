@@ -4,6 +4,7 @@ import {
   createGatewayKeyAuditEvent,
   parseGatewayKeyAuditEvent,
   parseGatewayKeyAuditEventsResponse,
+  parseGatewayKeyOperationEventsResponse,
   parseOptionalGatewayKeyAuditActor,
   parseOptionalGatewayKeyAuditActorSource,
   parseOptionalGatewayKeyAuditReason,
@@ -36,6 +37,7 @@ describe("parseGatewayKeyAuditEvent", () => {
         kind: "rotation_finalized",
         ownership: "registry",
         occurredAt: "2026-05-13T00:00:00.000Z",
+        operationId: "req_bulk_123",
         reason: "promoted new secret",
         actor: "platform@example.com",
         actorSource: "credential",
@@ -53,6 +55,7 @@ describe("parseGatewayKeyAuditEvent", () => {
       kind: "rotation_finalized",
       ownership: "registry",
       occurredAt: "2026-05-13T00:00:00.000Z",
+      operationId: "req_bulk_123",
       reason: "promoted new secret",
       actor: "platform@example.com",
       actorSource: "credential",
@@ -174,6 +177,67 @@ describe("parseGatewayKeyAuditEventsResponse", () => {
             kind: "created",
             ownership: "registry",
             occurredAt: "2026-05-13T00:00:00.000Z"
+          }
+        ]
+      })
+    ).toThrow();
+  });
+});
+
+describe("parseGatewayKeyOperationEventsResponse", () => {
+  it("parses a response with matching operation ids", () => {
+    expect(
+      parseGatewayKeyOperationEventsResponse({
+        operationId: "req_bulk_123",
+        events: [
+          {
+            keyId: "key_1",
+            kind: "updated",
+            ownership: "registry",
+            occurredAt: "2026-05-13T00:00:00.000Z",
+            operationId: "req_bulk_123"
+          },
+          {
+            keyId: "key_2",
+            kind: "updated",
+            ownership: "registry",
+            occurredAt: "2026-05-13T00:00:01.000Z",
+            operationId: "req_bulk_123"
+          }
+        ]
+      })
+    ).toEqual({
+      operationId: "req_bulk_123",
+      events: [
+        {
+          keyId: "key_1",
+          kind: "updated",
+          ownership: "registry",
+          occurredAt: "2026-05-13T00:00:00.000Z",
+          operationId: "req_bulk_123"
+        },
+        {
+          keyId: "key_2",
+          kind: "updated",
+          ownership: "registry",
+          occurredAt: "2026-05-13T00:00:01.000Z",
+          operationId: "req_bulk_123"
+        }
+      ]
+    });
+  });
+
+  it("rejects responses whose child events use a different operationId", () => {
+    expect(() =>
+      parseGatewayKeyOperationEventsResponse({
+        operationId: "req_bulk_123",
+        events: [
+          {
+            keyId: "key_1",
+            kind: "updated",
+            ownership: "registry",
+            occurredAt: "2026-05-13T00:00:00.000Z",
+            operationId: "req_other"
           }
         ]
       })

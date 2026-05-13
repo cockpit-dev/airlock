@@ -9,6 +9,7 @@ import {
   parseGatewayKeyRegistryBulkCreateResponse,
   parseGatewayKeyRegistryBulkDeleteRequest,
   parseGatewayKeyRegistryBulkDeleteResponse,
+  parseGatewayKeyOperationEventsResponse,
   parseGatewayKeyRegistryBulkRotateRequest,
   parseGatewayKeyRegistryBulkRestoreRequest,
   parseGatewayKeyRegistryCreateRequest,
@@ -35,6 +36,7 @@ import {
   type GatewayApiKeyRecord,
   type GatewayKeyRegistryBulkCreateResponse,
   type GatewayKeyRegistryBulkDeleteResponse,
+  type GatewayKeyOperationEventsResponse,
   type GatewayKeyRegistryCreateRequest,
   type GatewayKeyRegistryDeleteRequest,
   type GatewayKeyRegistryDeleteResponse,
@@ -72,8 +74,10 @@ const REGISTRY_KIND_DYNAMIC_ROTATE_CANCEL = "dynamic_rotate_cancel";
 const REGISTRY_KIND_DYNAMIC_ARCHIVE = "dynamic_archive";
 const REGISTRY_KIND_DYNAMIC_RESTORE = "dynamic_restore";
 const REGISTRY_KIND_EVENTS = "events";
+const REGISTRY_KIND_OPERATION_EVENTS = "operation_events";
 const DYNAMIC_KEY_INDEX = "dynamic:index";
 const DYNAMIC_KEY_AUDIT_EVENTS_PREFIX = "dynamic_events:";
+const DYNAMIC_KEY_OPERATION_INDEX_PREFIX = "dynamic_operation:";
 
 interface DurableObjectStateLike {
   storage: {
@@ -403,6 +407,7 @@ export class GatewayKeyRegistryDurableObject {
     const url = new URL(request.url);
     const kind = url.searchParams.get("kind") ?? REGISTRY_KIND_OVERRIDE;
     const keyId = url.searchParams.get("keyId");
+    const operationId = request.headers.get("x-airlock-request-id") ?? undefined;
 
     if (kind === REGISTRY_KIND_DYNAMIC_LIST) {
       if (request.method !== "GET") {
@@ -447,6 +452,28 @@ export class GatewayKeyRegistryDurableObject {
         keyId,
         events: await readStoredDynamicKeyAuditEvents(this.state.storage, keyId)
       } satisfies GatewayKeyAuditEventsResponse);
+    }
+
+    if (kind === REGISTRY_KIND_OPERATION_EVENTS) {
+      const operationId = url.searchParams.get("operationId");
+
+      if (request.method !== "GET" || !operationId) {
+        return new Response("Method not allowed", { status: operationId ? 405 : 400 });
+      }
+
+      const events = await readStoredDynamicKeyOperationEvents(
+        this.state.storage,
+        operationId
+      );
+
+      if (events.length === 0) {
+        return new Response("Not found", { status: 404 });
+      }
+
+      return Response.json({
+        operationId,
+        events
+      } satisfies GatewayKeyOperationEventsResponse);
     }
 
     if (kind === REGISTRY_KIND_DYNAMIC_BULK_UPDATE) {
@@ -513,6 +540,7 @@ export class GatewayKeyRegistryDurableObject {
             kind: "updated",
             ownership: "registry",
             occurredAt: key.updatedAt,
+            ...(operationId ? { operationId } : {}),
             changes: createStoredDynamicKeyFieldDiffs(previousKey, key),
             ...(bulkRequest.auditMetadata.reason
               ? { reason: bulkRequest.auditMetadata.reason }
@@ -525,6 +553,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
+        ...(operationId ? { operationId } : {}),
         keys: updatedKeys.map((entry) => {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
@@ -557,6 +586,7 @@ export class GatewayKeyRegistryDurableObject {
             kind: "created",
             ownership: "registry",
             occurredAt: key.createdAt,
+            ...(operationId ? { operationId } : {}),
             ...(bulkRequest.actorContext
               ? toGatewayKeyAuditActorContextRecord(
                   bulkRequest.actorContext
@@ -567,6 +597,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
+        ...(operationId ? { operationId } : {}),
         keys: createdKeys.map((entry) => {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
@@ -619,6 +650,7 @@ export class GatewayKeyRegistryDurableObject {
             kind: "deleted",
             ownership: "registry",
             occurredAt,
+            ...(operationId ? { operationId } : {}),
             ...(bulkRequest.auditMetadata.reason
               ? { reason: bulkRequest.auditMetadata.reason }
               : {}),
@@ -630,6 +662,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
+        ...(operationId ? { operationId } : {}),
         keys: bulkRequest.keyIds.map((keyId) => {
           return {
             keyId,
@@ -730,6 +763,7 @@ export class GatewayKeyRegistryDurableObject {
             kind: "rotated",
             ownership: "registry",
             occurredAt: key.updatedAt,
+            ...(operationId ? { operationId } : {}),
             ...(bulkRequest.auditMetadata.reason
               ? { reason: bulkRequest.auditMetadata.reason }
               : {}),
@@ -741,6 +775,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
+        ...(operationId ? { operationId } : {}),
         keys: updatedKeys.map((entry) => {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
@@ -988,6 +1023,7 @@ export class GatewayKeyRegistryDurableObject {
             kind: "archived",
             ownership: "registry",
             occurredAt: key.updatedAt,
+            ...(operationId ? { operationId } : {}),
             changes: createStoredDynamicKeyFieldDiffs(previousKey, key),
             ...(bulkRequest.auditMetadata.reason
               ? { reason: bulkRequest.auditMetadata.reason }
@@ -1000,6 +1036,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
+        ...(operationId ? { operationId } : {}),
         keys: archivedKeys.map((entry) => {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
@@ -1079,6 +1116,7 @@ export class GatewayKeyRegistryDurableObject {
             kind: "restored",
             ownership: "registry",
             occurredAt: key.updatedAt,
+            ...(operationId ? { operationId } : {}),
             changes: createStoredDynamicKeyFieldDiffs(previousKey, key),
             ...(bulkRequest.auditMetadata.reason
               ? { reason: bulkRequest.auditMetadata.reason }
@@ -1091,6 +1129,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
+        ...(operationId ? { operationId } : {}),
         keys: restoredKeys.map((entry) => {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
@@ -1164,6 +1203,7 @@ export class GatewayKeyRegistryDurableObject {
             kind: "rotation_finalized",
             ownership: "registry",
             occurredAt: key.updatedAt,
+            ...(operationId ? { operationId } : {}),
             changes: createStoredDynamicKeyFieldDiffs(previousKey, key),
             ...(bulkRequest.auditMetadata.reason
               ? { reason: bulkRequest.auditMetadata.reason }
@@ -1176,6 +1216,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
+        ...(operationId ? { operationId } : {}),
         keys: finalizedKeys.map((entry) => {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
@@ -1256,6 +1297,7 @@ export class GatewayKeyRegistryDurableObject {
             kind: "rotation_canceled",
             ownership: "registry",
             occurredAt: key.updatedAt,
+            ...(operationId ? { operationId } : {}),
             changes: createStoredDynamicKeyFieldDiffs(previousKey, key),
             ...(bulkRequest.auditMetadata.reason
               ? { reason: bulkRequest.auditMetadata.reason }
@@ -1268,6 +1310,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
+        ...(operationId ? { operationId } : {}),
         keys: canceledKeys.map((entry) => {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
@@ -1705,7 +1748,7 @@ export async function bulkCreateGatewayRegistryApiKeys(
   payload: unknown,
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
-): Promise<GatewayKeyRegistryDynamicKeyView[]> {
+): Promise<GatewayKeyRegistryBulkCreateResponse> {
   const existingDynamicKeys = await listGatewayRegistryApiKeys(env, requestId);
   const comparableConfiguredKeys =
     await toDynamicUniquenessComparableGatewayApiKeys(configuredGatewayApiKeys);
@@ -1754,7 +1797,7 @@ export async function bulkCreateGatewayRegistryApiKeys(
   }
 
   try {
-    return parseGatewayKeyRegistryBulkCreateResponse(await response.json()).keys;
+    return parseGatewayKeyRegistryBulkCreateResponse(await response.json());
   } catch (cause) {
     throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
   }
@@ -1949,7 +1992,7 @@ export async function bulkUpdateGatewayRegistryApiKeys(
   payload: unknown,
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
-): Promise<GatewayKeyRegistryDynamicKeyView[]> {
+): Promise<GatewayKeyRegistryDynamicKeyListResponse> {
   const bulkRequest = parseGatewayKeyRegistryBulkUpdateRequest(payload);
 
   for (const entry of bulkRequest.updates) {
@@ -2047,7 +2090,7 @@ export async function bulkDeleteGatewayRegistryApiKeys(
   payload: unknown,
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
-): Promise<GatewayKeyRegistryDeleteResponse[]> {
+): Promise<GatewayKeyRegistryBulkDeleteResponse> {
   const bulkRequest = parseGatewayKeyRegistryBulkDeleteRequest(payload);
 
   for (const keyId of bulkRequest.keyIds) {
@@ -2128,7 +2171,7 @@ export async function bulkDeleteGatewayRegistryApiKeys(
   }
 
   try {
-    return parseGatewayKeyRegistryBulkDeleteResponse(await response.json()).keys;
+    return parseGatewayKeyRegistryBulkDeleteResponse(await response.json());
   } catch (cause) {
     throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
   }
@@ -2140,7 +2183,7 @@ export async function bulkRotateGatewayRegistryApiKeys(
   payload: unknown,
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
-): Promise<GatewayKeyRegistryDynamicKeyView[]> {
+): Promise<GatewayKeyRegistryDynamicKeyListResponse> {
   const bulkRequest = parseGatewayKeyRegistryBulkRotateRequest(payload);
   const comparableConfiguredKeys =
     await toDynamicUniquenessComparableGatewayApiKeys(configuredGatewayApiKeys);
@@ -2275,7 +2318,7 @@ export async function bulkArchiveGatewayRegistryApiKeys(
   payload: unknown,
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
-): Promise<GatewayKeyRegistryDynamicKeyView[]> {
+): Promise<GatewayKeyRegistryDynamicKeyListResponse> {
   const bulkRequest = parseGatewayKeyRegistryBulkArchiveRequest(payload);
 
   for (const keyId of bulkRequest.keyIds) {
@@ -2364,7 +2407,7 @@ export async function bulkRestoreGatewayRegistryApiKeys(
   payload: unknown,
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
-): Promise<GatewayKeyRegistryDynamicKeyView[]> {
+): Promise<GatewayKeyRegistryDynamicKeyListResponse> {
   const bulkRequest = parseGatewayKeyRegistryBulkRestoreRequest(payload);
 
   for (const keyId of bulkRequest.keyIds) {
@@ -2453,7 +2496,7 @@ export async function bulkFinalizeGatewayRegistryApiKeyRotations(
   payload: unknown,
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
-): Promise<GatewayKeyRegistryDynamicKeyView[]> {
+): Promise<GatewayKeyRegistryDynamicKeyListResponse> {
   const bulkRequest = parseGatewayKeyRegistryBulkRotationActionRequest(
     payload,
     "Gateway dynamic key bulk rotation finalize payload is invalid"
@@ -2545,7 +2588,7 @@ export async function bulkCancelGatewayRegistryApiKeyRotations(
   payload: unknown,
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
-): Promise<GatewayKeyRegistryDynamicKeyView[]> {
+): Promise<GatewayKeyRegistryDynamicKeyListResponse> {
   const bulkRequest = parseGatewayKeyRegistryBulkRotationActionRequest(
     payload,
     "Gateway dynamic key bulk rotation cancel payload is invalid"
@@ -2641,6 +2684,50 @@ export async function bulkCancelGatewayRegistryApiKeyRotations(
   }
 }
 
+export async function getGatewayRegistryOperationEvents(
+  env: GatewayBindings,
+  operationId: string,
+  requestId: string
+): Promise<GatewayKeyAuditEvent[]> {
+  if (!isGatewayKeyRegistryEnabled(env)) {
+    return [];
+  }
+
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  const url = new URL("https://airlock.internal/gateway-key-registry");
+  url.searchParams.set("kind", REGISTRY_KIND_OPERATION_EVENTS);
+  url.searchParams.set("operationId", operationId);
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      new Request(url, {
+        method: "GET",
+        headers: {
+          "x-airlock-request-id": requestId
+        }
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (response.status === 404) {
+    throw createGatewayKeyNotFoundError(requestId);
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    return parseGatewayKeyOperationEventsResponse(await response.json()).events;
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
+  }
+}
+
 export async function listGatewayRegistryApiKeys(
   env: GatewayBindings,
   requestId: string
@@ -2668,7 +2755,7 @@ export async function listGatewayRegistryApiKeys(
   }
 
   try {
-    return parseGatewayKeyRegistryDynamicKeyListResponse(await response.json());
+    return parseGatewayKeyRegistryDynamicKeyListResponse(await response.json()).keys;
   } catch (cause) {
     throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
   }
@@ -3404,4 +3491,46 @@ async function appendStoredDynamicKeyAuditEvent(
     ...events,
     createGatewayKeyAuditEvent(event)
   ].slice(-MAX_GATEWAY_KEY_AUDIT_EVENTS));
+
+  if (event.operationId) {
+    const operationKey = `${DYNAMIC_KEY_OPERATION_INDEX_PREFIX}${event.operationId}`;
+    const existingKeyIds =
+      (await storage.get<unknown>(operationKey)) as string[] | undefined;
+    const normalizedKeyIds =
+      Array.isArray(existingKeyIds) &&
+      existingKeyIds.every((entry) => typeof entry === "string")
+        ? existingKeyIds
+        : [];
+
+    if (!normalizedKeyIds.includes(event.keyId)) {
+      await storage.put(operationKey, [...normalizedKeyIds, event.keyId]);
+    }
+  }
+}
+
+async function readStoredDynamicKeyOperationEvents(
+  storage: DurableObjectStateLike["storage"],
+  operationId: string
+): Promise<GatewayKeyAuditEvent[]> {
+  const rawKeyIds = await storage.get<unknown>(
+    `${DYNAMIC_KEY_OPERATION_INDEX_PREFIX}${operationId}`
+  );
+
+  if (rawKeyIds === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(rawKeyIds) || !rawKeyIds.every((entry) => typeof entry === "string")) {
+    throw new Error("Registry dynamic key operation index is invalid");
+  }
+
+  const perKeyEvents = await Promise.all(
+    rawKeyIds.map(async (keyId) => {
+      return readStoredDynamicKeyAuditEvents(storage, keyId);
+    })
+  );
+
+  return perKeyEvents.flat().filter((event) => {
+    return event.operationId === operationId;
+  });
 }

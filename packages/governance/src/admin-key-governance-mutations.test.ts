@@ -262,32 +262,53 @@ describe("updateGatewayAdminKey", () => {
 
 describe("bulkUpdateGatewayAdminKeys", () => {
   it("passes bulk update payloads through for registry-owned keys", async () => {
-    const bulkUpdateRegistryKeys = vi.fn().mockResolvedValue([
-      {
-        keyId: "key_dynamic_a",
-        ownership: "registry",
-        key: {
-          id: "key_dynamic_a",
-          label: "Key A",
-          valueHash: gatewaySecretHash,
-          status: "revoked"
-        },
-        createdAt: "2026-05-14T00:00:00.000Z",
-        updatedAt: "2026-05-14T01:00:00.000Z"
-      }
-    ]);
+    const bulkUpdateRegistryKeys = vi.fn().mockResolvedValue({
+      operationId: "req_bulk_update_123",
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          ownership: "registry",
+          key: {
+            id: "key_dynamic_a",
+            label: "Key A",
+            valueHash: gatewaySecretHash,
+            status: "revoked"
+          },
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T01:00:00.000Z"
+        }
+      ]
+    });
 
-    await bulkUpdateGatewayAdminKeys(
-      {
-        updates: [{ keyId: "key_dynamic_a", status: "revoked" }],
-        reason: "maintenance"
-      },
-      "req_123",
-      {
-        isConfiguredKey: vi.fn().mockReturnValue(false),
-        bulkUpdateRegistryKeys
-      }
-    );
+    await expect(
+      bulkUpdateGatewayAdminKeys(
+        {
+          updates: [{ keyId: "key_dynamic_a", status: "revoked" }],
+          reason: "maintenance"
+        },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn().mockReturnValue(false),
+          bulkUpdateRegistryKeys
+        }
+      )
+    ).resolves.toEqual({
+      operationId: "req_bulk_update_123",
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          ownership: "registry",
+          key: {
+            id: "key_dynamic_a",
+            label: "Key A",
+            valueHash: gatewaySecretHash,
+            status: "revoked"
+          },
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T01:00:00.000Z"
+        }
+      ]
+    });
 
     expect(bulkUpdateRegistryKeys).toHaveBeenCalledWith({
       updates: [{ keyId: "key_dynamic_a", status: "revoked" }],
@@ -318,20 +339,23 @@ describe("bulkUpdateGatewayAdminKeys", () => {
 
 describe("bulkCreateGatewayAdminKeys", () => {
   it("passes bulk create payloads through for registry-owned keys", async () => {
-    const bulkCreateRegistryKeys = vi.fn().mockResolvedValue([
-      {
-        keyId: "key_dynamic_a",
-        ownership: "registry",
-        key: {
-          id: "key_dynamic_a",
-          label: "Key A",
-          valueHash: gatewaySecretHash,
-          status: "active"
-        },
-        createdAt: "2026-05-14T00:00:00.000Z",
-        updatedAt: "2026-05-14T00:00:00.000Z"
-      }
-    ]);
+    const bulkCreateRegistryKeys = vi.fn().mockResolvedValue({
+      operationId: "req_bulk_create_123",
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          ownership: "registry",
+          key: {
+            id: "key_dynamic_a",
+            label: "Key A",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          },
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T00:00:00.000Z"
+        }
+      ]
+    });
 
     await expect(
       bulkCreateGatewayAdminKeys(
@@ -350,6 +374,7 @@ describe("bulkCreateGatewayAdminKeys", () => {
         }
       )
     ).resolves.toEqual({
+      operationId: "req_bulk_create_123",
       keys: [
         {
           keyId: "key_dynamic_a",
@@ -381,16 +406,19 @@ describe("bulkCreateGatewayAdminKeys", () => {
 
 describe("bulkDeleteGatewayAdminKeys", () => {
   it("passes bulk delete payloads through for registry-owned keys", async () => {
-    const bulkDeleteRegistryKeys = vi.fn().mockResolvedValue([
-      {
-        keyId: "key_dynamic_a",
-        deleted: true
-      },
-      {
-        keyId: "key_dynamic_b",
-        deleted: true
-      }
-    ]);
+    const bulkDeleteRegistryKeys = vi.fn().mockResolvedValue({
+      operationId: "req_bulk_delete_123",
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          deleted: true
+        },
+        {
+          keyId: "key_dynamic_b",
+          deleted: true
+        }
+      ]
+    });
 
     await expect(
       bulkDeleteGatewayAdminKeys(
@@ -405,6 +433,7 @@ describe("bulkDeleteGatewayAdminKeys", () => {
         }
       )
     ).resolves.toEqual({
+      operationId: "req_bulk_delete_123",
       keys: [
         {
           keyId: "key_dynamic_a",
@@ -443,20 +472,23 @@ describe("bulkDeleteGatewayAdminKeys", () => {
 
 describe("bulkRotateGatewayAdminKeys", () => {
   it("passes bulk rotate payloads through for registry-owned keys", async () => {
-    const bulkRotateRegistryKeys = vi.fn().mockResolvedValue([
-      {
-        keyId: "key_dynamic_a",
-        ownership: "registry",
-        key: {
-          id: "key_dynamic_a",
-          label: "Key A",
-          valueHash: gatewaySecretHash,
-          status: "active"
-        },
-        createdAt: "2026-05-14T00:00:00.000Z",
-        updatedAt: "2026-05-14T01:00:00.000Z"
-      }
-    ]);
+    const bulkRotateRegistryKeys = vi.fn().mockResolvedValue({
+      operationId: "req_bulk_rotate_123",
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          ownership: "registry",
+          key: {
+            id: "key_dynamic_a",
+            label: "Key A",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          },
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T01:00:00.000Z"
+        }
+      ]
+    });
 
     await expect(
       bulkRotateGatewayAdminKeys(
@@ -477,6 +509,7 @@ describe("bulkRotateGatewayAdminKeys", () => {
         }
       )
     ).resolves.toEqual({
+      operationId: "req_bulk_rotate_123",
       keys: [
         {
           keyId: "key_dynamic_a",
@@ -534,21 +567,24 @@ describe("bulkRotateGatewayAdminKeys", () => {
 
 describe("bulkArchiveGatewayAdminKeys", () => {
   it("passes bulk archive payloads through for registry-owned keys", async () => {
-    const bulkArchiveRegistryKeys = vi.fn().mockResolvedValue([
-      {
-        keyId: "key_dynamic_a",
-        ownership: "registry",
-        key: {
-          id: "key_dynamic_a",
-          label: "Key A",
-          valueHash: gatewaySecretHash,
-          status: "active"
-        },
-        archivedAt: "2026-05-14T01:00:00.000Z",
-        createdAt: "2026-05-14T00:00:00.000Z",
-        updatedAt: "2026-05-14T01:00:00.000Z"
-      }
-    ]);
+    const bulkArchiveRegistryKeys = vi.fn().mockResolvedValue({
+      operationId: "req_bulk_archive_123",
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          ownership: "registry",
+          key: {
+            id: "key_dynamic_a",
+            label: "Key A",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          },
+          archivedAt: "2026-05-14T01:00:00.000Z",
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T01:00:00.000Z"
+        }
+      ]
+    });
 
     await expect(
       bulkArchiveGatewayAdminKeys(
@@ -563,6 +599,7 @@ describe("bulkArchiveGatewayAdminKeys", () => {
         }
       )
     ).resolves.toEqual({
+      operationId: "req_bulk_archive_123",
       keys: [
         {
           keyId: "key_dynamic_a",
@@ -606,20 +643,23 @@ describe("bulkArchiveGatewayAdminKeys", () => {
 
 describe("bulkRestoreGatewayAdminKeys", () => {
   it("passes bulk restore payloads through for registry-owned keys", async () => {
-    const bulkRestoreRegistryKeys = vi.fn().mockResolvedValue([
-      {
-        keyId: "key_dynamic_a",
-        ownership: "registry",
-        key: {
-          id: "key_dynamic_a",
-          label: "Key A",
-          valueHash: gatewaySecretHash,
-          status: "active"
-        },
-        createdAt: "2026-05-14T00:00:00.000Z",
-        updatedAt: "2026-05-14T02:00:00.000Z"
-      }
-    ]);
+    const bulkRestoreRegistryKeys = vi.fn().mockResolvedValue({
+      operationId: "req_bulk_restore_123",
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          ownership: "registry",
+          key: {
+            id: "key_dynamic_a",
+            label: "Key A",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          },
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T02:00:00.000Z"
+        }
+      ]
+    });
 
     await expect(
       bulkRestoreGatewayAdminKeys(
@@ -634,6 +674,7 @@ describe("bulkRestoreGatewayAdminKeys", () => {
         }
       )
     ).resolves.toEqual({
+      operationId: "req_bulk_restore_123",
       keys: [
         {
           keyId: "key_dynamic_a",
@@ -694,20 +735,23 @@ describe("finalizeGatewayAdminKeyRotation", () => {
 
 describe("bulkFinalizeGatewayAdminKeyRotations", () => {
   it("passes bulk finalize payloads through for registry-owned keys", async () => {
-    const bulkFinalizeRegistryKeyRotations = vi.fn().mockResolvedValue([
-      {
-        keyId: "key_dynamic_a",
-        ownership: "registry",
-        key: {
-          id: "key_dynamic_a",
-          label: "Key A",
-          valueHash: gatewaySecretHash,
-          status: "active"
-        },
-        createdAt: "2026-05-14T00:00:00.000Z",
-        updatedAt: "2026-05-14T03:00:00.000Z"
-      }
-    ]);
+    const bulkFinalizeRegistryKeyRotations = vi.fn().mockResolvedValue({
+      operationId: "req_bulk_finalize_123",
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          ownership: "registry",
+          key: {
+            id: "key_dynamic_a",
+            label: "Key A",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          },
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T03:00:00.000Z"
+        }
+      ]
+    });
 
     await expect(
       bulkFinalizeGatewayAdminKeyRotations(
@@ -722,6 +766,7 @@ describe("bulkFinalizeGatewayAdminKeyRotations", () => {
         }
       )
     ).resolves.toEqual({
+      operationId: "req_bulk_finalize_123",
       keys: [
         {
           keyId: "key_dynamic_a",
@@ -764,20 +809,23 @@ describe("bulkFinalizeGatewayAdminKeyRotations", () => {
 
 describe("bulkCancelGatewayAdminKeyRotations", () => {
   it("passes bulk cancel payloads through for registry-owned keys", async () => {
-    const bulkCancelRegistryKeyRotations = vi.fn().mockResolvedValue([
-      {
-        keyId: "key_dynamic_a",
-        ownership: "registry",
-        key: {
-          id: "key_dynamic_a",
-          label: "Key A",
-          valueHash: gatewaySecretHash,
-          status: "active"
-        },
-        createdAt: "2026-05-14T00:00:00.000Z",
-        updatedAt: "2026-05-14T03:00:00.000Z"
-      }
-    ]);
+    const bulkCancelRegistryKeyRotations = vi.fn().mockResolvedValue({
+      operationId: "req_bulk_cancel_123",
+      keys: [
+        {
+          keyId: "key_dynamic_a",
+          ownership: "registry",
+          key: {
+            id: "key_dynamic_a",
+            label: "Key A",
+            valueHash: gatewaySecretHash,
+            status: "active"
+          },
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T03:00:00.000Z"
+        }
+      ]
+    });
 
     await expect(
       bulkCancelGatewayAdminKeyRotations(
@@ -792,6 +840,7 @@ describe("bulkCancelGatewayAdminKeyRotations", () => {
         }
       )
     ).resolves.toEqual({
+      operationId: "req_bulk_cancel_123",
       keys: [
         {
           keyId: "key_dynamic_a",

@@ -16,6 +16,7 @@ import {
   bulkUpdateGatewayAdminKeys as writeGatewayAdminKeyBulkUpdate,
   getGatewayAdminKey as readGatewayAdminKey,
   getGatewayAdminKeyEvents as readGatewayAdminKeyEvents,
+  getGatewayAdminKeyOperationEvents as readGatewayAdminKeyOperationEvents,
   getGatewayAdminKeyRegistryView as readGatewayAdminKeyRegistryView,
   getGatewayAdminKeyRevocationStatus as readGatewayAdminKeyRevocationStatus,
   getGatewayAdminKeyStatus as readGatewayAdminKeyStatus,
@@ -40,6 +41,7 @@ import {
   bulkCreateGatewayRegistryApiKeys,
   bulkDeleteGatewayRegistryApiKeys,
   bulkFinalizeGatewayRegistryApiKeyRotations,
+  getGatewayRegistryOperationEvents,
   bulkRotateGatewayRegistryApiKeys,
   bulkRestoreGatewayRegistryApiKeys,
   cancelGatewayRegistryApiKeyRotation,
@@ -815,6 +817,22 @@ export async function getAdminGatewayKeyEvents(
         env,
         config.gatewayApiKeys,
         candidateKeyId,
+        requestId
+      );
+    }
+  });
+}
+
+export async function getAdminGatewayKeyOperationEvents(
+  env: GatewayBindings,
+  operationId: string,
+  requestId: string
+) {
+  return readGatewayAdminKeyOperationEvents(operationId, requestId, {
+    getOperationEvents: (candidateOperationId) => {
+      return getGatewayRegistryOperationEvents(
+        env,
+        candidateOperationId,
         requestId
       );
     }

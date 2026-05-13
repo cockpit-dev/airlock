@@ -78,7 +78,7 @@ export interface BulkUpdateGatewayAdminKeysPort {
         policy?: object | null;
       }>;
     }
-  ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
+  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDynamicKeyView[] }>;
 }
 
 export interface BulkCreateGatewayAdminKeysPort {
@@ -96,7 +96,7 @@ export interface BulkCreateGatewayAdminKeysPort {
       actor?: string;
       actorSource?: "payload" | "trusted_header" | "credential";
     }
-  ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
+  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDynamicKeyView[] }>;
 }
 
 export interface BulkDeleteGatewayAdminKeysPort {
@@ -105,7 +105,7 @@ export interface BulkDeleteGatewayAdminKeysPort {
     payload: GatewayKeyRegistryBulkDeleteRequest["auditMetadata"] & {
       keyIds: string[];
     }
-  ): Promise<GatewayKeyRegistryDeleteResponse[]>;
+  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDeleteResponse[] }>;
 }
 
 export interface BulkArchiveGatewayAdminKeysPort {
@@ -114,7 +114,7 @@ export interface BulkArchiveGatewayAdminKeysPort {
     payload: GatewayKeyRegistryBulkArchiveRequest["auditMetadata"] & {
       keyIds: string[];
     }
-  ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
+  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDynamicKeyView[] }>;
 }
 
 export interface BulkRestoreGatewayAdminKeysPort {
@@ -123,7 +123,7 @@ export interface BulkRestoreGatewayAdminKeysPort {
     payload: GatewayKeyRegistryBulkRestoreRequest["auditMetadata"] & {
       keyIds: string[];
     }
-  ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
+  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDynamicKeyView[] }>;
 }
 
 export interface BulkRotateGatewayAdminKeysPort {
@@ -136,7 +136,7 @@ export interface BulkRotateGatewayAdminKeysPort {
         overlapSeconds?: number;
       }>;
     }
-  ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
+  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDynamicKeyView[] }>;
 }
 
 export interface BulkFinalizeGatewayAdminKeyRotationsPort {
@@ -148,7 +148,7 @@ export interface BulkFinalizeGatewayAdminKeyRotationsPort {
       actor?: string;
       actorSource?: "payload" | "trusted_header" | "credential";
     }
-  ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
+  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDynamicKeyView[] }>;
 }
 
 export interface BulkCancelGatewayAdminKeyRotationsPort {
@@ -160,7 +160,7 @@ export interface BulkCancelGatewayAdminKeyRotationsPort {
       actor?: string;
       actorSource?: "payload" | "trusted_header" | "credential";
     }
-  ): Promise<GatewayKeyRegistryDynamicKeyView[]>;
+  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDynamicKeyView[] }>;
 }
 
 export interface FinalizeGatewayAdminKeyRotationPort {
@@ -227,11 +227,10 @@ export async function bulkCreateGatewayAdminKeys(
   },
   port: BulkCreateGatewayAdminKeysPort
 ): Promise<{
+  operationId?: string;
   keys: GatewayKeyRegistryDynamicKeyView[];
 }> {
-  return {
-    keys: await port.bulkCreateRegistryKeys(payload)
-  };
+  return port.bulkCreateRegistryKeys(payload);
 }
 
 export async function deleteGatewayAdminKey(
@@ -318,6 +317,7 @@ export async function bulkUpdateGatewayAdminKeys(
   requestId: string,
   port: BulkUpdateGatewayAdminKeysPort
 ): Promise<{
+  operationId?: string;
   keys: GatewayKeyRegistryDynamicKeyView[];
 }> {
   for (const entry of payload.updates) {
@@ -326,9 +326,7 @@ export async function bulkUpdateGatewayAdminKeys(
     }
   }
 
-  return {
-    keys: await port.bulkUpdateRegistryKeys(payload)
-  };
+  return port.bulkUpdateRegistryKeys(payload);
 }
 
 export async function bulkDeleteGatewayAdminKeys(
@@ -338,6 +336,7 @@ export async function bulkDeleteGatewayAdminKeys(
   requestId: string,
   port: BulkDeleteGatewayAdminKeysPort
 ): Promise<{
+  operationId?: string;
   keys: GatewayKeyRegistryDeleteResponse[];
 }> {
   for (const keyId of payload.keyIds) {
@@ -346,9 +345,7 @@ export async function bulkDeleteGatewayAdminKeys(
     }
   }
 
-  return {
-    keys: await port.bulkDeleteRegistryKeys(payload)
-  };
+  return port.bulkDeleteRegistryKeys(payload);
 }
 
 export async function bulkRotateGatewayAdminKeys(
@@ -362,6 +359,7 @@ export async function bulkRotateGatewayAdminKeys(
   requestId: string,
   port: BulkRotateGatewayAdminKeysPort
 ): Promise<{
+  operationId?: string;
   keys: GatewayKeyRegistryDynamicKeyView[];
 }> {
   for (const entry of payload.rotations) {
@@ -370,9 +368,7 @@ export async function bulkRotateGatewayAdminKeys(
     }
   }
 
-  return {
-    keys: await port.bulkRotateRegistryKeys(payload)
-  };
+  return port.bulkRotateRegistryKeys(payload);
 }
 
 export async function bulkArchiveGatewayAdminKeys(
@@ -382,6 +378,7 @@ export async function bulkArchiveGatewayAdminKeys(
   requestId: string,
   port: BulkArchiveGatewayAdminKeysPort
 ): Promise<{
+  operationId?: string;
   keys: GatewayKeyRegistryDynamicKeyView[];
 }> {
   for (const keyId of payload.keyIds) {
@@ -390,9 +387,7 @@ export async function bulkArchiveGatewayAdminKeys(
     }
   }
 
-  return {
-    keys: await port.bulkArchiveRegistryKeys(payload)
-  };
+  return port.bulkArchiveRegistryKeys(payload);
 }
 
 export async function bulkRestoreGatewayAdminKeys(
@@ -402,6 +397,7 @@ export async function bulkRestoreGatewayAdminKeys(
   requestId: string,
   port: BulkRestoreGatewayAdminKeysPort
 ): Promise<{
+  operationId?: string;
   keys: GatewayKeyRegistryDynamicKeyView[];
 }> {
   for (const keyId of payload.keyIds) {
@@ -410,9 +406,7 @@ export async function bulkRestoreGatewayAdminKeys(
     }
   }
 
-  return {
-    keys: await port.bulkRestoreRegistryKeys(payload)
-  };
+  return port.bulkRestoreRegistryKeys(payload);
 }
 
 export async function bulkFinalizeGatewayAdminKeyRotations(
@@ -425,6 +419,7 @@ export async function bulkFinalizeGatewayAdminKeyRotations(
   requestId: string,
   port: BulkFinalizeGatewayAdminKeyRotationsPort
 ): Promise<{
+  operationId?: string;
   keys: GatewayKeyRegistryDynamicKeyView[];
 }> {
   for (const keyId of payload.keyIds) {
@@ -433,9 +428,7 @@ export async function bulkFinalizeGatewayAdminKeyRotations(
     }
   }
 
-  return {
-    keys: await port.bulkFinalizeRegistryKeyRotations(payload)
-  };
+  return port.bulkFinalizeRegistryKeyRotations(payload);
 }
 
 export async function bulkCancelGatewayAdminKeyRotations(
@@ -448,6 +441,7 @@ export async function bulkCancelGatewayAdminKeyRotations(
   requestId: string,
   port: BulkCancelGatewayAdminKeyRotationsPort
 ): Promise<{
+  operationId?: string;
   keys: GatewayKeyRegistryDynamicKeyView[];
 }> {
   for (const keyId of payload.keyIds) {
@@ -456,9 +450,7 @@ export async function bulkCancelGatewayAdminKeyRotations(
     }
   }
 
-  return {
-    keys: await port.bulkCancelRegistryKeyRotations(payload)
-  };
+  return port.bulkCancelRegistryKeyRotations(payload);
 }
 
 export async function finalizeGatewayAdminKeyRotation(

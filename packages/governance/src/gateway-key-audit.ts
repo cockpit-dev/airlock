@@ -45,6 +45,7 @@ export interface GatewayKeyAuditEvent {
   kind: GatewayKeyAuditEventKind;
   ownership: GatewayKeyAuditOwnership;
   occurredAt: string;
+  operationId?: string;
   reason?: string;
   actor?: string;
   actorSource?: GatewayKeyAuditActorSource;
@@ -58,6 +59,11 @@ export interface GatewayKeyAuditActorContext {
 
 export interface GatewayKeyAuditEventsResponse {
   keyId: string;
+  events: GatewayKeyAuditEvent[];
+}
+
+export interface GatewayKeyOperationEventsResponse {
+  operationId: string;
   events: GatewayKeyAuditEvent[];
 }
 
@@ -81,6 +87,7 @@ export function createGatewayKeyAuditEvent(
     kind: event.kind,
     ownership: event.ownership,
     occurredAt: event.occurredAt,
+    ...(event.operationId ? { operationId: event.operationId } : {}),
     ...(event.reason ? { reason: event.reason } : {}),
     ...(event.actor ? { actor: event.actor } : {}),
     ...(event.actor && event.actorSource
@@ -167,6 +174,7 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
     kind,
     ownership,
     occurredAt,
+    operationId,
     reason,
     actor,
     actorSource,
@@ -200,6 +208,13 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
     throw new Error("Gateway key audit event occurredAt is invalid");
   }
 
+  if (
+    operationId !== undefined &&
+    (typeof operationId !== "string" || operationId.trim().length === 0)
+  ) {
+    throw new Error("Gateway key audit event operationId is invalid");
+  }
+
   const parsedReason = parseOptionalGatewayKeyAuditReason(reason);
   const parsedActor = parseOptionalGatewayKeyAuditActor(actor);
   const parsedActorSource = parseOptionalGatewayKeyAuditActorSource(actorSource);
@@ -225,6 +240,7 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
     kind,
     ownership,
     occurredAt,
+    ...(typeof operationId === "string" ? { operationId: operationId.trim() } : {}),
     ...(parsedReason ? { reason: parsedReason } : {}),
     ...(parsedActor ? { actor: parsedActor } : {}),
     ...(parsedActor && parsedActorSource
@@ -260,6 +276,37 @@ export function parseGatewayKeyAuditEventsResponse(
 
   return {
     keyId,
+    events
+  };
+}
+
+export function parseGatewayKeyOperationEventsResponse(
+  value: unknown
+): GatewayKeyOperationEventsResponse {
+  if (
+    !isRecord(value) ||
+    typeof value.operationId !== "string" ||
+    value.operationId.trim().length === 0 ||
+    !Array.isArray(value.events)
+  ) {
+    throw new Error("Gateway key operation events response is invalid");
+  }
+
+  const operationId = value.operationId.trim();
+  const events = value.events.map((event) => {
+    const parsedEvent = parseGatewayKeyAuditEvent(event);
+
+    if (parsedEvent.operationId !== operationId) {
+      throw new Error(
+        "Gateway key audit event operationId does not match response"
+      );
+    }
+
+    return parsedEvent;
+  });
+
+  return {
+    operationId,
     events
   };
 }
