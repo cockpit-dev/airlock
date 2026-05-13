@@ -1565,6 +1565,21 @@ describe("gateway app", () => {
     });
   });
 
+  it("returns not ready from /readyz when request signing secret json is malformed", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_REQUEST_SIGNING_SECRETS: "{not-json"
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
   it("returns not ready from /readyz when model shaping targets an unknown route", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -10582,6 +10597,9 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
+        AIRLOCK_REQUEST_SIGNING_SECRETS: JSON.stringify({
+          "openai-signing-secret": "signing-secret"
+        }),
         AIRLOCK_MODEL_SHAPING: JSON.stringify({
           "gpt-4.1-mini": {
             headers: {
@@ -10592,6 +10610,15 @@ describe("gateway app", () => {
             },
             jsonBody: {
               temperature: 0.2
+            },
+            signing: {
+              type: "hmac_sha256_header",
+              headerName: "x-airlock-signature",
+              prefix: "sha256=",
+              secret: {
+                secretRef: "openai-signing-secret"
+              },
+              components: ["method", "path", "query"]
             }
           }
         })
@@ -10607,7 +10634,9 @@ describe("gateway app", () => {
       "https://api.openai.com/v1/chat/completions?api-version=2025-01-01"
     );
     expect(init.headers).toMatchObject({
-      "openai-beta": "responses=v1"
+      "openai-beta": "responses=v1",
+      "x-airlock-signature":
+        "sha256=3cfdb030ea88f177756399b431f674bb5c7ffd8f798ad18a02c758b374ce64a7"
     });
     expect(JSON.parse(init.body as string)).toEqual({
       model: "gpt-4.1-mini",
@@ -11994,6 +12023,10 @@ describe("gateway app", () => {
         ...createBindings(),
         ANTHROPIC_API_KEY: "anthropic-secret",
         ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+        AIRLOCK_REQUEST_SIGNING_SECRETS: JSON.stringify({
+          "openai-signing-secret": "signing-secret",
+          "anthropic-signing-secret": "signing-secret"
+        }),
         AIRLOCK_MODEL_ALIASES: "assistant-default=openai:gpt-4.1-mini",
         AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
           "assistant-default": ["anthropic:claude-haiku-4-5"]
@@ -12004,11 +12037,29 @@ describe("gateway app", () => {
               "openai:gpt-4.1-mini": {
                 headers: {
                   "openai-beta": "responses=v1"
+                },
+                signing: {
+                  type: "hmac_sha256_header",
+                  headerName: "x-airlock-signature",
+                  prefix: "sha256=",
+                  secret: {
+                    secretRef: "openai-signing-secret"
+                  },
+                  components: ["method", "path"]
                 }
               },
               "anthropic:claude-haiku-4-5": {
                 query: {
                   trace: "1"
+                },
+                signing: {
+                  type: "hmac_sha256_header",
+                  headerName: "x-airlock-signature",
+                  prefix: "sha256=",
+                  secret: {
+                    secretRef: "anthropic-signing-secret"
+                  },
+                  components: ["method", "path", "query"]
                 }
               }
             }
@@ -12019,12 +12070,22 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
+    const [, firstInit] = fetcher.mock.calls[0] as [string, RequestInit];
+    const [, secondInit] = fetcher.mock.calls[1] as [string, RequestInit];
     expect(fetcher.mock.calls[0]?.[0]).toBe(
       "https://api.openai.com/v1/chat/completions"
     );
+    expect(firstInit.headers).toMatchObject({
+      "x-airlock-signature":
+        "sha256=ec942afb045990b5e307f228067416ad70401b555da003a1f26cf86dc54e736a"
+    });
     expect(fetcher.mock.calls[1]?.[0]).toBe(
       "https://api.anthropic.com/v1/messages?trace=1"
     );
+    expect(secondInit.headers).toMatchObject({
+      "x-airlock-signature":
+        "sha256=d3ebed076d6ad0fe8756d9c0f422cc9f34d06532a12f16a19f3681d2559e221b"
+    });
   });
 
   it("rejects cross-provider fallback at request time when request-scoped shaping lacks a target-scoped shaping contract", async () => {

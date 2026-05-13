@@ -166,6 +166,7 @@ function createProviderAdapter(
     serializeProviderTarget(route.target),
     serializeProviderTarget(target)
   );
+  const routeSigning = routeShaping?.signing;
 
   if (target.provider === "anthropic") {
     return new AnthropicProviderAdapter({
@@ -173,6 +174,8 @@ function createProviderAdapter(
       baseUrl: config.anthropic?.baseUrl ?? "",
       defaultMaxTokens: config.anthropic?.defaultMaxTokens ?? 256,
       ...(routeShaping ? { shaping: routeShaping } : {}),
+      ...(routeSigning ? { signing: routeSigning } : {}),
+      signingSecrets: config.requestSigningSecrets ?? {},
       ...(fetcher ? { fetcher } : {})
     });
   }
@@ -182,6 +185,8 @@ function createProviderAdapter(
       apiKey: config.gemini?.apiKey ?? "",
       baseUrl: config.gemini?.baseUrl ?? "",
       ...(routeShaping ? { shaping: routeShaping } : {}),
+      ...(routeSigning ? { signing: routeSigning } : {}),
+      signingSecrets: config.requestSigningSecrets ?? {},
       ...(fetcher ? { fetcher } : {})
     });
   }
@@ -190,6 +195,8 @@ function createProviderAdapter(
     apiKey: config.openAI.apiKey,
     baseUrl: config.openAI.baseUrl,
     ...(routeShaping ? { shaping: routeShaping } : {}),
+    ...(routeSigning ? { signing: routeSigning } : {}),
+    signingSecrets: config.requestSigningSecrets ?? {},
     ...(fetcher ? { fetcher } : {})
   });
 }

@@ -270,6 +270,14 @@ describe("parseRouteRequestShaping", () => {
           "gpt-4.1-mini": {
             headers: {
               "openai-beta": "responses=v1"
+            },
+            signing: {
+              type: "hmac_sha256_header",
+              headerName: "x-airlock-signature",
+              secret: {
+                secretRef: "openai-signing-secret"
+              },
+              components: ["method", "path"]
             }
           },
           "claude-sonnet-4-5": {
@@ -288,6 +296,14 @@ describe("parseRouteRequestShaping", () => {
       "gpt-4.1-mini": {
         headers: {
           "openai-beta": "responses=v1"
+        },
+        signing: {
+          type: "hmac_sha256_header",
+          headerName: "x-airlock-signature",
+          secret: {
+            secretRef: "openai-signing-secret"
+          },
+          components: ["method", "path"]
         }
       },
       "claude-sonnet-4-5": {
@@ -330,6 +346,14 @@ describe("parseRouteRequestShaping", () => {
               "openai:gpt-4.1-mini": {
                 headers: {
                   "openai-beta": "responses=v1"
+                },
+                signing: {
+                  type: "hmac_sha256_header",
+                  headerName: "x-airlock-signature",
+                  secret: {
+                    secretRef: "shared-signing-secret"
+                  },
+                  components: ["method", "path"]
                 }
               },
               "anthropic:claude-haiku-4-5": {
@@ -347,6 +371,14 @@ describe("parseRouteRequestShaping", () => {
           "openai:gpt-4.1-mini": {
             headers: {
               "openai-beta": "responses=v1"
+            },
+            signing: {
+              type: "hmac_sha256_header",
+              headerName: "x-airlock-signature",
+              secret: {
+                secretRef: "shared-signing-secret"
+              },
+              components: ["method", "path"]
             }
           },
           "anthropic:claude-haiku-4-5": {
@@ -392,6 +424,28 @@ describe("parseRequestRequestShaping", () => {
       parseRequestRequestShaping({
         headers: {
           authorization: "Bearer override"
+        }
+      })
+    ).toThrowError(
+      expect.objectContaining({
+        code: "request_invalid_request_shaping",
+        category: "request",
+        httpStatus: 400,
+        retryable: false
+      })
+    );
+  });
+
+  it("rejects request-scoped signing directives as request errors", () => {
+    expect(() =>
+      parseRequestRequestShaping({
+        signing: {
+          type: "hmac_sha256_header",
+          headerName: "x-airlock-signature",
+          secret: {
+            secretRef: "request-secret"
+          },
+          components: ["method", "path"]
         }
       })
     ).toThrowError(

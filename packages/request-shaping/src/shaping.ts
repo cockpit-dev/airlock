@@ -12,6 +12,7 @@ export interface RequestShapingProfile {
   headers?: Record<string, string>;
   query?: Record<string, string>;
   jsonBody?: Record<string, unknown>;
+  signing?: OutboundSigningStrategy;
 }
 
 export interface TargetScopedRouteShapingProfile {
@@ -147,9 +148,102 @@ function parseStringMap(
   return result;
 }
 
-function validateRequestShapingProfileWithErrorFactory(
+function validateSecretRef(
   value: unknown,
   createError: (message: string) => GatewayError
+): SecretRef {
+  if (!isRecord(value)) {
+    throw createError("Secret ref must be an object");
+  }
+
+  if (typeof value.secretRef !== "string" || value.secretRef.trim().length === 0) {
+    throw createError("Secret ref must define a non-empty secretRef string");
+  }
+
+  return {
+    secretRef: value.secretRef.trim()
+  };
+}
+
+function validateSigningComponent(
+  value: unknown,
+  createError: (message: string) => GatewayError
+): HmacSha256SigningComponent {
+  if (typeof value !== "string") {
+    throw createError("Signing strategy components must be strings");
+  }
+
+  if (
+    value === "method" ||
+    value === "path" ||
+    value === "query" ||
+    value === "body_sha256"
+  ) {
+    return value;
+  }
+
+  if (value.startsWith("header:")) {
+    const headerName = value.slice("header:".length).trim();
+
+    if (headerName.length === 0) {
+      throw createError(
+        "Signing header components must reference a non-empty header name"
+      );
+    }
+
+    return `header:${headerName}`;
+  }
+
+  throw createError(`Unsupported signing component: ${value}`);
+}
+
+function validateSigningStrategy(value: unknown): OutboundSigningStrategy {
+  if (!isRecord(value)) {
+    throw createInvalidSigningStrategyError("Signing strategy must be an object");
+  }
+
+  if (value.type !== "hmac_sha256_header") {
+    throw createInvalidSigningStrategyError(
+      "Signing strategy type must be hmac_sha256_header"
+    );
+  }
+
+  if (typeof value.headerName !== "string" || value.headerName.trim().length === 0) {
+    throw createInvalidSigningStrategyError(
+      "Signing strategy headerName must be a non-empty string"
+    );
+  }
+
+  if (!Array.isArray(value.components) || value.components.length === 0) {
+    throw createInvalidSigningStrategyError(
+      "Signing strategy must define at least one component"
+    );
+  }
+
+  if (value.prefix !== undefined && typeof value.prefix !== "string") {
+    throw createInvalidSigningStrategyError(
+      "Signing strategy prefix must be a string when provided"
+    );
+  }
+
+  return {
+    type: "hmac_sha256_header",
+    headerName: value.headerName.trim(),
+    secret: validateSecretRef(value.secret, createInvalidSigningStrategyError),
+    components: value.components.map((component) => {
+      return validateSigningComponent(
+        component,
+        createInvalidSigningStrategyError
+      );
+    }),
+    ...(value.prefix !== undefined ? { prefix: value.prefix } : {})
+  };
+}
+
+function validateRequestShapingProfileWithErrorFactory(
+  value: unknown,
+  createError: (message: string) => GatewayError,
+  allowSigning = false
 ): RequestShapingProfile {
   if (!isRecord(value)) {
     throw createError("Request shaping profile must be an object");
@@ -158,7 +252,12 @@ function validateRequestShapingProfileWithErrorFactory(
   const profile: RequestShapingProfile = {};
 
   for (const key of Object.keys(value)) {
-    if (key !== "headers" && key !== "query" && key !== "jsonBody") {
+    if (
+      key !== "headers" &&
+      key !== "query" &&
+      key !== "jsonBody" &&
+      !(allowSigning && key === "signing")
+    ) {
       throw createError(
         `Request shaping profile contains unsupported field: ${key}`
       );
@@ -184,6 +283,10 @@ function validateRequestShapingProfileWithErrorFactory(
     profile.jsonBody = value.jsonBody;
   }
 
+  if (allowSigning && value.signing !== undefined) {
+    profile.signing = validateSigningStrategy(value.signing);
+  }
+
   return profile;
 }
 
@@ -192,7 +295,8 @@ export function validateRequestShapingProfile(
 ): RequestShapingProfile {
   return validateRequestShapingProfileWithErrorFactory(
     value,
-    createInvalidShapingError
+    createInvalidShapingError,
+    true
   );
 }
 
@@ -300,7 +404,8 @@ export function mergeRequestShapingProfiles(
             ...(override?.jsonBody ?? {})
           }
         }
-      : {})
+      : {}),
+    ...(base?.signing ? { signing: base.signing } : {})
   };
 }
 

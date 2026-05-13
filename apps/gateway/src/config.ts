@@ -36,6 +36,7 @@ export interface GatewayConfig {
   gatewayKeyRegistryEnabled?: boolean;
   internalAdminCredentials?: InternalAdminCredential[];
   gatewayApiKeys: GatewayApiKeyRecord[];
+  requestSigningSecrets?: Record<string, string>;
   modelGroups: ModelGroupMap;
   modelAliases: ModelRouteDirectory;
   anthropic?: {
@@ -184,9 +185,76 @@ function validateModelGroups(
   }
 }
 
+function parseRequestSigningSecrets(
+  value: string | undefined
+): Record<string, string> {
+  if (!value) {
+    return {};
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new GatewayError("Request signing secrets config must be valid JSON", {
+      code: "config_invalid_request_signing_secrets",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false
+    });
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new GatewayError("Request signing secrets config must be a JSON object", {
+      code: "config_invalid_request_signing_secrets",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false
+    });
+  }
+
+  const secrets: Record<string, string> = {};
+
+  for (const [key, secretValue] of Object.entries(parsed)) {
+    const normalizedKey = key.trim();
+
+    if (normalizedKey.length === 0) {
+      throw new GatewayError(
+        "Request signing secret keys must be non-empty strings",
+        {
+          code: "config_invalid_request_signing_secrets",
+          category: "configuration",
+          httpStatus: 500,
+          retryable: false
+        }
+      );
+    }
+
+    if (typeof secretValue !== "string" || secretValue.length === 0) {
+      throw new GatewayError(
+        "Request signing secret values must be non-empty strings",
+        {
+          code: "config_invalid_request_signing_secrets",
+          category: "configuration",
+          httpStatus: 500,
+          retryable: false
+        }
+      );
+    }
+
+    secrets[normalizedKey] = secretValue;
+  }
+
+  return secrets;
+}
+
 export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
   const env = gatewayEnvSchema.parse(bindings);
   const gatewayApiKeys = parseGatewayApiKeys(env.AIRLOCK_GATEWAY_API_KEYS);
+  const requestSigningSecrets = parseRequestSigningSecrets(
+    env.AIRLOCK_REQUEST_SIGNING_SECRETS
+  );
   const internalAdminCredentials = parseInternalAdminCredentials(
     env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS
   );
@@ -291,6 +359,7 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
     gatewayKeyRegistryEnabled: env.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED,
     internalAdminCredentials,
     gatewayApiKeys,
+    requestSigningSecrets,
     modelGroups,
     modelAliases,
     ...(usesAnthropic
