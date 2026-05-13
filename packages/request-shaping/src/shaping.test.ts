@@ -5,6 +5,7 @@ import { GatewayError } from "@airlock/shared";
 import {
   applyAuthStrategy,
   applyRequestShaping,
+  applySigningStrategy,
   buildRequestUrl,
   isTargetScopedRouteShapingProfile,
   mergeRequestShapingProfiles,
@@ -167,6 +168,83 @@ describe("applyAuthStrategy", () => {
         {}
       )
     ).toThrow(GatewayError);
+  });
+});
+
+describe("applySigningStrategy", () => {
+  it("applies an HMAC-SHA256 signature header from deterministic request components", async () => {
+    await expect(
+      applySigningStrategy(
+        {
+          ...createOutboundRequestShape(),
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": "test-key"
+          },
+          query: {
+            b: "2",
+            a: "1"
+          },
+          jsonBody: {
+            model: "gpt-4.1-mini",
+            temperature: 0.2
+          }
+        },
+        {
+          type: "hmac_sha256_header",
+          headerName: "x-airlock-signature",
+          prefix: "sha256=",
+          secret: {
+            secretRef: "shared-signing-secret"
+          },
+          components: ["method", "path", "query", "body_sha256", "header:x-api-key"]
+        },
+        {
+          "shared-signing-secret": "signing-secret"
+        }
+      )
+    ).resolves.toMatchObject({
+      headers: {
+        "x-airlock-signature":
+          "sha256=ed0995f1cc152c2a3dfb31be9a508c45c35e7a9a9da1d069a1db1a20b69c569b"
+      }
+    });
+  });
+
+  it("rejects unresolved signing secret refs", async () => {
+    await expect(
+      applySigningStrategy(
+        createOutboundRequestShape(),
+        {
+          type: "hmac_sha256_header",
+          headerName: "x-airlock-signature",
+          secret: {
+            secretRef: "missing-signing-secret"
+          },
+          components: ["method", "path"]
+        },
+        {}
+      )
+    ).rejects.toThrow(GatewayError);
+  });
+
+  it("rejects signing when a referenced header is missing", async () => {
+    await expect(
+      applySigningStrategy(
+        createOutboundRequestShape(),
+        {
+          type: "hmac_sha256_header",
+          headerName: "x-airlock-signature",
+          secret: {
+            secretRef: "shared-signing-secret"
+          },
+          components: ["header:x-sign-me"]
+        },
+        {
+          "shared-signing-secret": "signing-secret"
+        }
+      )
+    ).rejects.toThrow(GatewayError);
   });
 });
 

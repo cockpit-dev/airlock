@@ -6,9 +6,11 @@ import type {
 import {
   applyAuthStrategy,
   applyRequestShaping,
+  applySigningStrategy,
   buildRequestUrl,
   mergeRequestShapingProfiles,
   type OutboundAuthStrategy,
+  type OutboundSigningStrategy,
   type RequestShapingProfile
 } from "@airlock/request-shaping";
 
@@ -20,6 +22,8 @@ export interface OpenAIProviderAdapterOptions {
   apiKey: string;
   baseUrl: string;
   shaping?: RequestShapingProfile;
+  signing?: OutboundSigningStrategy;
+  signingSecrets?: Record<string, string>;
   fetcher?: typeof fetch;
 }
 
@@ -27,12 +31,16 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
   readonly #apiKey: string;
   readonly #baseUrl: string;
   readonly #shaping: RequestShapingProfile;
+  readonly #signing: OutboundSigningStrategy | undefined;
+  readonly #signingSecrets: Record<string, string>;
   readonly #fetcher: typeof fetch;
 
   constructor(options: OpenAIProviderAdapterOptions) {
     this.#apiKey = options.apiKey;
     this.#baseUrl = options.baseUrl.replace(/\/$/, "");
     this.#shaping = options.shaping ?? {};
+    this.#signing = options.signing;
+    this.#signingSecrets = options.signingSecrets ?? {};
     this.#fetcher = options.fetcher ?? fetch;
   }
 
@@ -47,32 +55,63 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         secretRef: "openai-api-key"
       }
     };
-    const outboundRequest = applyRequestShaping(
-      applyAuthStrategy(
-        {
-          path: "/chat/completions",
-          method: "POST",
-          headers: {
-            "content-type": "application/json"
-          },
-          query: {},
-          jsonBody: {
-            model: request.model,
-            stream: false,
-            messages: request.messages
-            ,
-            ...(request.maxOutputTokens !== undefined
-              ? { max_tokens: request.maxOutputTokens }
-              : {})
-          }
-        },
-        authStrategy,
-        {
-          "openai-api-key": this.#apiKey
-        }
-      ),
-      mergeRequestShapingProfiles(this.#shaping, context.requestShaping)
-    );
+    const outboundRequest = this.#signing
+      ? await applySigningStrategy(
+          applyRequestShaping(
+            applyAuthStrategy(
+              {
+                path: "/chat/completions",
+                method: "POST",
+                headers: {
+                  "content-type": "application/json"
+                },
+                query: {},
+                jsonBody: {
+                  model: request.model,
+                  stream: false,
+                  messages: request.messages
+                  ,
+                  ...(request.maxOutputTokens !== undefined
+                    ? { max_tokens: request.maxOutputTokens }
+                    : {})
+                }
+              },
+              authStrategy,
+              {
+                "openai-api-key": this.#apiKey
+              }
+            ),
+            mergeRequestShapingProfiles(this.#shaping, context.requestShaping)
+          ),
+          this.#signing,
+          this.#signingSecrets
+        )
+      : applyRequestShaping(
+          applyAuthStrategy(
+            {
+              path: "/chat/completions",
+              method: "POST",
+              headers: {
+                "content-type": "application/json"
+              },
+              query: {},
+              jsonBody: {
+                model: request.model,
+                stream: false,
+                messages: request.messages
+                ,
+                ...(request.maxOutputTokens !== undefined
+                  ? { max_tokens: request.maxOutputTokens }
+                  : {})
+              }
+            },
+            authStrategy,
+            {
+              "openai-api-key": this.#apiKey
+            }
+          ),
+          mergeRequestShapingProfiles(this.#shaping, context.requestShaping)
+        );
     const abortController = new AbortController();
     const timeoutHandle =
       context.timeoutMs !== undefined
@@ -172,34 +211,67 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         secretRef: "openai-api-key"
       }
     };
-    const outboundRequest = applyRequestShaping(
-      applyAuthStrategy(
-        {
-          path: "/chat/completions",
-          method: "POST",
-          headers: {
-            "content-type": "application/json"
-          },
-          query: {},
-          jsonBody: {
-            model: request.model,
-            stream: true,
-            messages: request.messages,
-            ...(request.maxOutputTokens !== undefined
-              ? { max_tokens: request.maxOutputTokens }
-              : {}),
-            stream_options: {
-              include_usage: true
+    const outboundRequest = this.#signing
+      ? await applySigningStrategy(
+          applyRequestShaping(
+            applyAuthStrategy(
+              {
+                path: "/chat/completions",
+                method: "POST",
+                headers: {
+                  "content-type": "application/json"
+                },
+                query: {},
+                jsonBody: {
+                  model: request.model,
+                  stream: true,
+                  messages: request.messages,
+                  ...(request.maxOutputTokens !== undefined
+                    ? { max_tokens: request.maxOutputTokens }
+                    : {}),
+                  stream_options: {
+                    include_usage: true
+                  }
+                }
+              },
+              authStrategy,
+              {
+                "openai-api-key": this.#apiKey
+              }
+            ),
+            mergeRequestShapingProfiles(this.#shaping, context.requestShaping)
+          ),
+          this.#signing,
+          this.#signingSecrets
+        )
+      : applyRequestShaping(
+          applyAuthStrategy(
+            {
+              path: "/chat/completions",
+              method: "POST",
+              headers: {
+                "content-type": "application/json"
+              },
+              query: {},
+              jsonBody: {
+                model: request.model,
+                stream: true,
+                messages: request.messages,
+                ...(request.maxOutputTokens !== undefined
+                  ? { max_tokens: request.maxOutputTokens }
+                  : {}),
+                stream_options: {
+                  include_usage: true
+                }
+              }
+            },
+            authStrategy,
+            {
+              "openai-api-key": this.#apiKey
             }
-          }
-        },
-        authStrategy,
-        {
-          "openai-api-key": this.#apiKey
-        }
-      ),
-      mergeRequestShapingProfiles(this.#shaping, context.requestShaping)
-    );
+          ),
+          mergeRequestShapingProfiles(this.#shaping, context.requestShaping)
+        );
     const abortController = new AbortController();
     const timeoutHandle =
       context.timeoutMs !== undefined

@@ -34,9 +34,26 @@ export interface HeaderValueAuthStrategy {
   credential: SecretRef;
 }
 
+export type HmacSha256SigningComponent =
+  | "method"
+  | "path"
+  | "query"
+  | "body_sha256"
+  | `header:${string}`;
+
+export interface HmacSha256HeaderSigningStrategy {
+  type: "hmac_sha256_header";
+  headerName: string;
+  secret: SecretRef;
+  components: HmacSha256SigningComponent[];
+  prefix?: string;
+}
+
 export type OutboundAuthStrategy =
   | HeaderBearerAuthStrategy
   | HeaderValueAuthStrategy;
+
+export type OutboundSigningStrategy = HmacSha256HeaderSigningStrategy;
 
 export type RouteRequestShapingProfile =
   | RequestShapingProfile
@@ -73,6 +90,15 @@ function createInvalidRequestShapingError(message: string): GatewayError {
 function createInvalidAuthStrategyError(message: string): GatewayError {
   return new GatewayError(message, {
     code: "config_invalid_auth_strategy",
+    category: "configuration",
+    httpStatus: 500,
+    retryable: false
+  });
+}
+
+function createInvalidSigningStrategyError(message: string): GatewayError {
+  return new GatewayError(message, {
+    code: "config_invalid_signing_strategy",
     category: "configuration",
     httpStatus: 500,
     retryable: false
@@ -352,6 +378,148 @@ export function applyAuthStrategy(
     headers: {
       ...request.headers,
       [strategy.headerName]: headerValue
+    }
+  };
+}
+
+function resolveHeaderValue(
+  headers: Record<string, string>,
+  headerName: string
+): string {
+  const normalizedHeaderName = headerName.toLowerCase();
+
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === normalizedHeaderName) {
+      return value;
+    }
+  }
+
+  throw createInvalidSigningStrategyError(
+    `Signing strategy references a missing header component: ${headerName}`
+  );
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const encoded = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => {
+      return byte.toString(16).padStart(2, "0");
+    })
+    .join("");
+}
+
+async function hmacSha256Hex(secret: string, value: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    {
+      name: "HMAC",
+      hash: "SHA-256"
+    },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(value)
+  );
+
+  return Array.from(new Uint8Array(signature))
+    .map((byte) => {
+      return byte.toString(16).padStart(2, "0");
+    })
+    .join("");
+}
+
+function serializeSortedQuery(query: Record<string, string>): string {
+  return Object.keys(query)
+    .sort((left, right) => left.localeCompare(right))
+    .map((key) => {
+      return `${key}=${query[key] ?? ""}`;
+    })
+    .join("&");
+}
+
+async function resolveSigningComponentValue(
+  request: OutboundRequestShape,
+  component: HmacSha256SigningComponent
+): Promise<string> {
+  if (component === "method") {
+    return request.method;
+  }
+
+  if (component === "path") {
+    return request.path;
+  }
+
+  if (component === "query") {
+    return serializeSortedQuery(request.query);
+  }
+
+  if (component === "body_sha256") {
+    return sha256Hex(JSON.stringify(request.jsonBody));
+  }
+
+  if (component.startsWith("header:")) {
+    const headerName = component.slice("header:".length).trim();
+
+    if (headerName.length === 0) {
+      throw createInvalidSigningStrategyError(
+        "Signing header components must reference a non-empty header name"
+      );
+    }
+
+    return resolveHeaderValue(request.headers, headerName);
+  }
+
+  throw createInvalidSigningStrategyError(
+    `Unsupported signing component: ${component}`
+  );
+}
+
+export async function applySigningStrategy(
+  request: OutboundRequestShape,
+  strategy: OutboundSigningStrategy,
+  secrets: Record<string, string>
+): Promise<OutboundRequestShape> {
+  const secretValue = secrets[strategy.secret.secretRef];
+
+  if (!secretValue) {
+    throw createInvalidSigningStrategyError(
+      `Signing strategy references an unknown secret ref: ${strategy.secret.secretRef}`
+    );
+  }
+
+  if (strategy.headerName.trim().length === 0) {
+    throw createInvalidSigningStrategyError(
+      "Signing strategy headerName must be a non-empty string"
+    );
+  }
+
+  if (strategy.components.length === 0) {
+    throw createInvalidSigningStrategyError(
+      "Signing strategy must define at least one component"
+    );
+  }
+
+  const payload = (
+    await Promise.all(
+      strategy.components.map(async (component) => {
+        return resolveSigningComponentValue(request, component);
+      })
+    )
+  ).join("\n");
+  const digest = await hmacSha256Hex(secretValue, payload);
+
+  return {
+    ...request,
+    headers: {
+      ...request.headers,
+      [strategy.headerName]:
+        strategy.prefix !== undefined ? `${strategy.prefix}${digest}` : digest
     }
   };
 }

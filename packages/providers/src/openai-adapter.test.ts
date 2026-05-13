@@ -219,6 +219,69 @@ describe("OpenAIProviderAdapter", () => {
     ).rejects.toBeInstanceOf(GatewayError);
   });
 
+  it("applies request signing after shaping when configured", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      shaping: {
+        query: {
+          "api-version": "2025-01-01"
+        }
+      },
+      signing: {
+        type: "hmac_sha256_header",
+        headerName: "x-airlock-signature",
+        prefix: "sha256=",
+        secret: {
+          secretRef: "openai-signing-secret"
+        },
+        components: ["method", "path", "query"]
+      },
+      signingSecrets: {
+        "openai-signing-secret": "signing-secret"
+      },
+      fetcher
+    });
+
+    await adapter.complete(createCanonicalRequest(), {
+      requestId: "req_123"
+    });
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(init.headers).toMatchObject({
+      "x-airlock-signature":
+        "sha256=3cfdb030ea88f177756399b431f674bb5c7ffd8f798ad18a02c758b374ce64a7"
+    });
+  });
+
   it("maps upstream failures into a gateway error", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
