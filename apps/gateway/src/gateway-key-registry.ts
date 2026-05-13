@@ -48,6 +48,7 @@ import {
   parseGatewayKeyAuditEventsResponse,
   parseGatewayApiKeyMetadataOverride,
   parseGatewayDynamicApiKeyRecord,
+  resolveConfiguredGatewayApiKeyRuntime,
   type GatewayApiKeyMetadataOverride,
   type GatewayKeyAuditActorContext,
   type GatewayKeyAuditEvent,
@@ -1604,12 +1605,11 @@ export async function getGatewayKeyRegistryOverride(
 export async function upsertGatewayKeyRegistryOverride(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
-  payload: unknown,
+  override: GatewayApiKeyMetadataOverride,
   requestId: string
 ): Promise<GatewayKeyRegistryStoredOverride> {
   const namespace = requireGatewayKeyRegistryNamespace(env, requestId);
   const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-  const override = parseGatewayApiKeyMetadataOverride(payload);
   let response: Response;
 
   try {
@@ -3236,19 +3236,15 @@ export async function resolveGatewayRuntimeApiKey(
   runtimeGatewayApiKey: GatewayApiKeyRecord;
   registryOverride: GatewayKeyRegistryStoredOverride | null;
 }> {
-  const registryOverride = await getGatewayKeyRegistryOverride(
-    env,
-    gatewayApiKey,
-    requestId
-  );
-
-  return {
-    runtimeGatewayApiKey: applyGatewayApiKeyMetadataOverride(
-      gatewayApiKey,
-      registryOverride ?? undefined
-    ),
-    registryOverride
-  };
+  return resolveConfiguredGatewayApiKeyRuntime(gatewayApiKey, {
+    readRegistryOverride: async (candidateGatewayApiKey) => {
+      return getGatewayKeyRegistryOverride(
+        env,
+        candidateGatewayApiKey,
+        requestId
+      );
+    }
+  });
 }
 
 async function readStoredOverride(

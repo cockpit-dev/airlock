@@ -3,6 +3,7 @@ export * from "./admin-key-governance-mutations.js";
 export * from "./admin-key-governance-write.js";
 export * from "./gateway-key-access.js";
 export * from "./gateway-key-audit.js";
+export * from "./gateway-key-configured-registry.js";
 export * from "./gateway-key-identity.js";
 export * from "./gateway-key-governance-read.js";
 export * from "./gateway-key-runtime-dependencies.js";

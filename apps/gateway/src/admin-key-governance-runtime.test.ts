@@ -24,8 +24,10 @@ const runtimeMocks = vi.hoisted(() => ({
   restoreGatewayRegistryApiKey: vi.fn(),
   finalizeGatewayRegistryApiKeyRotation: vi.fn(),
   cancelGatewayRegistryApiKeyRotation: vi.fn(),
+  resolveGatewayRuntimeApiKey: vi.fn(),
   upsertGatewayKeyRegistryOverride: vi.fn(),
   clearGatewayKeyRegistryOverride: vi.fn(),
+  getGatewayKeyRevocationStatus: vi.fn(),
   getGatewayKeyRevocationStatusById: vi.fn(),
   getGatewayApiKeyStatusSnapshot: vi.fn(),
   getGatewayKeyRevocationEvents: vi.fn(),
@@ -70,6 +72,7 @@ vi.mock("./gateway-key-registry.js", () => ({
     runtimeMocks.finalizeGatewayRegistryApiKeyRotation,
   cancelGatewayRegistryApiKeyRotation:
     runtimeMocks.cancelGatewayRegistryApiKeyRotation,
+  resolveGatewayRuntimeApiKey: runtimeMocks.resolveGatewayRuntimeApiKey,
   upsertGatewayKeyRegistryOverride:
     runtimeMocks.upsertGatewayKeyRegistryOverride,
   clearGatewayKeyRegistryOverride: runtimeMocks.clearGatewayKeyRegistryOverride
@@ -77,6 +80,7 @@ vi.mock("./gateway-key-registry.js", () => ({
 
 vi.mock("./gateway-key-revocation.js", () => ({
   listGatewayApiKeyStatuses: runtimeMocks.listGatewayApiKeyStatuses,
+  getGatewayKeyRevocationStatus: runtimeMocks.getGatewayKeyRevocationStatus,
   getGatewayKeyRevocationStatusById:
     runtimeMocks.getGatewayKeyRevocationStatusById,
   getGatewayApiKeyStatusSnapshot: runtimeMocks.getGatewayApiKeyStatusSnapshot,
@@ -240,6 +244,15 @@ describe("createAdminKeyGovernanceRuntime", () => {
     runtimeMocks.getGatewayApiKeyStatusSnapshot.mockResolvedValue({
       keyId: "key_registry"
     });
+    runtimeMocks.resolveGatewayRuntimeApiKey.mockResolvedValue({
+      runtimeGatewayApiKey: {
+        id: "key_configured",
+        label: "Configured Key",
+        valueHash: gatewaySecretHash,
+        status: "active"
+      },
+      registryOverride: null
+    });
     runtimeMocks.upsertGatewayKeyRegistryOverride.mockResolvedValue({
       label: "Updated",
       updatedAt: "2026-05-14T00:00:00.000Z"
@@ -265,9 +278,11 @@ describe("createAdminKeyGovernanceRuntime", () => {
     expect(runtimeMocks.getGatewayApiKeyStatusSnapshot).toHaveBeenCalled();
 
     await runtime.read.getConfiguredKeyStatusSnapshot("key_configured");
-    expect(runtimeMocks.resolveGatewayApiKeyById).toHaveBeenCalledWith(
-      runtime.gatewayApiKeys,
-      "key_configured",
+    expect(runtimeMocks.resolveGatewayRuntimeApiKey).toHaveBeenCalledWith(
+      env,
+      expect.objectContaining({
+        id: "key_configured"
+      }),
       "req_123"
     );
 
@@ -275,6 +290,11 @@ describe("createAdminKeyGovernanceRuntime", () => {
       label: "Updated"
     });
     expect(runtimeMocks.upsertGatewayKeyRegistryOverride).toHaveBeenCalled();
+    expect(runtimeMocks.resolveGatewayApiKeyById).not.toHaveBeenCalled();
+
+    await runtime.write.clearRegistryOverride("key_configured");
+    expect(runtimeMocks.clearGatewayKeyRegistryOverride).toHaveBeenCalled();
+    expect(runtimeMocks.resolveGatewayApiKeyById).not.toHaveBeenCalled();
 
     await runtime.write.revokeKey("key_registry", {
       reason: "incident"

@@ -1,4 +1,11 @@
-import { isConfiguredGatewayApiKeyId, type GatewayKeyAuditActorContext } from "@airlock/governance";
+import {
+  clearConfiguredGatewayKeyRegistryOverride,
+  DEFAULT_GATEWAY_KEY_REVOCATION_STATE,
+  getConfiguredGatewayApiKeyStatusSnapshot,
+  isConfiguredGatewayApiKeyId,
+  type GatewayKeyAuditActorContext,
+  updateConfiguredGatewayKeyRegistryOverride
+} from "@airlock/governance";
 
 import { resolveGatewayConfig } from "./config.js";
 import type { GatewayBindings } from "./env.js";
@@ -20,6 +27,7 @@ import {
   getGatewayRegistryApiKey,
   getGatewayRegistryApiKeyEvents,
   getGatewayRegistryOperationEvents,
+  resolveGatewayRuntimeApiKey,
   restoreGatewayRegistryApiKey,
   rotateGatewayRegistryApiKey,
   updateGatewayRegistryApiKey,
@@ -28,10 +36,10 @@ import {
 import {
   clearGatewayKeyRevocationById,
   getGatewayApiKeyStatusSnapshot,
+  getGatewayKeyRevocationStatus,
   getGatewayKeyRevocationEvents,
   getGatewayKeyRevocationStatusById,
   listGatewayApiKeyStatuses,
-  resolveGatewayApiKeyById,
   resolveGatewayApiKeyByIdWithRegistry,
   revokeGatewayKeyById
 } from "./gateway-key-revocation.js";
@@ -118,13 +126,36 @@ export function createAdminKeyGovernanceRuntime(
         );
       },
       async getConfiguredKeyStatusSnapshot(candidateKeyId: string) {
-        const gatewayApiKey = resolveGatewayApiKeyById(
-          getGatewayApiKeys(),
+        return getConfiguredGatewayApiKeyStatusSnapshot(
           candidateKeyId,
-          requestId
-        );
+          requestId,
+          {
+            gatewayApiKeys: getGatewayApiKeys(),
+            readOverlayState: async (candidateGatewayApiKey) => {
+              if (!env.AIRLOCK_GATEWAY_KEY_REVOCATION) {
+                return DEFAULT_GATEWAY_KEY_REVOCATION_STATE;
+              }
 
-        return getGatewayApiKeyStatusSnapshot(env, gatewayApiKey, requestId);
+              const status = await getGatewayKeyRevocationStatus(
+                env,
+                candidateGatewayApiKey,
+                requestId
+              );
+
+              return {
+                revoked: status.revoked,
+                updatedAt: status.updatedAt
+              };
+            },
+            resolveRuntimeKey: async (candidateGatewayApiKey) => {
+              return resolveGatewayRuntimeApiKey(
+                env,
+                candidateGatewayApiKey,
+                requestId
+              );
+            }
+          }
+        );
       }
     },
     write: {
@@ -341,27 +372,36 @@ export function createAdminKeyGovernanceRuntime(
         );
       },
       async updateRegistryOverride(candidateKeyId: string, candidatePayload: unknown) {
-        const gatewayApiKey = resolveGatewayApiKeyById(
-          getGatewayApiKeys(),
-          candidateKeyId,
-          requestId
-        );
-
-        return upsertGatewayKeyRegistryOverride(
-          env,
-          gatewayApiKey,
-          candidatePayload,
-          requestId
-        );
+        return (
+          await updateConfiguredGatewayKeyRegistryOverride(
+            getGatewayApiKeys(),
+            candidateKeyId,
+            candidatePayload,
+            requestId,
+            {
+              writeRegistryOverride: async (gatewayApiKey, override) => {
+                return upsertGatewayKeyRegistryOverride(
+                  env,
+                  gatewayApiKey,
+                  override,
+                  requestId
+                );
+              }
+            }
+          )
+        ).override;
       },
       async clearRegistryOverride(candidateKeyId: string) {
-        const gatewayApiKey = resolveGatewayApiKeyById(
+        await clearConfiguredGatewayKeyRegistryOverride(
           getGatewayApiKeys(),
           candidateKeyId,
-          requestId
+          requestId,
+          {
+            clearRegistryOverride: async (gatewayApiKey) => {
+              await clearGatewayKeyRegistryOverride(env, gatewayApiKey, requestId);
+            }
+          }
         );
-
-        await clearGatewayKeyRegistryOverride(env, gatewayApiKey, requestId);
       },
       revokeKey(candidateKeyId: string, candidatePayload: unknown) {
         return revokeGatewayKeyById(
