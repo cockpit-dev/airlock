@@ -12,6 +12,7 @@ import type { GatewayBindings } from "./env.js";
 import {
   createGatewayKeyAuditEvent,
   MAX_GATEWAY_KEY_AUDIT_EVENTS,
+  parseOptionalGatewayKeyAuditReason,
   parseGatewayKeyAuditEventsResponse,
   type GatewayKeyAuditEvent,
   type GatewayKeyAuditEventsResponse
@@ -80,6 +81,11 @@ interface GatewayKeyRegistryLookupRequest {
 
 interface GatewayKeyRegistryRotateRequest {
   valueHash: string;
+  reason?: string;
+}
+
+interface GatewayKeyRegistryDeleteRequest {
+  reason?: string;
 }
 
 export interface GatewayApiKeyStatusView {
@@ -349,8 +355,62 @@ function parseRotateRequest(value: unknown): GatewayKeyRegistryRotateRequest {
   });
 
   return {
-    valueHash: record.valueHash!
+    valueHash: record.valueHash!,
+    ...(value.reason !== undefined
+      ? {
+          reason: parseReasonPayload(
+            value.reason,
+            "Gateway dynamic key rotation payload is invalid"
+          )
+        }
+      : {})
   };
+}
+
+function parseDeleteRequest(value: unknown): GatewayKeyRegistryDeleteRequest {
+  if (value === undefined || value === null) {
+    return {};
+  }
+
+  if (!isRecord(value)) {
+    throw new GatewayError("Gateway dynamic key delete payload is invalid", {
+      code: "config_invalid_gateway_api_keys",
+      category: "configuration",
+      httpStatus: 400,
+      retryable: false
+    });
+  }
+
+  return {
+    ...(value.reason !== undefined
+      ? {
+          reason: parseReasonPayload(
+            value.reason,
+            "Gateway dynamic key delete payload is invalid"
+          )
+        }
+      : {})
+  };
+}
+
+function parseReasonPayload(value: unknown, message: string): string {
+  try {
+    const reason = parseOptionalGatewayKeyAuditReason(value);
+
+    if (!reason) {
+      throw new Error("Reason is missing");
+    }
+
+    return reason;
+  } catch (cause) {
+    throw new GatewayError(message, {
+      code: "config_invalid_gateway_api_keys",
+      category: "configuration",
+      httpStatus: 400,
+      retryable: false,
+      cause
+    });
+  }
 }
 
 function buildRegistryRequest(
@@ -533,7 +593,8 @@ export class GatewayKeyRegistryDurableObject {
           keyId: key.id,
           kind: "rotated",
           ownership: "registry",
-          occurredAt: key.updatedAt
+          occurredAt: key.updatedAt,
+          ...(payload.reason ? { reason: payload.reason } : {})
         })
       );
 
@@ -582,6 +643,10 @@ export class GatewayKeyRegistryDurableObject {
 
       if (request.method === "DELETE") {
         const existingKey = await readStoredDynamicKey(this.state.storage, keyId);
+        const payload =
+          request.headers.get("content-type")?.includes("application/json")
+            ? parseDeleteRequest(await request.json())
+            : {};
         const deleted = await clearStoredDynamicKey(this.state.storage, keyId);
 
         if (!deleted) {
@@ -595,7 +660,8 @@ export class GatewayKeyRegistryDurableObject {
               keyId: existingKey.id,
               kind: "deleted",
               ownership: "registry",
-              occurredAt: new Date().toISOString()
+              occurredAt: new Date().toISOString(),
+              ...(payload.reason ? { reason: payload.reason } : {})
             })
           );
         }
@@ -839,6 +905,7 @@ export async function deleteGatewayRegistryApiKey(
   env: GatewayBindings,
   configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
   keyId: string,
+  payload: unknown,
   requestId: string
 ): Promise<void> {
   if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
@@ -850,6 +917,8 @@ export async function deleteGatewayRegistryApiKey(
   if (!existingKey) {
     throw createGatewayKeyNotFoundError(requestId);
   }
+
+  const deleteRequest = parseDeleteRequest(payload);
 
   await clearGatewayKeyRevocationOverlayState(
     env,
@@ -865,7 +934,11 @@ export async function deleteGatewayRegistryApiKey(
     response = await stub.fetch(
       buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC, {
         method: "DELETE",
-        keyId
+        keyId,
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(deleteRequest)
       })
     );
   } catch (cause) {
@@ -1007,13 +1080,13 @@ export async function rotateGatewayRegistryApiKey(
     throw createGatewayKeyNotRegistryOwnedError(requestId);
   }
 
+  const rotateRequest = parseRotateRequest(payload);
+
   const existingKey = await getGatewayRegistryApiKey(env, keyId, requestId);
 
   if (!existingKey) {
     throw createGatewayKeyNotFoundError(requestId);
   }
-
-  const rotateRequest = parseRotateRequest(payload);
   const rotatedGatewayApiKey = parseGatewayDynamicApiKeyRecord(
     {
       ...existingKey.key,
@@ -1048,7 +1121,8 @@ export async function rotateGatewayRegistryApiKey(
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          valueHash: rotateRequest.valueHash
+          valueHash: rotateRequest.valueHash,
+          ...(rotateRequest.reason ? { reason: rotateRequest.reason } : {})
         } satisfies GatewayKeyRegistryRotateRequest)
       })
     );

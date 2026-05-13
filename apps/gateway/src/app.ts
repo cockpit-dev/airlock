@@ -193,10 +193,12 @@ export function createApp(options: CreateAppOptions = {}) {
     );
 
     const config = resolveGatewayConfig(context.env);
+    const payload = await readOptionalJsonBody(context.req.raw);
     await deleteGatewayRegistryApiKey(
       context.env,
       config.gatewayApiKeys,
       context.req.param("keyId"),
+      payload,
       requestId
     );
 
@@ -391,11 +393,13 @@ export function createApp(options: CreateAppOptions = {}) {
     );
 
     const config = resolveGatewayConfig(context.env);
+    const payload = await readOptionalJsonBody(context.req.raw);
     return context.json(
       await revokeGatewayKeyById(
         context.env,
         config.gatewayApiKeys,
         context.req.param("keyId"),
+        payload,
         requestId
       )
     );
@@ -409,11 +413,13 @@ export function createApp(options: CreateAppOptions = {}) {
     );
 
     const config = resolveGatewayConfig(context.env);
+    const payload = await readOptionalJsonBody(context.req.raw);
     return context.json(
       await clearGatewayKeyRevocationById(
         context.env,
         config.gatewayApiKeys,
         context.req.param("keyId"),
+        payload,
         requestId
       )
     );
@@ -425,4 +431,12 @@ export function createApp(options: CreateAppOptions = {}) {
   app.post("/v1/responses", handleResponses);
 
   return app;
+}
+
+async function readOptionalJsonBody(request: Request): Promise<unknown> {
+  if (!request.headers.get("content-type")?.includes("application/json")) {
+    return undefined;
+  }
+
+  return request.json();
 }

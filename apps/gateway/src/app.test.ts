@@ -50,6 +50,7 @@ function isGatewayKeyEventsPayload(
     kind: string;
     ownership?: string;
     occurredAt?: string;
+    reason?: string;
   }>;
 } {
   return (
@@ -62,7 +63,8 @@ function isGatewayKeyEventsPayload(
         typeof event.keyId === "string" &&
         typeof event.kind === "string" &&
         (event.ownership === undefined || typeof event.ownership === "string") &&
-        (event.occurredAt === undefined || typeof event.occurredAt === "string")
+        (event.occurredAt === undefined || typeof event.occurredAt === "string") &&
+        (event.reason === undefined || typeof event.reason === "string")
       );
     })
   );
@@ -441,6 +443,7 @@ function createRevocationNamespace() {
         kind: "revoked" | "unrevoked";
         ownership: "configured" | "registry";
         occurredAt: string;
+        reason?: string;
       }>;
     }
   >();
@@ -481,6 +484,7 @@ function createRevocationNamespace() {
               keyId?: string;
               recordEvent?: boolean;
               ownership?: "configured" | "registry";
+              reason?: string;
             };
             const occurredAt = new Date().toISOString();
             const next = {
@@ -495,7 +499,8 @@ function createRevocationNamespace() {
                         keyId: body.keyId ?? id.name,
                         kind: "revoked" as const,
                         ownership: body.ownership ?? "configured",
-                        occurredAt
+                        occurredAt,
+                        ...(body.reason ? { reason: body.reason } : {})
                       }
                     ]
             };
@@ -511,6 +516,7 @@ function createRevocationNamespace() {
               keyId?: string;
               recordEvent?: boolean;
               ownership?: "configured" | "registry";
+              reason?: string;
             };
             const occurredAt = new Date().toISOString();
             const next = {
@@ -525,7 +531,8 @@ function createRevocationNamespace() {
                         keyId: body.keyId ?? id.name,
                         kind: "unrevoked" as const,
                         ownership: body.ownership ?? "configured",
-                        occurredAt
+                        occurredAt,
+                        ...(body.reason ? { reason: body.reason } : {})
                       }
                     ]
             };
@@ -3698,6 +3705,235 @@ describe("gateway app", () => {
         })
       ])
     );
+  });
+
+  it("records explicit reason metadata on lifecycle audit events", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              id: "key_dynamic",
+              label: "Dynamic Runtime Key",
+              valueHash:
+                "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+              status: "active"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys/gak_1/revocation",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              reason: "incident containment"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys/gak_1/revocation",
+          {
+            method: "DELETE",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              reason: "incident resolved"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys/key_dynamic/rotate",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              valueHash:
+                "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+              reason: "credential rollover"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys/key_dynamic",
+          {
+            method: "DELETE",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              reason: "tenant deprovisioned"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    const configuredEventsResponse = await app.request(
+      "http://localhost/_airlock/keys/gak_1/events",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(configuredEventsResponse.status).toBe(200);
+    const configuredPayload = await readJson(configuredEventsResponse);
+
+    expect(isGatewayKeyEventsPayload(configuredPayload)).toBe(true);
+
+    if (!isGatewayKeyEventsPayload(configuredPayload)) {
+      return;
+    }
+
+    expect(configuredPayload.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          keyId: "gak_1",
+          kind: "revoked",
+          reason: "incident containment"
+        }),
+        expect.objectContaining({
+          keyId: "gak_1",
+          kind: "unrevoked",
+          reason: "incident resolved"
+        })
+      ])
+    );
+
+    const registryEventsResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/events",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(registryEventsResponse.status).toBe(200);
+    const registryPayload = await readJson(registryEventsResponse);
+
+    expect(isGatewayKeyEventsPayload(registryPayload)).toBe(true);
+
+    if (!isGatewayKeyEventsPayload(registryPayload)) {
+      return;
+    }
+
+    expect(registryPayload.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          keyId: "key_dynamic",
+          kind: "rotated",
+          reason: "credential rollover"
+        }),
+        expect.objectContaining({
+          keyId: "key_dynamic",
+          kind: "deleted",
+          reason: "tenant deprovisioned"
+        })
+      ])
+    );
+  });
+
+  it("rejects invalid explicit reason metadata payloads", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    const revokeResponse = await app.request(
+      "http://localhost/_airlock/keys/gak_1/revocation",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          reason: "   "
+        })
+      },
+      bindings
+    );
+
+    expect(revokeResponse.status).toBe(400);
+
+    const rotateResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/rotate",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          valueHash:
+            "a26fa50cba5c8fefa46af3f7d9fa9a00f01eea2bcf5e3db253aa7e6e39c4b388",
+          reason: 42
+        })
+      },
+      bindings
+    );
+
+    expect(rotateResponse.status).toBe(400);
   });
 
   it("rejects a not-yet-active structured gateway key on the request path", async () => {

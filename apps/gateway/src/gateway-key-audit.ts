@@ -12,6 +12,7 @@ export interface GatewayKeyAuditEvent {
   kind: GatewayKeyAuditEventKind;
   ownership: GatewayKeyAuditOwnership;
   occurredAt: string;
+  reason?: string;
 }
 
 export interface GatewayKeyAuditEventsResponse {
@@ -20,6 +21,7 @@ export interface GatewayKeyAuditEventsResponse {
 }
 
 export const MAX_GATEWAY_KEY_AUDIT_EVENTS = 64;
+export const MAX_GATEWAY_KEY_AUDIT_REASON_LENGTH = 280;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -36,7 +38,8 @@ export function createGatewayKeyAuditEvent(
     keyId: event.keyId,
     kind: event.kind,
     ownership: event.ownership,
-    occurredAt: event.occurredAt
+    occurredAt: event.occurredAt,
+    ...(event.reason ? { reason: event.reason } : {})
   };
 }
 
@@ -45,7 +48,7 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
     throw new Error("Gateway key audit event must be an object");
   }
 
-  const { keyId, kind, ownership, occurredAt } = value;
+  const { keyId, kind, ownership, occurredAt, reason } = value;
 
   if (typeof keyId !== "string" || keyId.length === 0) {
     throw new Error("Gateway key audit event keyId must be a non-empty string");
@@ -69,11 +72,14 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
     throw new Error("Gateway key audit event occurredAt is invalid");
   }
 
+  const parsedReason = parseOptionalGatewayKeyAuditReason(reason);
+
   return {
     keyId,
     kind,
     ownership,
-    occurredAt
+    occurredAt,
+    ...(parsedReason ? { reason: parsedReason } : {})
   };
 }
 
@@ -111,4 +117,28 @@ export function sortGatewayKeyAuditEventsDescending(
   return [...events].sort((left, right) => {
     return right.occurredAt.localeCompare(left.occurredAt);
   });
+}
+
+export function parseOptionalGatewayKeyAuditReason(
+  value: unknown
+): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    throw new Error("Gateway key audit reason must be a string");
+  }
+
+  const trimmed = value.trim();
+
+  if (trimmed.length === 0) {
+    throw new Error("Gateway key audit reason must not be empty");
+  }
+
+  if (trimmed.length > MAX_GATEWAY_KEY_AUDIT_REASON_LENGTH) {
+    throw new Error("Gateway key audit reason is too long");
+  }
+
+  return trimmed;
 }

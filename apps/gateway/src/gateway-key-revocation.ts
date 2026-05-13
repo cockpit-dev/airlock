@@ -9,6 +9,7 @@ import type { GatewayBindings } from "./env.js";
 import {
   createGatewayKeyAuditEvent,
   MAX_GATEWAY_KEY_AUDIT_EVENTS,
+  parseOptionalGatewayKeyAuditReason,
   parseGatewayKeyAuditEventsResponse,
   type GatewayKeyAuditEvent,
   type GatewayKeyAuditEventsResponse,
@@ -31,6 +32,7 @@ interface GatewayKeyRevocationWriteRequest {
   keyId?: string;
   recordEvent?: boolean;
   ownership?: GatewayKeyAuditOwnership;
+  reason?: string;
 }
 
 interface DurableObjectStateLike {
@@ -426,6 +428,7 @@ export async function revokeGatewayKeyById(
   env: GatewayBindings,
   gatewayApiKeys: readonly GatewayApiKeyRecord[],
   keyId: string,
+  payload: unknown,
   requestId: string
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
   const { gatewayApiKey, ownership } = await resolveGatewayApiKeyByIdWithRegistry(
@@ -442,7 +445,11 @@ export async function revokeGatewayKeyById(
     requestId,
     {
       keyId,
-      ownership
+      ownership,
+      ...parseExplicitRevocationReasonPayload(
+        payload,
+        "Gateway key revocation payload is invalid"
+      )
     }
   );
 
@@ -476,6 +483,7 @@ export async function clearGatewayKeyRevocationById(
   env: GatewayBindings,
   gatewayApiKeys: readonly GatewayApiKeyRecord[],
   keyId: string,
+  payload: unknown,
   requestId: string
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
   const { gatewayApiKey, ownership } = await resolveGatewayApiKeyByIdWithRegistry(
@@ -492,7 +500,11 @@ export async function clearGatewayKeyRevocationById(
     requestId,
     {
       keyId,
-      ownership
+      ownership,
+      ...parseExplicitRevocationReasonPayload(
+        payload,
+        "Gateway key revocation payload is invalid"
+      )
     }
   );
 
@@ -625,6 +637,7 @@ async function writeGatewayKeyRevocationStateForKey(
         body: JSON.stringify({
           keyId: gatewayApiKey.id,
           recordEvent: options?.recordEvent ?? true,
+          ...(options?.reason ? { reason: options.reason } : {}),
           ...((options?.recordEvent ?? true)
             ? {
                 ownership:
@@ -709,7 +722,8 @@ async function writeGatewayKeyRevocationState(
         keyId: requestKeyIdFromOwnershipRequest(request),
         kind: revoked ? "revoked" : "unrevoked",
         ownership: request.ownership ?? "configured",
-        occurredAt: now
+        occurredAt: now,
+        ...(request.reason ? { reason: request.reason } : {})
       })
     );
   }
@@ -773,6 +787,7 @@ async function readGatewayKeyRevocationWriteRequest(
   }
 
   const { keyId, recordEvent, ownership } = body;
+  let reason: string | undefined;
 
   if (keyId !== undefined && (typeof keyId !== "string" || keyId.length === 0)) {
     throw new Error("Revocation write request keyId is invalid");
@@ -790,10 +805,15 @@ async function readGatewayKeyRevocationWriteRequest(
     throw new Error("Revocation write request ownership is invalid");
   }
 
+  if ("reason" in body) {
+    reason = parseOptionalGatewayKeyAuditReason(body.reason);
+  }
+
   return {
     ...(keyId !== undefined ? { keyId } : {}),
     ...(recordEvent !== undefined ? { recordEvent } : {}),
-    ...(ownership !== undefined ? { ownership } : {})
+    ...(ownership !== undefined ? { ownership } : {}),
+    ...(reason ? { reason } : {})
   };
 }
 
@@ -832,6 +852,40 @@ function requestKeyIdFromOwnershipRequest(
   }
 
   return keyId;
+}
+
+function parseExplicitRevocationReasonPayload(
+  payload: unknown,
+  message: string
+): { reason?: string } {
+  if (payload === undefined || payload === null) {
+    return {};
+  }
+
+  if (!isRecord(payload)) {
+    throw new GatewayError(message, {
+      code: "gateway_key_revocation_invalid_payload",
+      category: "governance",
+      httpStatus: 400,
+      retryable: false
+    });
+  }
+
+  try {
+    const reason = "reason" in payload
+      ? parseOptionalGatewayKeyAuditReason(payload.reason)
+      : undefined;
+
+    return reason ? { reason } : {};
+  } catch (cause) {
+    throw new GatewayError(message, {
+      code: "gateway_key_revocation_invalid_payload",
+      category: "governance",
+      httpStatus: 400,
+      retryable: false,
+      cause
+    });
+  }
 }
 
 function createUnauthorizedGatewayKeyError(requestId: string): GatewayError {
