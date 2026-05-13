@@ -237,6 +237,69 @@ describe("GeminiProviderAdapter", () => {
     ).rejects.toBeInstanceOf(GatewayError);
   });
 
+  it("applies request signing after shaping when configured", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "hello there"
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      shaping: {
+        query: {
+          alt: "json"
+        }
+      },
+      signing: {
+        type: "hmac_sha256_header",
+        headerName: "x-airlock-signature",
+        prefix: "sha256=",
+        secret: {
+          secretRef: "gemini-signing-secret"
+        },
+        components: ["method", "path", "query"]
+      },
+      signingSecrets: {
+        "gemini-signing-secret": "signing-secret"
+      },
+      fetcher
+    });
+
+    await adapter.complete(createCanonicalRequest(), {
+      requestId: "req_123"
+    });
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(init.headers).toMatchObject({
+      "x-airlock-signature":
+        "sha256=f28e88734920bbc564fee90da404eb3e1197cbc13d4f641aa7409b8db133a5f4"
+    });
+  });
+
   it("applies request-scoped shaping on top of route-level shaping", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

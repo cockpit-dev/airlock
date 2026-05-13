@@ -222,6 +222,67 @@ describe("AnthropicProviderAdapter", () => {
     ).rejects.toBeInstanceOf(GatewayError);
   });
 
+  it("applies request signing after shaping when configured", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new AnthropicProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultMaxTokens: 256,
+      shaping: {
+        query: {
+          trace: "1"
+        }
+      },
+      signing: {
+        type: "hmac_sha256_header",
+        headerName: "x-airlock-signature",
+        prefix: "sha256=",
+        secret: {
+          secretRef: "anthropic-signing-secret"
+        },
+        components: ["method", "path", "query"]
+      },
+      signingSecrets: {
+        "anthropic-signing-secret": "signing-secret"
+      },
+      fetcher
+    });
+
+    await adapter.complete(createCanonicalRequest(), {
+      requestId: "req_123"
+    });
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(init.headers).toMatchObject({
+      "x-airlock-signature":
+        "sha256=d3ebed076d6ad0fe8756d9c0f422cc9f34d06532a12f16a19f3681d2559e221b"
+    });
+  });
+
   it("maps upstream failures into a gateway error", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
