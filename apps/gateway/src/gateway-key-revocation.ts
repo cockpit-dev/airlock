@@ -298,16 +298,7 @@ export async function listGatewayApiKeyStatuses(
     acceptedNow?: boolean;
     effectiveStatus?: GatewayApiKeyLifecycleStatus;
   }
-): Promise<
-  Array<{
-    keyId: string;
-    configured: GatewayApiKeyStatusView;
-    runtime: GatewayApiKeyStatusView;
-    registryOverride: GatewayApiKeyRegistrySnapshot["registryOverride"];
-    registryOverrideApplied: boolean;
-    registryUpdatedAt?: string;
-  }>
-> {
+): Promise<GatewayApiKeyRegistrySnapshot[]> {
   const configuredEntries = await Promise.all(
     gatewayApiKeys.map(async (gatewayApiKey) => {
       return getGatewayApiKeyStatusSnapshot(

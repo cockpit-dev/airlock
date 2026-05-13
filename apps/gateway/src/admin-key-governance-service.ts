@@ -1,8 +1,12 @@
 import {
-  sortGatewayKeyAuditEventsDescending,
+  getGatewayAdminKey as readGatewayAdminKey,
+  getGatewayAdminKeyEvents as readGatewayAdminKeyEvents,
+  getGatewayAdminKeyRegistryView as readGatewayAdminKeyRegistryView,
+  getGatewayAdminKeyRevocationStatus as readGatewayAdminKeyRevocationStatus,
+  getGatewayAdminKeyStatus as readGatewayAdminKeyStatus,
+  listGatewayAdminKeys as readGatewayAdminKeys,
   type GatewayApiKeyMetadataOverride
 } from "@airlock/governance";
-import { GatewayError } from "@airlock/shared";
 
 import {
   parseOptionalPayloadActor,
@@ -35,35 +39,21 @@ import {
 
 export async function listAdminGatewayKeys(
   env: GatewayBindings,
-  request: Request,
+  _request: Request,
   requestId: string,
   query: URLSearchParams
 ) {
   const config = resolveGatewayConfig(env);
-  const acceptedNowParam = query.get("acceptedNow");
-  const effectiveStatusParam = query.get("effectiveStatus");
-  const acceptedNow =
-    acceptedNowParam === null
-      ? undefined
-      : acceptedNowParam === "true"
-        ? true
-        : acceptedNowParam === "false"
-          ? false
-          : undefined;
-  const effectiveStatus =
-    effectiveStatusParam === "active" ||
-    effectiveStatusParam === "revoked" ||
-    effectiveStatusParam === "not_yet_active" ||
-    effectiveStatusParam === "expired"
-      ? effectiveStatusParam
-      : undefined;
-
-  return {
-    keys: await listGatewayApiKeyStatuses(env, config.gatewayApiKeys, requestId, {
-      ...(acceptedNow !== undefined ? { acceptedNow } : {}),
-      ...(effectiveStatus !== undefined ? { effectiveStatus } : {})
-    })
-  };
+  return readGatewayAdminKeys(query, {
+    listKeySnapshots: (filters) => {
+      return listGatewayApiKeyStatuses(
+        env,
+        config.gatewayApiKeys,
+        requestId,
+        filters
+      );
+    }
+  });
 }
 
 export async function createAdminGatewayKey(
@@ -95,19 +85,11 @@ export async function getAdminGatewayKey(
   keyId: string,
   requestId: string
 ) {
-  const key = await getGatewayRegistryApiKey(env, keyId, requestId);
-
-  if (!key) {
-    throw new GatewayError("Gateway API key not found", {
-      code: "gateway_key_not_found",
-      category: "governance",
-      httpStatus: 404,
-      retryable: false,
-      requestId
-    });
-  }
-
-  return key;
+  return readGatewayAdminKey(keyId, requestId, {
+    getRegistryKey: (candidateKeyId) => {
+      return getGatewayRegistryApiKey(env, candidateKeyId, requestId);
+    }
+  });
 }
 
 export async function deleteAdminGatewayKey(
@@ -225,12 +207,16 @@ export async function getAdminGatewayKeyRevocationStatus(
   requestId: string
 ) {
   const config = resolveGatewayConfig(env);
-  return getGatewayKeyRevocationStatusById(
-    env,
-    config.gatewayApiKeys,
-    keyId,
-    requestId
-  );
+  return readGatewayAdminKeyRevocationStatus(keyId, {
+    getKeyRevocationStatus: (candidateKeyId) => {
+      return getGatewayKeyRevocationStatusById(
+        env,
+        config.gatewayApiKeys,
+        candidateKeyId,
+        requestId
+      );
+    }
+  });
 }
 
 export async function getAdminGatewayKeyStatus(
@@ -239,14 +225,24 @@ export async function getAdminGatewayKeyStatus(
   requestId: string
 ) {
   const config = resolveGatewayConfig(env);
-  const { gatewayApiKey, ownership } = await resolveGatewayApiKeyByIdWithRegistry(
-    env,
-    config.gatewayApiKeys,
-    keyId,
-    requestId
-  );
+  return readGatewayAdminKeyStatus(keyId, {
+    getKeyStatusSnapshot: async (candidateKeyId) => {
+      const { gatewayApiKey, ownership } =
+        await resolveGatewayApiKeyByIdWithRegistry(
+          env,
+          config.gatewayApiKeys,
+          candidateKeyId,
+          requestId
+        );
 
-  return getGatewayApiKeyStatusSnapshot(env, gatewayApiKey, requestId, ownership);
+      return getGatewayApiKeyStatusSnapshot(
+        env,
+        gatewayApiKey,
+        requestId,
+        ownership
+      );
+    }
+  });
 }
 
 export async function getAdminGatewayKeyEvents(
@@ -255,27 +251,22 @@ export async function getAdminGatewayKeyEvents(
   requestId: string
 ) {
   const config = resolveGatewayConfig(env);
-  const [registryEvents, revocationEvents] = await Promise.all([
-    getGatewayRegistryApiKeyEvents(env, keyId, requestId),
-    getGatewayKeyRevocationEvents(env, keyId, requestId)
-  ]);
-
-  if (registryEvents.length === 0 && revocationEvents.length === 0) {
-    await resolveGatewayApiKeyByIdWithRegistry(
-      env,
-      config.gatewayApiKeys,
-      keyId,
-      requestId
-    );
-  }
-
-  return {
-    keyId,
-    events: sortGatewayKeyAuditEventsDescending([
-      ...registryEvents,
-      ...revocationEvents
-    ])
-  };
+  return readGatewayAdminKeyEvents(keyId, {
+    getRegistryEvents: (candidateKeyId) => {
+      return getGatewayRegistryApiKeyEvents(env, candidateKeyId, requestId);
+    },
+    getRevocationEvents: (candidateKeyId) => {
+      return getGatewayKeyRevocationEvents(env, candidateKeyId, requestId);
+    },
+    assertKeyExists: async (candidateKeyId) => {
+      await resolveGatewayApiKeyByIdWithRegistry(
+        env,
+        config.gatewayApiKeys,
+        candidateKeyId,
+        requestId
+      );
+    }
+  });
 }
 
 export async function getAdminGatewayKeyRegistryView(
@@ -295,27 +286,17 @@ export async function getAdminGatewayKeyRegistryView(
   registryUpdatedAt?: string;
 }> {
   const config = resolveGatewayConfig(env);
-  const gatewayApiKey = resolveGatewayApiKeyById(
-    config.gatewayApiKeys,
-    keyId,
-    requestId
-  );
-  const snapshot = await getGatewayApiKeyStatusSnapshot(
-    env,
-    gatewayApiKey,
-    requestId
-  );
+  return readGatewayAdminKeyRegistryView(keyId, {
+    getConfiguredKeyStatusSnapshot: async (candidateKeyId) => {
+      const gatewayApiKey = resolveGatewayApiKeyById(
+        config.gatewayApiKeys,
+        candidateKeyId,
+        requestId
+      );
 
-  return {
-    keyId: snapshot.keyId,
-    configured: snapshot.configured,
-    runtime: snapshot.runtime,
-    override: snapshot.registryOverride,
-    registryOverrideApplied: snapshot.registryOverrideApplied,
-    ...(snapshot.registryUpdatedAt
-      ? { registryUpdatedAt: snapshot.registryUpdatedAt }
-      : {})
-  };
+      return getGatewayApiKeyStatusSnapshot(env, gatewayApiKey, requestId);
+    }
+  });
 }
 
 export async function updateAdminGatewayKeyRegistryOverride(

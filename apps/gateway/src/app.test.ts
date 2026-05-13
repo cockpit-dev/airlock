@@ -4654,6 +4654,32 @@ describe("gateway app", () => {
     );
   });
 
+  it("returns an empty event list for an existing configured key with no lifecycle history", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys/gak_1/events",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson(response)).resolves.toEqual({
+      keyId: "gak_1",
+      events: []
+    });
+  });
+
   it("records explicit reason metadata on lifecycle audit events", async () => {
     const app = createApp({ fetcher: vi.fn() });
     const bindings = {
@@ -6235,6 +6261,35 @@ describe("gateway app", () => {
     await expect(readJson(deleteResponse)).resolves.toMatchObject({
       keyId: "key_dynamic",
       deleted: true
+    });
+  });
+
+  it("returns not found when reading a missing dynamic registry key through the admin route", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    const response = await app.request(
+      "http://localhost/_airlock/keys/missing-key",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(404);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "gateway_key_not_found"
+      }
     });
   });
 

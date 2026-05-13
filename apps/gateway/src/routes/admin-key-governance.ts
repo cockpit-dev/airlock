@@ -24,8 +24,6 @@ import {
   updateAdminGatewayKeyRegistryOverride
 } from "../admin-key-governance-service.js";
 import type { GatewayBindings } from "../env.js";
-import {
-} from "../gateway-key-revocation.js";
 
 type AppVariables = {
   requestId: string;
