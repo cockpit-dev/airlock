@@ -1,4 +1,5 @@
 import {
+  archiveGatewayAdminKey as writeGatewayAdminKeyArchive,
   bulkCreateGatewayAdminKeys as writeGatewayAdminKeyBulkCreate,
   bulkDeleteGatewayAdminKeys as writeGatewayAdminKeyBulkDelete,
   bulkRotateGatewayAdminKeys as writeGatewayAdminKeyBulkRotate,
@@ -16,6 +17,7 @@ import {
   getGatewayAdminKeyStatus as readGatewayAdminKeyStatus,
   listGatewayAdminKeys as readGatewayAdminKeys,
   revokeGatewayAdminKey as writeGatewayAdminKeyRevoke,
+  restoreGatewayAdminKey as writeGatewayAdminKeyRestore,
   rotateGatewayAdminKey as writeGatewayAdminKeyRotate,
   updateGatewayAdminKey as writeGatewayAdminKeyUpdate,
   updateGatewayAdminKeyRegistryOverride as writeGatewayAdminKeyRegistryOverrideUpdate,
@@ -28,6 +30,7 @@ import {
 import { resolveGatewayConfig } from "./config.js";
 import type { GatewayBindings } from "./env.js";
 import {
+  archiveGatewayRegistryApiKey,
   bulkCreateGatewayRegistryApiKeys,
   bulkDeleteGatewayRegistryApiKeys,
   bulkRotateGatewayRegistryApiKeys,
@@ -38,6 +41,7 @@ import {
   deleteGatewayRegistryApiKey,
   finalizeGatewayRegistryApiKeyRotation,
   rotateGatewayRegistryApiKey,
+  restoreGatewayRegistryApiKey,
   getGatewayRegistryApiKey,
   getGatewayRegistryApiKeyEvents,
   updateGatewayRegistryApiKey,
@@ -401,6 +405,86 @@ export async function rotateAdminGatewayKey(
       },
       rotateRegistryKey: (candidateKeyId, candidatePayload) => {
         return rotateGatewayRegistryApiKey(
+          env,
+          config.gatewayApiKeys,
+          candidateKeyId,
+          candidatePayload,
+          requestId,
+          mutation.actorContext
+        );
+      }
+    }
+  );
+}
+
+export async function archiveAdminGatewayKey(
+  env: GatewayBindings,
+  request: Request,
+  keyId: string,
+  requestId: string,
+  payload: unknown
+) {
+  const config = resolveGatewayConfig(env);
+  const mutation = await resolveAdminMutationActorCommand(
+    request,
+    env,
+    payload,
+    requestId,
+    "Gateway dynamic key archive payload is invalid"
+  );
+
+  return writeGatewayAdminKeyArchive(
+    keyId,
+    mutation.payload,
+    requestId,
+    {
+      isConfiguredKey: (candidateKeyId) => {
+        return config.gatewayApiKeys.some((gatewayApiKey) => {
+          return gatewayApiKey.id === candidateKeyId;
+        });
+      },
+      archiveRegistryKey: (candidateKeyId, candidatePayload) => {
+        return archiveGatewayRegistryApiKey(
+          env,
+          config.gatewayApiKeys,
+          candidateKeyId,
+          candidatePayload,
+          requestId,
+          mutation.actorContext
+        );
+      }
+    }
+  );
+}
+
+export async function restoreAdminGatewayKey(
+  env: GatewayBindings,
+  request: Request,
+  keyId: string,
+  requestId: string,
+  payload: unknown
+) {
+  const config = resolveGatewayConfig(env);
+  const mutation = await resolveAdminMutationActorCommand(
+    request,
+    env,
+    payload,
+    requestId,
+    "Gateway dynamic key restore payload is invalid"
+  );
+
+  return writeGatewayAdminKeyRestore(
+    keyId,
+    mutation.payload,
+    requestId,
+    {
+      isConfiguredKey: (candidateKeyId) => {
+        return config.gatewayApiKeys.some((gatewayApiKey) => {
+          return gatewayApiKey.id === candidateKeyId;
+        });
+      },
+      restoreRegistryKey: (candidateKeyId, candidatePayload) => {
+        return restoreGatewayRegistryApiKey(
           env,
           config.gatewayApiKeys,
           candidateKeyId,

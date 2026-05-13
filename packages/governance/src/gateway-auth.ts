@@ -5,7 +5,8 @@ export type GatewayApiKeyLifecycleStatus =
   | "active"
   | "revoked"
   | "not_yet_active"
-  | "expired";
+  | "expired"
+  | "archived";
 
 export interface GatewayApiKeyRequestQuotaPolicy {
   limit: number;
@@ -40,6 +41,7 @@ export interface GatewayApiKeyRecord {
   status: GatewayApiKeyStatus;
   notBefore?: string;
   expiresAt?: string;
+  archivedAt?: string;
   policy?: GatewayApiKeyPolicy;
 }
 
@@ -626,11 +628,11 @@ function parseStructuredGatewayApiKeys(value: string): GatewayApiKeyRecord[] | u
     return {
       id,
       label,
-      ...(hasValue ? { value: rawValue } : {}),
-      ...(hasValueHash ? { valueHash: rawValueHash } : {}),
-      status,
-      ...(notBefore !== undefined ? { notBefore } : {}),
-      ...(expiresAt !== undefined ? { expiresAt } : {}),
+    ...(hasValue ? { value: rawValue } : {}),
+    ...(hasValueHash ? { valueHash: rawValueHash } : {}),
+    status,
+    ...(notBefore !== undefined ? { notBefore } : {}),
+    ...(expiresAt !== undefined ? { expiresAt } : {}),
       ...(policy !== undefined ? { policy } : {})
     };
   });
@@ -655,6 +657,8 @@ export function parseGatewayDynamicApiKeyRecord(
     typeof value.notBefore === "string" ? value.notBefore.trim() : undefined;
   const expiresAt =
     typeof value.expiresAt === "string" ? value.expiresAt.trim() : undefined;
+  const archivedAt =
+    typeof value.archivedAt === "string" ? value.archivedAt.trim() : undefined;
 
   if (id.length === 0 || label.length === 0) {
     throw createInvalidGatewayKeyConfigError(
@@ -676,6 +680,12 @@ export function parseGatewayDynamicApiKeyRecord(
 
   validateLifecycleWindow(notBefore, expiresAt);
 
+  if (archivedAt !== undefined && !isValidTimestamp(archivedAt)) {
+    throw createInvalidGatewayKeyConfigError(
+      "Gateway API key record archivedAt must be a valid timestamp"
+    );
+  }
+
   if (status !== "active" && status !== "revoked") {
     throw createInvalidGatewayKeyConfigError(
       "Gateway API key records must use a valid status"
@@ -690,6 +700,7 @@ export function parseGatewayDynamicApiKeyRecord(
     status,
     ...(notBefore !== undefined ? { notBefore } : {}),
     ...(expiresAt !== undefined ? { expiresAt } : {}),
+    ...(archivedAt !== undefined ? { archivedAt } : {}),
     ...(policy !== undefined ? { policy } : {})
   };
 
@@ -877,7 +888,9 @@ export function deriveGatewayApiKeyStatusView(
 ): GatewayApiKeyStatusView {
   const lifecycleStatus = evaluateGatewayApiKeyLifecycle(gatewayApiKey, now);
   const effectiveStatus =
-    overlayState.revoked || lifecycleStatus === "revoked"
+    lifecycleStatus === "archived"
+      ? "archived"
+      : overlayState.revoked || lifecycleStatus === "revoked"
       ? "revoked"
       : lifecycleStatus;
 
@@ -1152,6 +1165,10 @@ export function assertGatewayApiKeyIsActive(
     throw createGatewayApiKeyExpiredError(requestId);
   }
 
+  if (lifecycleStatus === "archived") {
+    throw createUnauthorizedError(requestId);
+  }
+
   return gatewayApiKey;
 }
 
@@ -1168,6 +1185,10 @@ export function evaluateGatewayApiKeyLifecycle(
   gatewayApiKey: GatewayApiKeyRecord,
   now?: number
 ): GatewayApiKeyLifecycleStatus {
+  if (gatewayApiKey.archivedAt !== undefined) {
+    return "archived";
+  }
+
   if (gatewayApiKey.status === "revoked") {
     return "revoked";
   }

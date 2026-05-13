@@ -16,6 +16,7 @@ import type {
 export interface GatewayAdminKeyInventoryFilters {
   acceptedNow?: boolean;
   effectiveStatus?: GatewayApiKeyLifecycleStatus;
+  includeArchived?: boolean;
 }
 
 export interface GatewayAdminKeyReadPort {
@@ -67,6 +68,7 @@ export function parseGatewayAdminKeyInventoryFilters(
 ): GatewayAdminKeyInventoryFilters {
   const acceptedNowParam = query.get("acceptedNow");
   const effectiveStatusParam = query.get("effectiveStatus");
+  const includeArchivedParam = query.get("includeArchived");
   const acceptedNow =
     acceptedNowParam === null
       ? undefined
@@ -79,13 +81,23 @@ export function parseGatewayAdminKeyInventoryFilters(
     effectiveStatusParam === "active" ||
     effectiveStatusParam === "revoked" ||
     effectiveStatusParam === "not_yet_active" ||
-    effectiveStatusParam === "expired"
+    effectiveStatusParam === "expired" ||
+    effectiveStatusParam === "archived"
       ? effectiveStatusParam
       : undefined;
+  const includeArchived =
+    includeArchivedParam === null
+      ? undefined
+      : includeArchivedParam === "true"
+        ? true
+        : includeArchivedParam === "false"
+          ? false
+          : undefined;
 
   return {
     ...(acceptedNow !== undefined ? { acceptedNow } : {}),
-    ...(effectiveStatus !== undefined ? { effectiveStatus } : {})
+    ...(effectiveStatus !== undefined ? { effectiveStatus } : {}),
+    ...(includeArchived !== undefined ? { includeArchived } : {})
   };
 }
 

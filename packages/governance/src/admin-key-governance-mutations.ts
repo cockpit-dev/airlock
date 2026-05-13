@@ -39,6 +39,22 @@ export interface RotateGatewayAdminKeyPort {
   ): Promise<GatewayKeyRegistryDynamicKeyView>;
 }
 
+export interface ArchiveGatewayAdminKeyPort {
+  isConfiguredKey(keyId: string): boolean;
+  archiveRegistryKey(
+    keyId: string,
+    payload: unknown
+  ): Promise<GatewayKeyRegistryDynamicKeyView>;
+}
+
+export interface RestoreGatewayAdminKeyPort {
+  isConfiguredKey(keyId: string): boolean;
+  restoreRegistryKey(
+    keyId: string,
+    payload: unknown
+  ): Promise<GatewayKeyRegistryDynamicKeyView>;
+}
+
 export interface UpdateGatewayAdminKeyPort {
   isConfiguredKey(keyId: string): boolean;
   updateRegistryKey(
@@ -203,6 +219,32 @@ export async function rotateGatewayAdminKey(
   }
 
   return port.rotateRegistryKey(keyId, payload);
+}
+
+export async function archiveGatewayAdminKey(
+  keyId: string,
+  payload: unknown,
+  requestId: string,
+  port: ArchiveGatewayAdminKeyPort
+): Promise<GatewayKeyRegistryDynamicKeyView> {
+  if (port.isConfiguredKey(keyId)) {
+    throw createGatewayKeyNotRegistryOwnedError(requestId);
+  }
+
+  return port.archiveRegistryKey(keyId, payload);
+}
+
+export async function restoreGatewayAdminKey(
+  keyId: string,
+  payload: unknown,
+  requestId: string,
+  port: RestoreGatewayAdminKeyPort
+): Promise<GatewayKeyRegistryDynamicKeyView> {
+  if (port.isConfiguredKey(keyId)) {
+    throw createGatewayKeyNotRegistryOwnedError(requestId);
+  }
+
+  return port.restoreRegistryKey(keyId, payload);
 }
 
 export async function updateGatewayAdminKey(

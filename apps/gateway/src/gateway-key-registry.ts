@@ -14,6 +14,7 @@ import {
   parseGatewayKeyRegistryDeleteResponse,
   parseGatewayKeyRegistryDynamicKeyListResponse,
   parseGatewayKeyRegistryDynamicKeyResponse,
+  parseGatewayKeyRegistryLifecycleActionRequest,
   parseGatewayKeyRegistryRecordResponse,
   parseGatewayKeyRegistryRotateRequest,
   parseGatewayKeyRegistryRotationActionRequest,
@@ -60,6 +61,8 @@ const REGISTRY_KIND_DYNAMIC_BULK_ROTATE = "dynamic_bulk_rotate";
 const REGISTRY_KIND_DYNAMIC_ROTATE = "dynamic_rotate";
 const REGISTRY_KIND_DYNAMIC_ROTATE_FINALIZE = "dynamic_rotate_finalize";
 const REGISTRY_KIND_DYNAMIC_ROTATE_CANCEL = "dynamic_rotate_cancel";
+const REGISTRY_KIND_DYNAMIC_ARCHIVE = "dynamic_archive";
+const REGISTRY_KIND_DYNAMIC_RESTORE = "dynamic_restore";
 const REGISTRY_KIND_EVENTS = "events";
 const DYNAMIC_KEY_INDEX = "dynamic:index";
 const DYNAMIC_KEY_AUDIT_EVENTS_PREFIX = "dynamic_events:";
@@ -151,6 +154,26 @@ function createGatewayKeyRotationNotCancelableError(
 ): GatewayError {
   return new GatewayError("Gateway API key staged rotation can no longer be canceled", {
     code: "gateway_key_rotation_not_cancelable",
+    category: "governance",
+    httpStatus: 409,
+    retryable: false,
+    requestId
+  });
+}
+
+function createGatewayKeyAlreadyArchivedError(requestId: string): GatewayError {
+  return new GatewayError("Gateway API key is already archived", {
+    code: "gateway_key_already_archived",
+    category: "governance",
+    httpStatus: 409,
+    retryable: false,
+    requestId
+  });
+}
+
+function createGatewayKeyNotArchivedError(requestId: string): GatewayError {
+  return new GatewayError("Gateway API key is not archived", {
+    code: "gateway_key_not_archived",
     category: "governance",
     httpStatus: 409,
     retryable: false,
@@ -774,6 +797,102 @@ export class GatewayKeyRegistryDurableObject {
         createGatewayKeyAuditEvent({
           keyId: key.id,
           kind: "rotation_canceled",
+          ownership: "registry",
+          occurredAt: key.updatedAt,
+          ...(payload.reason ? { reason: payload.reason } : {}),
+          ...(actorContext
+            ? toGatewayKeyAuditActorContextRecord(actorContext)
+            : {})
+        })
+      );
+
+      return Response.json({
+        key: createGatewayKeyRegistryDynamicKeyView(key)
+      } satisfies GatewayKeyRegistryDynamicKeyResponse);
+    }
+
+    if (kind === REGISTRY_KIND_DYNAMIC_ARCHIVE) {
+      if (request.method !== "POST" || !keyId) {
+        return new Response("Method not allowed", { status: keyId ? 405 : 400 });
+      }
+
+      const existingKey = await readStoredDynamicKey(this.state.storage, keyId);
+
+      if (!existingKey) {
+        return new Response("Not found", { status: 404 });
+      }
+
+      if (existingKey.archivedAt) {
+        return new Response("Already archived", { status: 409 });
+      }
+
+      const payload = parseGatewayKeyRegistryLifecycleActionRequest(
+        await request.json(),
+        "Gateway dynamic key archive payload is invalid"
+      );
+      const actorContext =
+        gatewayKeyAuditActorContextFromRegistryRequest(payload);
+      const key = await updateStoredDynamicKey(
+        this.state.storage,
+        {
+          ...existingKey,
+          archivedAt: new Date().toISOString()
+        },
+        await listStoredDynamicKeys(this.state.storage)
+      );
+      await appendStoredDynamicKeyAuditEvent(
+        this.state.storage,
+        createGatewayKeyAuditEvent({
+          keyId: key.id,
+          kind: "archived",
+          ownership: "registry",
+          occurredAt: key.updatedAt,
+          ...(payload.reason ? { reason: payload.reason } : {}),
+          ...(actorContext
+            ? toGatewayKeyAuditActorContextRecord(actorContext)
+            : {})
+        })
+      );
+
+      return Response.json({
+        key: createGatewayKeyRegistryDynamicKeyView(key)
+      } satisfies GatewayKeyRegistryDynamicKeyResponse);
+    }
+
+    if (kind === REGISTRY_KIND_DYNAMIC_RESTORE) {
+      if (request.method !== "POST" || !keyId) {
+        return new Response("Method not allowed", { status: keyId ? 405 : 400 });
+      }
+
+      const existingKey = await readStoredDynamicKey(this.state.storage, keyId);
+
+      if (!existingKey) {
+        return new Response("Not found", { status: 404 });
+      }
+
+      if (!existingKey.archivedAt) {
+        return new Response("Not archived", { status: 409 });
+      }
+
+      const payload = parseGatewayKeyRegistryLifecycleActionRequest(
+        await request.json(),
+        "Gateway dynamic key restore payload is invalid"
+      );
+      const actorContext =
+        gatewayKeyAuditActorContextFromRegistryRequest(payload);
+      const nextKey = { ...existingKey };
+      delete nextKey.archivedAt;
+      const key = await updateStoredDynamicKey(
+        this.state.storage,
+        nextKey,
+        await listStoredDynamicKeys(this.state.storage),
+        { clearArchivedAt: true }
+      );
+      await appendStoredDynamicKeyAuditEvent(
+        this.state.storage,
+        createGatewayKeyAuditEvent({
+          keyId: key.id,
+          kind: "restored",
           ownership: "registry",
           occurredAt: key.updatedAt,
           ...(payload.reason ? { reason: payload.reason } : {}),
@@ -2024,6 +2143,136 @@ export async function cancelGatewayRegistryApiKeyRotation(
   }
 }
 
+export async function archiveGatewayRegistryApiKey(
+  env: GatewayBindings,
+  configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
+  keyId: string,
+  payload: unknown,
+  requestId: string,
+  actorContext?: GatewayKeyAuditActorContext
+): Promise<GatewayKeyRegistryDynamicKeyView> {
+  if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
+    throw createGatewayKeyNotRegistryOwnedError(requestId);
+  }
+
+  const actionRequest = parseGatewayKeyRegistryLifecycleActionRequest(
+    payload,
+    "Gateway dynamic key archive payload is invalid"
+  );
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_ARCHIVE, {
+        method: "POST",
+        keyId,
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          ...actionRequest,
+          ...(actorContext
+            ? toGatewayKeyAuditActorContextRecord(actorContext)
+            : {})
+        })
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (response.status === 404) {
+    throw createGatewayKeyNotFoundError(requestId);
+  }
+
+  if (response.status === 409) {
+    throw createGatewayKeyAlreadyArchivedError(requestId);
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    const key = parseGatewayKeyRegistryDynamicKeyResponse(await response.json());
+
+    if (!key) {
+      throw new Error("Archived dynamic key response was empty");
+    }
+
+    return key;
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
+  }
+}
+
+export async function restoreGatewayRegistryApiKey(
+  env: GatewayBindings,
+  configuredGatewayApiKeys: readonly GatewayApiKeyRecord[],
+  keyId: string,
+  payload: unknown,
+  requestId: string,
+  actorContext?: GatewayKeyAuditActorContext
+): Promise<GatewayKeyRegistryDynamicKeyView> {
+  if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
+    throw createGatewayKeyNotRegistryOwnedError(requestId);
+  }
+
+  const actionRequest = parseGatewayKeyRegistryLifecycleActionRequest(
+    payload,
+    "Gateway dynamic key restore payload is invalid"
+  );
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_RESTORE, {
+        method: "POST",
+        keyId,
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          ...actionRequest,
+          ...(actorContext
+            ? toGatewayKeyAuditActorContextRecord(actorContext)
+            : {})
+        })
+      })
+    );
+  } catch (cause) {
+    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
+  }
+
+  if (response.status === 404) {
+    throw createGatewayKeyNotFoundError(requestId);
+  }
+
+  if (response.status === 409) {
+    throw createGatewayKeyNotArchivedError(requestId);
+  }
+
+  if (!response.ok) {
+    throw createGatewayKeyRegistryUnavailableError(requestId);
+  }
+
+  try {
+    const key = parseGatewayKeyRegistryDynamicKeyResponse(await response.json());
+
+    if (!key) {
+      throw new Error("Restored dynamic key response was empty");
+    }
+
+    return key;
+  } catch (cause) {
+    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
+  }
+}
+
 export async function resolveGatewayRuntimeApiKey(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
@@ -2140,6 +2389,10 @@ async function findStoredDynamicKeyByValueHash(
 
   return (
     keys.find((key) => {
+      if (key.archivedAt) {
+        return false;
+      }
+
       if (key.valueHash === valueHash) {
         return true;
       }
@@ -2194,6 +2447,7 @@ async function updateStoredDynamicKey(
   existingGatewayApiKeys: readonly GatewayKeyRegistryStoredDynamicKey[],
   options?: {
     clearPreviousValueHash?: boolean;
+    clearArchivedAt?: boolean;
   }
 ): Promise<GatewayKeyRegistryStoredDynamicKey> {
   const existing = await readStoredDynamicKey(storage, gatewayApiKey.id);
@@ -2240,6 +2494,10 @@ async function updateStoredDynamicKey(
     gatewayApiKey.previousValueHashExpiresAt === undefined
   ) {
     delete next.previousValueHashExpiresAt;
+  }
+
+  if (options?.clearArchivedAt === true) {
+    delete next.archivedAt;
   }
 
   await storage.put(`dynamic:${gatewayApiKey.id}`, next);

@@ -25,6 +25,7 @@ export interface GatewayKeyRegistryDynamicKeyView {
   key: GatewayApiKeyRecord;
   previousValueHash?: string;
   previousValueHashExpiresAt?: string;
+  archivedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,6 +34,7 @@ export interface GatewayKeyRegistryStoredDynamicKey extends GatewayApiKeyRecord 
   valueHash: string;
   previousValueHash?: string;
   previousValueHashExpiresAt?: string;
+  archivedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -77,6 +79,12 @@ export interface GatewayKeyRegistryRotateRequest {
 }
 
 export interface GatewayKeyRegistryRotationActionRequest {
+  reason?: string;
+  actor?: string;
+  actorSource?: GatewayKeyAuditActorSource;
+}
+
+export interface GatewayKeyRegistryLifecycleActionRequest {
   reason?: string;
   actor?: string;
   actorSource?: GatewayKeyAuditActorSource;
@@ -253,6 +261,8 @@ export function parseGatewayKeyRegistryStoredDynamicKey(
     typeof value.previousValueHashExpiresAt === "string"
       ? value.previousValueHashExpiresAt
       : undefined;
+  const archivedAt =
+    typeof value.archivedAt === "string" ? value.archivedAt : undefined;
 
   if (
     typeof createdAt !== "string" ||
@@ -278,11 +288,16 @@ export function parseGatewayKeyRegistryStoredDynamicKey(
     throw new Error("Registry dynamic key previousValueHashExpiresAt is invalid");
   }
 
+  if (archivedAt !== undefined && !isValidTimestamp(archivedAt)) {
+    throw new Error("Registry dynamic key archivedAt is invalid");
+  }
+
   return {
     ...record,
     valueHash: record.valueHash!,
     ...(previousValueHash ? { previousValueHash } : {}),
     ...(previousValueHashExpiresAt ? { previousValueHashExpiresAt } : {}),
+    ...(archivedAt ? { archivedAt } : {}),
     createdAt,
     updatedAt
   };
@@ -301,12 +316,14 @@ export function createGatewayKeyRegistryDynamicKeyView(
       status: key.status,
       ...(key.notBefore ? { notBefore: key.notBefore } : {}),
       ...(key.expiresAt ? { expiresAt: key.expiresAt } : {}),
+      ...(key.archivedAt ? { archivedAt: key.archivedAt } : {}),
       ...(key.policy ? { policy: key.policy } : {})
     },
     ...(key.previousValueHash ? { previousValueHash: key.previousValueHash } : {}),
     ...(key.previousValueHashExpiresAt
       ? { previousValueHashExpiresAt: key.previousValueHashExpiresAt }
       : {}),
+    ...(key.archivedAt ? { archivedAt: key.archivedAt } : {}),
     createdAt: key.createdAt,
     updatedAt: key.updatedAt
   };
@@ -341,6 +358,9 @@ export function parseGatewayKeyRegistryDynamicKeyView(
       : {}),
     ...(typeof value.previousValueHashExpiresAt === "string"
       ? { previousValueHashExpiresAt: value.previousValueHashExpiresAt }
+      : {}),
+    ...(typeof value.archivedAt === "string"
+      ? { archivedAt: value.archivedAt }
       : {}),
     createdAt,
     updatedAt
@@ -972,6 +992,13 @@ export function parseGatewayKeyRegistryRotationActionRequest(
         }
       : {})
   };
+}
+
+export function parseGatewayKeyRegistryLifecycleActionRequest(
+  value: unknown,
+  message: string
+): GatewayKeyRegistryLifecycleActionRequest {
+  return parseGatewayKeyRegistryRotationActionRequest(value, message);
 }
 
 export function toGatewayKeyAuditActorContextRecord(

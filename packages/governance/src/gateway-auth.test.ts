@@ -7,6 +7,7 @@ import {
   applyGatewayApiKeyMetadataOverride,
   createGatewayApiKeyRegistrySnapshot,
   deriveGatewayApiKeyStatusView,
+  evaluateGatewayApiKeyLifecycle,
   extractBearerToken,
   parseInternalAdminCredentials,
   parseGatewayApiKeyMetadataOverride,
@@ -1121,6 +1122,40 @@ describe("deriveGatewayApiKeyStatusView", () => {
       ).effectiveStatus
     ).toBe("expired");
   });
+
+  it("treats archived registry keys as archived lifecycle state", () => {
+    expect(
+      evaluateGatewayApiKeyLifecycle(
+        {
+          id: "dyn_1",
+          label: "Archived Runtime Key",
+          valueHash: gatewaySecretHash,
+          status: "active",
+          archivedAt: "2026-05-14T00:00:00.000Z"
+        } as never
+      )
+    ).toBe("archived");
+
+    expect(
+      deriveGatewayApiKeyStatusView(
+        {
+          id: "dyn_1",
+          label: "Archived Runtime Key",
+          valueHash: gatewaySecretHash,
+          status: "active",
+          archivedAt: "2026-05-14T00:00:00.000Z"
+        } as never,
+        {
+          revoked: false,
+          updatedAt: "2026-05-14T00:00:00.000Z"
+        }
+      )
+    ).toMatchObject({
+      lifecycleStatus: "archived",
+      effectiveStatus: "archived",
+      acceptedNow: false
+    });
+  });
 });
 
 describe("createGatewayApiKeyRegistrySnapshot", () => {
@@ -1233,6 +1268,37 @@ describe("createGatewayApiKeyRegistrySnapshot", () => {
       runtime: status,
       registryOverride: null,
       registryOverrideApplied: false
+    });
+  });
+
+  it("projects archived registry-owned keys with archived effective status", () => {
+    const registryKey = {
+      id: "dyn_2",
+      label: "Archived Runtime Key",
+      valueHash: gatewaySecretHash,
+      status: "active" as const,
+      archivedAt: "2026-05-14T00:00:00.000Z"
+    };
+    const status = deriveGatewayApiKeyStatusView(
+      registryKey,
+      {
+        revoked: false,
+        updatedAt: "2026-05-14T00:00:00.000Z"
+      }
+    );
+
+    expect(
+      createGatewayApiKeyRegistrySnapshot({
+        ownership: "registry",
+        configuredKey: registryKey,
+        configuredStatus: status
+      })
+    ).toMatchObject({
+      keyId: "dyn_2",
+      ownership: "registry",
+      lifecycleStatus: "archived",
+      effectiveStatus: "archived",
+      acceptedNow: false
     });
   });
 

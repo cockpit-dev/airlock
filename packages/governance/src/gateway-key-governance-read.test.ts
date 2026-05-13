@@ -58,11 +58,14 @@ describe("parseGatewayAdminKeyInventoryFilters", () => {
   it("normalizes acceptedNow and effectiveStatus filters", () => {
     expect(
       parseGatewayAdminKeyInventoryFilters(
-        new URLSearchParams("acceptedNow=true&effectiveStatus=revoked")
+        new URLSearchParams(
+          "acceptedNow=true&effectiveStatus=archived&includeArchived=true"
+        )
       )
     ).toEqual({
       acceptedNow: true,
-      effectiveStatus: "revoked"
+      effectiveStatus: "archived",
+      includeArchived: true
     });
   });
 

@@ -7684,6 +7684,471 @@ describe("gateway app", () => {
     }
   });
 
+  it("can archive and restore a registry-owned dynamic key", async () => {
+    const fetcher = vi.fn().mockImplementation(() => {
+      return new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello runtime"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      );
+    });
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              id: "key_dynamic",
+              label: "Dynamic Runtime Key",
+              valueHash:
+                "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+              status: "active"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer runtime-secret"
+            },
+            body: JSON.stringify({
+              model: "gpt-4.1-mini",
+              stream: false,
+              messages: [{ role: "user", content: "before archive" }]
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    const archiveResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/archive",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          reason: "tenant paused",
+          actor: "ops@example.com"
+        })
+      },
+      bindings
+    );
+
+    expect(archiveResponse.status).toBe(200);
+    const archivePayload = await readJson(archiveResponse);
+    expect(isRecord(archivePayload)).toBe(true);
+
+    if (!isRecord(archivePayload)) {
+      return;
+    }
+
+    expect(archivePayload.keyId).toBe("key_dynamic");
+    expect(typeof archivePayload.archivedAt).toBe("string");
+
+    const archivedReadResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(archivedReadResponse.status).toBe(200);
+    const archivedReadPayload = await readJson(archivedReadResponse);
+    expect(isRecord(archivedReadPayload)).toBe(true);
+
+    if (!isRecord(archivedReadPayload)) {
+      return;
+    }
+
+    expect(archivedReadPayload.keyId).toBe("key_dynamic");
+    expect(typeof archivedReadPayload.archivedAt).toBe("string");
+
+    const archivedStatusResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/status",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(archivedStatusResponse.status).toBe(200);
+    await expect(readJson(archivedStatusResponse)).resolves.toMatchObject({
+      keyId: "key_dynamic",
+      runtime: {
+        lifecycleStatus: "archived",
+        effectiveStatus: "archived",
+        acceptedNow: false
+      }
+    });
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer runtime-secret"
+            },
+            body: JSON.stringify({
+              model: "gpt-4.1-mini",
+              stream: false,
+              messages: [{ role: "user", content: "after archive" }]
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(401);
+
+    const restoreResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/restore",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          reason: "tenant resumed",
+          actor: "ops@example.com"
+        })
+      },
+      bindings
+    );
+
+    expect(restoreResponse.status).toBe(200);
+    await expect(readJson(restoreResponse)).resolves.toMatchObject({
+      keyId: "key_dynamic"
+    });
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer runtime-secret"
+            },
+            body: JSON.stringify({
+              model: "gpt-4.1-mini",
+              stream: false,
+              messages: [{ role: "user", content: "after restore" }]
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    const eventsResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/events",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(eventsResponse.status).toBe(200);
+    const eventsPayload = await readJson(eventsResponse);
+    expect(isGatewayKeyEventsPayload(eventsPayload)).toBe(true);
+
+    if (!isGatewayKeyEventsPayload(eventsPayload)) {
+      return;
+    }
+
+    expect(eventsPayload.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          keyId: "key_dynamic",
+          kind: "archived",
+          actor: "ops@example.com"
+        }),
+        expect.objectContaining({
+          keyId: "key_dynamic",
+          kind: "restored",
+          actor: "ops@example.com"
+        })
+      ])
+    );
+  });
+
+  it("hides archived registry keys from default inventory but can include them explicitly", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              id: "key_dynamic",
+              label: "Dynamic Runtime Key",
+              valueHash:
+                "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+              status: "active"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys/key_dynamic/archive",
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer admin-secret"
+            }
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    const defaultInventoryResponse = await app.request(
+      "http://localhost/_airlock/keys",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(defaultInventoryResponse.status).toBe(200);
+    const defaultInventoryPayload = await readJson(defaultInventoryResponse);
+    expect(isRecord(defaultInventoryPayload)).toBe(true);
+
+    if (
+      !isRecord(defaultInventoryPayload) ||
+      !isRecordArray(defaultInventoryPayload.keys)
+    ) {
+      return;
+    }
+
+    expect(
+      defaultInventoryPayload.keys.some((entry) => entry.keyId === "key_dynamic")
+    ).toBe(false);
+
+    const archivedInventoryResponse = await app.request(
+      "http://localhost/_airlock/keys?includeArchived=true&effectiveStatus=archived",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(archivedInventoryResponse.status).toBe(200);
+    const archivedInventoryPayload = await readJson(archivedInventoryResponse);
+    expect(isRecord(archivedInventoryPayload)).toBe(true);
+
+    if (
+      !isRecord(archivedInventoryPayload) ||
+      !isRecordArray(archivedInventoryPayload.keys)
+    ) {
+      return;
+    }
+
+    expect(
+      archivedInventoryPayload.keys.find((entry) => entry.keyId === "key_dynamic")
+    ).toMatchObject({
+      runtime: {
+        effectiveStatus: "archived",
+        acceptedNow: false
+      }
+    });
+  });
+
+  it("rejects invalid archive and restore lifecycle transitions", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_env",
+          label: "Configured Gateway Key",
+          value: "gateway-secret",
+          status: "active"
+        }
+      ])
+    };
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys",
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer admin-secret"
+            },
+            body: JSON.stringify({
+              id: "key_dynamic",
+              label: "Dynamic Runtime Key",
+              valueHash:
+                "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+              status: "active"
+            })
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    const configuredArchiveResponse = await app.request(
+      "http://localhost/_airlock/keys/key_env/archive",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(configuredArchiveResponse.status).toBe(409);
+    await expect(readJson(configuredArchiveResponse)).resolves.toMatchObject({
+      error: {
+        code: "gateway_key_not_registry_owned"
+      }
+    });
+
+    const restoreNotArchivedResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/restore",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(restoreNotArchivedResponse.status).toBe(409);
+    await expect(readJson(restoreNotArchivedResponse)).resolves.toMatchObject({
+      error: {
+        code: "gateway_key_not_archived"
+      }
+    });
+
+    expect(
+      (
+        await app.request(
+          "http://localhost/_airlock/keys/key_dynamic/archive",
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer admin-secret"
+            }
+          },
+          bindings
+        )
+      ).status
+    ).toBe(200);
+
+    const archiveAgainResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic/archive",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(archiveAgainResponse.status).toBe(409);
+    await expect(readJson(archiveAgainResponse)).resolves.toMatchObject({
+      error: {
+        code: "gateway_key_already_archived"
+      }
+    });
+  });
+
   it("rejects mixed configured and registry-owned bulk rotates atomically", async () => {
     const app = createApp({ fetcher: vi.fn() });
     const bindings = {

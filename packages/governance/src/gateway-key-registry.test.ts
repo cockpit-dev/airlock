@@ -66,6 +66,24 @@ describe("parseGatewayKeyRegistryStoredDynamicKey", () => {
     });
   });
 
+  it("parses archived stored dynamic keys", () => {
+    expect(
+      parseGatewayKeyRegistryStoredDynamicKey({
+        id: "key_dynamic",
+        label: "Archived Dynamic Key",
+        valueHash:
+          "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+        status: "active",
+        archivedAt: "2026-05-14T00:00:00.000Z",
+        createdAt: "2026-05-13T00:00:00.000Z",
+        updatedAt: "2026-05-14T00:00:00.000Z"
+      })
+    ).toMatchObject({
+      id: "key_dynamic",
+      archivedAt: "2026-05-14T00:00:00.000Z"
+    });
+  });
+
   it("rejects malformed staged-rotation metadata", () => {
     expect(() =>
       parseGatewayKeyRegistryStoredDynamicKey({
@@ -88,6 +106,19 @@ describe("parseGatewayKeyRegistryStoredDynamicKey", () => {
           "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
         status: "active",
         createdAt: "not-a-date",
+        updatedAt: "2026-05-13T01:00:00.000Z"
+      })
+    ).toThrow();
+
+    expect(() =>
+      parseGatewayKeyRegistryStoredDynamicKey({
+        id: "key_dynamic",
+        label: "Dynamic Key",
+        valueHash:
+          "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+        status: "active",
+        archivedAt: "not-a-date",
+        createdAt: "2026-05-13T00:00:00.000Z",
         updatedAt: "2026-05-13T01:00:00.000Z"
       })
     ).toThrow();

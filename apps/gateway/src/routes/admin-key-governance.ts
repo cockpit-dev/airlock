@@ -7,6 +7,7 @@ import {
 } from "@airlock/governance";
 
 import {
+  archiveAdminGatewayKey,
   bulkCreateAdminGatewayKeys,
   bulkDeleteAdminGatewayKeys,
   bulkRotateAdminGatewayKeys,
@@ -24,6 +25,7 @@ import {
   getAdminGatewayKeyStatus,
   listAdminGatewayKeys,
   revokeAdminGatewayKey,
+  restoreAdminGatewayKey,
   rotateAdminGatewayKey,
   updateAdminGatewayKey,
   updateAdminGatewayKeyRegistryOverride
@@ -206,6 +208,38 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
         context.req.param("keyId"),
         requestId,
         await context.req.json()
+      )
+    );
+  });
+
+  app.post("/_airlock/keys/:keyId/archive", async (context) => {
+    const requestId = context.get("requestId");
+    await requireAdminScope(context, "keys.write");
+
+    const payload = await readOptionalJsonBody(context.req.raw);
+    return context.json(
+      await archiveAdminGatewayKey(
+        context.env,
+        context.req.raw,
+        context.req.param("keyId"),
+        requestId,
+        payload
+      )
+    );
+  });
+
+  app.post("/_airlock/keys/:keyId/restore", async (context) => {
+    const requestId = context.get("requestId");
+    await requireAdminScope(context, "keys.write");
+
+    const payload = await readOptionalJsonBody(context.req.raw);
+    return context.json(
+      await restoreAdminGatewayKey(
+        context.env,
+        context.req.raw,
+        context.req.param("keyId"),
+        requestId,
+        payload
       )
     );
   });

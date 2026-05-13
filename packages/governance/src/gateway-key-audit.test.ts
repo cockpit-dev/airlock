@@ -51,6 +51,34 @@ describe("parseGatewayKeyAuditEvent", () => {
     });
   });
 
+  it("accepts archived and restored event kinds", () => {
+    expect(
+      parseGatewayKeyAuditEvent({
+        keyId: "key_1",
+        kind: "archived",
+        ownership: "registry",
+        occurredAt: "2026-05-14T00:00:00.000Z"
+      })
+    ).toMatchObject({
+      keyId: "key_1",
+      kind: "archived",
+      ownership: "registry"
+    });
+
+    expect(
+      parseGatewayKeyAuditEvent({
+        keyId: "key_1",
+        kind: "restored",
+        ownership: "registry",
+        occurredAt: "2026-05-14T01:00:00.000Z"
+      })
+    ).toMatchObject({
+      keyId: "key_1",
+      kind: "restored",
+      ownership: "registry"
+    });
+  });
+
   it("rejects invalid event kinds", () => {
     expect(() =>
       parseGatewayKeyAuditEvent({

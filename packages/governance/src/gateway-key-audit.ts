@@ -7,6 +7,8 @@ export type GatewayKeyAuditActorSource =
 export type GatewayKeyAuditEventKind =
   | "created"
   | "updated"
+  | "archived"
+  | "restored"
   | "rotated"
   | "rotation_finalized"
   | "rotation_canceled"
@@ -76,6 +78,8 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
   if (
     kind !== "created" &&
     kind !== "updated" &&
+    kind !== "archived" &&
+    kind !== "restored" &&
     kind !== "rotated" &&
     kind !== "rotation_finalized" &&
     kind !== "rotation_canceled" &&

@@ -297,6 +297,7 @@ export async function listGatewayApiKeyStatuses(
   filters?: {
     acceptedNow?: boolean;
     effectiveStatus?: GatewayApiKeyLifecycleStatus;
+    includeArchived?: boolean;
   }
 ): Promise<GatewayApiKeyRegistrySnapshot[]> {
   const configuredEntries = await Promise.all(
@@ -322,6 +323,14 @@ export async function listGatewayApiKeyStatuses(
   const entries = [...configuredEntries, ...registryEntries];
 
   return entries.filter((entry) => {
+    if (
+      entry.ownership === "registry" &&
+      entry.runtime.effectiveStatus === "archived" &&
+      filters?.includeArchived !== true
+    ) {
+      return false;
+    }
+
     if (
       filters?.acceptedNow !== undefined &&
       entry.runtime.acceptedNow !== filters.acceptedNow

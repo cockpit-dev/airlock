@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  archiveGatewayAdminKey,
   bulkCreateGatewayAdminKeys,
   bulkDeleteGatewayAdminKeys,
   bulkRotateGatewayAdminKeys,
+  restoreGatewayAdminKey,
   clearGatewayAdminKeyRegistryOverride,
   clearGatewayAdminKeyRevocation,
   createGatewayAdminKey,
@@ -132,6 +134,71 @@ describe("rotateGatewayAdminKey", () => {
       )
     ).rejects.toMatchObject({
       code: "gateway_key_not_registry_owned"
+    });
+  });
+});
+
+describe("archiveGatewayAdminKey", () => {
+  it("passes archive payloads through for registry-owned keys", async () => {
+    const archiveRegistryKey = vi.fn().mockResolvedValue({
+      keyId: "key_dynamic",
+      ownership: "registry",
+      key: {
+        id: "key_dynamic",
+        label: "Archived Runtime Key",
+        valueHash: gatewaySecretHash,
+        status: "active"
+      },
+      archivedAt: "2026-05-14T00:00:00.000Z",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+
+    await expect(
+      archiveGatewayAdminKey(
+        "key_dynamic",
+        { reason: "tenant paused" },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn().mockReturnValue(false),
+          archiveRegistryKey
+        }
+      )
+    ).resolves.toMatchObject({
+      keyId: "key_dynamic",
+      archivedAt: "2026-05-14T00:00:00.000Z"
+    });
+  });
+});
+
+describe("restoreGatewayAdminKey", () => {
+  it("passes restore payloads through for registry-owned keys", async () => {
+    const restoreRegistryKey = vi.fn().mockResolvedValue({
+      keyId: "key_dynamic",
+      ownership: "registry",
+      key: {
+        id: "key_dynamic",
+        label: "Runtime Key",
+        valueHash: gatewaySecretHash,
+        status: "active"
+      },
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: "2026-05-14T01:00:00.000Z"
+    });
+
+    await expect(
+      restoreGatewayAdminKey(
+        "key_dynamic",
+        { reason: "tenant resumed" },
+        "req_123",
+        {
+          isConfiguredKey: vi.fn().mockReturnValue(false),
+          restoreRegistryKey
+        }
+      )
+    ).resolves.toMatchObject({
+      keyId: "key_dynamic",
+      ownership: "registry"
     });
   });
 });
