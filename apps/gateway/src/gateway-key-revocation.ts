@@ -4,6 +4,8 @@ import {
   createGatewayKeyAuditEvent,
   DEFAULT_GATEWAY_KEY_REVOCATION_STATE,
   deriveGatewayApiKeyStatusView,
+  requireConfiguredGatewayApiKeyById,
+  resolveGatewayApiKeyByIdWithOwnership,
   MAX_GATEWAY_KEY_AUDIT_EVENTS,
   parseExplicitGatewayKeyRevocationMetadataPayload,
   parseGatewayKeyRevocationState,
@@ -154,19 +156,7 @@ export function resolveGatewayApiKeyById(
   keyId: string,
   requestId: string
 ): GatewayApiKeyRecord {
-  const gatewayApiKey = gatewayApiKeys.find((candidate) => candidate.id === keyId);
-
-  if (!gatewayApiKey) {
-    throw new GatewayError("Gateway API key not found", {
-      code: "gateway_key_not_found",
-      category: "governance",
-      httpStatus: 404,
-      retryable: false,
-      requestId
-    });
-  }
-
-  return gatewayApiKey;
+  return requireConfiguredGatewayApiKeyById(gatewayApiKeys, keyId, requestId);
 }
 
 export async function resolveGatewayApiKeyByIdWithRegistry(
@@ -178,37 +168,16 @@ export async function resolveGatewayApiKeyByIdWithRegistry(
   gatewayApiKey: GatewayApiKeyRecord;
   ownership: "configured" | "registry";
 }> {
-  const configuredGatewayApiKey = gatewayApiKeys.find((candidate) => {
-    return candidate.id === keyId;
-  });
-
-  if (configuredGatewayApiKey) {
-    return {
-      gatewayApiKey: configuredGatewayApiKey,
-      ownership: "configured"
-    };
-  }
-
-  const registryGatewayApiKey = await getGatewayRegistryApiKey(
-    env,
+  return resolveGatewayApiKeyByIdWithOwnership(
+    gatewayApiKeys,
     keyId,
-    requestId
+    requestId,
+    {
+      getRegistryKey: async (candidateKeyId) => {
+        return getGatewayRegistryApiKey(env, candidateKeyId, requestId);
+      }
+    }
   );
-
-  if (registryGatewayApiKey) {
-    return {
-      gatewayApiKey: registryGatewayApiKey.key,
-      ownership: "registry"
-    };
-  }
-
-  throw new GatewayError("Gateway API key not found", {
-    code: "gateway_key_not_found",
-    category: "governance",
-    httpStatus: 404,
-    retryable: false,
-    requestId
-  });
 }
 
 export async function getGatewayKeyRevocationStatus(

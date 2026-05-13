@@ -20,6 +20,7 @@ import {
   getGatewayAdminKeyRegistryView as readGatewayAdminKeyRegistryView,
   getGatewayAdminKeyRevocationStatus as readGatewayAdminKeyRevocationStatus,
   getGatewayAdminKeyStatus as readGatewayAdminKeyStatus,
+  isConfiguredGatewayApiKeyId,
   listGatewayAdminKeys as readGatewayAdminKeys,
   revokeGatewayAdminKey as writeGatewayAdminKeyRevoke,
   restoreGatewayAdminKey as writeGatewayAdminKeyRestore,
@@ -67,6 +68,14 @@ import {
   resolveGatewayApiKeyByIdWithRegistry,
   revokeGatewayKeyById
 } from "./gateway-key-revocation.js";
+
+function createConfiguredKeyMembershipChecker(
+  gatewayApiKeys: Parameters<typeof isConfiguredGatewayApiKeyId>[0]
+) {
+  return (candidateKeyId: string) => {
+    return isConfiguredGatewayApiKeyId(gatewayApiKeys, candidateKeyId);
+  };
+}
 
 export async function listAdminGatewayKeys(
   env: GatewayBindings,
@@ -189,11 +198,7 @@ export async function bulkUpdateAdminGatewayKeys(
     },
     requestId,
     {
-      isConfiguredKey: (candidateKeyId) => {
-        return config.gatewayApiKeys.some((gatewayApiKey) => {
-          return gatewayApiKey.id === candidateKeyId;
-        });
-      },
+      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
       bulkUpdateRegistryKeys: (candidatePayload) => {
         return bulkUpdateGatewayRegistryApiKeys(
           env,
@@ -231,11 +236,7 @@ export async function bulkDeleteAdminGatewayKeys(
     },
     requestId,
     {
-      isConfiguredKey: (candidateKeyId) => {
-        return config.gatewayApiKeys.some((gatewayApiKey) => {
-          return gatewayApiKey.id === candidateKeyId;
-        });
-      },
+      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
       bulkDeleteRegistryKeys: (candidatePayload) => {
         return bulkDeleteGatewayRegistryApiKeys(
           env,
@@ -277,11 +278,7 @@ export async function bulkRotateAdminGatewayKeys(
     },
     requestId,
     {
-      isConfiguredKey: (candidateKeyId) => {
-        return config.gatewayApiKeys.some((gatewayApiKey) => {
-          return gatewayApiKey.id === candidateKeyId;
-        });
-      },
+      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
       bulkRotateRegistryKeys: (candidatePayload) => {
         return bulkRotateGatewayRegistryApiKeys(
           env,
@@ -319,11 +316,7 @@ export async function bulkArchiveAdminGatewayKeys(
     },
     requestId,
     {
-      isConfiguredKey: (candidateKeyId) => {
-        return config.gatewayApiKeys.some((gatewayApiKey) => {
-          return gatewayApiKey.id === candidateKeyId;
-        });
-      },
+      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
       bulkArchiveRegistryKeys: (candidatePayload) => {
         return bulkArchiveGatewayRegistryApiKeys(
           env,
@@ -361,11 +354,7 @@ export async function bulkRestoreAdminGatewayKeys(
     },
     requestId,
     {
-      isConfiguredKey: (candidateKeyId) => {
-        return config.gatewayApiKeys.some((gatewayApiKey) => {
-          return gatewayApiKey.id === candidateKeyId;
-        });
-      },
+      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
       bulkRestoreRegistryKeys: (candidatePayload) => {
         return bulkRestoreGatewayRegistryApiKeys(
           env,
@@ -403,11 +392,7 @@ export async function bulkFinalizeAdminGatewayKeyRotations(
     },
     requestId,
     {
-      isConfiguredKey: (candidateKeyId) => {
-        return config.gatewayApiKeys.some((gatewayApiKey) => {
-          return gatewayApiKey.id === candidateKeyId;
-        });
-      },
+      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
       bulkFinalizeRegistryKeyRotations: (candidatePayload) => {
         return bulkFinalizeGatewayRegistryApiKeyRotations(
           env,
@@ -445,11 +430,7 @@ export async function bulkCancelAdminGatewayKeyRotations(
     },
     requestId,
     {
-      isConfiguredKey: (candidateKeyId) => {
-        return config.gatewayApiKeys.some((gatewayApiKey) => {
-          return gatewayApiKey.id === candidateKeyId;
-        });
-      },
+      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
       bulkCancelRegistryKeyRotations: (candidatePayload) => {
         return bulkCancelGatewayRegistryApiKeyRotations(
           env,
@@ -496,11 +477,7 @@ export async function updateAdminGatewayKey(
     mutation.payload,
     requestId,
     {
-      isConfiguredKey: (candidateKeyId) => {
-        return config.gatewayApiKeys.some((gatewayApiKey) => {
-          return gatewayApiKey.id === candidateKeyId;
-        });
-      },
+      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
       updateRegistryKey: (candidateKeyId, candidatePayload) => {
         return updateGatewayRegistryApiKey(
           env,
@@ -536,11 +513,7 @@ export async function deleteAdminGatewayKey(
     mutation.payload,
     requestId,
     {
-      isConfiguredKey: (candidateKeyId) => {
-        return config.gatewayApiKeys.some((gatewayApiKey) => {
-          return gatewayApiKey.id === candidateKeyId;
-        });
-      },
+      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
       deleteRegistryKey: (candidateKeyId, candidatePayload) => {
         return deleteGatewayRegistryApiKey(
           env,
@@ -576,11 +549,7 @@ export async function rotateAdminGatewayKey(
     mutation.payload,
     requestId,
     {
-      isConfiguredKey: (candidateKeyId) => {
-        return config.gatewayApiKeys.some((gatewayApiKey) => {
-          return gatewayApiKey.id === candidateKeyId;
-        });
-      },
+      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
       rotateRegistryKey: (candidateKeyId, candidatePayload) => {
         return rotateGatewayRegistryApiKey(
           env,
@@ -616,11 +585,7 @@ export async function archiveAdminGatewayKey(
     mutation.payload,
     requestId,
     {
-      isConfiguredKey: (candidateKeyId) => {
-        return config.gatewayApiKeys.some((gatewayApiKey) => {
-          return gatewayApiKey.id === candidateKeyId;
-        });
-      },
+      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
       archiveRegistryKey: (candidateKeyId, candidatePayload) => {
         return archiveGatewayRegistryApiKey(
           env,
@@ -656,11 +621,7 @@ export async function restoreAdminGatewayKey(
     mutation.payload,
     requestId,
     {
-      isConfiguredKey: (candidateKeyId) => {
-        return config.gatewayApiKeys.some((gatewayApiKey) => {
-          return gatewayApiKey.id === candidateKeyId;
-        });
-      },
+      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
       restoreRegistryKey: (candidateKeyId, candidatePayload) => {
         return restoreGatewayRegistryApiKey(
           env,
@@ -696,11 +657,7 @@ export async function finalizeAdminGatewayKeyRotation(
     mutation.payload,
     requestId,
     {
-      isConfiguredKey: (candidateKeyId) => {
-        return config.gatewayApiKeys.some((gatewayApiKey) => {
-          return gatewayApiKey.id === candidateKeyId;
-        });
-      },
+      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
       finalizeRegistryKeyRotation: (candidateKeyId, candidatePayload) => {
         return finalizeGatewayRegistryApiKeyRotation(
           env,
@@ -736,11 +693,7 @@ export async function cancelAdminGatewayKeyRotation(
     mutation.payload,
     requestId,
     {
-      isConfiguredKey: (candidateKeyId) => {
-        return config.gatewayApiKeys.some((gatewayApiKey) => {
-          return gatewayApiKey.id === candidateKeyId;
-        });
-      },
+      isConfiguredKey: createConfiguredKeyMembershipChecker(config.gatewayApiKeys),
       cancelRegistryKeyRotation: (candidateKeyId, candidatePayload) => {
         return cancelGatewayRegistryApiKeyRotation(
           env,

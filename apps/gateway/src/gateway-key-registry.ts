@@ -2,6 +2,7 @@ import {
   applyGatewayApiKeyMetadataOverride,
   createGatewayKeyRegistryDynamicKeyView,
   createGatewayKeyAuditEvent,
+  isConfiguredGatewayApiKeyId,
   gatewayKeyAuditActorContextFromRegistryRequest,
   parseGatewayKeyRegistryBulkCreateRequest,
   parseGatewayKeyRegistryBulkArchiveRequest,
@@ -1850,7 +1851,7 @@ export async function deleteGatewayRegistryApiKey(
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
 ): Promise<void> {
-  if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
+  if (isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, keyId)) {
     throw createGatewayKeyNotRegistryOwnedError(requestId);
   }
 
@@ -1915,7 +1916,7 @@ export async function updateGatewayRegistryApiKey(
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
 ): Promise<GatewayKeyRegistryDynamicKeyView> {
-  if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
+  if (isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, keyId)) {
     throw createGatewayKeyNotRegistryOwnedError(requestId);
   }
 
@@ -1996,9 +1997,7 @@ export async function bulkUpdateGatewayRegistryApiKeys(
   const bulkRequest = parseGatewayKeyRegistryBulkUpdateRequest(payload);
 
   for (const entry of bulkRequest.updates) {
-    if (
-      configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === entry.keyId)
-    ) {
+    if (isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, entry.keyId)) {
       throw createGatewayKeyNotRegistryOwnedError(requestId);
     }
   }
@@ -2094,9 +2093,7 @@ export async function bulkDeleteGatewayRegistryApiKeys(
   const bulkRequest = parseGatewayKeyRegistryBulkDeleteRequest(payload);
 
   for (const keyId of bulkRequest.keyIds) {
-    if (
-      configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)
-    ) {
+    if (isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, keyId)) {
       throw createGatewayKeyNotRegistryOwnedError(requestId);
     }
   }
@@ -2189,9 +2186,7 @@ export async function bulkRotateGatewayRegistryApiKeys(
     await toDynamicUniquenessComparableGatewayApiKeys(configuredGatewayApiKeys);
 
   for (const entry of bulkRequest.rotations) {
-    if (
-      configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === entry.keyId)
-    ) {
+    if (isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, entry.keyId)) {
       throw createGatewayKeyNotRegistryOwnedError(requestId);
     }
   }
@@ -2322,9 +2317,7 @@ export async function bulkArchiveGatewayRegistryApiKeys(
   const bulkRequest = parseGatewayKeyRegistryBulkArchiveRequest(payload);
 
   for (const keyId of bulkRequest.keyIds) {
-    if (
-      configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)
-    ) {
+    if (isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, keyId)) {
       throw createGatewayKeyNotRegistryOwnedError(requestId);
     }
   }
@@ -2411,9 +2404,7 @@ export async function bulkRestoreGatewayRegistryApiKeys(
   const bulkRequest = parseGatewayKeyRegistryBulkRestoreRequest(payload);
 
   for (const keyId of bulkRequest.keyIds) {
-    if (
-      configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)
-    ) {
+    if (isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, keyId)) {
       throw createGatewayKeyNotRegistryOwnedError(requestId);
     }
   }
@@ -2503,9 +2494,7 @@ export async function bulkFinalizeGatewayRegistryApiKeyRotations(
   );
 
   for (const keyId of bulkRequest.keyIds) {
-    if (
-      configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)
-    ) {
+    if (isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, keyId)) {
       throw createGatewayKeyNotRegistryOwnedError(requestId);
     }
   }
@@ -2595,9 +2584,7 @@ export async function bulkCancelGatewayRegistryApiKeyRotations(
   );
 
   for (const keyId of bulkRequest.keyIds) {
-    if (
-      configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)
-    ) {
+    if (isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, keyId)) {
       throw createGatewayKeyNotRegistryOwnedError(requestId);
     }
   }
@@ -2845,7 +2832,7 @@ export async function rotateGatewayRegistryApiKey(
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
 ): Promise<GatewayKeyRegistryDynamicKeyView> {
-  if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
+  if (isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, keyId)) {
     throw createGatewayKeyNotRegistryOwnedError(requestId);
   }
 
@@ -2942,7 +2929,7 @@ export async function finalizeGatewayRegistryApiKeyRotation(
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
 ): Promise<GatewayKeyRegistryDynamicKeyView> {
-  if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
+  if (isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, keyId)) {
     throw createGatewayKeyNotRegistryOwnedError(requestId);
   }
 
@@ -3007,7 +2994,7 @@ export async function cancelGatewayRegistryApiKeyRotation(
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
 ): Promise<GatewayKeyRegistryDynamicKeyView> {
-  if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
+  if (isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, keyId)) {
     throw createGatewayKeyNotRegistryOwnedError(requestId);
   }
 
@@ -3078,7 +3065,7 @@ export async function archiveGatewayRegistryApiKey(
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
 ): Promise<GatewayKeyRegistryDynamicKeyView> {
-  if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
+  if (isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, keyId)) {
     throw createGatewayKeyNotRegistryOwnedError(requestId);
   }
 
@@ -3143,7 +3130,7 @@ export async function restoreGatewayRegistryApiKey(
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
 ): Promise<GatewayKeyRegistryDynamicKeyView> {
-  if (configuredGatewayApiKeys.some((gatewayApiKey) => gatewayApiKey.id === keyId)) {
+  if (isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, keyId)) {
     throw createGatewayKeyNotRegistryOwnedError(requestId);
   }
 
