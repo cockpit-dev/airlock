@@ -16737,6 +16737,39 @@ describe("gateway app", () => {
     });
   });
 
+  it("fails closed when responses reasoning.summary is sent to a non-openai provider", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          input: "hello",
+          reasoning: {
+            summary: "auto"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider anthropic does not support required capability: reasoning",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
   it("fails closed when chat parallel_tool_calls=false is sent to a non-openai provider", async () => {
     const app = createApp({ fetcher: vi.fn() });
 

@@ -148,6 +148,28 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     });
   });
 
+  it("marks reasoning requirements when reasoning summary control is present", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      reasoningSummary: "auto",
+      messages: []
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: false,
+      requiresTools: false,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: true,
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: false
+    });
+  });
+
   it("marks structured output requirements when json_schema output format is present", () => {
     const request: CanonicalRequest = {
       model: "gpt-4.1-mini",

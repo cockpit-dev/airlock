@@ -16,7 +16,9 @@ export function getCanonicalRequestCapabilityRequirements(
     requiresPreviousResponseId: request.previousResponseId !== undefined,
     requiresConversationId: request.conversationId !== undefined,
     requiresPrompt: request.prompt !== undefined,
-    requiresReasoning: request.reasoningEffort !== undefined,
+    requiresReasoning:
+      request.reasoningEffort !== undefined ||
+      request.reasoningSummary !== undefined,
     requiresStructuredOutputs:
       request.outputFormat !== undefined &&
       request.outputFormat.type !== "text",
