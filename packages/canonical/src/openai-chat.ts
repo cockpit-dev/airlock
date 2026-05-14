@@ -573,6 +573,12 @@ export function normalizeOpenAIResponsesRequest(
       ? { temperature: request.temperature }
       : {}),
     ...(request.top_p !== undefined ? { topP: request.top_p } : {}),
+    ...(request.stop !== undefined
+      ? {
+          stopSequences:
+            typeof request.stop === "string" ? [request.stop] : request.stop
+        }
+      : {}),
     ...(request.tools !== undefined
       ? {
           tools: request.tools.map((tool) => ({

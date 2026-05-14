@@ -1188,6 +1188,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                     ? { temperature: request.temperature }
                     : {}),
                   ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+                  ...(request.stopSequences !== undefined
+                    ? { stop: request.stopSequences }
+                    : {}),
                   ...(request.tools !== undefined
                     ? {
                         tools: request.tools.map((tool) => ({
@@ -1289,6 +1292,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ? { temperature: request.temperature }
                   : {}),
                 ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+                ...(request.stopSequences !== undefined
+                  ? { stop: request.stopSequences }
+                  : {}),
                 ...(request.tools !== undefined
                   ? {
                       tools: request.tools.map((tool) => ({

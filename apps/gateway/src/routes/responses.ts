@@ -60,6 +60,7 @@ const allowedOpenAIResponsesTopLevelFields = [
   "max_output_tokens",
   "temperature",
   "top_p",
+  "stop",
   "instructions",
   "reasoning",
   "text",

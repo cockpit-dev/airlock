@@ -1035,6 +1035,24 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.topP).toBe(0.85);
   });
 
+  it("normalizes responses stop sequences into canonical request fields", () => {
+    const canonicalSingle = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      stop: "\n\n"
+    });
+    const canonicalMultiple = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      stop: ["END", "STOP"]
+    });
+
+    expect(canonicalSingle.stopSequences).toEqual(["\n\n"]);
+    expect(canonicalMultiple.stopSequences).toEqual(["END", "STOP"]);
+  });
+
   it("normalizes responses function tools into canonical request fields", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",

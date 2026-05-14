@@ -17255,6 +17255,57 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts responses stop semantics and forwards them upstream through anthropic", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          stop_sequence: null,
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          input: "hello",
+          stop: ["END", "STOP"]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stop_sequences: ["END", "STOP"]
+    });
+  });
+
   it("accepts streaming responses requests that include tools and forwards them upstream", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi.fn().mockResolvedValue(
@@ -18116,6 +18167,65 @@ describe("gateway app", () => {
     expect(JSON.parse(init.body as string)).toMatchObject({
       temperature: 0.2,
       top_p: 0.9
+    });
+  });
+
+  it("accepts supported responses stop semantics and forwards them upstream for OpenAI", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          stop: ["END", "STOP"]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stop: ["END", "STOP"]
     });
   });
 
@@ -19149,7 +19259,7 @@ describe("gateway app", () => {
     });
   });
 
-  it("allowlist openai semantics rejects unsupported responses stop", async () => {
+  it("rejects invalid responses stop semantics", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -19189,7 +19299,7 @@ describe("gateway app", () => {
         body: JSON.stringify({
           model: "gpt-4.1-mini",
           input: "hello",
-          stop: ["END", "STOP"]
+          stop: [""]
         })
       },
       createBindings()
@@ -19198,7 +19308,8 @@ describe("gateway app", () => {
     expect(response.status).toBe(400);
     await expect(readJson(response)).resolves.toEqual({
       error: {
-        message: "Unsupported OpenAI Responses semantic field: stop",
+        message:
+          "Unsupported OpenAI Responses stop semantics: stop must be a non-empty string or non-empty string array",
         type: "request",
         code: "request_unsupported_openai_semantics"
       }

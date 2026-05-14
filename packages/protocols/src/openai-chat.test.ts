@@ -867,6 +867,24 @@ describe("openAIResponsesRequestSchema", () => {
     expect(parsed.top_p).toBe(0.85);
   });
 
+  it("accepts responses stop sequences as a string or array", () => {
+    const single = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      stop: "\n\n"
+    });
+    const multiple = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      stop: ["END", "STOP"]
+    });
+
+    expect(single.stop).toBe("\n\n");
+    expect(multiple.stop).toEqual(["END", "STOP"]);
+  });
+
   it("accepts responses function tools and tool_choice", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",

@@ -153,6 +153,28 @@ export function assertSupportedOpenAIResponsesSemantics(
     }
   }
 
+  if ("stop" in payload && payload.stop !== undefined) {
+    if (
+      !(
+        typeof payload.stop === "string" ||
+        (Array.isArray(payload.stop) &&
+          payload.stop.length > 0 &&
+          payload.stop.every((entry) => typeof entry === "string" && entry.length > 0))
+      )
+    ) {
+      throw new GatewayError(
+        "Unsupported OpenAI Responses stop semantics: stop must be a non-empty string or non-empty string array",
+        {
+          code: "request_unsupported_openai_semantics",
+          category: "request",
+          httpStatus: 400,
+          retryable: false,
+          requestId
+        }
+      );
+    }
+  }
+
   if (!("text" in payload) || payload.text === undefined) {
     return;
   }
