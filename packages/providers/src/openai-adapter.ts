@@ -961,6 +961,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.previousResponseId !== undefined
                     ? { previous_response_id: request.previousResponseId }
                     : {}),
+                  ...(request.conversationId !== undefined
+                    ? { conversation: request.conversationId }
+                    : {}),
                   ...(request.maxOutputTokens !== undefined
                     ? { max_output_tokens: request.maxOutputTokens }
                     : {}),
@@ -1014,6 +1017,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 input: buildOpenAIResponsesInput(request),
                 ...(request.previousResponseId !== undefined
                   ? { previous_response_id: request.previousResponseId }
+                  : {}),
+                ...(request.conversationId !== undefined
+                  ? { conversation: request.conversationId }
                   : {}),
                 ...(request.maxOutputTokens !== undefined
                   ? { max_output_tokens: request.maxOutputTokens }
@@ -1223,6 +1229,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.previousResponseId !== undefined
                     ? { previous_response_id: request.previousResponseId }
                     : {}),
+                  ...(request.conversationId !== undefined
+                    ? { conversation: request.conversationId }
+                    : {}),
                   ...(request.maxOutputTokens !== undefined
                     ? { max_output_tokens: request.maxOutputTokens }
                     : {}),
@@ -1276,6 +1285,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 input: buildOpenAIResponsesInput(request),
                 ...(request.previousResponseId !== undefined
                   ? { previous_response_id: request.previousResponseId }
+                  : {}),
+                ...(request.conversationId !== undefined
+                  ? { conversation: request.conversationId }
                   : {}),
                 ...(request.maxOutputTokens !== undefined
                   ? { max_output_tokens: request.maxOutputTokens }

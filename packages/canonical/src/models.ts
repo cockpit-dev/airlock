@@ -40,6 +40,7 @@ export interface CanonicalRequest {
   messages: CanonicalMessage[];
   stream: boolean;
   previousResponseId?: string;
+  conversationId?: string;
   maxOutputTokens?: number;
   temperature?: number;
   topP?: number;
@@ -54,6 +55,7 @@ export interface CanonicalRequestCapabilityRequirements {
   requiresMultimodalInput: boolean;
   requiresSystemMessages: boolean;
   requiresPreviousResponseId: boolean;
+  requiresConversationId: boolean;
 }
 
 export interface CanonicalUsage {

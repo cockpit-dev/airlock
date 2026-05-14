@@ -160,6 +160,14 @@ export function assertProviderSupportsCanonicalRequest(
       requestId
     );
   }
+
+  if (requirements.requiresConversationId && !descriptor.supportsConversationId) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "conversation",
+      requestId
+    );
+  }
 }
 
 function createProviderAdapter(

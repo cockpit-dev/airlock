@@ -13,6 +13,7 @@ export function getCanonicalRequestCapabilityRequirements(
     requiresSystemMessages: request.messages.some((message) => {
       return message.role === "system";
     }),
-    requiresPreviousResponseId: request.previousResponseId !== undefined
+    requiresPreviousResponseId: request.previousResponseId !== undefined,
+    requiresConversationId: request.conversationId !== undefined
   };
 }

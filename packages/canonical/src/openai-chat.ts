@@ -443,6 +443,9 @@ export function normalizeOpenAIResponsesRequest(
     ...(request.previous_response_id !== undefined
       ? { previousResponseId: request.previous_response_id }
       : {}),
+    ...(request.conversation !== undefined
+      ? { conversationId: request.conversation }
+      : {}),
     ...(request.max_output_tokens !== undefined
       ? { maxOutputTokens: request.max_output_tokens }
       : {}),

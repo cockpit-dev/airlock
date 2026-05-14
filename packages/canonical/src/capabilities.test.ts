@@ -26,7 +26,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: true,
-      requiresPreviousResponseId: false
+      requiresPreviousResponseId: false,
+      requiresConversationId: false
     });
   });
 
@@ -47,7 +48,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
-      requiresPreviousResponseId: false
+      requiresPreviousResponseId: false,
+      requiresConversationId: false
     });
   });
 
@@ -76,7 +78,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresTools: true,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
-      requiresPreviousResponseId: false
+      requiresPreviousResponseId: false,
+      requiresConversationId: false
     });
   });
 
@@ -85,6 +88,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       model: "gpt-4.1-mini",
       stream: true,
       previousResponseId: "resp_123",
+      conversationId: "conv_123",
       messages: [
         {
           role: "user",
@@ -98,7 +102,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
-      requiresPreviousResponseId: true
+      requiresPreviousResponseId: true,
+      requiresConversationId: true
     });
   });
 });

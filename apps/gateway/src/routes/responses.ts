@@ -55,6 +55,7 @@ const allowedOpenAIResponsesTopLevelFields = [
   "model",
   "stream",
   "previous_response_id",
+  "conversation",
   "max_output_tokens",
   "temperature",
   "top_p",

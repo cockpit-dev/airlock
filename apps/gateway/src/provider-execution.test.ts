@@ -230,6 +230,7 @@ describe("assertProviderSupportsCanonicalRequest", () => {
           supportsMultimodalInput: false,
           supportsSystemMessages: false,
           supportsPreviousResponseId: false,
+          supportsConversationId: false,
           supportsRouteScopedShaping: true,
           supportsStaticFallbackSameProvider: true
         },
@@ -1895,6 +1896,7 @@ describe("executeRoutedRequest", () => {
             supportsMultimodalInput: false,
             supportsSystemMessages: false,
             supportsPreviousResponseId: false,
+            supportsConversationId: false,
             supportsRouteScopedShaping: true,
             supportsStaticFallbackSameProvider: true
           };

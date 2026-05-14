@@ -16,6 +16,7 @@ describe("provider capability descriptors", () => {
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
         supportsPreviousResponseId: true,
+        supportsConversationId: true,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       },
@@ -27,6 +28,7 @@ describe("provider capability descriptors", () => {
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
         supportsPreviousResponseId: false,
+        supportsConversationId: false,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       },
@@ -38,6 +40,7 @@ describe("provider capability descriptors", () => {
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
         supportsPreviousResponseId: false,
+        supportsConversationId: false,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       }
@@ -53,6 +56,7 @@ describe("provider capability descriptors", () => {
       supportsMultimodalInput: false,
       supportsSystemMessages: true,
       supportsPreviousResponseId: false,
+      supportsConversationId: false,
       supportsRouteScopedShaping: true,
       supportsStaticFallbackSameProvider: true
     });
@@ -62,7 +66,15 @@ describe("provider capability descriptors", () => {
     expect(getProviderCapabilityDescriptor("openai")).toMatchObject({
       provider: "openai",
       supportsTools: true,
-      supportsPreviousResponseId: true
+      supportsPreviousResponseId: true,
+      supportsConversationId: true
+    });
+  });
+
+  it("returns Anthropic as not conversation-capable", () => {
+    expect(getProviderCapabilityDescriptor("anthropic")).toMatchObject({
+      provider: "anthropic",
+      supportsConversationId: false
     });
   });
 

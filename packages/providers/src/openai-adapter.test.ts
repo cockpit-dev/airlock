@@ -152,7 +152,8 @@ describe("OpenAIProviderAdapter", () => {
     const response = await adapter.complete(
       {
         ...createCanonicalRequest(),
-        previousResponseId: "resp_prev_123"
+        previousResponseId: "resp_prev_123",
+        conversationId: "conv_123"
       },
       {
         requestId: "req_123",
@@ -178,7 +179,8 @@ describe("OpenAIProviderAdapter", () => {
           content: "Say hi."
         }
       ],
-      previous_response_id: "resp_prev_123"
+      previous_response_id: "resp_prev_123",
+      conversation: "conv_123"
     });
     expect(response).toMatchObject({
       id: "resp_123",
