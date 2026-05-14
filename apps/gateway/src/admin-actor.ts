@@ -1,18 +1,12 @@
-import { GatewayError } from "@airlock/shared";
 import {
-  buildAdminMutationActorCommand,
   parseInternalAdminCredentials,
-  parseOptionalGatewayKeyAuditActor,
+  parseOptionalPayloadActor as parseOptionalPayloadActorFromGovernance,
   type GatewayKeyAuditActorContext,
-  resolveAdminActorContextFromInputs,
+  resolveAdminMutationActorCommand as resolveAdminMutationActorCommandFromGovernance,
   resolveInternalAdminAuthorization
 } from "@airlock/governance";
 
 import type { GatewayBindings } from "./env.js";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function normalizeHeaderName(value: string | undefined): string | undefined {
   if (!value) {
@@ -27,70 +21,29 @@ export function parseOptionalPayloadActor(
   payload: unknown,
   message: string
 ): string | undefined {
-  if (payload === undefined || payload === null) {
-    return undefined;
-  }
-
-  if (!isRecord(payload) || !("actor" in payload)) {
-    return undefined;
-  }
-
-  try {
-    return parseOptionalGatewayKeyAuditActor(payload.actor);
-  } catch (cause) {
-    throw new GatewayError(message, {
-      code: "gateway_key_invalid_actor_payload",
-      category: "governance",
-      httpStatus: 400,
-      retryable: false,
-      cause
-    });
-  }
+  return parseOptionalPayloadActorFromGovernance(payload, message);
 }
 
-export function resolveAdminActorContext(
+export async function resolveAdminActorContext(
   request: Request,
   env: GatewayBindings,
   payloadActor: string | undefined,
   requestId: string
 ): Promise<GatewayKeyAuditActorContext | undefined> {
-  return (async () => {
-    const adminAuthorization = await resolveAdminAuthorizationContext(
-      request,
-      env,
-      requestId
-    );
-
-    const trustedHeaderName = normalizeHeaderName(
+  const command = await resolveAdminMutationActorCommandFromGovernance({
+    request,
+    payload: payloadActor ? { actor: payloadActor } : {},
+    requestId,
+    invalidPayloadMessage: "Gateway key actor payload is invalid",
+    actorRequired: env.AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED,
+    trustedActorHeaderName: normalizeHeaderName(
       env.AIRLOCK_INTERNAL_ADMIN_ACTOR_HEADER
-    );
-    let trustedHeaderActor: string | undefined;
+    ),
+    adminToken: undefined,
+    structuredCredentialsConfig: env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS
+  });
 
-    try {
-      trustedHeaderActor = trustedHeaderName
-        ? parseOptionalGatewayKeyAuditActor(
-            request.headers.get(trustedHeaderName) ?? undefined
-          )
-        : undefined;
-    } catch (cause) {
-      throw new GatewayError("Admin actor header is invalid", {
-        code: "auth_invalid_admin_actor",
-        category: "authentication",
-        httpStatus: 400,
-        retryable: false,
-        requestId,
-        cause
-      });
-    }
-
-    return resolveAdminActorContextFromInputs({
-      credentialActor: adminAuthorization?.actor,
-      trustedHeaderActor,
-      payloadActor,
-      actorRequired: env.AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED,
-      requestId
-    });
-  })();
+  return command.actorContext;
 }
 
 export async function resolveAdminAuthorizationContext(
@@ -119,40 +72,16 @@ export async function resolveAdminMutationActorCommand(
   actorContext?: GatewayKeyAuditActorContext;
   payload: unknown;
 }> {
-  const payloadActor = parseOptionalPayloadActor(payload, message);
-  const adminAuthorization = await resolveAdminAuthorizationContext(
+  return resolveAdminMutationActorCommandFromGovernance({
     request,
-    env,
-    requestId
-  );
-  const trustedHeaderName = normalizeHeaderName(
-    env.AIRLOCK_INTERNAL_ADMIN_ACTOR_HEADER
-  );
-  let trustedHeaderActor: string | undefined;
-
-  try {
-    trustedHeaderActor = trustedHeaderName
-      ? parseOptionalGatewayKeyAuditActor(
-          request.headers.get(trustedHeaderName) ?? undefined
-        )
-      : undefined;
-  } catch (cause) {
-    throw new GatewayError("Admin actor header is invalid", {
-      code: "auth_invalid_admin_actor",
-      category: "authentication",
-      httpStatus: 400,
-      retryable: false,
-      requestId,
-      cause
-    });
-  }
-
-  return buildAdminMutationActorCommand({
     payload,
-    credentialActor: adminAuthorization?.actor,
-    trustedHeaderActor,
-    payloadActor,
+    requestId,
+    invalidPayloadMessage: message,
     actorRequired: env.AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED,
-    requestId
+    trustedActorHeaderName: normalizeHeaderName(
+      env.AIRLOCK_INTERNAL_ADMIN_ACTOR_HEADER
+    ),
+    adminToken: undefined,
+    structuredCredentialsConfig: env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS
   });
 }

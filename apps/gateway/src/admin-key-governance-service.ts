@@ -35,6 +35,31 @@ import {
 } from "./admin-actor.js";
 import type { GatewayBindings } from "./env.js";
 
+async function createAdminMutationRuntime(
+  env: GatewayBindings,
+  request: Request,
+  requestId: string,
+  payload: unknown,
+  invalidPayloadMessage: string
+) {
+  const mutation = await resolveAdminMutationActorCommand(
+    request,
+    env,
+    payload,
+    requestId,
+    invalidPayloadMessage
+  );
+
+  return {
+    mutation,
+    runtime: createAdminKeyGovernanceRuntime(
+      env,
+      requestId,
+      mutation.actorContext
+    )
+  };
+}
+
 export async function listAdminGatewayKeys(
   env: GatewayBindings,
   _request: Request,
@@ -51,17 +76,12 @@ export async function createAdminGatewayKey(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key create payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyCreate(mutation.payload, runtime.write);
@@ -73,17 +93,12 @@ export async function bulkCreateAdminGatewayKeys(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key bulk create payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkCreate(
@@ -110,17 +125,12 @@ export async function bulkUpdateAdminGatewayKeys(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key bulk update payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkUpdate(
@@ -148,17 +158,12 @@ export async function bulkDeleteAdminGatewayKeys(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key bulk delete payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkDelete(
@@ -179,17 +184,12 @@ export async function bulkRotateAdminGatewayKeys(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key bulk rotate payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkRotate(
@@ -214,17 +214,12 @@ export async function bulkArchiveAdminGatewayKeys(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key bulk archive payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkArchive(
@@ -245,17 +240,12 @@ export async function bulkRestoreAdminGatewayKeys(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key bulk restore payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkRestore(
@@ -276,17 +266,12 @@ export async function bulkFinalizeAdminGatewayKeyRotations(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key bulk rotation finalize payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkRotationFinalize(
@@ -307,17 +292,12 @@ export async function bulkCancelAdminGatewayKeyRotations(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key bulk rotation cancel payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyBulkRotationCancel(
@@ -348,17 +328,12 @@ export async function updateAdminGatewayKey(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key update payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyUpdate(
@@ -376,17 +351,12 @@ export async function deleteAdminGatewayKey(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key delete payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyDelete(
@@ -404,17 +374,12 @@ export async function rotateAdminGatewayKey(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key rotation payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyRotate(
@@ -432,17 +397,12 @@ export async function archiveAdminGatewayKey(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key archive payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyArchive(
@@ -460,17 +420,12 @@ export async function restoreAdminGatewayKey(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key restore payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyRestore(
@@ -488,17 +443,12 @@ export async function finalizeAdminGatewayKeyRotation(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key rotation finalize payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyRotationFinalize(
@@ -516,17 +466,12 @@ export async function cancelAdminGatewayKeyRotation(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway dynamic key rotation cancel payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyRotationCancel(
@@ -626,17 +571,12 @@ export async function revokeAdminGatewayKey(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway key revocation payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyRevoke(keyId, mutation.payload, runtime.write);
@@ -649,17 +589,12 @@ export async function clearAdminGatewayKeyRevocation(
   requestId: string,
   payload: unknown
 ) {
-  const mutation = await resolveAdminMutationActorCommand(
+  const { mutation, runtime } = await createAdminMutationRuntime(
+    env,
     request,
-    env,
+    requestId,
     payload,
-    requestId,
     "Gateway key revocation payload is invalid"
-  );
-  const runtime = createAdminKeyGovernanceRuntime(
-    env,
-    requestId,
-    mutation.actorContext
   );
 
   return writeGatewayAdminKeyRevocationClear(
