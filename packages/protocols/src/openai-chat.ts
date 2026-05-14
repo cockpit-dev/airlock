@@ -98,7 +98,8 @@ export const openAIChatMessageSchema = z.union([
   openAIChatBaseMessageSchema
 ]);
 
-export const openAIChatCompletionRequestSchema = z.object({
+export const openAIChatCompletionRequestSchema = z
+  .object({
   model: z.string().min(1),
   stream: z.boolean().default(false),
   max_tokens: z.number().int().positive().optional(),
@@ -119,7 +120,16 @@ export const openAIChatCompletionRequestSchema = z.object({
   ]).optional(),
   messages: z.array(openAIChatMessageSchema).min(1),
   airlock: airlockRequestExtensionsSchema.optional()
-});
+  })
+  .superRefine((value, context) => {
+    if (!value.stream && value.stream_options !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "OpenAI Chat stream_options requires stream=true",
+        path: ["stream_options"]
+      });
+    }
+  });
 
 export type OpenAIChatMessage = z.infer<typeof openAIChatMessageSchema>;
 export type OpenAIChatCompletionRequest = z.infer<

@@ -193,6 +193,24 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(multiple.stop).toEqual(["END", "STOP"]);
   });
 
+  it("rejects chat stream_options when stream is false", () => {
+    const result = openAIChatCompletionRequestSchema.safeParse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      stream_options: {
+        include_usage: true
+      },
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("accepts chat stream_options.include_usage when true", () => {
     const parsed = openAIChatCompletionRequestSchema.parse({
       model: "gpt-4.1-mini",
@@ -1021,11 +1039,24 @@ describe("openAIResponsesRequestSchema", () => {
     });
   });
 
-  it("accepts responses stream_options when include_obfuscation is false", () => {
-    const parsed = openAIResponsesRequestSchema.parse({
+  it("rejects responses stream_options when stream is false", () => {
+    const result = openAIResponsesRequestSchema.safeParse({
       model: "gpt-4.1-mini",
       input: "hello",
       stream: false,
+      stream_options: {
+        include_obfuscation: false
+      }
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts responses stream_options when stream is true", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: true,
       stream_options: {
         include_obfuscation: false
       }

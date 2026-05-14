@@ -55,6 +55,19 @@ export function assertSupportedOpenAIChatStreamOptions(
 
   const streamOptions = payload.stream_options;
 
+  if (payload.stream !== true) {
+    throw new GatewayError(
+      "OpenAI Chat stream_options requires stream=true",
+      {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
+  }
+
   if (
     typeof streamOptions !== "object" ||
     streamOptions === null ||
@@ -251,6 +264,19 @@ export function assertSupportedOpenAIResponsesStreamOptions(
   }
 
   const streamOptions = payload.stream_options;
+
+  if (payload.stream !== true) {
+    throw new GatewayError(
+      "OpenAI Responses stream_options requires stream=true",
+      {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
+  }
 
   if (
     typeof streamOptions !== "object" ||

@@ -126,7 +126,8 @@ const openAIResponsesTypedInputItemSchema = z.union([
   openAIResponsesReasoningItemSchema
 ]);
 
-export const openAIResponsesRequestSchema = z.object({
+export const openAIResponsesRequestSchema = z
+  .object({
   model: z.string().min(1),
   stream: z.boolean().default(false),
   prompt: openAIResponsesPromptSchema.optional(),
@@ -156,10 +157,20 @@ export const openAIResponsesRequestSchema = z.object({
     ])
     .optional(),
   airlock: airlockRequestExtensionsSchema.optional()
-}).refine((value) => value.input !== undefined || value.prompt !== undefined, {
-  message: "Either input or prompt is required",
-  path: ["input"]
-});
+  })
+  .refine((value) => value.input !== undefined || value.prompt !== undefined, {
+    message: "Either input or prompt is required",
+    path: ["input"]
+  })
+  .superRefine((value, context) => {
+    if (!value.stream && value.stream_options !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "OpenAI Responses stream_options requires stream=true",
+        path: ["stream_options"]
+      });
+    }
+  });
 
 export const openAIResponsesResponseSchema = z.object({
   id: z.string().min(1),

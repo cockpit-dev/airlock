@@ -4629,6 +4629,39 @@ describe("gateway app", () => {
     });
   });
 
+  it("rejects chat stream_options when stream is false", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          stream_options: {
+            include_usage: true
+          },
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message: "OpenAI Chat stream_options requires stream=true",
+        type: "request",
+        code: "request_unsupported_openai_semantics"
+      }
+    });
+  });
+
   it("accepts supported chat sampling semantics and forwards them upstream", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -18281,7 +18314,7 @@ describe("gateway app", () => {
     await expect(readJson(response)).resolves.toEqual({
       error: {
         message:
-          "Unsupported OpenAI Responses stream_options: only include_obfuscation=false is supported",
+          "OpenAI Responses stream_options requires stream=true",
         type: "request",
         code: "request_unsupported_openai_semantics"
       }
@@ -18328,6 +18361,7 @@ describe("gateway app", () => {
         body: JSON.stringify({
           model: "gpt-4.1-mini",
           input: "hello",
+          stream: true,
           stream_options: {
             include_obfuscation: false
           }
@@ -18340,6 +18374,41 @@ describe("gateway app", () => {
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toMatchObject({
       model: "gpt-4.1-mini"
+    });
+  });
+
+  it("rejects responses stream_options when stream is false", async () => {
+    const fetcher = vi.fn();
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          stream: false,
+          stream_options: {
+            include_obfuscation: false
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "OpenAI Responses stream_options requires stream=true",
+        type: "request",
+        code: "request_unsupported_openai_semantics"
+      }
     });
   });
 
