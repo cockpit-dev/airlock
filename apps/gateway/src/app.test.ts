@@ -18360,6 +18360,130 @@ describe("gateway app", () => {
     });
   });
 
+  it("fails closed when responses tool replay is sent to gemini without a matching declared tool definition", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          input: [
+            {
+              type: "message",
+              role: "user",
+              content: [{ type: "input_text", text: "Weather in Shanghai?" }]
+            },
+            {
+              type: "function_call",
+              call_id: "call_123",
+              name: "lookup_weather",
+              arguments: "{\"city\":\"Shanghai\"}"
+            },
+            {
+              type: "function_call_output",
+              call_id: "call_123",
+              output: "{\"temperature_c\":26}"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider gemini cannot encode tool replay without a matching declared tool definition",
+        type: "request",
+        code: "request_invalid_tool_arguments"
+      }
+    });
+  });
+
+  it("fails closed when messages tool replay is sent to gemini without a matching declared tool definition", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "Weather in Shanghai?"
+            },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: "call_123",
+                  name: "lookup_weather",
+                  input: {
+                    city: "Shanghai"
+                  }
+                }
+              ]
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "call_123",
+                  content: "{\"temperature_c\":26}"
+                }
+              ]
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(400);
+    const body = await readJson(response);
+
+    expect(body).toMatchObject({
+      type: "error",
+      error: {
+        message:
+          "Provider gemini cannot encode tool replay without a matching declared tool definition",
+        type: "request"
+      }
+    });
+    if (!isRecord(body)) {
+      throw new Error("Expected an Anthropic error payload");
+    }
+    expect(typeof body.request_id).toBe("string");
+  });
+
   it("fails closed when responses parallel_tool_calls=false is sent to a non-openai provider", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
