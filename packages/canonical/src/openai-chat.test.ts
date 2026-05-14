@@ -488,6 +488,36 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
       ]
     });
   });
+
+  it("encodes a tool_calls completion event into an OpenAI tool_calls finish chunk", async () => {
+    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIChatStreamChunk(
+        {
+          type: "response_completed",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          finishReason: "tool_calls"
+        },
+        "chatcmpl-stream-123"
+      )
+    ).toEqual({
+      id: "chatcmpl-stream-123",
+      object: "chat.completion.chunk",
+      created: 0,
+      model: "gpt-4.1-mini",
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: "tool_calls"
+        }
+      ]
+    });
+  });
 });
 
 describe("normalizeOpenAIResponsesRequest", () => {

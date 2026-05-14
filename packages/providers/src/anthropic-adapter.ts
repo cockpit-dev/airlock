@@ -526,6 +526,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     let buffer = "";
     let activeResponseId = `msg_${context.requestId}`;
     let activeModel = request.model;
+    let streamStopReason: string | undefined;
     let usage:
       | {
           inputTokens: number;
@@ -615,12 +616,21 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
           }
 
           if (currentEventType === "message_delta") {
+            const delta = payload.delta as
+              | {
+                  stop_reason?: string | null;
+                }
+              | undefined;
             const eventUsage = payload.usage as
               | {
                   input_tokens?: number;
                   output_tokens?: number;
                 }
               | undefined;
+
+            if (typeof delta?.stop_reason === "string") {
+              streamStopReason = delta.stop_reason;
+            }
 
             if (eventUsage) {
               usage = {
@@ -640,11 +650,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
               responseId: activeResponseId,
               model: activeModel,
               finishReason: normalizeAnthropicFinishReason(
-                (
-                  payload.delta as
-                    | { stop_reason?: string | null }
-                    | undefined
-                )?.stop_reason ?? undefined
+                streamStopReason
               ),
               ...(usage ? { usage } : {})
             };

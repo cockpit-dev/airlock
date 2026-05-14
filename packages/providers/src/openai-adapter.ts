@@ -376,6 +376,27 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.stopSequences !== undefined
                     ? { stop: request.stopSequences }
                     : {}),
+                  ...(request.tools !== undefined
+                    ? {
+                        tools: request.tools.map((tool) => ({
+                          type: "function" as const,
+                          function: {
+                            name: tool.name,
+                            ...(tool.description
+                              ? { description: tool.description }
+                              : {}),
+                            parameters: tool.inputSchema
+                          }
+                        }))
+                      }
+                    : {}),
+                  ...(mapCanonicalToolChoiceToOpenAI(request.toolChoice)
+                    ? {
+                        tool_choice: mapCanonicalToolChoiceToOpenAI(
+                          request.toolChoice
+                        )
+                      }
+                    : {}),
                   stream_options: {
                     include_usage: true
                   }
@@ -413,6 +434,27 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(request.topP !== undefined ? { top_p: request.topP } : {}),
                 ...(request.stopSequences !== undefined
                   ? { stop: request.stopSequences }
+                  : {}),
+                ...(request.tools !== undefined
+                  ? {
+                      tools: request.tools.map((tool) => ({
+                        type: "function" as const,
+                        function: {
+                          name: tool.name,
+                          ...(tool.description
+                            ? { description: tool.description }
+                            : {}),
+                          parameters: tool.inputSchema
+                        }
+                      }))
+                    }
+                  : {}),
+                ...(mapCanonicalToolChoiceToOpenAI(request.toolChoice)
+                  ? {
+                      tool_choice: mapCanonicalToolChoiceToOpenAI(
+                        request.toolChoice
+                      )
+                    }
                   : {}),
                 stream_options: {
                   include_usage: true
@@ -546,7 +588,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   role?: "assistant";
                   content?: string;
                 };
-                finish_reason?: "stop" | "length" | null;
+                finish_reason?: "stop" | "length" | "tool_calls" | null;
               }>;
               usage?: {
                 prompt_tokens?: number;
@@ -576,7 +618,11 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               };
             }
 
-            if (choice?.finish_reason === "stop" || choice?.finish_reason === "length") {
+            if (
+              choice?.finish_reason === "stop" ||
+              choice?.finish_reason === "length" ||
+              choice?.finish_reason === "tool_calls"
+            ) {
               yield {
                 type: "response_completed",
                 responseId,
