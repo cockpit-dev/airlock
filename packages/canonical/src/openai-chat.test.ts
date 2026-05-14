@@ -234,6 +234,33 @@ describe("normalizeOpenAIChatRequest", () => {
     });
   });
 
+  it("normalizes openai chat required tool_choice into canonical request fields", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      tool_choice: "required",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "lookup_weather",
+            parameters: {
+              type: "object"
+            }
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    });
+
+    expect(canonical.toolChoice).toBe("required");
+  });
+
   it("normalizes assistant tool_calls and tool results into canonical message history", () => {
     const canonical = normalizeOpenAIChatRequest({
       model: "gpt-4.1-mini",
@@ -860,6 +887,26 @@ describe("normalizeOpenAIResponsesRequest", () => {
       type: "tool",
       name: "lookup_weather"
     });
+  });
+
+  it("normalizes responses required tool_choice into canonical request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      tool_choice: "required",
+      tools: [
+        {
+          type: "function",
+          name: "lookup_weather",
+          parameters: {
+            type: "object"
+          }
+        }
+      ]
+    });
+
+    expect(canonical.toolChoice).toBe("required");
   });
 
   it("normalizes responses function_call replay and function_call_output into canonical tool history", () => {
@@ -1922,6 +1969,60 @@ describe("normalizeAnthropicMessagesRequest", () => {
       type: "tool",
       name: "lookup_weather"
     });
+  });
+
+  it("normalizes anthropic any tool_choice into canonical request fields", () => {
+    const canonical = normalizeAnthropicMessagesRequest({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: false,
+      tool_choice: {
+        type: "any"
+      },
+      tools: [
+        {
+          name: "lookup_weather",
+          input_schema: {
+            type: "object"
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    });
+
+    expect(canonical.toolChoice).toBe("required");
+  });
+
+  it("normalizes anthropic none tool_choice into canonical request fields", () => {
+    const canonical = normalizeAnthropicMessagesRequest({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: false,
+      tool_choice: {
+        type: "none"
+      },
+      tools: [
+        {
+          name: "lookup_weather",
+          input_schema: {
+            type: "object"
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    });
+
+    expect(canonical.toolChoice).toBe("none");
   });
 
   it("normalizes anthropic tool_use and tool_result replay into canonical tool history", () => {

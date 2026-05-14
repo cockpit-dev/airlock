@@ -12,6 +12,8 @@ export interface CanonicalToolCall {
 
 export type CanonicalToolChoice =
   | "auto"
+  | "required"
+  | "none"
   | {
       type: "tool";
       name: string;

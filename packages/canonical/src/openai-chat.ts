@@ -270,6 +270,10 @@ function normalizeOpenAIToolChoice(
     return "auto" as const;
   }
 
+  if (toolChoice === "required") {
+    return "required" as const;
+  }
+
   if ("function" in toolChoice) {
     return {
       type: "tool" as const,
@@ -532,6 +536,10 @@ export function normalizeAnthropicMessagesRequest(
           toolChoice:
             request.tool_choice.type === "auto"
               ? "auto"
+              : request.tool_choice.type === "any"
+                ? "required"
+                : request.tool_choice.type === "none"
+                  ? "none"
               : {
                   type: "tool" as const,
                   name: request.tool_choice.name

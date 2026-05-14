@@ -31,6 +31,12 @@ const anthropicToolChoiceSchema = z.union([
     type: z.literal("auto")
   }),
   z.object({
+    type: z.literal("any")
+  }),
+  z.object({
+    type: z.literal("none")
+  }),
+  z.object({
     type: z.literal("tool"),
     name: z.string().min(1)
   })

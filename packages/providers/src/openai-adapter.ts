@@ -45,6 +45,14 @@ function mapCanonicalToolChoiceToOpenAI(
     return "auto" as const;
   }
 
+  if (toolChoice === "required") {
+    return "required" as const;
+  }
+
+  if (toolChoice === "none") {
+    return "none" as const;
+  }
+
   return {
     type: "function" as const,
     function: {
