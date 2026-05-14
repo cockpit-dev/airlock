@@ -288,6 +288,33 @@ describe("normalizeOpenAIChatRequest", () => {
     expect(canonical.toolChoice).toBe("none");
   });
 
+  it("normalizes chat parallel_tool_calls=false into canonical request fields", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      parallel_tool_calls: false,
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "lookup_weather",
+            parameters: {
+              type: "object"
+            }
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "hi"
+        }
+      ]
+    });
+
+    expect(canonical.allowParallelToolCalls).toBe(false);
+  });
+
   it("normalizes assistant tool_calls and tool results into canonical message history", () => {
     const canonical = normalizeOpenAIChatRequest({
       model: "gpt-4.1-mini",
@@ -1064,6 +1091,26 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.toolChoice).toBe("none");
   });
 
+  it("normalizes responses parallel_tool_calls=false into canonical request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      parallel_tool_calls: false,
+      tools: [
+        {
+          type: "function",
+          name: "lookup_weather",
+          parameters: {
+            type: "object"
+          }
+        }
+      ]
+    });
+
+    expect(canonical.allowParallelToolCalls).toBe(false);
+  });
+
   it("normalizes responses function_call replay and function_call_output into canonical tool history", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",
@@ -1202,6 +1249,18 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
         status: "completed"
       }
     ]);
+  });
+
+  it("encodes canonical parallel_tool_calls=false into an OpenAI responses payload", () => {
+    const encoded = encodeCanonicalToOpenAIResponsesResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      outputText: "hello there",
+      finishReason: "stop",
+      parallelToolCalls: false
+    });
+
+    expect(encoded.parallel_tool_calls).toBe(false);
   });
 });
 

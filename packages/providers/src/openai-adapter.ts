@@ -86,6 +86,16 @@ function mapCanonicalToolChoiceToOpenAIResponses(
   };
 }
 
+function mapCanonicalParallelToolCallsToOpenAI(
+  allowParallelToolCalls: CanonicalRequest["allowParallelToolCalls"]
+) {
+  if (allowParallelToolCalls === undefined) {
+    return undefined;
+  }
+
+  return allowParallelToolCalls;
+}
+
 function mapCanonicalOutputFormatToOpenAIChat(
   outputFormat: CanonicalRequest["outputFormat"]
 ) {
@@ -439,6 +449,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                           request.toolChoice
                         )
                       }
+                    : {}),
+                  ...(mapCanonicalParallelToolCallsToOpenAI(
+                    request.allowParallelToolCalls
+                  ) !== undefined
+                    ? {
+                        parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
+                          request.allowParallelToolCalls
+                        )
+                      }
                     : {})
                 }
               },
@@ -498,6 +517,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ? {
                       tool_choice: mapCanonicalToolChoiceToOpenAI(
                         request.toolChoice
+                      )
+                    }
+                  : {}),
+                ...(mapCanonicalParallelToolCallsToOpenAI(
+                  request.allowParallelToolCalls
+                ) !== undefined
+                  ? {
+                      parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
+                        request.allowParallelToolCalls
                       )
                     }
                   : {})
@@ -565,6 +593,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     const payload = (await response.json()) as {
       id: string;
       model: string;
+      parallel_tool_calls?: boolean;
       choices: Array<{
         finish_reason: "stop" | "length" | "tool_calls";
         message: {
@@ -686,6 +715,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                         )
                       }
                     : {}),
+                  ...(mapCanonicalParallelToolCallsToOpenAI(
+                    request.allowParallelToolCalls
+                  ) !== undefined
+                    ? {
+                        parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
+                          request.allowParallelToolCalls
+                        )
+                      }
+                    : {}),
                   stream_options: {
                     include_usage: true
                   }
@@ -749,6 +787,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ? {
                       tool_choice: mapCanonicalToolChoiceToOpenAI(
                         request.toolChoice
+                      )
+                    }
+                  : {}),
+                ...(mapCanonicalParallelToolCallsToOpenAI(
+                  request.allowParallelToolCalls
+                ) !== undefined
+                  ? {
+                      parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
+                        request.allowParallelToolCalls
                       )
                     }
                   : {}),
@@ -1098,6 +1145,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                           request.toolChoice
                         )
                       }
+                    : {}),
+                  ...(mapCanonicalParallelToolCallsToOpenAI(
+                    request.allowParallelToolCalls
+                  ) !== undefined
+                    ? {
+                        parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
+                          request.allowParallelToolCalls
+                        )
+                      }
                     : {})
                 }
               },
@@ -1180,6 +1236,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ? {
                       tool_choice: mapCanonicalToolChoiceToOpenAIResponses(
                         request.toolChoice
+                      )
+                    }
+                  : {}),
+                ...(mapCanonicalParallelToolCallsToOpenAI(
+                  request.allowParallelToolCalls
+                ) !== undefined
+                  ? {
+                      parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
+                        request.allowParallelToolCalls
                       )
                     }
                   : {})
@@ -1277,6 +1342,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
           text?: string;
         }>;
       }>;
+      parallel_tool_calls?: boolean;
     };
 
     if (payload.choices) {
@@ -1296,6 +1362,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         finishReason: payload.choices[0]?.message.tool_calls?.length
           ? "tool_calls"
           : normalizeOpenAIFinishReason(payload.choices[0]?.finish_reason),
+        ...(payload.parallel_tool_calls !== undefined
+          ? { parallelToolCalls: payload.parallel_tool_calls }
+          : {}),
         ...(isOpenAIChatLikeUsage(payload.usage)
           ? {
               usage: {
@@ -1323,6 +1392,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         payload.incomplete_details?.reason,
         (toolCalls?.length ?? 0) > 0
       ),
+      ...(payload.parallel_tool_calls !== undefined
+        ? { parallelToolCalls: payload.parallel_tool_calls }
+        : {}),
       ...(isOpenAIResponsesLikeUsage(payload.usage)
         ? {
             usage: {
@@ -1424,6 +1496,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                           request.toolChoice
                         )
                       }
+                    : {}),
+                  ...(mapCanonicalParallelToolCallsToOpenAI(
+                    request.allowParallelToolCalls
+                  ) !== undefined
+                    ? {
+                        parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
+                          request.allowParallelToolCalls
+                        )
+                      }
                     : {})
                 }
               },
@@ -1506,6 +1587,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ? {
                       tool_choice: mapCanonicalToolChoiceToOpenAIResponses(
                         request.toolChoice
+                      )
+                    }
+                  : {}),
+                ...(mapCanonicalParallelToolCallsToOpenAI(
+                  request.allowParallelToolCalls
+                ) !== undefined
+                  ? {
+                      parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
+                        request.allowParallelToolCalls
                       )
                     }
                   : {})
@@ -1674,6 +1764,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 id?: string;
                 model?: string;
                 status?: string;
+                parallel_tool_calls?: boolean;
                 incomplete_details?: {
                   reason?: string;
                 };
@@ -1884,6 +1975,11 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   payload.response.incomplete_details?.reason,
                   streamedToolCalls.size > 0
                 ),
+                ...(payload.response.parallel_tool_calls !== undefined
+                  ? {
+                      parallelToolCalls: payload.response.parallel_tool_calls
+                    }
+                  : {}),
                 ...(payload.response.usage
                   ? {
                       usage: {

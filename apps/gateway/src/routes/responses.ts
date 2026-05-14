@@ -301,6 +301,9 @@ export async function handleResponses(
               })
             }
           : {}),
+        ...(event.type === "response_started" || event.type === "response_completed"
+          ? { parallelToolCalls: event.parallelToolCalls }
+          : {}),
         ...(event.type === "response_completed"
           ? { outputText: accumulatedOutputText }
           : {})

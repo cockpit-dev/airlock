@@ -17,6 +17,7 @@ const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
     supportsPrompt: true,
     supportsReasoning: true,
     supportsStructuredOutputs: true,
+    supportsParallelToolCallControl: true,
     supportsRouteScopedShaping: true,
     supportsStaticFallbackSameProvider: true
   },
@@ -32,6 +33,7 @@ const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
     supportsPrompt: false,
     supportsReasoning: false,
     supportsStructuredOutputs: false,
+    supportsParallelToolCallControl: false,
     supportsRouteScopedShaping: true,
     supportsStaticFallbackSameProvider: true
   },
@@ -47,6 +49,7 @@ const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
     supportsPrompt: false,
     supportsReasoning: false,
     supportsStructuredOutputs: false,
+    supportsParallelToolCallControl: false,
     supportsRouteScopedShaping: true,
     supportsStaticFallbackSameProvider: true
   }

@@ -195,6 +195,17 @@ export function assertProviderSupportsCanonicalRequest(
       requestId
     );
   }
+
+  if (
+    requirements.requiresParallelToolCallControl &&
+    !descriptor.supportsParallelToolCallControl
+  ) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "parallel_tool_call_control",
+      requestId
+    );
+  }
 }
 
 function createProviderAdapter(

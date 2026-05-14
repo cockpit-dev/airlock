@@ -87,13 +87,9 @@ export function assertSupportedOpenAIChatToolsSemantics(
     return;
   }
 
-  if (
-    "parallel_tool_calls" in payload &&
-    payload.parallel_tool_calls !== undefined &&
-    payload.parallel_tool_calls !== true
-  ) {
+  if ("parallel_tool_calls" in payload && typeof payload.parallel_tool_calls !== "boolean") {
     throw new GatewayError(
-      "Unsupported OpenAI Chat tools semantics: parallel_tool_calls=false is not supported",
+      "Unsupported OpenAI Chat tools semantics: parallel_tool_calls must be a boolean",
       {
         code: "request_unsupported_openai_semantics",
         category: "request",
@@ -117,13 +113,9 @@ export function assertSupportedOpenAIResponsesToolsSemantics(
     return;
   }
 
-  if (
-    "parallel_tool_calls" in payload &&
-    payload.parallel_tool_calls !== undefined &&
-    payload.parallel_tool_calls !== true
-  ) {
+  if ("parallel_tool_calls" in payload && typeof payload.parallel_tool_calls !== "boolean") {
     throw new GatewayError(
-      "Unsupported OpenAI Responses tools semantics: parallel_tool_calls=false is not supported",
+      "Unsupported OpenAI Responses tools semantics: parallel_tool_calls must be a boolean",
       {
         code: "request_unsupported_openai_semantics",
         category: "request",

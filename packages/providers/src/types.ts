@@ -20,6 +20,7 @@ export interface ProviderCapabilityDescriptor {
   supportsPrompt: boolean;
   supportsReasoning: boolean;
   supportsStructuredOutputs: boolean;
+  supportsParallelToolCallControl: boolean;
   supportsRouteScopedShaping: boolean;
   supportsStaticFallbackSameProvider: boolean;
 }

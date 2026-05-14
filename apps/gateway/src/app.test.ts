@@ -15985,8 +15985,34 @@ describe("gateway app", () => {
     });
   });
 
-  it("rejects chat parallel_tool_calls=false", async () => {
-    const app = createApp({ fetcher: vi.fn() });
+  it("accepts chat parallel_tool_calls=false and forwards it upstream", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
 
     const response = await app.request(
       "http://localhost/v1/chat/completions",
@@ -16017,14 +16043,10 @@ describe("gateway app", () => {
       createBindings()
     );
 
-    expect(response.status).toBe(400);
-    await expect(readJson(response)).resolves.toEqual({
-      error: {
-        message:
-          "Unsupported OpenAI Chat tools semantics: parallel_tool_calls=false is not supported",
-        type: "request",
-        code: "request_unsupported_openai_semantics"
-      }
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      parallel_tool_calls: false
     });
   });
 
@@ -16403,6 +16425,90 @@ describe("gateway app", () => {
       error: {
         message:
           "Provider anthropic does not support required capability: reasoning",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
+  it("fails closed when chat parallel_tool_calls=false is sent to a non-openai provider", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          stream: false,
+          parallel_tool_calls: false,
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "lookup_weather",
+                parameters: {
+                  type: "object"
+                }
+              }
+            }
+          ],
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider anthropic does not support required capability: parallel_tool_call_control",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
+  it("fails closed when responses parallel_tool_calls=false is sent to a non-openai provider", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          input: "hello",
+          stream: false,
+          parallel_tool_calls: false,
+          tools: [
+            {
+              type: "function",
+              name: "lookup_weather",
+              parameters: {
+                type: "object"
+              }
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider anthropic does not support required capability: parallel_tool_call_control",
         type: "routing",
         code: "provider_capability_not_supported"
       }
@@ -17762,8 +17868,41 @@ describe("gateway app", () => {
     });
   });
 
-  it("rejects responses parallel_tool_calls=false", async () => {
-    const app = createApp({ fetcher: vi.fn() });
+  it("accepts responses parallel_tool_calls=false and forwards it upstream", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          parallel_tool_calls: false,
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
 
     const response = await app.request(
       "http://localhost/v1/responses",
@@ -17792,14 +17931,13 @@ describe("gateway app", () => {
       createBindings()
     );
 
-    expect(response.status).toBe(400);
-    await expect(readJson(response)).resolves.toEqual({
-      error: {
-        message:
-          "Unsupported OpenAI Responses tools semantics: parallel_tool_calls=false is not supported",
-        type: "request",
-        code: "request_unsupported_openai_semantics"
-      }
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      parallel_tool_calls: false
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      parallel_tool_calls: false
     });
   });
 

@@ -18,6 +18,9 @@ export function getCanonicalRequestCapabilityRequirements(
     requiresPrompt: request.prompt !== undefined,
     requiresReasoning: request.reasoningEffort !== undefined,
     requiresStructuredOutputs:
-      request.outputFormat !== undefined && request.outputFormat.type !== "text"
+      request.outputFormat !== undefined && request.outputFormat.type !== "text",
+    requiresParallelToolCallControl:
+      request.allowParallelToolCalls !== undefined &&
+      request.allowParallelToolCalls === false
   };
 }

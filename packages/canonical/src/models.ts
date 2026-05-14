@@ -68,6 +68,7 @@ export interface CanonicalRequest {
   stopSequences?: string[];
   tools?: CanonicalToolDefinition[];
   toolChoice?: CanonicalToolChoice;
+  allowParallelToolCalls?: boolean;
 }
 
 export interface CanonicalRequestCapabilityRequirements {
@@ -80,6 +81,7 @@ export interface CanonicalRequestCapabilityRequirements {
   requiresPrompt: boolean;
   requiresReasoning: boolean;
   requiresStructuredOutputs: boolean;
+  requiresParallelToolCallControl: boolean;
 }
 
 export interface CanonicalUsage {
@@ -95,6 +97,7 @@ export interface CanonicalResponse {
   finishReason: "stop" | "max_tokens" | "tool_calls";
   usage?: CanonicalUsage;
   toolCalls?: CanonicalToolCall[];
+  parallelToolCalls?: boolean;
 }
 
 export type CanonicalStreamEvent =
@@ -102,6 +105,7 @@ export type CanonicalStreamEvent =
       type: "response_started";
       responseId: string;
       model: string;
+      parallelToolCalls?: boolean;
     }
   | {
       type: "tool_call_delta";
@@ -124,4 +128,5 @@ export type CanonicalStreamEvent =
       model: string;
       finishReason: "stop" | "max_tokens" | "tool_calls";
       usage?: CanonicalUsage;
+      parallelToolCalls?: boolean;
     };

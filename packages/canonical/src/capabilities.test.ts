@@ -30,7 +30,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresConversationId: false,
       requiresPrompt: false,
       requiresReasoning: false,
-      requiresStructuredOutputs: false
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: false
     });
   });
 
@@ -55,7 +56,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresConversationId: false,
       requiresPrompt: false,
       requiresReasoning: false,
-      requiresStructuredOutputs: false
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: false
     });
   });
 
@@ -88,7 +90,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresConversationId: false,
       requiresPrompt: false,
       requiresReasoning: false,
-      requiresStructuredOutputs: false
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: false
     });
   });
 
@@ -115,7 +118,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresConversationId: true,
       requiresPrompt: false,
       requiresReasoning: false,
-      requiresStructuredOutputs: false
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: false
     });
   });
 
@@ -139,7 +143,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresConversationId: false,
       requiresPrompt: true,
       requiresReasoning: true,
-      requiresStructuredOutputs: false
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: false
     });
   });
 
@@ -172,7 +177,43 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresConversationId: false,
       requiresPrompt: false,
       requiresReasoning: false,
-      requiresStructuredOutputs: true
+      requiresStructuredOutputs: true,
+      requiresParallelToolCallControl: false
+    });
+  });
+
+  it("marks parallel tool call control requirements when explicitly disabled", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      allowParallelToolCalls: false,
+      tools: [
+        {
+          name: "lookup_weather",
+          inputSchema: {
+            type: "object"
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: false,
+      requiresTools: true,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false,
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: true
     });
   });
 });

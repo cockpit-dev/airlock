@@ -234,6 +234,7 @@ describe("assertProviderSupportsCanonicalRequest", () => {
           supportsPrompt: false,
           supportsReasoning: false,
           supportsStructuredOutputs: false,
+          supportsParallelToolCallControl: false,
           supportsRouteScopedShaping: true,
           supportsStaticFallbackSameProvider: true
         },
@@ -278,6 +279,48 @@ describe("assertProviderSupportsCanonicalRequest", () => {
           httpStatus: 400,
           retryable: false,
           provider: "gemini",
+          requestId: "req_123"
+        }
+      )
+    );
+  });
+
+  it("throws a typed error when the provider descriptor lacks parallel tool call control support", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      allowParallelToolCalls: false,
+      tools: [
+        {
+          name: "lookup_weather",
+          inputSchema: {
+            type: "object"
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    expect(() =>
+      assertProviderSupportsCanonicalRequest(
+        getProviderCapabilityDescriptor("anthropic"),
+        request,
+        "req_123"
+      )
+    ).toThrow(
+      new GatewayError(
+        "Provider anthropic does not support required capability: parallel_tool_call_control",
+        {
+          code: "provider_capability_not_supported",
+          category: "routing",
+          httpStatus: 400,
+          retryable: false,
+          provider: "anthropic",
           requestId: "req_123"
         }
       )
@@ -1944,6 +1987,7 @@ describe("executeRoutedRequest", () => {
             supportsPrompt: false,
             supportsReasoning: false,
             supportsStructuredOutputs: false,
+            supportsParallelToolCallControl: false,
             supportsRouteScopedShaping: true,
             supportsStaticFallbackSameProvider: true
           };

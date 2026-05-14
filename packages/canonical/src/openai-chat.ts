@@ -215,7 +215,8 @@ function createOpenAIResponsesFunctionCallItem(
 function createOpenAIResponsesBaseResponse(
   responseId: string,
   model: string,
-  status: "in_progress" | "completed"
+  status: "in_progress" | "completed",
+  parallelToolCalls = true
 ) {
   return {
     id: responseId,
@@ -224,7 +225,7 @@ function createOpenAIResponsesBaseResponse(
     model,
     status,
     output: [],
-    parallel_tool_calls: true,
+    parallel_tool_calls: parallelToolCalls,
     tools: []
   };
 }
@@ -434,6 +435,9 @@ export function normalizeOpenAIChatRequest(
         }
       : {}),
     ...(toolChoice !== undefined ? { toolChoice } : {}),
+    ...(request.parallel_tool_calls !== undefined
+      ? { allowParallelToolCalls: request.parallel_tool_calls }
+      : {}),
     messages: request.messages.map((message) => {
       if (message.role === "tool") {
         return {
@@ -531,6 +535,9 @@ export function normalizeOpenAIResponsesRequest(
         }
       : {}),
     ...(toolChoice !== undefined ? { toolChoice } : {}),
+    ...(request.parallel_tool_calls !== undefined
+      ? { allowParallelToolCalls: request.parallel_tool_calls }
+      : {}),
     messages: [...instructionMessages, ...inputMessages]
   };
 }
@@ -794,7 +801,7 @@ export function encodeCanonicalToOpenAIResponsesResponse(
           )
         }
       : {}),
-    parallel_tool_calls: true,
+    parallel_tool_calls: response.parallelToolCalls ?? true,
     tools: [],
     output,
     output_text: response.outputText,
@@ -806,7 +813,9 @@ export function encodeCanonicalToOpenAIResponsesResponse(
 
 export function encodeCanonicalToOpenAIResponsesStreamEvent(
   event: CanonicalStreamEvent,
-  state: OpenAIResponsesEventEncodingState
+  state: OpenAIResponsesEventEncodingState & {
+    parallelToolCalls?: boolean;
+  }
 ): OpenAIResponsesEncodedEventBatch {
   const itemId = `${event.responseId}_output_0`;
 
@@ -814,7 +823,8 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
     const baseResponse = createOpenAIResponsesBaseResponse(
       event.responseId,
       event.model,
-      "in_progress"
+      "in_progress",
+      event.parallelToolCalls ?? state.parallelToolCalls ?? true
     );
 
     return {
@@ -941,7 +951,8 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
     ...createOpenAIResponsesBaseResponse(
       event.responseId,
       event.model,
-      responseStatus === "incomplete" ? "completed" : responseStatus
+      responseStatus === "incomplete" ? "completed" : responseStatus,
+      event.parallelToolCalls ?? state.parallelToolCalls ?? true
     ),
     status: responseStatus,
     ...(encodeCanonicalResponsesIncompleteDetails(event.finishReason)
