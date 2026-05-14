@@ -974,6 +974,26 @@ describe("anthropicMessagesRequestSchema", () => {
     expect(parsed.stop_sequences).toEqual(["END", "STOP"]);
   });
 
+  it("accepts anthropic metadata.user_id", () => {
+    const parsed = anthropicMessagesRequestSchema.parse({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      metadata: {
+        user_id: "user_123"
+      },
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.metadata).toEqual({
+      user_id: "user_123"
+    });
+  });
+
   it("accepts an optional airlock request shaping extension", () => {
     const parsed = anthropicMessagesRequestSchema.parse({
       model: "claude-sonnet-4-5",

@@ -188,6 +188,13 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                   model: request.model,
                   max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
                   ...(systemMessage ? { system: systemMessage.content } : {}),
+                  ...(request.providerMetadata?.anthropic
+                    ? {
+                        metadata: {
+                          user_id: request.providerMetadata.anthropic.user_id
+                        }
+                      }
+                    : {}),
                   ...(request.temperature !== undefined
                     ? { temperature: request.temperature }
                     : {}),
@@ -240,6 +247,13 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                 model: request.model,
                 max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
                 ...(systemMessage ? { system: systemMessage.content } : {}),
+                ...(request.providerMetadata?.anthropic
+                  ? {
+                      metadata: {
+                        user_id: request.providerMetadata.anthropic.user_id
+                      }
+                    }
+                  : {}),
                 ...(request.temperature !== undefined
                   ? { temperature: request.temperature }
                   : {}),
@@ -413,6 +427,13 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                   max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
                   stream: true,
                   ...(systemMessage ? { system: systemMessage.content } : {}),
+                  ...(request.providerMetadata?.anthropic
+                    ? {
+                        metadata: {
+                          user_id: request.providerMetadata.anthropic.user_id
+                        }
+                      }
+                    : {}),
                   ...(request.temperature !== undefined
                     ? { temperature: request.temperature }
                     : {}),
@@ -448,6 +469,13 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                 max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
                 stream: true,
                 ...(systemMessage ? { system: systemMessage.content } : {}),
+                ...(request.providerMetadata?.anthropic
+                  ? {
+                      metadata: {
+                        user_id: request.providerMetadata.anthropic.user_id
+                      }
+                    }
+                  : {}),
                 ...(request.temperature !== undefined
                   ? { temperature: request.temperature }
                   : {}),

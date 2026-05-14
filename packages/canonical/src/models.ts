@@ -39,6 +39,11 @@ export interface CanonicalRequest {
   model: string;
   messages: CanonicalMessage[];
   stream: boolean;
+  providerMetadata?: {
+    anthropic?: {
+      user_id: string;
+    };
+  };
   prompt?: {
     id: string;
     version?: string;

@@ -42,6 +42,10 @@ const anthropicToolChoiceSchema = z.union([
   })
 ]);
 
+const anthropicMetadataSchema = z.object({
+  user_id: z.string().min(1)
+});
+
 const anthropicMessageInputSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.union([
@@ -64,6 +68,7 @@ export const anthropicMessagesRequestSchema = z.object({
   temperature: z.number().min(0).max(1).optional(),
   top_p: z.number().min(0).max(1).optional(),
   stop_sequences: z.array(z.string().min(1)).min(1).optional(),
+  metadata: anthropicMetadataSchema.optional(),
   tools: z.array(anthropicToolSchema).min(1).optional(),
   tool_choice: anthropicToolChoiceSchema.optional(),
   messages: z.array(anthropicMessageInputSchema).min(1),

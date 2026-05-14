@@ -77,6 +77,38 @@ export function assertSupportedAnthropicToolsSemantics(
   void requestId;
 }
 
+export function assertSupportedAnthropicMetadataSemantics(
+  payload: unknown,
+  requestId: string
+) {
+  if (typeof payload !== "object" || payload === null) {
+    return;
+  }
+
+  if (!("metadata" in payload) || payload.metadata === undefined) {
+    return;
+  }
+
+  if (
+    !isRecord(payload.metadata) ||
+    !("user_id" in payload.metadata) ||
+    typeof payload.metadata.user_id !== "string" ||
+    payload.metadata.user_id.length === 0 ||
+    Object.keys(payload.metadata).length !== 1
+  ) {
+    throw new GatewayError(
+      "Unsupported Anthropic metadata: only metadata.user_id is supported",
+      {
+        code: "request_unsupported_anthropic_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
+  }
+}
+
 export function assertAnthropicForcedToolChoiceMatchesDeclaredTools(
   payload: unknown,
   requestId: string

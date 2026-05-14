@@ -542,6 +542,15 @@ export function normalizeAnthropicMessagesRequest(
   return {
     model: request.model,
     stream: request.stream,
+    ...(request.metadata !== undefined
+      ? {
+          providerMetadata: {
+            anthropic: {
+              user_id: request.metadata.user_id
+            }
+          }
+        }
+      : {}),
     maxOutputTokens: request.max_tokens,
     ...(request.temperature !== undefined
       ? { temperature: request.temperature }

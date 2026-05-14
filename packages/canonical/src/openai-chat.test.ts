@@ -1987,6 +1987,29 @@ describe("normalizeAnthropicMessagesRequest", () => {
     expect(canonical.stopSequences).toEqual(["END", "STOP"]);
   });
 
+  it("normalizes anthropic metadata.user_id into canonical request fields", () => {
+    const canonical = normalizeAnthropicMessagesRequest({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: false,
+      metadata: {
+        user_id: "user_123"
+      },
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.providerMetadata).toEqual({
+      anthropic: {
+        user_id: "user_123"
+      }
+    });
+  });
+
   it("normalizes anthropic tools and tool_choice into canonical request fields", () => {
     const canonical = normalizeAnthropicMessagesRequest({
       model: "claude-sonnet-4-5",

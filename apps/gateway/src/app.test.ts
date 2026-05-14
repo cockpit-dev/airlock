@@ -17879,6 +17879,67 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts supported anthropic metadata.user_id semantics and forwards them upstream", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          stop_sequence: null,
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          metadata: {
+            user_id: "user_123"
+          },
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      metadata: {
+        user_id: "user_123"
+      }
+    });
+  });
+
   it("returns an Anthropic-compatible max_tokens stop reason when the upstream truncates at max tokens", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -19034,7 +19095,7 @@ describe("gateway app", () => {
     });
   });
 
-  it("allowlist anthropic semantics rejects unsupported metadata", async () => {
+  it("allowlist anthropic semantics rejects unsupported metadata variants", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -19093,7 +19154,8 @@ describe("gateway app", () => {
       type: "error",
       error: {
         type: "request",
-        message: "Unsupported Anthropic semantic field: metadata"
+        message:
+          "Unsupported Anthropic metadata: only metadata.user_id is supported"
       }
     });
     if (!isRecord(body)) {
