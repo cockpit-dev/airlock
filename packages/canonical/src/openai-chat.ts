@@ -485,6 +485,16 @@ export function normalizeOpenAIChatRequest(
             request.user
         }
       : {}),
+    ...(request.service_tier !== undefined
+      ? { serviceTier: request.service_tier }
+      : {}),
+    ...(request.store !== undefined ? { store: request.store } : {}),
+    ...(request.prompt_cache_key !== undefined
+      ? { promptCacheKey: request.prompt_cache_key }
+      : {}),
+    ...(request.prompt_cache_retention !== undefined
+      ? { promptCacheRetention: request.prompt_cache_retention }
+      : {}),
     ...(outputFormat ? { outputFormat } : {}),
     ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
     ...(request.reasoning_effort !== undefined
@@ -577,6 +587,16 @@ export function normalizeOpenAIResponsesRequest(
     stream: request.stream,
     ...(request.safety_identifier !== undefined
       ? { endUserId: request.safety_identifier }
+      : {}),
+    ...(request.service_tier !== undefined
+      ? { serviceTier: request.service_tier }
+      : {}),
+    ...(request.store !== undefined ? { store: request.store } : {}),
+    ...(request.prompt_cache_key !== undefined
+      ? { promptCacheKey: request.prompt_cache_key }
+      : {}),
+    ...(request.prompt_cache_retention !== undefined
+      ? { promptCacheRetention: request.prompt_cache_retention }
       : {}),
     ...(outputFormat ? { outputFormat } : {}),
     ...(request.previous_response_id !== undefined
@@ -841,6 +861,9 @@ export function encodeCanonicalToOpenAIChatResponse(
     object: "chat.completion",
     created: 0,
     model: response.model,
+    ...(response.serviceTier !== undefined
+      ? { service_tier: response.serviceTier }
+      : {}),
     ...(response.usage ? { usage: encodeCanonicalUsage(response.usage) } : {}),
     choices: [
       {
@@ -902,6 +925,15 @@ export function encodeCanonicalToOpenAIResponsesResponse(
     created_at: 0,
     model: response.model,
     status: encodeCanonicalResponsesStatus(response.finishReason),
+    ...(response.serviceTier !== undefined
+      ? { service_tier: response.serviceTier }
+      : {}),
+    ...(response.promptCacheKey !== undefined
+      ? { prompt_cache_key: response.promptCacheKey }
+      : {}),
+    ...(response.promptCacheRetention !== undefined
+      ? { prompt_cache_retention: response.promptCacheRetention }
+      : {}),
     ...(encodeCanonicalResponsesIncompleteDetails(response.finishReason)
       ? {
           incomplete_details: encodeCanonicalResponsesIncompleteDetails(

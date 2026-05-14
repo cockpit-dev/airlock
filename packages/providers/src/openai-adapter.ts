@@ -112,6 +112,23 @@ function mapCanonicalEndUserIdToOpenAIResponses(
     : undefined;
 }
 
+function mapCanonicalOpenAIRequestMetadata(
+  request: CanonicalRequest
+) {
+  return {
+    ...(request.serviceTier !== undefined
+      ? { service_tier: request.serviceTier }
+      : {}),
+    ...(request.store !== undefined ? { store: request.store } : {}),
+    ...(request.promptCacheKey !== undefined
+      ? { prompt_cache_key: request.promptCacheKey }
+      : {}),
+    ...(request.promptCacheRetention !== undefined
+      ? { prompt_cache_retention: request.promptCacheRetention }
+      : {})
+  };
+}
+
 function mapCanonicalOutputFormatToOpenAIChat(
   outputFormat: CanonicalRequest["outputFormat"]
 ) {
@@ -493,6 +510,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.maxOutputTokens !== undefined
                     ? { max_tokens: request.maxOutputTokens }
                     : {}),
+                  ...mapCanonicalOpenAIRequestMetadata(request),
                   ...(request.reasoningEffort !== undefined
                     ? { reasoning_effort: request.reasoningEffort }
                     : {}),
@@ -569,6 +587,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(request.maxOutputTokens !== undefined
                   ? { max_tokens: request.maxOutputTokens }
                   : {}),
+                ...mapCanonicalOpenAIRequestMetadata(request),
                 ...(request.reasoningEffort !== undefined
                   ? { reasoning_effort: request.reasoningEffort }
                   : {}),
@@ -766,6 +785,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.maxOutputTokens !== undefined
                     ? { max_tokens: request.maxOutputTokens }
                     : {}),
+                  ...mapCanonicalOpenAIRequestMetadata(request),
                   ...(request.reasoningEffort !== undefined
                     ? { reasoning_effort: request.reasoningEffort }
                     : {}),
@@ -845,6 +865,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(request.maxOutputTokens !== undefined
                   ? { max_tokens: request.maxOutputTokens }
                   : {}),
+                ...mapCanonicalOpenAIRequestMetadata(request),
                 ...(request.reasoningEffort !== undefined
                   ? { reasoning_effort: request.reasoningEffort }
                   : {}),
@@ -1194,6 +1215,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                         }
                       }
                     : {}),
+                  ...mapCanonicalOpenAIRequestMetadata(request),
                   ...(request.previousResponseId !== undefined
                     ? { previous_response_id: request.previousResponseId }
                     : {}),
@@ -1300,6 +1322,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                       }
                     }
                   : {}),
+                ...mapCanonicalOpenAIRequestMetadata(request),
                 ...(request.previousResponseId !== undefined
                   ? { previous_response_id: request.previousResponseId }
                   : {}),
@@ -1440,6 +1463,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       incomplete_details?: {
         reason?: string;
       };
+      service_tier?: CanonicalResponse["serviceTier"];
+      prompt_cache_key?: string;
+      prompt_cache_retention?: CanonicalResponse["promptCacheRetention"];
       output?: Array<{
         type?: string;
         role?: string;
@@ -1459,6 +1485,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         id: payload.id,
         model: payload.model,
         outputText: normalizeOpenAIMessageContent(payload.choices[0]?.message.content),
+        ...(payload.service_tier !== undefined
+          ? { serviceTier: payload.service_tier }
+          : {}),
+        ...(payload.prompt_cache_key !== undefined
+          ? { promptCacheKey: payload.prompt_cache_key }
+          : {}),
+        ...(payload.prompt_cache_retention !== undefined
+          ? { promptCacheRetention: payload.prompt_cache_retention }
+          : {}),
         ...(payload.choices[0]?.message.tool_calls
           ? {
               toolCalls: payload.choices[0].message.tool_calls.map((toolCall) => ({
@@ -1498,6 +1533,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       id: payload.id,
       model: payload.model,
       outputText: extractOutputTextFromOpenAIResponsesOutput(payload.output),
+      ...(payload.service_tier !== undefined
+        ? { serviceTier: payload.service_tier }
+        : {}),
+      ...(payload.prompt_cache_key !== undefined
+        ? { promptCacheKey: payload.prompt_cache_key }
+        : {}),
+      ...(payload.prompt_cache_retention !== undefined
+        ? { promptCacheRetention: payload.prompt_cache_retention }
+        : {}),
       ...(reasoningSummary.length > 0 ? { reasoningSummary } : {}),
       ...(toolCalls ? { toolCalls } : {}),
       finishReason: normalizeOpenAIResponsesFinishReason(
@@ -1571,6 +1615,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                         }
                       }
                     : {}),
+                  ...mapCanonicalOpenAIRequestMetadata(request),
                   ...(request.previousResponseId !== undefined
                     ? { previous_response_id: request.previousResponseId }
                     : {}),
@@ -1674,6 +1719,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                       }
                     }
                   : {}),
+                ...mapCanonicalOpenAIRequestMetadata(request),
                 ...(request.previousResponseId !== undefined
                   ? { previous_response_id: request.previousResponseId }
                   : {}),

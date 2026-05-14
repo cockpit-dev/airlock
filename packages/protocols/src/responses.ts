@@ -143,6 +143,10 @@ export const openAIResponsesRequestSchema = z
   model: z.string().min(1),
   stream: z.boolean().default(false),
   safety_identifier: z.string().min(1).optional(),
+  service_tier: z.enum(["auto", "default", "flex", "priority", "scale"]).optional(),
+  store: z.boolean().nullable().optional(),
+  prompt_cache_key: z.string().min(1).optional(),
+  prompt_cache_retention: z.enum(["in_memory", "24h"]).optional(),
   prompt: openAIResponsesPromptSchema.optional(),
   prompt_id: z.string().min(1).optional(),
   previous_response_id: z.string().min(1).optional(),
@@ -213,6 +217,10 @@ export const openAIResponsesResponseSchema = z.object({
   status: z.literal("completed"),
   output: z.array(z.unknown()),
   output_text: z.string(),
+  service_tier: z.enum(["auto", "default", "flex", "priority", "scale"]).optional(),
+  store: z.boolean().optional(),
+  prompt_cache_key: z.string().min(1).optional(),
+  prompt_cache_retention: z.enum(["in_memory", "24h"]).optional(),
   usage: z
     .object({
       input_tokens: z.number().int().nonnegative(),

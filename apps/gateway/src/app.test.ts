@@ -13982,6 +13982,71 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts chat OpenAI-native request metadata and forwards it upstream for OpenAI", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          service_tier: "flex",
+          store: true,
+          prompt_cache_key: "cache-key-123",
+          prompt_cache_retention: "24h",
+          messages: [
+            {
+              role: "user",
+              content: "hello"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      service_tier: "flex",
+      store: true,
+      prompt_cache_key: "cache-key-123",
+      prompt_cache_retention: "24h"
+    });
+  });
+
   it("maps chat user into Anthropic metadata.user_id", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -17922,6 +17987,59 @@ describe("gateway app", () => {
         id: "pmpt_legacy_123"
       },
       safety_identifier: "user_123"
+    });
+  });
+
+  it("accepts responses OpenAI-native request metadata and forwards it upstream for OpenAI", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [],
+          output_text: "hello there"
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          service_tier: "priority",
+          store: false,
+          prompt_cache_key: "cache-key-123",
+          prompt_cache_retention: "in_memory"
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      service_tier: "priority",
+      store: false,
+      prompt_cache_key: "cache-key-123",
+      prompt_cache_retention: "in_memory"
     });
   });
 

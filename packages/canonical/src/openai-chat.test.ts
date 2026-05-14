@@ -152,6 +152,28 @@ describe("normalizeOpenAIChatRequest", () => {
     expect(canonical.endUserId).toBe("user_123");
   });
 
+  it("normalizes chat service_tier and prompt cache controls into canonical request fields", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      service_tier: "flex",
+      store: true,
+      prompt_cache_key: "cache-key-123",
+      prompt_cache_retention: "24h",
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.serviceTier).toBe("flex");
+    expect(canonical.store).toBe(true);
+    expect(canonical.promptCacheKey).toBe("cache-key-123");
+    expect(canonical.promptCacheRetention).toBe("24h");
+  });
+
   it("normalizes chat sampling fields into canonical request fields", () => {
     const canonical = normalizeOpenAIChatRequest({
       model: "gpt-4.1-mini",
@@ -1033,6 +1055,23 @@ describe("normalizeOpenAIResponsesRequest", () => {
     });
 
     expect(canonical.endUserId).toBe("user_123");
+  });
+
+  it("normalizes responses service_tier and prompt cache controls into canonical request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      prompt_id: "pmpt_legacy_123",
+      stream: false,
+      service_tier: "priority",
+      store: false,
+      prompt_cache_key: "cache-key-123",
+      prompt_cache_retention: "in_memory"
+    });
+
+    expect(canonical.serviceTier).toBe("priority");
+    expect(canonical.store).toBe(false);
+    expect(canonical.promptCacheKey).toBe("cache-key-123");
+    expect(canonical.promptCacheRetention).toBe("in_memory");
   });
 
   it("normalizes responses reasoning summary controls into canonical request fields", () => {

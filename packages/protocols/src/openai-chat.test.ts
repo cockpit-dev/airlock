@@ -195,6 +195,28 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(parsed.safety_identifier).toBe("user_123");
   });
 
+  it("accepts chat service_tier and store", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      service_tier: "flex",
+      store: true,
+      prompt_cache_key: "cache-key-123",
+      prompt_cache_retention: "24h",
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.service_tier).toBe("flex");
+    expect(parsed.store).toBe(true);
+    expect(parsed.prompt_cache_key).toBe("cache-key-123");
+    expect(parsed.prompt_cache_retention).toBe("24h");
+  });
+
   it("rejects conflicting chat user and safety_identifier values", () => {
     const result = openAIChatCompletionRequestSchema.safeParse({
       model: "gpt-4.1-mini",
@@ -1274,6 +1296,18 @@ describe("openAIResponsesRequestSchema", () => {
     });
 
     expect(parsed.safety_identifier).toBe("user_123");
+  });
+
+  it("accepts responses service_tier and store", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      prompt_id: "pmpt_legacy_123",
+      service_tier: "priority",
+      store: false
+    });
+
+    expect(parsed.service_tier).toBe("priority");
+    expect(parsed.store).toBe(false);
   });
 
   it("rejects responses prompt_id when it conflicts with prompt.id", () => {

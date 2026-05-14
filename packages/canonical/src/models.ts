@@ -41,9 +41,13 @@ export interface CanonicalRequest {
   messages: CanonicalMessage[];
   stream: boolean;
   endUserId?: string;
+  serviceTier?: "auto" | "default" | "flex" | "priority" | "scale";
+  store?: boolean | null;
+  promptCacheKey?: string;
+  promptCacheRetention?: "in_memory" | "24h";
   outputFormat?:
     | {
-        type: "text";
+      type: "text";
       }
     | {
         type: "json_object";
@@ -108,6 +112,9 @@ export interface CanonicalResponse {
   model: string;
   outputText: string;
   finishReason: "stop" | "max_tokens" | "tool_calls";
+  serviceTier?: "auto" | "default" | "flex" | "priority" | "scale";
+  promptCacheKey?: string;
+  promptCacheRetention?: "in_memory" | "24h";
   usage?: CanonicalUsage;
   toolCalls?: CanonicalToolCall[];
   parallelToolCalls?: boolean;
