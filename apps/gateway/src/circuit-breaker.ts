@@ -8,11 +8,18 @@ export interface ProviderCircuitBreakerPolicy {
 export interface ProviderCircuitState {
   consecutiveRetryableFailures: number;
   openedAt?: number;
+  lastSuccessLatencyMs?: number;
+  lastSuccessAt?: number;
+  lastFailureAt?: number;
 }
 
 export interface ProviderCircuitBreakerBackend {
   getState(target: ProviderTarget): Promise<ProviderCircuitState | undefined>;
-  recordSuccess(target: ProviderTarget): Promise<void>;
+  recordSuccess(
+    target: ProviderTarget,
+    latencyMs?: number,
+    now?: number
+  ): Promise<void>;
   recordRetryableFailure(
     target: ProviderTarget,
     policy: ProviderCircuitBreakerPolicy,
@@ -47,9 +54,11 @@ export function createInMemoryCircuitBreakerBackend(): ProviderCircuitBreakerBac
     getState(target) {
       return Promise.resolve(providerCircuitStates.get(getCircuitKey(target)));
     },
-    recordSuccess(target) {
+    recordSuccess(target, latencyMs, now) {
       providerCircuitStates.set(getCircuitKey(target), {
-        consecutiveRetryableFailures: 0
+        consecutiveRetryableFailures: 0,
+        ...(latencyMs !== undefined ? { lastSuccessLatencyMs: latencyMs } : {}),
+        ...(now !== undefined ? { lastSuccessAt: now } : {})
       });
       return Promise.resolve();
     },
@@ -62,6 +71,8 @@ export function createInMemoryCircuitBreakerBackend(): ProviderCircuitBreakerBac
       if (nextFailures >= policy.threshold) {
         state.openedAt = now;
       }
+
+      state.lastFailureAt = now;
 
       return Promise.resolve();
     }
@@ -94,9 +105,37 @@ function parseProviderCircuitState(value: unknown): ProviderCircuitState {
     throw new Error("Provider circuit state openedAt is invalid");
   }
 
+  const { lastSuccessLatencyMs, lastSuccessAt, lastFailureAt } = value;
+
+  if (
+    lastSuccessLatencyMs !== undefined &&
+    (typeof lastSuccessLatencyMs !== "number" ||
+      !Number.isFinite(lastSuccessLatencyMs) ||
+      lastSuccessLatencyMs < 0)
+  ) {
+    throw new Error("Provider circuit state lastSuccessLatencyMs is invalid");
+  }
+
+  if (
+    lastSuccessAt !== undefined &&
+    (typeof lastSuccessAt !== "number" || !Number.isInteger(lastSuccessAt))
+  ) {
+    throw new Error("Provider circuit state lastSuccessAt is invalid");
+  }
+
+  if (
+    lastFailureAt !== undefined &&
+    (typeof lastFailureAt !== "number" || !Number.isInteger(lastFailureAt))
+  ) {
+    throw new Error("Provider circuit state lastFailureAt is invalid");
+  }
+
   return {
     consecutiveRetryableFailures,
-    ...(openedAt !== undefined ? { openedAt } : {})
+    ...(openedAt !== undefined ? { openedAt } : {}),
+    ...(lastSuccessLatencyMs !== undefined ? { lastSuccessLatencyMs } : {}),
+    ...(lastSuccessAt !== undefined ? { lastSuccessAt } : {}),
+    ...(lastFailureAt !== undefined ? { lastFailureAt } : {})
   };
 }
 
@@ -124,6 +163,7 @@ export class ProviderCircuitBreakerDurableObject {
       const body = (await request.json()) as {
         kind: "success" | "retryable_failure";
         threshold?: number;
+        latencyMs?: number;
         now?: number;
       };
       const current =
@@ -133,7 +173,11 @@ export class ProviderCircuitBreakerDurableObject {
 
       if (body.kind === "success") {
         const next = {
-          consecutiveRetryableFailures: 0
+          consecutiveRetryableFailures: 0,
+          ...(body.latencyMs !== undefined
+            ? { lastSuccessLatencyMs: body.latencyMs }
+            : {}),
+          ...(body.now !== undefined ? { lastSuccessAt: body.now } : {})
         };
         await this.state.storage.put("state", next);
         return Response.json(next);
@@ -144,7 +188,8 @@ export class ProviderCircuitBreakerDurableObject {
         consecutiveRetryableFailures: nextFailures,
         ...(nextFailures >= (body.threshold ?? 1) && body.now !== undefined
           ? { openedAt: body.now }
-          : {})
+          : {}),
+        ...(body.now !== undefined ? { lastFailureAt: body.now } : {})
       };
       await this.state.storage.put("state", next);
       return Response.json(next);
@@ -172,7 +217,7 @@ export function createPersistentCircuitBreakerBackend(namespace: {
 
       return parseProviderCircuitState(await response.json());
     },
-    async recordSuccess(target) {
+    async recordSuccess(target, latencyMs, now) {
       await namespace
         .get(namespace.idFromName(getCircuitKey(target)))
         .fetch(
@@ -182,7 +227,9 @@ export function createPersistentCircuitBreakerBackend(namespace: {
               "content-type": "application/json"
             },
             body: JSON.stringify({
-              kind: "success"
+              kind: "success",
+              ...(latencyMs !== undefined ? { latencyMs } : {}),
+              ...(now !== undefined ? { now } : {})
             })
           })
         );

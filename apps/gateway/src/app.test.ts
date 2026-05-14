@@ -619,6 +619,9 @@ function createPersistentBreakerNamespace() {
     {
       consecutiveRetryableFailures: number;
       openedAt?: number;
+      lastSuccessLatencyMs?: number;
+      lastSuccessAt?: number;
+      lastFailureAt?: number;
     }
   >();
 
@@ -641,12 +644,17 @@ function createPersistentBreakerNamespace() {
             const body = (await request.json()) as {
               kind: "success" | "retryable_failure";
               threshold?: number;
+              latencyMs?: number;
               now?: number;
             };
 
             if (body.kind === "success") {
               const next = {
-                consecutiveRetryableFailures: 0
+                consecutiveRetryableFailures: 0,
+                ...(body.latencyMs !== undefined
+                  ? { lastSuccessLatencyMs: body.latencyMs }
+                  : {}),
+                ...(body.now !== undefined ? { lastSuccessAt: body.now } : {})
               };
               state.set(id.name, next);
               return Response.json(next);
@@ -657,7 +665,8 @@ function createPersistentBreakerNamespace() {
               consecutiveRetryableFailures: nextFailures,
               ...(nextFailures >= (body.threshold ?? 1)
                 ? { openedAt: body.now ?? 0 }
-                : {})
+                : {}),
+              ...(body.now !== undefined ? { lastFailureAt: body.now } : {})
             };
             state.set(id.name, next);
             return Response.json(next);
@@ -669,7 +678,16 @@ function createPersistentBreakerNamespace() {
     }
   };
 
-  return namespace;
+  return {
+    ...namespace,
+    seedSuccess(targetKey: string, latencyMs: number, now: number) {
+      state.set(targetKey, {
+        consecutiveRetryableFailures: 0,
+        lastSuccessLatencyMs: latencyMs,
+        lastSuccessAt: now
+      });
+    }
+  };
 }
 
 function createRegistryNamespace() {
@@ -12300,6 +12318,92 @@ describe("gateway app", () => {
     await expect(readJson(response)).resolves.toMatchObject({
       ok: false,
       ready: false
+    });
+  });
+
+  it("routes to a healthy in-slo target when priority target selection is configured", async () => {
+    const routeFetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_priority",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello from openai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const breakerNamespace = createPersistentBreakerNamespace();
+    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, 1000);
+    breakerNamespace.seedSuccess("anthropic:claude-haiku-4-5", 5, 1000);
+
+    const bindings = {
+      ...createBindings(),
+      ANTHROPIC_API_KEY: "anthropic-secret",
+      ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER: breakerNamespace,
+      AIRLOCK_MODEL_ALIASES:
+        "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+      AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+        "assistant-default": ["anthropic:claude-haiku-4-5"]
+      }),
+      AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+        "assistant-default": {
+          strategy: "priority",
+          latencySloMs: {
+            "openai:gpt-4.1-mini": 300,
+            "anthropic:claude-haiku-4-5": 1
+          },
+          costs: {
+            "openai:gpt-4.1-mini": 10,
+            "anthropic:claude-haiku-4-5": 3
+          }
+        }
+      })
+    };
+
+    const app = createApp({ fetcher: routeFetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi again" }]
+        })
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(200);
+    expect(routeFetcher).toHaveBeenCalledTimes(1);
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "gpt-4.1-mini"
     });
   });
 

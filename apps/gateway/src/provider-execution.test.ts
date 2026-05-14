@@ -26,6 +26,9 @@ function createPersistentBreakerNamespace() {
     {
       consecutiveRetryableFailures: number;
       openedAt?: number;
+      lastSuccessLatencyMs?: number;
+      lastSuccessAt?: number;
+      lastFailureAt?: number;
     }
   >();
 
@@ -48,12 +51,17 @@ function createPersistentBreakerNamespace() {
             const body = (await request.json()) as {
               kind: "success" | "retryable_failure";
               threshold?: number;
+              latencyMs?: number;
               now?: number;
             };
 
             if (body.kind === "success") {
               const next = {
-                consecutiveRetryableFailures: 0
+                consecutiveRetryableFailures: 0,
+                ...(body.latencyMs !== undefined
+                  ? { lastSuccessLatencyMs: body.latencyMs }
+                  : {}),
+                ...(body.now !== undefined ? { lastSuccessAt: body.now } : {})
               };
               state.set(id.name, next);
               return Response.json(next);
@@ -64,7 +72,8 @@ function createPersistentBreakerNamespace() {
               consecutiveRetryableFailures: nextFailures,
               ...(nextFailures >= (body.threshold ?? 1)
                 ? { openedAt: body.now ?? 0 }
-                : {})
+                : {}),
+              ...(body.now !== undefined ? { lastFailureAt: body.now } : {})
             };
             state.set(id.name, next);
             return Response.json(next);
@@ -1567,6 +1576,249 @@ describe("executeRoutedRequest", () => {
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     );
     expect(response.model).toBe("gemini-2.5-flash");
+  });
+
+  it("prefers a healthy in-slo target before a cheaper out-of-slo target when priority selection is configured", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ],
+      targetSelection: {
+        strategy: "priority",
+        latencySloMs: {
+          "openai:gpt-4.1-mini": 300,
+          "anthropic:claude-haiku-4-5": 800
+        },
+        costs: {
+          "openai:gpt-4.1-mini": 10,
+          "anthropic:claude-haiku-4-5": 3
+        }
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const backend = createPersistentCircuitBreakerBackend(
+      createPersistentBreakerNamespace()
+    );
+
+    await backend.recordSuccess(
+      {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      200,
+      1000
+    );
+    await backend.recordSuccess(
+      {
+        provider: "anthropic",
+        providerModel: "claude-haiku-4-5"
+      },
+      1200,
+      1000
+    );
+
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_priority",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello from openai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const response = await executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
+        providerCircuitBreakerThreshold: 3,
+        providerCircuitBreakerCooldownMs: 60_000,
+        providerCircuitBreakerPersistent: true,
+        modelGroups: {},
+        gatewayApiKeys: [],
+        modelAliases: [],
+        anthropic: {
+          apiKey: "anthropic-secret",
+          baseUrl: "https://api.anthropic.com/v1",
+          defaultMaxTokens: 256
+        },
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_priority_slo",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 2000,
+      circuitBreakerBackend: backend
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(response.model).toBe("gpt-4.1-mini");
+  });
+
+  it("uses cost to break priority ties when targets are equally healthy and in-slo", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ],
+      targetSelection: {
+        strategy: "priority",
+        latencySloMs: {
+          "openai:gpt-4.1-mini": 600,
+          "anthropic:claude-haiku-4-5": 600
+        },
+        costs: {
+          "openai:gpt-4.1-mini": 10,
+          "anthropic:claude-haiku-4-5": 3
+        }
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const backend = createPersistentCircuitBreakerBackend(
+      createPersistentBreakerNamespace()
+    );
+
+    await backend.recordSuccess(
+      {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      200,
+      1000
+    );
+    await backend.recordSuccess(
+      {
+        provider: "anthropic",
+        providerModel: "claude-haiku-4-5"
+      },
+      200,
+      1000
+    );
+
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "msg_priority_cost",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello from anthropic"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const response = await executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
+        providerCircuitBreakerThreshold: 3,
+        providerCircuitBreakerCooldownMs: 60_000,
+        providerCircuitBreakerPersistent: true,
+        modelGroups: {},
+        gatewayApiKeys: [],
+        modelAliases: [],
+        anthropic: {
+          apiKey: "anthropic-secret",
+          baseUrl: "https://api.anthropic.com/v1",
+          defaultMaxTokens: 256
+        },
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_priority_cost",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 2000,
+      circuitBreakerBackend: backend
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(response.model).toBe("claude-haiku-4-5");
   });
 
   it("starts streaming from the first weighted eligible target", async () => {

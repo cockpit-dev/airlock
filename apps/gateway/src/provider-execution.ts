@@ -20,6 +20,7 @@ import {
 import {
   serializeProviderTarget,
   type ModelRoute,
+  type PriorityRouteTargetSelection,
   type ProviderTarget
 } from "@airlock/routing";
 import { GatewayError } from "@airlock/shared";
@@ -329,6 +330,14 @@ function reorderTargetsForRoute(
     });
   }
 
+  if (targetSelection.strategy === "priority") {
+    return reorderTargetsForPrioritySelection(
+      targets,
+      targetSelection,
+      healthByTarget
+    );
+  }
+
   return [...targets].sort((left, right) => {
     const leftWeight =
       targetSelection.weights[serializeProviderTarget(left)] ?? 1;
@@ -344,6 +353,96 @@ function reorderTargetsForRoute(
     return serializeProviderTarget(left).localeCompare(
       serializeProviderTarget(right)
     );
+  });
+}
+
+function getPriorityLatencyStatus(
+  targetKey: string,
+  selection: PriorityRouteTargetSelection,
+  healthByTarget?: Map<
+    string,
+    {
+      isOpen: boolean;
+      consecutiveRetryableFailures: number;
+      lastSuccessLatencyMs?: number;
+    }
+  >
+): number {
+  const latencySlo = selection.latencySloMs?.[targetKey];
+  const observedLatency = healthByTarget?.get(targetKey)?.lastSuccessLatencyMs;
+
+  if (latencySlo === undefined) {
+    return 1;
+  }
+
+  if (observedLatency === undefined) {
+    return 1;
+  }
+
+  return observedLatency <= latencySlo ? 0 : 2;
+}
+
+function reorderTargetsForPrioritySelection(
+  targets: ProviderTarget[],
+  selection: PriorityRouteTargetSelection,
+  healthByTarget?: Map<
+    string,
+    {
+      isOpen: boolean;
+      consecutiveRetryableFailures: number;
+      lastSuccessLatencyMs?: number;
+    }
+  >
+): ProviderTarget[] {
+  return [...targets].sort((left, right) => {
+    const leftKey = serializeProviderTarget(left);
+    const rightKey = serializeProviderTarget(right);
+    const leftHealth = healthByTarget?.get(leftKey) ?? {
+      isOpen: false,
+      consecutiveRetryableFailures: 0
+    };
+    const rightHealth = healthByTarget?.get(rightKey) ?? {
+      isOpen: false,
+      consecutiveRetryableFailures: 0
+    };
+
+    if (leftHealth.isOpen !== rightHealth.isOpen) {
+      return leftHealth.isOpen ? 1 : -1;
+    }
+
+    if (
+      leftHealth.consecutiveRetryableFailures !==
+      rightHealth.consecutiveRetryableFailures
+    ) {
+      return (
+        leftHealth.consecutiveRetryableFailures -
+        rightHealth.consecutiveRetryableFailures
+      );
+    }
+
+    const leftLatencyStatus = getPriorityLatencyStatus(
+      leftKey,
+      selection,
+      healthByTarget
+    );
+    const rightLatencyStatus = getPriorityLatencyStatus(
+      rightKey,
+      selection,
+      healthByTarget
+    );
+
+    if (leftLatencyStatus !== rightLatencyStatus) {
+      return leftLatencyStatus - rightLatencyStatus;
+    }
+
+    const leftCost = selection.costs?.[leftKey];
+    const rightCost = selection.costs?.[rightKey];
+
+    if (leftCost !== undefined && rightCost !== undefined && leftCost !== rightCost) {
+      return leftCost - rightCost;
+    }
+
+    return leftKey.localeCompare(rightKey);
   });
 }
 
@@ -369,6 +468,7 @@ function selectEligibleTargets(
       {
         isOpen: boolean;
         consecutiveRetryableFailures: number;
+        lastSuccessLatencyMs?: number;
       }
     >();
 
@@ -413,7 +513,10 @@ function selectEligibleTargets(
       const isOpen = circuitState?.openedAt !== undefined;
       healthByTarget.set(serializeProviderTarget(target), {
         isOpen,
-        consecutiveRetryableFailures: circuitState?.consecutiveRetryableFailures ?? 0
+        consecutiveRetryableFailures: circuitState?.consecutiveRetryableFailures ?? 0,
+        ...(circuitState?.lastSuccessLatencyMs !== undefined
+          ? { lastSuccessLatencyMs: circuitState.lastSuccessLatencyMs }
+          : {})
       });
 
       if (isOpen) {
@@ -524,7 +627,11 @@ export async function executeRoutedRequest(
           timeoutMs: currentRemainingTimeoutMs,
           ...(requestShaping ? { requestShaping } : {})
         });
-        await circuitBreakerBackend.recordSuccess(target);
+        await circuitBreakerBackend.recordSuccess(
+          target,
+          now() - currentAttemptStartedAt,
+          now()
+        );
 
         return response;
       } catch (error) {
@@ -635,6 +742,7 @@ export async function* executeRoutedStreamRequest(
     throw createUnsupportedCapabilityError(route.target.provider, "streaming", requestId);
   }
 
+  const currentAttemptStartedAt = now();
   const currentAttemptRequest = createAttemptRequest(request, target);
   onAttemptTarget?.(target);
   const adapter = createProviderAdapter(
@@ -660,7 +768,11 @@ export async function* executeRoutedStreamRequest(
       yield event;
     }
 
-    await circuitBreakerBackend.recordSuccess(target);
+    await circuitBreakerBackend.recordSuccess(
+      target,
+      now() - currentAttemptStartedAt,
+      now()
+    );
   } catch (error) {
     if (
       error instanceof GatewayError &&

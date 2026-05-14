@@ -25,10 +25,17 @@ export interface HealthPriorityRouteTargetSelection {
   strategy: "health_priority";
 }
 
+export interface PriorityRouteTargetSelection {
+  strategy: "priority";
+  latencySloMs?: Record<string, number>;
+  costs?: Record<string, number>;
+}
+
 export type RouteTargetSelection =
   | WeightedRouteTargetSelection
   | LowestCostRouteTargetSelection
-  | HealthPriorityRouteTargetSelection;
+  | HealthPriorityRouteTargetSelection
+  | PriorityRouteTargetSelection;
 
 export interface ModelRoute {
   externalModel: string;
@@ -146,6 +153,46 @@ function parseExplicitProviderTarget(
   }
 
   return parseProviderTarget(value, "openai", createError);
+}
+
+function parsePositiveTargetNumberMap(
+  value: unknown,
+  fieldName: string
+): Record<string, number> {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value)
+  ) {
+    throw createInvalidRouteTargetSelectionError(
+      `${fieldName} must define an object`
+    );
+  }
+
+  const normalized: Record<string, number> = {};
+
+  for (const [targetKey, numericValue] of Object.entries(value)) {
+    if (
+      typeof numericValue !== "number" ||
+      !Number.isFinite(numericValue) ||
+      numericValue <= 0
+    ) {
+      throw createInvalidRouteTargetSelectionError(
+        `${fieldName} values must be positive finite numbers`
+      );
+    }
+
+    normalized[
+      serializeProviderTarget(
+        parseExplicitProviderTarget(
+          targetKey,
+          createInvalidRouteTargetSelectionError
+        )
+      )
+    ] = numericValue;
+  }
+
+  return normalized;
 }
 
 export function serializeProviderTarget(target: ProviderTarget): string {
@@ -343,34 +390,16 @@ export function parseRouteTargetSelection(
     if (strategy === "lowest_cost") {
       const costsValue = (selection as Record<string, unknown>).costs;
 
-      if (
-        typeof costsValue !== "object" ||
-        costsValue === null ||
-        Array.isArray(costsValue)
-      ) {
+      if (costsValue === undefined) {
         throw createInvalidRouteTargetSelectionError(
           "Lowest-cost target selection must define a costs object"
         );
       }
 
-      const normalizedCosts: Record<string, number> = {};
-
-      for (const [targetKey, cost] of Object.entries(costsValue)) {
-        if (typeof cost !== "number" || !Number.isFinite(cost) || cost <= 0) {
-          throw createInvalidRouteTargetSelectionError(
-            "Target selection costs must be positive finite numbers"
-          );
-        }
-
-        normalizedCosts[
-          serializeProviderTarget(
-            parseExplicitProviderTarget(
-              targetKey,
-              createInvalidRouteTargetSelectionError
-            )
-          )
-        ] = cost;
-      }
+      const normalizedCosts = parsePositiveTargetNumberMap(
+        costsValue,
+        "Lowest-cost target selection costs"
+      );
 
       if (Object.keys(normalizedCosts).length === 0) {
         throw createInvalidRouteTargetSelectionError(
@@ -388,6 +417,59 @@ export function parseRouteTargetSelection(
     if (strategy === "health_priority") {
       targetSelectionByRoute[externalModel] = {
         strategy: "health_priority"
+      };
+      continue;
+    }
+
+    if (strategy === "priority") {
+      const selectionRecord = selection as Record<string, unknown>;
+      const latencySloValue = selectionRecord.latencySloMs;
+      const costsValue = selectionRecord.costs;
+      const latencySloMs =
+        latencySloValue !== undefined
+          ? parsePositiveTargetNumberMap(
+              latencySloValue,
+              "Priority target selection latencySloMs"
+            )
+          : undefined;
+      const costs =
+        costsValue !== undefined
+          ? parsePositiveTargetNumberMap(
+              costsValue,
+              "Priority target selection costs"
+            )
+          : undefined;
+
+      if (!latencySloMs && !costs) {
+        throw createInvalidRouteTargetSelectionError(
+          "Priority target selection must define latencySloMs or costs"
+        );
+      }
+
+      if (
+        latencySloMs !== undefined &&
+        Object.keys(latencySloMs).length === 0 &&
+        (!costs || Object.keys(costs).length === 0)
+      ) {
+        throw createInvalidRouteTargetSelectionError(
+          "Priority target selection must define at least one target hint"
+        );
+      }
+
+      if (
+        costs !== undefined &&
+        Object.keys(costs).length === 0 &&
+        (!latencySloMs || Object.keys(latencySloMs).length === 0)
+      ) {
+        throw createInvalidRouteTargetSelectionError(
+          "Priority target selection must define at least one target hint"
+        );
+      }
+
+      targetSelectionByRoute[externalModel] = {
+        strategy: "priority",
+        ...(latencySloMs ? { latencySloMs } : {}),
+        ...(costs ? { costs } : {})
       };
       continue;
     }
@@ -487,6 +569,15 @@ function listTargetSelectionKeys(targetSelection: RouteTargetSelection): string[
 
   if (targetSelection.strategy === "lowest_cost") {
     return Object.keys(targetSelection.costs);
+  }
+
+  if (targetSelection.strategy === "priority") {
+    return Array.from(
+      new Set([
+        ...Object.keys(targetSelection.latencySloMs ?? {}),
+        ...Object.keys(targetSelection.costs ?? {})
+      ])
+    );
   }
 
   return [];
