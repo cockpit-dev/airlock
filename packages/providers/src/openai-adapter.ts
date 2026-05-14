@@ -477,6 +477,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.maxOutputTokens !== undefined
                     ? { max_tokens: request.maxOutputTokens }
                     : {}),
+                  ...(request.reasoningEffort !== undefined
+                    ? { reasoning_effort: request.reasoningEffort }
+                    : {}),
                   ...(request.temperature !== undefined
                     ? { temperature: request.temperature }
                     : {}),
@@ -548,6 +551,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   : {}),
                 ...(request.maxOutputTokens !== undefined
                   ? { max_tokens: request.maxOutputTokens }
+                  : {}),
+                ...(request.reasoningEffort !== undefined
+                  ? { reasoning_effort: request.reasoningEffort }
                   : {}),
                 ...(request.temperature !== undefined
                   ? { temperature: request.temperature }
@@ -742,6 +748,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.maxOutputTokens !== undefined
                     ? { max_tokens: request.maxOutputTokens }
                     : {}),
+                  ...(request.reasoningEffort !== undefined
+                    ? { reasoning_effort: request.reasoningEffort }
+                    : {}),
                   ...(request.temperature !== undefined
                     ? { temperature: request.temperature }
                     : {}),
@@ -816,6 +825,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   : {}),
                 ...(request.maxOutputTokens !== undefined
                   ? { max_tokens: request.maxOutputTokens }
+                  : {}),
+                ...(request.reasoningEffort !== undefined
+                  ? { reasoning_effort: request.reasoningEffort }
                   : {}),
                 ...(request.temperature !== undefined
                   ? { temperature: request.temperature }

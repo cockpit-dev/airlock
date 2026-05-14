@@ -147,6 +147,22 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(parsed.max_completion_tokens).toBe(128);
   });
 
+  it("accepts chat reasoning_effort", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      reasoning_effort: "high",
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.reasoning_effort).toBe("high");
+  });
+
   it("accepts chat completion sampling fields", () => {
     const parsed = openAIChatCompletionRequestSchema.parse({
       model: "gpt-4.1-mini",

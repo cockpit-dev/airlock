@@ -480,6 +480,9 @@ export function normalizeOpenAIChatRequest(
     stream: request.stream,
     ...(outputFormat ? { outputFormat } : {}),
     ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
+    ...(request.reasoning_effort !== undefined
+      ? { reasoningEffort: request.reasoning_effort }
+      : {}),
     ...(request.temperature !== undefined
       ? { temperature: request.temperature }
       : {}),

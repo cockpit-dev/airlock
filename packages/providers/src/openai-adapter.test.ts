@@ -254,6 +254,57 @@ describe("OpenAIProviderAdapter", () => {
     });
   });
 
+  it("forwards reasoning_effort through OpenAI chat completions", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        reasoningEffort: "high"
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      reasoning_effort: "high"
+    });
+  });
+
   it("forwards and parses parallel_tool_calls=false through the native openai responses endpoint", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

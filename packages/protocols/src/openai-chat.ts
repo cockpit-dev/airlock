@@ -104,6 +104,7 @@ export const openAIChatCompletionRequestSchema = z
   stream: z.boolean().default(false),
   max_tokens: z.number().int().positive().optional(),
   max_completion_tokens: z.number().int().positive().optional(),
+  reasoning_effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]).optional(),
   temperature: z.number().min(0).max(2).optional(),
   top_p: z.number().min(0).max(1).optional(),
   response_format: openAIChatResponseFormatSchema.optional(),

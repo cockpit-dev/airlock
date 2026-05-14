@@ -104,6 +104,22 @@ describe("normalizeOpenAIChatRequest", () => {
     expect(canonical.maxOutputTokens).toBe(128);
   });
 
+  it("normalizes chat reasoning_effort into canonical request fields", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      reasoning_effort: "high",
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.reasoningEffort).toBe("high");
+  });
+
   it("normalizes chat sampling fields into canonical request fields", () => {
     const canonical = normalizeOpenAIChatRequest({
       model: "gpt-4.1-mini",
