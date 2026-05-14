@@ -309,6 +309,27 @@ describe("normalizeOpenAIResponsesRequest", () => {
     ]);
   });
 
+  it("flattens top-level responses input_text items into one canonical user message", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          type: "input_text",
+          text: "hello"
+        },
+        {
+          type: "input_text",
+          text: "there"
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      { role: "user", content: "hello\nthere" }
+    ]);
+  });
+
   it("preserves streaming intent for a responses request", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",

@@ -12,6 +12,16 @@ import type {
 
 type CanonicalUsageValue = CanonicalResponse["usage"];
 
+type OpenAIResponsesInputValue = OpenAIResponsesRequest["input"];
+type OpenAIResponsesInputMessageValue = Exclude<
+  Extract<OpenAIResponsesInputValue, unknown[]>,
+  { type: "input_text"; text: string }[]
+>[number];
+type OpenAIResponsesInputItemValue = Extract<
+  OpenAIResponsesInputValue,
+  { type: "input_text"; text: string }[]
+>[number];
+
 function encodeCanonicalUsage(
   usage: CanonicalUsageValue
 ) {
@@ -53,6 +63,12 @@ function encodeCanonicalAnthropicUsage(
   };
 }
 
+function isOpenAIResponsesTopLevelInputItems(
+  input: OpenAIResponsesRequest["input"]
+): input is OpenAIResponsesInputItemValue[] {
+  return Array.isArray(input) && input.length > 0 && input[0] !== undefined && "type" in input[0];
+}
+
 export function normalizeOpenAIChatRequest(
   request: OpenAIChatCompletionRequest
 ): CanonicalRequest {
@@ -78,13 +94,20 @@ export function normalizeOpenAIResponsesRequest(
   const inputMessages =
     typeof request.input === "string"
       ? [{ role: "user" as const, content: request.input }]
-      : request.input.map((message) => ({
-          role: message.role === "developer" ? "system" : message.role,
-          content:
-            typeof message.content === "string"
-              ? message.content
-              : message.content.map((block) => block.text).join("\n")
-        }));
+      : isOpenAIResponsesTopLevelInputItems(request.input)
+        ? [
+            {
+              role: "user" as const,
+              content: request.input.map((item) => item.text).join("\n")
+            }
+          ]
+        : request.input.map((message: OpenAIResponsesInputMessageValue) => ({
+            role: message.role === "developer" ? "system" : message.role,
+            content:
+              typeof message.content === "string"
+                ? message.content
+                : message.content.map((block) => block.text).join("\n")
+          }));
   const instructionMessages = request.instructions
     ? [{ role: "system" as const, content: request.instructions }]
     : [];

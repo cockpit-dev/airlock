@@ -249,6 +249,25 @@ describe("openAIResponsesRequestSchema", () => {
     expect(parsed.instructions).toBe("Be concise.");
   });
 
+  it("accepts top-level responses input_text item arrays", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          type: "input_text",
+          text: "hello"
+        },
+        {
+          type: "input_text",
+          text: "there"
+        }
+      ]
+    });
+
+    expect(Array.isArray(parsed.input)).toBe(true);
+  });
+
   it("accepts a streaming responses request", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",

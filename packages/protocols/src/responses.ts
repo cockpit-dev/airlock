@@ -7,6 +7,11 @@ const openAIResponsesTextContentBlockSchema = z.object({
   text: z.string().min(1)
 });
 
+const openAIResponsesTopLevelInputItemSchema = z.object({
+  type: z.literal("input_text"),
+  text: z.string().min(1)
+});
+
 const openAIResponsesInputMessageSchema = z.object({
   role: z.enum(["user", "assistant", "system", "developer"]),
   content: z.union([
@@ -22,7 +27,8 @@ export const openAIResponsesRequestSchema = z.object({
   instructions: z.string().min(1).optional(),
   input: z.union([
     z.string().min(1),
-    z.array(openAIResponsesInputMessageSchema).min(1)
+    z.array(openAIResponsesInputMessageSchema).min(1),
+    z.array(openAIResponsesTopLevelInputItemSchema).min(1)
   ]),
   airlock: airlockRequestExtensionsSchema.optional()
 });
