@@ -43,6 +43,40 @@ import {
 } from "../telemetry.js";
 import type { CreateAppOptions } from "../app.js";
 
+const unsupportedOpenAIResponsesSemanticFields = [
+  "previous_response_id",
+  "conversation",
+  "tools",
+  "tool_choice",
+  "text",
+  "reasoning",
+  "prompt"
+] as const;
+
+function assertSupportedOpenAIResponsesSemantics(
+  payload: unknown,
+  requestId: string
+) {
+  if (typeof payload !== "object" || payload === null) {
+    return;
+  }
+
+  for (const field of unsupportedOpenAIResponsesSemanticFields) {
+    if (field in payload) {
+      throw new GatewayError(
+        `Unsupported OpenAI Responses semantic field: ${field}`,
+        {
+          code: "request_unsupported_openai_semantics",
+          category: "request",
+          httpStatus: 400,
+          retryable: false,
+          requestId
+        }
+      );
+    }
+  }
+}
+
 export async function handleResponses(
   context: Context<{
     Bindings: GatewayBindings;
@@ -67,6 +101,7 @@ export async function handleResponses(
   );
 
   const json: unknown = await context.req.json();
+  assertSupportedOpenAIResponsesSemantics(json, requestId);
   const parsed = openAIResponsesRequestSchema.parse(json);
   const route = resolveModelRoute(parsed.model, config.modelAliases, requestId);
   assertGatewayKeyAllowsRoute(gatewayApiKey, route, requestId);
