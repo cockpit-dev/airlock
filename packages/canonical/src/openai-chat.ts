@@ -361,6 +361,33 @@ function normalizeOpenAIResponsesTextFormat(
   };
 }
 
+function normalizeOpenAIResponsesReasoning(
+  reasoning: OpenAIResponsesRequest["reasoning"]
+) {
+  if (reasoning === undefined) {
+    return {};
+  }
+
+  if (
+    reasoning.summary !== undefined &&
+    reasoning.generate_summary !== undefined &&
+    reasoning.summary !== reasoning.generate_summary
+  ) {
+    throw new Error("reasoning.summary must match reasoning.generate_summary");
+  }
+
+  return {
+    ...(reasoning.effort !== undefined
+      ? { reasoningEffort: reasoning.effort }
+      : {}),
+    ...(typeof reasoning.summary === "string"
+      ? { reasoningSummary: reasoning.summary }
+      : typeof reasoning.generate_summary === "string"
+        ? { reasoningSummary: reasoning.generate_summary }
+        : {})
+  };
+}
+
 function normalizeOpenAIResponsesTypedInputItems(
   input: OpenAIResponsesTypedInputItemValue[]
 ) {
@@ -562,14 +589,7 @@ export function normalizeOpenAIResponsesRequest(
           }
         }
       : {}),
-    ...(request.reasoning?.effort !== undefined
-      ? { reasoningEffort: request.reasoning.effort }
-      : {}),
-    ...(typeof request.reasoning?.summary === "string"
-      ? { reasoningSummary: request.reasoning.summary }
-      : typeof request.reasoning?.generate_summary === "string"
-        ? { reasoningSummary: request.reasoning.generate_summary }
-        : {}),
+    ...normalizeOpenAIResponsesReasoning(request.reasoning),
     ...(request.max_output_tokens !== undefined
       ? { maxOutputTokens: request.max_output_tokens }
       : {}),
