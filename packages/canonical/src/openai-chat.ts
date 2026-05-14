@@ -545,14 +545,18 @@ export function normalizeOpenAIResponsesRequest(
     ...(request.conversation !== undefined
       ? { conversationId: request.conversation }
       : {}),
-    ...(request.prompt !== undefined
+    ...(request.prompt !== undefined || request.prompt_id !== undefined
       ? {
           prompt: {
-            id: request.prompt.id ?? request.prompt.prompt_id ?? "",
-            ...(request.prompt.version !== undefined
+            id:
+              request.prompt?.id ??
+              request.prompt?.prompt_id ??
+              request.prompt_id ??
+              "",
+            ...(request.prompt?.version !== undefined
               ? { version: String(request.prompt.version) }
               : {}),
-            ...(request.prompt.variables !== undefined
+            ...(request.prompt?.variables !== undefined
               ? { variables: request.prompt.variables }
               : {})
           }

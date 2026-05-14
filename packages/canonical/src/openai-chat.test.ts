@@ -963,6 +963,19 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.messages).toEqual([]);
   });
 
+  it("normalizes top-level responses prompt_id alias into canonical prompt fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      prompt_id: "pmpt_legacy_123",
+      stream: false
+    });
+
+    expect(canonical.prompt).toEqual({
+      id: "pmpt_legacy_123"
+    });
+    expect(canonical.messages).toEqual([]);
+  });
+
   it("normalizes responses reasoning summary controls into canonical request fields", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",
@@ -975,6 +988,23 @@ describe("normalizeOpenAIResponsesRequest", () => {
     });
 
     expect(canonical.reasoningEffort).toBe("low");
+    expect(canonical.reasoningSummary).toBe("auto");
+    expect(canonical.messages).toEqual([{ role: "user", content: "hello" }]);
+  });
+
+  it("normalizes deprecated responses reasoning.generate_summary into canonical reasoningSummary", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      reasoning: {
+        effort: "low",
+        generate_summary: "concise"
+      }
+    });
+
+    expect(canonical.reasoningEffort).toBe("low");
+    expect(canonical.reasoningSummary).toBe("concise");
     expect(canonical.messages).toEqual([{ role: "user", content: "hello" }]);
   });
 

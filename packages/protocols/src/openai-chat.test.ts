@@ -1132,7 +1132,36 @@ describe("openAIResponsesResponseSchema", () => {
       output_text: "hello"
     });
 
-    expect(parsed.object).toBe("response");
+  expect(parsed.object).toBe("response");
+  });
+});
+
+describe("openAIResponsesRequestSchema", () => {
+  it("accepts responses prompt_id as a top-level alias", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      prompt_id: "pmpt_legacy_123"
+    });
+
+    expect(parsed.prompt_id).toBe("pmpt_legacy_123");
+  });
+
+  it("rejects responses prompt_id when it conflicts with prompt.id", () => {
+    const result = openAIResponsesRequestSchema.safeParse({
+      model: "gpt-4.1-mini",
+      prompt_id: "pmpt_top_level",
+      prompt: {
+        id: "pmpt_nested"
+      }
+    });
+
+    expect(result.success).toBe(false);
+    if (result.success) {
+      throw new Error("Expected prompt_id conflict to fail");
+    }
+    expect(result.error.issues[0]?.message).toBe(
+      "prompt_id must match prompt.id when both are provided"
+    );
   });
 });
 

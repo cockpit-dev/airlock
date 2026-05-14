@@ -55,6 +55,7 @@ const allowedOpenAIResponsesTopLevelFields = [
   "model",
   "stream",
   "prompt",
+  "prompt_id",
   "previous_response_id",
   "conversation",
   "max_output_tokens",

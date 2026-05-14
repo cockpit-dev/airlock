@@ -131,6 +131,7 @@ export const openAIResponsesRequestSchema = z
   model: z.string().min(1),
   stream: z.boolean().default(false),
   prompt: openAIResponsesPromptSchema.optional(),
+  prompt_id: z.string().min(1).optional(),
   previous_response_id: z.string().min(1).optional(),
   conversation: z.string().min(1).optional(),
   stop: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
@@ -158,11 +159,31 @@ export const openAIResponsesRequestSchema = z
     .optional(),
   airlock: airlockRequestExtensionsSchema.optional()
   })
-  .refine((value) => value.input !== undefined || value.prompt !== undefined, {
+  .refine(
+    (value) =>
+      value.input !== undefined ||
+      value.prompt !== undefined ||
+      value.prompt_id !== undefined,
+    {
     message: "Either input or prompt is required",
     path: ["input"]
-  })
+    }
+  )
   .superRefine((value, context) => {
+    const nestedPromptId = value.prompt?.id ?? value.prompt?.prompt_id;
+
+    if (
+      value.prompt_id !== undefined &&
+      nestedPromptId !== undefined &&
+      value.prompt_id !== nestedPromptId
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "prompt_id must match prompt.id when both are provided",
+        path: ["prompt_id"]
+      });
+    }
+
     if (!value.stream && value.stream_options !== undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
