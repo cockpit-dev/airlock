@@ -12,6 +12,11 @@ const openAIResponsesTopLevelInputItemSchema = z.object({
   text: z.string().min(1)
 });
 
+const openAIResponsesOutputTextContentBlockSchema = z.object({
+  type: z.literal("output_text"),
+  text: z.string().min(1)
+});
+
 const openAIResponsesInputMessageSchema = z.object({
   role: z.enum(["user", "assistant", "system", "developer"]),
   content: z.union([
@@ -25,9 +30,15 @@ const openAIResponsesMessageItemSchema = z.object({
   role: z.enum(["user", "assistant", "system", "developer"]),
   content: z.union([
     z.string().min(1),
-    z.array(openAIResponsesTextContentBlockSchema).min(1)
+    z.array(openAIResponsesTextContentBlockSchema).min(1),
+    z.array(openAIResponsesOutputTextContentBlockSchema).min(1)
   ])
 });
+
+const openAIResponsesTypedInputItemSchema = z.union([
+  openAIResponsesTopLevelInputItemSchema,
+  openAIResponsesMessageItemSchema
+]);
 
 export const openAIResponsesRequestSchema = z.object({
   model: z.string().min(1),
@@ -37,8 +48,7 @@ export const openAIResponsesRequestSchema = z.object({
   input: z.union([
     z.string().min(1),
     z.array(openAIResponsesInputMessageSchema).min(1),
-    z.array(openAIResponsesMessageItemSchema).min(1),
-    z.array(openAIResponsesTopLevelInputItemSchema).min(1)
+    z.array(openAIResponsesTypedInputItemSchema).min(1)
   ]),
   airlock: airlockRequestExtensionsSchema.optional()
 });

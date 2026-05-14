@@ -294,6 +294,45 @@ describe("openAIResponsesRequestSchema", () => {
     expect(Array.isArray(parsed.input)).toBe(true);
   });
 
+  it("accepts mixed typed responses input items including assistant output replay", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          type: "message",
+          role: "developer",
+          content: [
+            {
+              type: "input_text",
+              text: "You are precise."
+            }
+          ]
+        },
+        {
+          type: "input_text",
+          text: "hello"
+        },
+        {
+          type: "message",
+          role: "assistant",
+          content: [
+            {
+              type: "output_text",
+              text: "hello there"
+            }
+          ]
+        },
+        {
+          type: "input_text",
+          text: "continue"
+        }
+      ]
+    });
+
+    expect(Array.isArray(parsed.input)).toBe(true);
+  });
+
   it("accepts a streaming responses request", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",

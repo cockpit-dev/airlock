@@ -15,23 +15,31 @@ type CanonicalUsageValue = CanonicalResponse["usage"];
 type OpenAIResponsesInputValue = OpenAIResponsesRequest["input"];
 type OpenAIResponsesInputMessageValue = Exclude<
   Extract<OpenAIResponsesInputValue, unknown[]>,
-  { type: "input_text"; text: string }[] | {
-    type: "message";
-    role: "user" | "assistant" | "system" | "developer";
-    content: string | { type: "input_text"; text: string }[];
-  }[]
+  (
+    | { type: "input_text"; text: string }
+    | {
+        type: "message";
+        role: "user" | "assistant" | "system" | "developer";
+        content:
+          | string
+          | { type: "input_text"; text: string }[]
+          | { type: "output_text"; text: string }[];
+      }
+  )[]
 >[number];
-type OpenAIResponsesInputItemValue = Extract<
+type OpenAIResponsesTypedInputItemValue = Extract<
   OpenAIResponsesInputValue,
-  { type: "input_text"; text: string }[]
->[number];
-type OpenAIResponsesMessageItemValue = Extract<
-  OpenAIResponsesInputValue,
-  {
-    type: "message";
-    role: "user" | "assistant" | "system" | "developer";
-    content: string | { type: "input_text"; text: string }[];
-  }[]
+  (
+    | { type: "input_text"; text: string }
+    | {
+        type: "message";
+        role: "user" | "assistant" | "system" | "developer";
+        content:
+          | string
+          | { type: "input_text"; text: string }[]
+          | { type: "output_text"; text: string }[];
+      }
+  )[]
 >[number];
 
 function encodeCanonicalUsage(
@@ -75,28 +83,65 @@ function encodeCanonicalAnthropicUsage(
   };
 }
 
-function isOpenAIResponsesTopLevelInputItems(
+function isOpenAIResponsesTypedInputItems(
   input: OpenAIResponsesRequest["input"]
-): input is OpenAIResponsesInputItemValue[] {
+): input is OpenAIResponsesTypedInputItemValue[] {
   return (
     Array.isArray(input) &&
     input.length > 0 &&
     input[0] !== undefined &&
     "type" in input[0] &&
-    input[0].type === "input_text"
+    (input[0].type === "message" || input[0].type === "input_text")
   );
 }
 
-function isOpenAIResponsesMessageItems(
-  input: OpenAIResponsesRequest["input"]
-): input is OpenAIResponsesMessageItemValue[] {
-  return (
-    Array.isArray(input) &&
-    input.length > 0 &&
-    input[0] !== undefined &&
-    "type" in input[0] &&
-    input[0].type === "message"
-  );
+function encodeOpenAIResponsesMessageContent(
+  content:
+    | string
+    | { type: "input_text"; text: string }[]
+    | { type: "output_text"; text: string }[]
+): string {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  return content.map((block) => block.text).join("\n");
+}
+
+function normalizeOpenAIResponsesTypedInputItems(
+  input: OpenAIResponsesTypedInputItemValue[]
+) {
+  const messages: CanonicalRequest["messages"] = [];
+  let pendingUserTextItems: string[] = [];
+
+  const flushPendingUserTextItems = () => {
+    if (pendingUserTextItems.length === 0) {
+      return;
+    }
+
+    messages.push({
+      role: "user",
+      content: pendingUserTextItems.join("\n")
+    });
+    pendingUserTextItems = [];
+  };
+
+  for (const item of input) {
+    if (item.type === "input_text") {
+      pendingUserTextItems.push(item.text);
+      continue;
+    }
+
+    flushPendingUserTextItems();
+    messages.push({
+      role: item.role === "developer" ? "system" : item.role,
+      content: encodeOpenAIResponsesMessageContent(item.content)
+    });
+  }
+
+  flushPendingUserTextItems();
+
+  return messages;
 }
 
 export function normalizeOpenAIChatRequest(
@@ -124,29 +169,12 @@ export function normalizeOpenAIResponsesRequest(
   const inputMessages =
     typeof request.input === "string"
       ? [{ role: "user" as const, content: request.input }]
-      : isOpenAIResponsesTopLevelInputItems(request.input)
-        ? [
-            {
-              role: "user" as const,
-              content: request.input.map((item) => item.text).join("\n")
-            }
-          ]
-        : (isOpenAIResponsesMessageItems(request.input)
-            ? request.input
-            : request.input
-          ).map(
-            (
-              message:
-                | OpenAIResponsesInputMessageValue
-                | OpenAIResponsesMessageItemValue
-            ) => ({
-              role: message.role === "developer" ? "system" : message.role,
-              content:
-                typeof message.content === "string"
-                  ? message.content
-                  : message.content.map((block) => block.text).join("\n")
-            })
-          );
+      : isOpenAIResponsesTypedInputItems(request.input)
+        ? normalizeOpenAIResponsesTypedInputItems(request.input)
+        : request.input.map((message: OpenAIResponsesInputMessageValue) => ({
+            role: message.role === "developer" ? "system" : message.role,
+            content: encodeOpenAIResponsesMessageContent(message.content)
+          }));
   const instructionMessages = request.instructions
     ? [{ role: "system" as const, content: request.instructions }]
     : [];

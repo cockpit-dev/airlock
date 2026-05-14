@@ -359,6 +359,54 @@ describe("normalizeOpenAIResponsesRequest", () => {
     ]);
   });
 
+  it("normalizes mixed typed responses items while preserving text turn order", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          type: "message",
+          role: "developer",
+          content: [
+            {
+              type: "input_text",
+              text: "You are precise."
+            }
+          ]
+        },
+        {
+          type: "input_text",
+          text: "hello"
+        },
+        {
+          type: "input_text",
+          text: "again"
+        },
+        {
+          type: "message",
+          role: "assistant",
+          content: [
+            {
+              type: "output_text",
+              text: "hello there"
+            }
+          ]
+        },
+        {
+          type: "input_text",
+          text: "continue"
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      { role: "system", content: "You are precise." },
+      { role: "user", content: "hello\nagain" },
+      { role: "assistant", content: "hello there" },
+      { role: "user", content: "continue" }
+    ]);
+  });
+
   it("preserves streaming intent for a responses request", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",
