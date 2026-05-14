@@ -11,6 +11,7 @@ export * from "./gateway-key-registry.js";
 export * from "./gateway-key-registry-lifecycle.js";
 export * from "./gateway-key-registry-lifecycle-transitions.js";
 export * from "./gateway-key-registry-mutations.js";
+export * from "./gateway-key-registry-write-transitions.js";
 export * from "./gateway-key-registry-rotation.js";
 export * from "./gateway-key-revocation.js";
 export * from "./gateway-key-status.js";
