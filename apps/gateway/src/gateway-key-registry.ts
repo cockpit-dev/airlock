@@ -91,8 +91,17 @@ import { GatewayError } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
 import { clearGatewayKeyRevocationOverlayState } from "./gateway-key-revocation.js";
+import {
+  REGISTRY_OBJECT_NAME,
+  buildRegistryRequest,
+  createGatewayKeyRegistryInvalidResponseError,
+  createGatewayKeyRegistryUnavailableError,
+  fetchParsedRegistryResponse,
+  isGatewayKeyRegistryEnabled,
+  requireDynamicGatewayKeyRegistryNamespace,
+  requireGatewayKeyRegistryNamespace
+} from "./gateway-key-registry-transport.js";
 
-const REGISTRY_OBJECT_NAME = "gateway-key-registry";
 const REGISTRY_KIND_OVERRIDE = "override";
 const REGISTRY_KIND_DYNAMIC = "dynamic";
 const REGISTRY_KIND_DYNAMIC_LIST = "dynamic_list";
@@ -134,37 +143,6 @@ function isStringArray(value: unknown): value is string[] {
     value.every((entry) => {
       return typeof entry === "string" && entry.trim().length > 0;
     })
-  );
-}
-
-function createGatewayKeyRegistryUnavailableError(
-  requestId: string,
-  cause?: unknown
-): GatewayError {
-  return new GatewayError("Gateway key registry subsystem is unavailable", {
-    code: "gateway_key_registry_unavailable",
-    category: "governance",
-    httpStatus: 503,
-    retryable: true,
-    requestId,
-    ...(cause ? { cause } : {})
-  });
-}
-
-function createGatewayKeyRegistryInvalidResponseError(
-  requestId: string,
-  cause?: unknown
-): GatewayError {
-  return new GatewayError(
-    "Gateway key registry subsystem returned an invalid response",
-    {
-      code: "gateway_key_registry_invalid_response",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId,
-      ...(cause ? { cause } : {})
-    }
   );
 }
 
@@ -219,55 +197,6 @@ function createGatewayKeyNotArchivedError(requestId: string): GatewayError {
     requestId
   });
 }
-
-
-function buildRegistryRequest(
-  requestId: string,
-  kind: string,
-  init: RequestInit & {
-    keyId?: string;
-  }
-): Request {
-  const url = new URL("https://airlock.internal/gateway-key-registry");
-  url.searchParams.set("kind", kind);
-
-  if (init.keyId) {
-    url.searchParams.set("keyId", init.keyId);
-  }
-
-  return new Request(url, {
-    ...init,
-    headers: {
-      "x-airlock-request-id": requestId,
-      ...(init.headers ?? {})
-    }
-  });
-}
-
-function requireGatewayKeyRegistryNamespace(
-  env: GatewayBindings,
-  requestId: string
-) {
-  const namespace = env.AIRLOCK_GATEWAY_KEY_REGISTRY;
-
-  if (!namespace) {
-    throw createGatewayKeyRegistryUnavailableError(requestId);
-  }
-
-  return namespace;
-}
-
-function requireDynamicGatewayKeyRegistryNamespace(
-  env: GatewayBindings,
-  requestId: string
-) {
-  if (!isGatewayKeyRegistryEnabled(env)) {
-    throw createGatewayKeyRegistryUnavailableError(requestId);
-  }
-
-  return requireGatewayKeyRegistryNamespace(env, requestId);
-}
-
 function assertGatewayKeyRuntimeDependencies(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
@@ -1442,13 +1371,6 @@ export class GatewayKeyRegistryDurableObject {
   }
 }
 
-export function isGatewayKeyRegistryEnabled(env: GatewayBindings): boolean {
-  return (
-    env.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED === true ||
-    (env.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED as unknown) === "true"
-  );
-}
-
 export async function getGatewayKeyRegistryOverride(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
@@ -1459,30 +1381,19 @@ export async function getGatewayKeyRegistryOverride(
   }
 
   const namespace = requireGatewayKeyRegistryNamespace(env, requestId);
-  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-  let response: Response;
-
-  try {
-    response = await stub.fetch(
-      buildRegistryRequest(requestId, REGISTRY_KIND_OVERRIDE, {
-        method: "GET",
-        keyId: gatewayApiKey.id
-      })
-    );
-  } catch (cause) {
-    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-  }
-
-  if (!response.ok) {
-    throw createGatewayKeyRegistryUnavailableError(requestId);
-  }
-
-  try {
-    const parsed = parseGatewayKeyRegistryRecordResponse(await response.json());
-    return parsed.override;
-  } catch (cause) {
-    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-  }
+  return fetchParsedRegistryResponse(
+    () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+    buildRegistryRequest(requestId, REGISTRY_KIND_OVERRIDE, {
+      method: "GET",
+      keyId: gatewayApiKey.id
+    }),
+    requestId,
+    {
+      parse: (value) => {
+        return parseGatewayKeyRegistryRecordResponse(value).override;
+      }
+    }
+  );
 }
 
 export async function upsertGatewayKeyRegistryOverride(
@@ -1529,23 +1440,17 @@ export async function clearGatewayKeyRegistryOverride(
   requestId: string
 ): Promise<void> {
   const namespace = requireGatewayKeyRegistryNamespace(env, requestId);
-  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-  let response: Response;
-
-  try {
-    response = await stub.fetch(
-      buildRegistryRequest(requestId, REGISTRY_KIND_OVERRIDE, {
-        method: "DELETE",
-        keyId: gatewayApiKey.id
-      })
-    );
-  } catch (cause) {
-    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-  }
-
-  if (!response.ok) {
-    throw createGatewayKeyRegistryUnavailableError(requestId);
-  }
+  await fetchParsedRegistryResponse(
+    () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+    buildRegistryRequest(requestId, REGISTRY_KIND_OVERRIDE, {
+      method: "DELETE",
+      keyId: gatewayApiKey.id
+    }),
+    requestId,
+    {
+      parse: () => null
+    }
+  );
 }
 
 export async function createGatewayRegistryApiKey(
@@ -1578,45 +1483,35 @@ export async function createGatewayRegistryApiKey(
       },
       createRegistryKey: async (createRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              ...createRequest.key,
+              ...(actorContext ?? createRequest.actorContext
+                ? toGatewayKeyAuditActorContextRecord(
+                    actorContext ?? createRequest.actorContext!
+                  )
+                : {})
+            } satisfies GatewayKeyRegistryCreateRequest)
+          }),
+          requestId,
+          {
+            parse: (value) => {
+              const key = parseGatewayKeyRegistryDynamicKeyResponse(value);
 
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC, {
-              method: "POST",
-              headers: {
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                ...createRequest.key,
-                ...(actorContext ?? createRequest.actorContext
-                  ? toGatewayKeyAuditActorContextRecord(
-                      actorContext ?? createRequest.actorContext!
-                    )
-                  : {})
-              } satisfies GatewayKeyRegistryCreateRequest)
-            })
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
+              if (!key) {
+                throw new Error("Created dynamic key response was empty");
+              }
 
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
-
-        try {
-          const key = parseGatewayKeyRegistryDynamicKeyResponse(await response.json());
-
-          if (!key) {
-            throw new Error("Created dynamic key response was empty");
+              return key;
+            }
           }
-
-          return key;
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+        );
       }
     }
   );
@@ -1652,43 +1547,33 @@ export async function bulkCreateGatewayRegistryApiKeys(
       },
       bulkCreateRegistryKeys: async (createRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
-
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_CREATE, {
-              method: "POST",
-              headers: {
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                keys: createRequest.keys,
-                ...(actorContext ?? createRequest.actorContext
-                  ? toGatewayKeyAuditActorContextRecord(
-                      actorContext ?? createRequest.actorContext!
-                    )
-                  : {})
-              } satisfies {
-                keys: GatewayApiKeyRecord[];
-                actor?: string;
-                actorSource?: "payload" | "trusted_header" | "credential";
-              })
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_CREATE, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              keys: createRequest.keys,
+              ...(actorContext ?? createRequest.actorContext
+                ? toGatewayKeyAuditActorContextRecord(
+                    actorContext ?? createRequest.actorContext!
+                  )
+                : {})
+            } satisfies {
+              keys: GatewayApiKeyRecord[];
+              actor?: string;
+              actorSource?: "payload" | "trusted_header" | "credential";
             })
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
-
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
-
-        try {
-          return parseGatewayKeyRegistryBulkCreateResponse(await response.json());
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+          }),
+          requestId,
+          {
+            parse: (value) => {
+              return parseGatewayKeyRegistryBulkCreateResponse(value);
+            }
+          }
+        );
       }
     }
   );
@@ -1704,33 +1589,26 @@ export async function getGatewayRegistryApiKey(
   }
 
   const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-  let response: Response;
+  return fetchParsedRegistryResponse(
+    () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+    buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC, {
+      method: "GET",
+      keyId
+    }),
+    requestId,
+    {
+      parse: (value) => {
+        return parseGatewayKeyRegistryDynamicKeyResponse(value);
+      },
+      handleStatus: (response) => {
+        if (response.status === 404) {
+          return null;
+        }
 
-  try {
-    response = await stub.fetch(
-      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC, {
-        method: "GET",
-        keyId
-      })
-    );
-  } catch (cause) {
-    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-  }
-
-  if (response.status === 404) {
-    return null;
-  }
-
-  if (!response.ok) {
-    throw createGatewayKeyRegistryUnavailableError(requestId);
-  }
-
-  try {
-    return parseGatewayKeyRegistryDynamicKeyResponse(await response.json());
-  } catch (cause) {
-    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-  }
+        return undefined;
+      }
+    }
+  );
 }
 
 export async function deleteGatewayRegistryApiKey(
@@ -1764,42 +1642,34 @@ export async function deleteGatewayRegistryApiKey(
       },
       deleteRegistryKey: async (candidateKeyId, deleteRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
+        await fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC, {
+            method: "DELETE",
+            keyId: candidateKeyId,
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              ...deleteRequest,
+              ...(actorContext
+                ? toGatewayKeyAuditActorContextRecord(actorContext)
+                : {})
+            } satisfies GatewayKeyRegistryDeleteRequest)
+          }),
+          requestId,
+          {
+            parse: (value) => {
+              const parsed = parseGatewayKeyRegistryDeleteResponse(value);
 
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC, {
-              method: "DELETE",
-              keyId: candidateKeyId,
-              headers: {
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                ...deleteRequest,
-                ...(actorContext
-                  ? toGatewayKeyAuditActorContextRecord(actorContext)
-                  : {})
-              } satisfies GatewayKeyRegistryDeleteRequest)
-            })
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
+              if (!parsed.deleted) {
+                throw new Error("Dynamic key delete was not acknowledged");
+              }
 
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
-
-        try {
-          const parsed = parseGatewayKeyRegistryDeleteResponse(await response.json());
-
-          if (!parsed.deleted) {
-            throw new Error("Dynamic key delete was not acknowledged");
+              return parsed;
+            }
           }
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+        );
       }
     }
   );
@@ -1835,57 +1705,50 @@ export async function updateGatewayRegistryApiKey(
       },
       updateRegistryKey: async (updateRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
-
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC, {
-              method: "PUT",
-              keyId: updateRequest.keyId,
-              headers: {
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                ...updateRequest.update,
-                ...(updateRequest.auditMetadata.reason
-                  ? { reason: updateRequest.auditMetadata.reason }
-                  : {}),
-                ...(actorContext
-                  ? toGatewayKeyAuditActorContextRecord(actorContext)
-                  : updateRequest.auditMetadata.actor
-                    ? toGatewayKeyAuditActorContextRecord(
-                        gatewayKeyAuditActorContextFromRegistryRequest(
-                          updateRequest.auditMetadata
-                        )!
-                      )
-                    : {})
-              })
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC, {
+            method: "PUT",
+            keyId: updateRequest.keyId,
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              ...updateRequest.update,
+              ...(updateRequest.auditMetadata.reason
+                ? { reason: updateRequest.auditMetadata.reason }
+                : {}),
+              ...(actorContext
+                ? toGatewayKeyAuditActorContextRecord(actorContext)
+                : updateRequest.auditMetadata.actor
+                  ? toGatewayKeyAuditActorContextRecord(
+                      gatewayKeyAuditActorContextFromRegistryRequest(
+                        updateRequest.auditMetadata
+                      )!
+                    )
+                  : {})
             })
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
+          }),
+          requestId,
+          {
+            parse: (value) => {
+              const key = parseGatewayKeyRegistryDynamicKeyResponse(value);
 
-        if (response.status === 404) {
-          throw createGatewayKeyNotFoundError(requestId);
-        }
+              if (!key) {
+                throw new Error("Updated dynamic key response was empty");
+              }
 
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
+              return key;
+            },
+            handleStatus: (response) => {
+              if (response.status === 404) {
+                throw createGatewayKeyNotFoundError(requestId);
+              }
 
-        try {
-          const key = parseGatewayKeyRegistryDynamicKeyResponse(await response.json());
-
-          if (!key) {
-            throw new Error("Updated dynamic key response was empty");
+              return undefined;
+            }
           }
-
-          return key;
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+        );
       }
     }
   );
@@ -1923,60 +1786,53 @@ export async function bulkUpdateGatewayRegistryApiKeys(
       },
       bulkUpdateRegistryKeys: async (bulkRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
-
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_UPDATE, {
-              method: "PATCH",
-              headers: {
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                updates: bulkRequest.updates.map((entry) => {
-                  return {
-                    keyId: entry.keyId,
-                    ...entry.update
-                  };
-                }),
-                ...(bulkRequest.auditMetadata.reason
-                  ? { reason: bulkRequest.auditMetadata.reason }
-                  : {}),
-                ...(actorContext
-                  ? toGatewayKeyAuditActorContextRecord(actorContext)
-                  : bulkRequest.auditMetadata.actor
-                    ? toGatewayKeyAuditActorContextRecord(
-                        gatewayKeyAuditActorContextFromRegistryRequest(
-                          bulkRequest.auditMetadata
-                        )!
-                      )
-                    : {})
-              } satisfies {
-                updates: Array<{ keyId: string } & GatewayApiKeyMetadataOverride>;
-                reason?: string;
-                actor?: string;
-                actorSource?: "payload" | "trusted_header" | "credential";
-              })
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_UPDATE, {
+            method: "PATCH",
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              updates: bulkRequest.updates.map((entry) => {
+                return {
+                  keyId: entry.keyId,
+                  ...entry.update
+                };
+              }),
+              ...(bulkRequest.auditMetadata.reason
+                ? { reason: bulkRequest.auditMetadata.reason }
+                : {}),
+              ...(actorContext
+                ? toGatewayKeyAuditActorContextRecord(actorContext)
+                : bulkRequest.auditMetadata.actor
+                  ? toGatewayKeyAuditActorContextRecord(
+                      gatewayKeyAuditActorContextFromRegistryRequest(
+                        bulkRequest.auditMetadata
+                      )!
+                    )
+                  : {})
+            } satisfies {
+              updates: Array<{ keyId: string } & GatewayApiKeyMetadataOverride>;
+              reason?: string;
+              actor?: string;
+              actorSource?: "payload" | "trusted_header" | "credential";
             })
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
+          }),
+          requestId,
+          {
+            parse: (value) => {
+              return parseGatewayKeyRegistryDynamicKeyListResponse(value);
+            },
+            handleStatus: (response) => {
+              if (response.status === 404) {
+                throw createGatewayKeyNotFoundError(requestId);
+              }
 
-        if (response.status === 404) {
-          throw createGatewayKeyNotFoundError(requestId);
-        }
-
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
-
-        try {
-          return parseGatewayKeyRegistryDynamicKeyListResponse(await response.json());
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+              return undefined;
+            }
+          }
+        );
       }
     }
   );
@@ -2015,55 +1871,48 @@ export async function bulkDeleteGatewayRegistryApiKeys(
       },
       bulkDeleteRegistryKeys: async (bulkRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
-
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_DELETE, {
-              method: "POST",
-              headers: {
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                keyIds: bulkRequest.keyIds,
-                ...(bulkRequest.auditMetadata.reason
-                  ? { reason: bulkRequest.auditMetadata.reason }
-                  : {}),
-                ...(actorContext
-                  ? toGatewayKeyAuditActorContextRecord(actorContext)
-                  : bulkRequest.auditMetadata.actor
-                    ? toGatewayKeyAuditActorContextRecord(
-                        gatewayKeyAuditActorContextFromRegistryRequest(
-                          bulkRequest.auditMetadata
-                        )!
-                      )
-                    : {})
-              } satisfies {
-                keyIds: string[];
-                reason?: string;
-                actor?: string;
-                actorSource?: "payload" | "trusted_header" | "credential";
-              })
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_DELETE, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              keyIds: bulkRequest.keyIds,
+              ...(bulkRequest.auditMetadata.reason
+                ? { reason: bulkRequest.auditMetadata.reason }
+                : {}),
+              ...(actorContext
+                ? toGatewayKeyAuditActorContextRecord(actorContext)
+                : bulkRequest.auditMetadata.actor
+                  ? toGatewayKeyAuditActorContextRecord(
+                      gatewayKeyAuditActorContextFromRegistryRequest(
+                        bulkRequest.auditMetadata
+                      )!
+                    )
+                  : {})
+            } satisfies {
+              keyIds: string[];
+              reason?: string;
+              actor?: string;
+              actorSource?: "payload" | "trusted_header" | "credential";
             })
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
+          }),
+          requestId,
+          {
+            parse: (value) => {
+              return parseGatewayKeyRegistryBulkDeleteResponse(value);
+            },
+            handleStatus: (response) => {
+              if (response.status === 404) {
+                throw createGatewayKeyNotFoundError(requestId);
+              }
 
-        if (response.status === 404) {
-          throw createGatewayKeyNotFoundError(requestId);
-        }
-
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
-
-        try {
-          return parseGatewayKeyRegistryBulkDeleteResponse(await response.json());
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+              return undefined;
+            }
+          }
+        );
       }
     }
   );
@@ -2124,59 +1973,52 @@ export async function bulkRotateGatewayRegistryApiKeys(
       },
       bulkRotateRegistryKeys: async (bulkRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
-
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_ROTATE, {
-              method: "POST",
-              headers: {
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                rotations: bulkRequest.rotations,
-                ...(bulkRequest.auditMetadata.reason
-                  ? { reason: bulkRequest.auditMetadata.reason }
-                  : {}),
-                ...(actorContext
-                  ? toGatewayKeyAuditActorContextRecord(actorContext)
-                  : bulkRequest.auditMetadata.actor
-                    ? toGatewayKeyAuditActorContextRecord(
-                        gatewayKeyAuditActorContextFromRegistryRequest(
-                          bulkRequest.auditMetadata
-                        )!
-                      )
-                    : {})
-              } satisfies {
-                rotations: Array<{
-                  keyId: string;
-                  valueHash: string;
-                  overlapSeconds?: number;
-                }>;
-                reason?: string;
-                actor?: string;
-                actorSource?: "payload" | "trusted_header" | "credential";
-              })
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_ROTATE, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              rotations: bulkRequest.rotations,
+              ...(bulkRequest.auditMetadata.reason
+                ? { reason: bulkRequest.auditMetadata.reason }
+                : {}),
+              ...(actorContext
+                ? toGatewayKeyAuditActorContextRecord(actorContext)
+                : bulkRequest.auditMetadata.actor
+                  ? toGatewayKeyAuditActorContextRecord(
+                      gatewayKeyAuditActorContextFromRegistryRequest(
+                        bulkRequest.auditMetadata
+                      )!
+                    )
+                  : {})
+            } satisfies {
+              rotations: Array<{
+                keyId: string;
+                valueHash: string;
+                overlapSeconds?: number;
+              }>;
+              reason?: string;
+              actor?: string;
+              actorSource?: "payload" | "trusted_header" | "credential";
             })
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
+          }),
+          requestId,
+          {
+            parse: (value) => {
+              return parseGatewayKeyRegistryDynamicKeyListResponse(value);
+            },
+            handleStatus: (response) => {
+              if (response.status === 404) {
+                throw createGatewayKeyNotFoundError(requestId);
+              }
 
-        if (response.status === 404) {
-          throw createGatewayKeyNotFoundError(requestId);
-        }
-
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
-
-        try {
-          return parseGatewayKeyRegistryDynamicKeyListResponse(await response.json());
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+              return undefined;
+            }
+          }
+        );
       }
     }
   );
@@ -2208,59 +2050,52 @@ export async function bulkArchiveGatewayRegistryApiKeys(
       },
       bulkArchiveRegistryKeys: async (bulkRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
-
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_ARCHIVE, {
-              method: "POST",
-              headers: {
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                keyIds: bulkRequest.keyIds,
-                ...(bulkRequest.auditMetadata.reason
-                  ? { reason: bulkRequest.auditMetadata.reason }
-                  : {}),
-                ...(actorContext
-                  ? toGatewayKeyAuditActorContextRecord(actorContext)
-                  : bulkRequest.auditMetadata.actor
-                    ? toGatewayKeyAuditActorContextRecord(
-                        gatewayKeyAuditActorContextFromRegistryRequest(
-                          bulkRequest.auditMetadata
-                        )!
-                      )
-                    : {})
-              } satisfies {
-                keyIds: string[];
-                reason?: string;
-                actor?: string;
-                actorSource?: "payload" | "trusted_header" | "credential";
-              })
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_ARCHIVE, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              keyIds: bulkRequest.keyIds,
+              ...(bulkRequest.auditMetadata.reason
+                ? { reason: bulkRequest.auditMetadata.reason }
+                : {}),
+              ...(actorContext
+                ? toGatewayKeyAuditActorContextRecord(actorContext)
+                : bulkRequest.auditMetadata.actor
+                  ? toGatewayKeyAuditActorContextRecord(
+                      gatewayKeyAuditActorContextFromRegistryRequest(
+                        bulkRequest.auditMetadata
+                      )!
+                    )
+                  : {})
+            } satisfies {
+              keyIds: string[];
+              reason?: string;
+              actor?: string;
+              actorSource?: "payload" | "trusted_header" | "credential";
             })
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
+          }),
+          requestId,
+          {
+            parse: (value) => {
+              return parseGatewayKeyRegistryDynamicKeyListResponse(value);
+            },
+            handleStatus: (response) => {
+              if (response.status === 404) {
+                throw createGatewayKeyNotFoundError(requestId);
+              }
 
-        if (response.status === 404) {
-          throw createGatewayKeyNotFoundError(requestId);
-        }
+              if (response.status === 409) {
+                throw createGatewayKeyAlreadyArchivedError(requestId);
+              }
 
-        if (response.status === 409) {
-          throw createGatewayKeyAlreadyArchivedError(requestId);
-        }
-
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
-
-        try {
-          return parseGatewayKeyRegistryDynamicKeyListResponse(await response.json());
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+              return undefined;
+            }
+          }
+        );
       }
     }
   );
@@ -2292,59 +2127,52 @@ export async function bulkRestoreGatewayRegistryApiKeys(
       },
       bulkRestoreRegistryKeys: async (bulkRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
-
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_RESTORE, {
-              method: "POST",
-              headers: {
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                keyIds: bulkRequest.keyIds,
-                ...(bulkRequest.auditMetadata.reason
-                  ? { reason: bulkRequest.auditMetadata.reason }
-                  : {}),
-                ...(actorContext
-                  ? toGatewayKeyAuditActorContextRecord(actorContext)
-                  : bulkRequest.auditMetadata.actor
-                    ? toGatewayKeyAuditActorContextRecord(
-                        gatewayKeyAuditActorContextFromRegistryRequest(
-                          bulkRequest.auditMetadata
-                        )!
-                      )
-                    : {})
-              } satisfies {
-                keyIds: string[];
-                reason?: string;
-                actor?: string;
-                actorSource?: "payload" | "trusted_header" | "credential";
-              })
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_BULK_RESTORE, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              keyIds: bulkRequest.keyIds,
+              ...(bulkRequest.auditMetadata.reason
+                ? { reason: bulkRequest.auditMetadata.reason }
+                : {}),
+              ...(actorContext
+                ? toGatewayKeyAuditActorContextRecord(actorContext)
+                : bulkRequest.auditMetadata.actor
+                  ? toGatewayKeyAuditActorContextRecord(
+                      gatewayKeyAuditActorContextFromRegistryRequest(
+                        bulkRequest.auditMetadata
+                      )!
+                    )
+                  : {})
+            } satisfies {
+              keyIds: string[];
+              reason?: string;
+              actor?: string;
+              actorSource?: "payload" | "trusted_header" | "credential";
             })
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
+          }),
+          requestId,
+          {
+            parse: (value) => {
+              return parseGatewayKeyRegistryDynamicKeyListResponse(value);
+            },
+            handleStatus: (response) => {
+              if (response.status === 404) {
+                throw createGatewayKeyNotFoundError(requestId);
+              }
 
-        if (response.status === 404) {
-          throw createGatewayKeyNotFoundError(requestId);
-        }
+              if (response.status === 409) {
+                throw createGatewayKeyNotArchivedError(requestId);
+              }
 
-        if (response.status === 409) {
-          throw createGatewayKeyNotArchivedError(requestId);
-        }
-
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
-
-        try {
-          return parseGatewayKeyRegistryDynamicKeyListResponse(await response.json());
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+              return undefined;
+            }
+          }
+        );
       }
     }
   );
@@ -2376,63 +2204,56 @@ export async function bulkFinalizeGatewayRegistryApiKeyRotations(
       },
       bulkFinalizeRegistryKeyRotations: async (bulkRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
-
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(
-              requestId,
-              REGISTRY_KIND_DYNAMIC_BULK_ROTATE_FINALIZE,
-              {
-                method: "POST",
-                headers: {
-                  "content-type": "application/json"
-                },
-                body: JSON.stringify({
-                  keyIds: bulkRequest.keyIds,
-                  ...(bulkRequest.auditMetadata.reason
-                    ? { reason: bulkRequest.auditMetadata.reason }
-                    : {}),
-                  ...(actorContext
-                    ? toGatewayKeyAuditActorContextRecord(actorContext)
-                    : bulkRequest.auditMetadata.actor
-                      ? toGatewayKeyAuditActorContextRecord(
-                          gatewayKeyAuditActorContextFromRegistryRequest(
-                            bulkRequest.auditMetadata
-                          )!
-                        )
-                      : {})
-                } satisfies {
-                  keyIds: string[];
-                  reason?: string;
-                  actor?: string;
-                  actorSource?: "payload" | "trusted_header" | "credential";
-                })
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(
+            requestId,
+            REGISTRY_KIND_DYNAMIC_BULK_ROTATE_FINALIZE,
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json"
+              },
+              body: JSON.stringify({
+                keyIds: bulkRequest.keyIds,
+                ...(bulkRequest.auditMetadata.reason
+                  ? { reason: bulkRequest.auditMetadata.reason }
+                  : {}),
+                ...(actorContext
+                  ? toGatewayKeyAuditActorContextRecord(actorContext)
+                  : bulkRequest.auditMetadata.actor
+                    ? toGatewayKeyAuditActorContextRecord(
+                        gatewayKeyAuditActorContextFromRegistryRequest(
+                          bulkRequest.auditMetadata
+                        )!
+                      )
+                    : {})
+              } satisfies {
+                keyIds: string[];
+                reason?: string;
+                actor?: string;
+                actorSource?: "payload" | "trusted_header" | "credential";
+              })
+            }
+          ),
+          requestId,
+          {
+            parse: (value) => {
+              return parseGatewayKeyRegistryDynamicKeyListResponse(value);
+            },
+            handleStatus: (response) => {
+              if (response.status === 404) {
+                throw createGatewayKeyNotFoundError(requestId);
               }
-            )
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
 
-        if (response.status === 404) {
-          throw createGatewayKeyNotFoundError(requestId);
-        }
+              if (response.status === 409) {
+                throw createGatewayKeyRotationNotStagedError(requestId);
+              }
 
-        if (response.status === 409) {
-          throw createGatewayKeyRotationNotStagedError(requestId);
-        }
-
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
-
-        try {
-          return parseGatewayKeyRegistryDynamicKeyListResponse(await response.json());
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+              return undefined;
+            }
+          }
+        );
       }
     }
   );
@@ -2464,69 +2285,62 @@ export async function bulkCancelGatewayRegistryApiKeyRotations(
       },
       bulkCancelRegistryKeyRotations: async (bulkRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
-
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(
-              requestId,
-              REGISTRY_KIND_DYNAMIC_BULK_ROTATE_CANCEL,
-              {
-                method: "POST",
-                headers: {
-                  "content-type": "application/json"
-                },
-                body: JSON.stringify({
-                  keyIds: bulkRequest.keyIds,
-                  ...(bulkRequest.auditMetadata.reason
-                    ? { reason: bulkRequest.auditMetadata.reason }
-                    : {}),
-                  ...(actorContext
-                    ? toGatewayKeyAuditActorContextRecord(actorContext)
-                    : bulkRequest.auditMetadata.actor
-                      ? toGatewayKeyAuditActorContextRecord(
-                          gatewayKeyAuditActorContextFromRegistryRequest(
-                            bulkRequest.auditMetadata
-                          )!
-                        )
-                      : {})
-                } satisfies {
-                  keyIds: string[];
-                  reason?: string;
-                  actor?: string;
-                  actorSource?: "payload" | "trusted_header" | "credential";
-                })
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(
+            requestId,
+            REGISTRY_KIND_DYNAMIC_BULK_ROTATE_CANCEL,
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json"
+              },
+              body: JSON.stringify({
+                keyIds: bulkRequest.keyIds,
+                ...(bulkRequest.auditMetadata.reason
+                  ? { reason: bulkRequest.auditMetadata.reason }
+                  : {}),
+                ...(actorContext
+                  ? toGatewayKeyAuditActorContextRecord(actorContext)
+                  : bulkRequest.auditMetadata.actor
+                    ? toGatewayKeyAuditActorContextRecord(
+                        gatewayKeyAuditActorContextFromRegistryRequest(
+                          bulkRequest.auditMetadata
+                        )!
+                      )
+                    : {})
+              } satisfies {
+                keyIds: string[];
+                reason?: string;
+                actor?: string;
+                actorSource?: "payload" | "trusted_header" | "credential";
+              })
+            }
+          ),
+          requestId,
+          {
+            parse: (value) => {
+              return parseGatewayKeyRegistryDynamicKeyListResponse(value);
+            },
+            handleStatus: async (response) => {
+              if (response.status === 404) {
+                throw createGatewayKeyNotFoundError(requestId);
               }
-            )
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
 
-        if (response.status === 404) {
-          throw createGatewayKeyNotFoundError(requestId);
-        }
+              if (response.status === 409) {
+                const body = await response.text();
 
-        if (response.status === 409) {
-          const body = await response.text();
+                if (body === "Rotation not cancelable") {
+                  throw createGatewayKeyRotationNotCancelableError(requestId);
+                }
 
-          if (body === "Rotation not cancelable") {
-            throw createGatewayKeyRotationNotCancelableError(requestId);
+                throw createGatewayKeyRotationNotStagedError(requestId);
+              }
+
+              return undefined;
+            }
           }
-
-          throw createGatewayKeyRotationNotStagedError(requestId);
-        }
-
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
-
-        try {
-          return parseGatewayKeyRegistryDynamicKeyListResponse(await response.json());
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+        );
       }
     }
   );
@@ -2542,38 +2356,31 @@ export async function getGatewayRegistryOperationEvents(
   }
 
   const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
   const url = new URL("https://airlock.internal/gateway-key-registry");
   url.searchParams.set("kind", REGISTRY_KIND_OPERATION_EVENTS);
   url.searchParams.set("operationId", operationId);
-  let response: Response;
-
-  try {
-    response = await stub.fetch(
-      new Request(url, {
-        method: "GET",
-        headers: {
-          "x-airlock-request-id": requestId
+  return fetchParsedRegistryResponse(
+    () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+    new Request(url, {
+      method: "GET",
+      headers: {
+        "x-airlock-request-id": requestId
+      }
+    }),
+    requestId,
+    {
+      parse: (value) => {
+        return parseGatewayKeyOperationEventsResponse(value).events;
+      },
+      handleStatus: (response) => {
+        if (response.status === 404) {
+          throw createGatewayKeyNotFoundError(requestId);
         }
-      })
-    );
-  } catch (cause) {
-    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-  }
 
-  if (response.status === 404) {
-    throw createGatewayKeyNotFoundError(requestId);
-  }
-
-  if (!response.ok) {
-    throw createGatewayKeyRegistryUnavailableError(requestId);
-  }
-
-  try {
-    return parseGatewayKeyOperationEventsResponse(await response.json()).events;
-  } catch (cause) {
-    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-  }
+        return undefined;
+      }
+    }
+  );
 }
 
 export async function listGatewayRegistryApiKeys(
@@ -2585,28 +2392,18 @@ export async function listGatewayRegistryApiKeys(
   }
 
   const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-  let response: Response;
-
-  try {
-    response = await stub.fetch(
-      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_LIST, {
-        method: "GET"
-      })
-    );
-  } catch (cause) {
-    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-  }
-
-  if (!response.ok) {
-    throw createGatewayKeyRegistryUnavailableError(requestId);
-  }
-
-  try {
-    return parseGatewayKeyRegistryDynamicKeyListResponse(await response.json()).keys;
-  } catch (cause) {
-    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-  }
+  return fetchParsedRegistryResponse(
+    () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+    buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_LIST, {
+      method: "GET"
+    }),
+    requestId,
+    {
+      parse: (value) => {
+        return parseGatewayKeyRegistryDynamicKeyListResponse(value).keys;
+      }
+    }
+  );
 }
 
 export async function getGatewayRegistryApiKeyEvents(
@@ -2619,29 +2416,19 @@ export async function getGatewayRegistryApiKeyEvents(
   }
 
   const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-  let response: Response;
-
-  try {
-    response = await stub.fetch(
-      buildRegistryRequest(requestId, REGISTRY_KIND_EVENTS, {
-        method: "GET",
-        keyId
-      })
-    );
-  } catch (cause) {
-    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-  }
-
-  if (!response.ok) {
-    throw createGatewayKeyRegistryUnavailableError(requestId);
-  }
-
-  try {
-    return parseGatewayKeyAuditEventsResponse(await response.json()).events;
-  } catch (cause) {
-    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-  }
+  return fetchParsedRegistryResponse(
+    () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+    buildRegistryRequest(requestId, REGISTRY_KIND_EVENTS, {
+      method: "GET",
+      keyId
+    }),
+    requestId,
+    {
+      parse: (value) => {
+        return parseGatewayKeyAuditEventsResponse(value).events;
+      }
+    }
+  );
 }
 
 export async function findGatewayRegistryApiKeyByToken(
@@ -2654,35 +2441,25 @@ export async function findGatewayRegistryApiKeyByToken(
   }
 
   const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-  let response: Response;
-
-  try {
-    response = await stub.fetch(
-      buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_LOOKUP, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          bearerToken
-        } satisfies GatewayKeyRegistryLookupRequest)
-      })
-    );
-  } catch (cause) {
-    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-  }
-
-  if (!response.ok) {
-    throw createGatewayKeyRegistryUnavailableError(requestId);
-  }
-
-  try {
-    const key = parseGatewayKeyRegistryDynamicKeyResponse(await response.json());
-    return key?.key;
-  } catch (cause) {
-    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-  }
+  return fetchParsedRegistryResponse(
+    () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+    buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_LOOKUP, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        bearerToken
+      } satisfies GatewayKeyRegistryLookupRequest)
+    }),
+    requestId,
+    {
+      parse: (value) => {
+        const key = parseGatewayKeyRegistryDynamicKeyResponse(value);
+        return key?.key;
+      }
+    }
+  );
 }
 
 export async function rotateGatewayRegistryApiKey(
@@ -2740,58 +2517,51 @@ export async function rotateGatewayRegistryApiKey(
       },
       rotateRegistryKey: async (candidateKeyId, rotateRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_ROTATE, {
+            method: "POST",
+            keyId: candidateKeyId,
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              valueHash: rotateRequest.valueHash,
+              ...(rotateRequest.overlapSeconds !== undefined
+                ? { overlapSeconds: rotateRequest.overlapSeconds }
+                : {}),
+              ...(rotateRequest.reason ? { reason: rotateRequest.reason } : {}),
+              ...(actorContext
+                ? toGatewayKeyAuditActorContextRecord(actorContext)
+                : rotateRequest.actor
+                  ? toGatewayKeyAuditActorContextRecord(
+                      gatewayKeyAuditActorContextFromRegistryRequest(
+                        rotateRequest
+                      )!
+                    )
+                  : {})
+            } satisfies GatewayKeyRegistryRotateRequest)
+          }),
+          requestId,
+          {
+            parse: (value) => {
+              const key = parseGatewayKeyRegistryDynamicKeyResponse(value);
 
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_ROTATE, {
-              method: "POST",
-              keyId: candidateKeyId,
-              headers: {
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                valueHash: rotateRequest.valueHash,
-                ...(rotateRequest.overlapSeconds !== undefined
-                  ? { overlapSeconds: rotateRequest.overlapSeconds }
-                  : {}),
-                ...(rotateRequest.reason ? { reason: rotateRequest.reason } : {}),
-                ...(actorContext
-                  ? toGatewayKeyAuditActorContextRecord(actorContext)
-                  : rotateRequest.actor
-                    ? toGatewayKeyAuditActorContextRecord(
-                        gatewayKeyAuditActorContextFromRegistryRequest(
-                          rotateRequest
-                        )!
-                      )
-                    : {})
-              } satisfies GatewayKeyRegistryRotateRequest)
-            })
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
+              if (!key) {
+                throw new Error("Rotated dynamic key response was empty");
+              }
 
-        if (response.status === 404) {
-          throw createGatewayKeyNotFoundError(requestId);
-        }
+              return key;
+            },
+            handleStatus: (response) => {
+              if (response.status === 404) {
+                throw createGatewayKeyNotFoundError(requestId);
+              }
 
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
-
-        try {
-          const key = parseGatewayKeyRegistryDynamicKeyResponse(await response.json());
-
-          if (!key) {
-            throw new Error("Rotated dynamic key response was empty");
+              return undefined;
+            }
           }
-
-          return key;
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+        );
       }
     }
   );
@@ -2821,56 +2591,49 @@ export async function finalizeGatewayRegistryApiKeyRotation(
       },
       finalizeRegistryKeyRotation: async (candidateKeyId, actionRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(
+            requestId,
+            REGISTRY_KIND_DYNAMIC_ROTATE_FINALIZE,
+            {
+              method: "POST",
+              keyId: candidateKeyId,
+              headers: {
+                "content-type": "application/json"
+              },
+              body: JSON.stringify({
+                ...actionRequest,
+                ...(actorContext
+                  ? toGatewayKeyAuditActorContextRecord(actorContext)
+                  : {})
+              } satisfies GatewayKeyRegistryRotationActionRequest)
+            }
+          ),
+          requestId,
+          {
+            parse: (value) => {
+              const key = parseGatewayKeyRegistryDynamicKeyResponse(value);
 
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(
-              requestId,
-              REGISTRY_KIND_DYNAMIC_ROTATE_FINALIZE,
-              {
-                method: "POST",
-                keyId: candidateKeyId,
-                headers: {
-                  "content-type": "application/json"
-                },
-                body: JSON.stringify({
-                  ...actionRequest,
-                  ...(actorContext
-                    ? toGatewayKeyAuditActorContextRecord(actorContext)
-                    : {})
-                } satisfies GatewayKeyRegistryRotationActionRequest)
+              if (!key) {
+                throw new Error("Finalized dynamic key response was empty");
               }
-            )
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
 
-        if (response.status === 404) {
-          throw createGatewayKeyNotFoundError(requestId);
-        }
+              return key;
+            },
+            handleStatus: (response) => {
+              if (response.status === 404) {
+                throw createGatewayKeyNotFoundError(requestId);
+              }
 
-        if (response.status === 409) {
-          throw createGatewayKeyRotationNotStagedError(requestId);
-        }
+              if (response.status === 409) {
+                throw createGatewayKeyRotationNotStagedError(requestId);
+              }
 
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
-
-        try {
-          const key = parseGatewayKeyRegistryDynamicKeyResponse(await response.json());
-
-          if (!key) {
-            throw new Error("Finalized dynamic key response was empty");
+              return undefined;
+            }
           }
-
-          return key;
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+        );
       }
     }
   );
@@ -2900,62 +2663,55 @@ export async function cancelGatewayRegistryApiKeyRotation(
       },
       cancelRegistryKeyRotation: async (candidateKeyId, actionRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(
+            requestId,
+            REGISTRY_KIND_DYNAMIC_ROTATE_CANCEL,
+            {
+              method: "POST",
+              keyId: candidateKeyId,
+              headers: {
+                "content-type": "application/json"
+              },
+              body: JSON.stringify({
+                ...actionRequest,
+                ...(actorContext
+                  ? toGatewayKeyAuditActorContextRecord(actorContext)
+                  : {})
+              } satisfies GatewayKeyRegistryRotationActionRequest)
+            }
+          ),
+          requestId,
+          {
+            parse: (value) => {
+              const key = parseGatewayKeyRegistryDynamicKeyResponse(value);
 
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(
-              requestId,
-              REGISTRY_KIND_DYNAMIC_ROTATE_CANCEL,
-              {
-                method: "POST",
-                keyId: candidateKeyId,
-                headers: {
-                  "content-type": "application/json"
-                },
-                body: JSON.stringify({
-                  ...actionRequest,
-                  ...(actorContext
-                    ? toGatewayKeyAuditActorContextRecord(actorContext)
-                    : {})
-                } satisfies GatewayKeyRegistryRotationActionRequest)
+              if (!key) {
+                throw new Error("Canceled dynamic key response was empty");
               }
-            )
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
 
-        if (response.status === 404) {
-          throw createGatewayKeyNotFoundError(requestId);
-        }
+              return key;
+            },
+            handleStatus: async (response) => {
+              if (response.status === 404) {
+                throw createGatewayKeyNotFoundError(requestId);
+              }
 
-        if (response.status === 409) {
-          const body = await response.text();
+              if (response.status === 409) {
+                const body = await response.text();
 
-          if (body === "Rotation not cancelable") {
-            throw createGatewayKeyRotationNotCancelableError(requestId);
+                if (body === "Rotation not cancelable") {
+                  throw createGatewayKeyRotationNotCancelableError(requestId);
+                }
+
+                throw createGatewayKeyRotationNotStagedError(requestId);
+              }
+
+              return undefined;
+            }
           }
-
-          throw createGatewayKeyRotationNotStagedError(requestId);
-        }
-
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
-
-        try {
-          const key = parseGatewayKeyRegistryDynamicKeyResponse(await response.json());
-
-          if (!key) {
-            throw new Error("Canceled dynamic key response was empty");
-          }
-
-          return key;
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+        );
       }
     }
   );
@@ -2985,52 +2741,45 @@ export async function archiveGatewayRegistryApiKey(
       },
       archiveRegistryKey: async (candidateKeyId, actionRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
-
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_ARCHIVE, {
-              method: "POST",
-              keyId: candidateKeyId,
-              headers: {
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                ...actionRequest,
-                ...(actorContext
-                  ? toGatewayKeyAuditActorContextRecord(actorContext)
-                  : {})
-              })
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_ARCHIVE, {
+            method: "POST",
+            keyId: candidateKeyId,
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              ...actionRequest,
+              ...(actorContext
+                ? toGatewayKeyAuditActorContextRecord(actorContext)
+                : {})
             })
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
+          }),
+          requestId,
+          {
+            parse: (value) => {
+              const key = parseGatewayKeyRegistryDynamicKeyResponse(value);
 
-        if (response.status === 404) {
-          throw createGatewayKeyNotFoundError(requestId);
-        }
+              if (!key) {
+                throw new Error("Archived dynamic key response was empty");
+              }
 
-        if (response.status === 409) {
-          throw createGatewayKeyAlreadyArchivedError(requestId);
-        }
+              return key;
+            },
+            handleStatus: (response) => {
+              if (response.status === 404) {
+                throw createGatewayKeyNotFoundError(requestId);
+              }
 
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
+              if (response.status === 409) {
+                throw createGatewayKeyAlreadyArchivedError(requestId);
+              }
 
-        try {
-          const key = parseGatewayKeyRegistryDynamicKeyResponse(await response.json());
-
-          if (!key) {
-            throw new Error("Archived dynamic key response was empty");
+              return undefined;
+            }
           }
-
-          return key;
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+        );
       }
     }
   );
@@ -3060,52 +2809,45 @@ export async function restoreGatewayRegistryApiKey(
       },
       restoreRegistryKey: async (candidateKeyId, actionRequest) => {
         const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
-        const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-        let response: Response;
-
-        try {
-          response = await stub.fetch(
-            buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_RESTORE, {
-              method: "POST",
-              keyId: candidateKeyId,
-              headers: {
-                "content-type": "application/json"
-              },
-              body: JSON.stringify({
-                ...actionRequest,
-                ...(actorContext
-                  ? toGatewayKeyAuditActorContextRecord(actorContext)
-                  : {})
-              })
+        return fetchParsedRegistryResponse(
+          () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+          buildRegistryRequest(requestId, REGISTRY_KIND_DYNAMIC_RESTORE, {
+            method: "POST",
+            keyId: candidateKeyId,
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              ...actionRequest,
+              ...(actorContext
+                ? toGatewayKeyAuditActorContextRecord(actorContext)
+                : {})
             })
-          );
-        } catch (cause) {
-          throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-        }
+          }),
+          requestId,
+          {
+            parse: (value) => {
+              const key = parseGatewayKeyRegistryDynamicKeyResponse(value);
 
-        if (response.status === 404) {
-          throw createGatewayKeyNotFoundError(requestId);
-        }
+              if (!key) {
+                throw new Error("Restored dynamic key response was empty");
+              }
 
-        if (response.status === 409) {
-          throw createGatewayKeyNotArchivedError(requestId);
-        }
+              return key;
+            },
+            handleStatus: (response) => {
+              if (response.status === 404) {
+                throw createGatewayKeyNotFoundError(requestId);
+              }
 
-        if (!response.ok) {
-          throw createGatewayKeyRegistryUnavailableError(requestId);
-        }
+              if (response.status === 409) {
+                throw createGatewayKeyNotArchivedError(requestId);
+              }
 
-        try {
-          const key = parseGatewayKeyRegistryDynamicKeyResponse(await response.json());
-
-          if (!key) {
-            throw new Error("Restored dynamic key response was empty");
+              return undefined;
+            }
           }
-
-          return key;
-        } catch (cause) {
-          throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-        }
+        );
       }
     }
   );
