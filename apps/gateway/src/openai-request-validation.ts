@@ -334,7 +334,28 @@ export function assertOpenAIForcedToolChoiceMatchesDeclaredTools(
     return;
   }
 
+  const hasForcedNamedToolChoice =
+    typeof payload.tool_choice === "object" &&
+    payload.tool_choice !== null &&
+    (("function" in payload.tool_choice &&
+      isRecord(payload.tool_choice.function) &&
+      getRecordString(payload.tool_choice.function, "name") !== undefined) ||
+      getRecordString(payload.tool_choice, "name") !== undefined);
+
   if (!("tools" in payload) || payload.tools === undefined) {
+    if (hasForcedNamedToolChoice) {
+      throw new GatewayError(
+        `Unsupported ${routeLabel} tools semantics: tool_choice requires declared tools`,
+        {
+          code: "request_unsupported_openai_semantics",
+          category: "request",
+          httpStatus: 400,
+          retryable: false,
+          requestId
+        }
+      );
+    }
+
     return;
   }
 

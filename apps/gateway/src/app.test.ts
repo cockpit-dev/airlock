@@ -3620,6 +3620,43 @@ describe("gateway app", () => {
     });
   });
 
+  it("rejects forced chat tool_choice when no tools are declared", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          tool_choice: {
+            type: "function",
+            function: {
+              name: "lookup_weather"
+            }
+          },
+          messages: [{ role: "user", content: "Weather in Shanghai?" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Unsupported OpenAI Chat tools semantics: tool_choice requires declared tools",
+        type: "request",
+        code: "request_unsupported_openai_semantics"
+      }
+    });
+  });
+
   it("routes chat function tools through openai and preserves OpenAI tool_calls", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -18512,6 +18549,41 @@ describe("gateway app", () => {
     });
   });
 
+  it("rejects forced responses tool_choice when no tools are declared", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "Weather in Shanghai?",
+          stream: false,
+          tool_choice: {
+            type: "function",
+            name: "lookup_weather"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Unsupported OpenAI Responses tools semantics: tool_choice requires declared tools",
+        type: "request",
+        code: "request_unsupported_openai_semantics"
+      }
+    });
+  });
+
   it("replays responses function_call and function_call_output items through anthropic", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -21696,6 +21768,48 @@ describe("gateway app", () => {
         type: "request",
         message:
           "Unsupported Anthropic tools semantics: tool_choice must reference a declared tool"
+      }
+    });
+  });
+
+  it("rejects forced anthropic tool_choice when no tools are declared", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          tool_choice: {
+            type: "tool",
+            name: "lookup_weather"
+          },
+          messages: [
+            {
+              role: "user",
+              content: "Weather in Shanghai?"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    const body = await readJson(response);
+
+    expect(body).toMatchObject({
+      type: "error",
+      error: {
+        type: "request",
+        message:
+          "Unsupported Anthropic tools semantics: tool_choice requires declared tools"
       }
     });
   });
