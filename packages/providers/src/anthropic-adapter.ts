@@ -18,6 +18,12 @@ import { GatewayError } from "@airlock/shared";
 
 import type { ProviderAdapter, ProviderRequestContext } from "./types.js";
 
+function normalizeAnthropicFinishReason(
+  stopReason: string | undefined
+): "stop" | "max_tokens" {
+  return stopReason === "max_tokens" ? "max_tokens" : "stop";
+}
+
 export interface AnthropicProviderAdapterOptions {
   apiKey: string;
   baseUrl: string;
@@ -190,6 +196,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     const payload = (await response.json()) as {
       id: string;
       model: string;
+      stop_reason?: string | null;
       content: Array<{
         type: "text";
         text: string;
@@ -207,7 +214,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
         .filter((block) => block.type === "text")
         .map((block) => block.text)
         .join("\n"),
-      finishReason: "stop",
+      finishReason: normalizeAnthropicFinishReason(payload.stop_reason ?? undefined),
       ...(payload.usage
         ? {
             usage: {
@@ -498,7 +505,13 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
               type: "response_completed",
               responseId: activeResponseId,
               model: activeModel,
-              finishReason: "stop",
+              finishReason: normalizeAnthropicFinishReason(
+                (
+                  payload.delta as
+                    | { stop_reason?: string | null }
+                    | undefined
+                )?.stop_reason ?? undefined
+              ),
               ...(usage ? { usage } : {})
             };
           }

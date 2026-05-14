@@ -154,6 +154,7 @@ export class GeminiProviderAdapter implements ProviderAdapter {
       responseId?: string;
       modelVersion?: string;
       candidates?: Array<{
+        finishReason?: string;
         content?: {
           parts?: Array<{
             text?: string;
@@ -172,12 +173,14 @@ export class GeminiProviderAdapter implements ProviderAdapter {
         ?.map((part) => part.text ?? "")
         .join("")
         .trim() ?? "";
+    const finishReason =
+      normalizeGeminiFinishReason(payload.candidates?.[0]?.finishReason) ?? "stop";
 
     return {
       id: payload.responseId ?? `gemini_${context.requestId}`,
       model: payload.modelVersion ?? request.model,
       outputText,
-      finishReason: "stop",
+      finishReason,
       ...(payload.usageMetadata
         ? {
             usage: {
@@ -513,10 +516,20 @@ function buildGeminiRequestBody(request: CanonicalRequest) {
 
 function normalizeGeminiFinishReason(
   finishReason: string | undefined
-): "stop" | undefined {
+): "stop" | "max_tokens" | undefined {
   if (!finishReason) {
     return undefined;
   }
 
-  return finishReason.toUpperCase() === "STOP" ? "stop" : undefined;
+  const normalized = finishReason.toUpperCase();
+
+  if (normalized === "STOP") {
+    return "stop";
+  }
+
+  if (normalized === "MAX_TOKENS") {
+    return "max_tokens";
+  }
+
+  return undefined;
 }

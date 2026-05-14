@@ -18,6 +18,12 @@ import { GatewayError } from "@airlock/shared";
 
 import type { ProviderAdapter, ProviderRequestContext } from "./types.js";
 
+function normalizeOpenAIFinishReason(
+  finishReason: "stop" | "length" | null | undefined
+): "stop" | "max_tokens" {
+  return finishReason === "length" ? "max_tokens" : "stop";
+}
+
 export interface OpenAIProviderAdapterOptions {
   apiKey: string;
   baseUrl: string;
@@ -180,7 +186,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       id: string;
       model: string;
       choices: Array<{
-        finish_reason: "stop";
+        finish_reason: "stop" | "length";
         message: {
           content: string;
         };
@@ -196,7 +202,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       id: payload.id,
       model: payload.model,
       outputText: payload.choices[0]?.message.content ?? "",
-      finishReason: payload.choices[0]?.finish_reason ?? "stop",
+      finishReason: normalizeOpenAIFinishReason(
+        payload.choices[0]?.finish_reason
+      ),
       ...(payload.usage
         ? {
             usage: {
@@ -418,7 +426,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   role?: "assistant";
                   content?: string;
                 };
-                finish_reason?: "stop" | null;
+                finish_reason?: "stop" | "length" | null;
               }>;
               usage?: {
                 prompt_tokens?: number;
@@ -448,12 +456,12 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               };
             }
 
-            if (choice?.finish_reason === "stop") {
+            if (choice?.finish_reason === "stop" || choice?.finish_reason === "length") {
               yield {
                 type: "response_completed",
                 responseId,
                 model,
-                finishReason: "stop",
+                finishReason: normalizeOpenAIFinishReason(choice.finish_reason),
                 ...(payload.usage
                   ? {
                       usage: {

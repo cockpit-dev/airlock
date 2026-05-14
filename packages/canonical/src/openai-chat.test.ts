@@ -174,6 +174,17 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
       total_tokens: 20
     });
   });
+
+  it("encodes a max_tokens canonical response into an OpenAI length finish reason", () => {
+    const encoded = encodeCanonicalToOpenAIChatResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      outputText: "hello there",
+      finishReason: "max_tokens"
+    });
+
+    expect(encoded.choices[0]?.finish_reason).toBe("length");
+  });
 });
 
 describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
@@ -277,6 +288,36 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
         completion_tokens: 8,
         total_tokens: 20
       }
+    });
+  });
+
+  it("encodes a max_tokens completion event into an OpenAI length finish chunk", async () => {
+    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIChatStreamChunk(
+        {
+          type: "response_completed",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          finishReason: "max_tokens"
+        },
+        "chatcmpl-stream-123"
+      )
+    ).toEqual({
+      id: "chatcmpl-stream-123",
+      object: "chat.completion.chunk",
+      created: 0,
+      model: "gpt-4.1-mini",
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: "length"
+        }
+      ]
     });
   });
 });
@@ -519,6 +560,20 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
       total_tokens: 20
     });
   });
+
+  it("encodes a max_tokens canonical response into an incomplete OpenAI responses payload", () => {
+    const encoded = encodeCanonicalToOpenAIResponsesResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      outputText: "hello there",
+      finishReason: "max_tokens"
+    });
+
+    expect(encoded.status).toBe("incomplete");
+    expect(encoded.incomplete_details).toEqual({
+      reason: "max_output_tokens"
+    });
+  });
 });
 
 describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
@@ -730,6 +785,44 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
       nextSequenceNumber: 9
     });
   });
+
+  it("encodes a max_tokens completion event into an incomplete terminal responses event sequence", async () => {
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
+      "./openai-chat.js"
+    );
+    const encoded = encodeCanonicalToOpenAIResponsesStreamEvent(
+      {
+        type: "response_completed",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        finishReason: "max_tokens"
+      },
+      {
+        sequenceNumber: 0,
+        outputIndex: 0,
+        contentIndex: 0,
+        outputText: "hello there"
+      }
+    );
+    const completedEvent = encoded.events.find((event) => {
+      return (
+        typeof event === "object" &&
+        event !== null &&
+        "type" in event &&
+        event.type === "response.completed"
+      );
+    });
+
+    expect(completedEvent).toMatchObject({
+      type: "response.completed",
+      response: {
+        status: "incomplete",
+        incomplete_details: {
+          reason: "max_output_tokens"
+        }
+      }
+    });
+  });
 });
 
 describe("normalizeAnthropicMessagesRequest", () => {
@@ -829,6 +922,17 @@ describe("encodeCanonicalToAnthropicMessagesResponse", () => {
       output_tokens: 8
     });
   });
+
+  it("encodes a max_tokens canonical response into an Anthropic max_tokens stop reason", () => {
+    const encoded = encodeCanonicalToAnthropicMessagesResponse({
+      id: "msg_123",
+      model: "claude-sonnet-4-5",
+      outputText: "hello there",
+      finishReason: "max_tokens"
+    });
+
+    expect(encoded.stop_reason).toBe("max_tokens");
+  });
 });
 
 describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
@@ -919,6 +1023,36 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
         usage: {
           input_tokens: 12,
           output_tokens: 8
+        }
+      },
+      {
+        type: "message_stop"
+      }
+    ]);
+  });
+
+  it("encodes a max_tokens completion event into an Anthropic max_tokens message_delta", async () => {
+    const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToAnthropicMessagesStreamEvents({
+        type: "response_completed",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        finishReason: "max_tokens"
+      })
+    ).toEqual([
+      {
+        type: "content_block_stop",
+        index: 0
+      },
+      {
+        type: "message_delta",
+        delta: {
+          stop_reason: "max_tokens",
+          stop_sequence: null
         }
       },
       {

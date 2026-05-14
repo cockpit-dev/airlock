@@ -110,6 +110,45 @@ describe("AnthropicProviderAdapter", () => {
     });
   });
 
+  it("maps Anthropic max_tokens stops into canonical max_tokens", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "max_tokens",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new AnthropicProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultMaxTokens: 256,
+      fetcher
+    });
+
+    const response = await adapter.complete(createCanonicalRequest(), {
+      requestId: "req_123"
+    });
+
+    expect(response.finishReason).toBe("max_tokens");
+  });
+
   it("applies auth through the shared auth strategy layer", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

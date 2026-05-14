@@ -109,6 +109,48 @@ describe("GeminiProviderAdapter", () => {
     });
   });
 
+  it("maps Gemini MAX_TOKENS finishes into canonical max_tokens", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              finishReason: "MAX_TOKENS",
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "hello there"
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+
+    const response = await adapter.complete(createCanonicalRequest(), {
+      requestId: "req_123"
+    });
+
+    expect(response.finishReason).toBe("max_tokens");
+  });
+
   it("applies auth through the shared auth strategy layer", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

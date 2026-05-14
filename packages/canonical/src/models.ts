@@ -30,7 +30,7 @@ export interface CanonicalResponse {
   id: string;
   model: string;
   outputText: string;
-  finishReason: "stop";
+  finishReason: "stop" | "max_tokens";
   usage?: CanonicalUsage;
 }
 
@@ -50,6 +50,6 @@ export type CanonicalStreamEvent =
       type: "response_completed";
       responseId: string;
       model: string;
-      finishReason: "stop";
+      finishReason: "stop" | "max_tokens";
       usage?: CanonicalUsage;
     };

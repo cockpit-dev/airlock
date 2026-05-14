@@ -54,6 +54,36 @@ interface OpenAIResponsesEncodedEventBatch {
   nextSequenceNumber: number;
 }
 
+function encodeCanonicalOpenAIFinishReason(
+  finishReason: CanonicalResponse["finishReason"]
+) {
+  return finishReason === "max_tokens" ? "length" : "stop";
+}
+
+function encodeCanonicalResponsesStatus(
+  finishReason: CanonicalResponse["finishReason"]
+) {
+  return finishReason === "max_tokens" ? "incomplete" : "completed";
+}
+
+function encodeCanonicalResponsesIncompleteDetails(
+  finishReason: CanonicalResponse["finishReason"]
+) {
+  if (finishReason !== "max_tokens") {
+    return undefined;
+  }
+
+  return {
+    reason: "max_output_tokens" as const
+  };
+}
+
+function encodeCanonicalAnthropicStopReason(
+  finishReason: CanonicalResponse["finishReason"]
+) {
+  return finishReason === "max_tokens" ? "max_tokens" : "end_turn";
+}
+
 function encodeCanonicalUsage(
   usage: CanonicalUsageValue
 ) {
@@ -340,7 +370,7 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
       {
         index: 0,
         delta: {},
-        finish_reason: event.finishReason
+        finish_reason: encodeCanonicalOpenAIFinishReason(event.finishReason)
       }
     ]
   };
@@ -358,7 +388,7 @@ export function encodeCanonicalToOpenAIChatResponse(
     choices: [
       {
         index: 0,
-        finish_reason: response.finishReason,
+        finish_reason: encodeCanonicalOpenAIFinishReason(response.finishReason),
         message: {
           role: "assistant",
           content: response.outputText
@@ -376,7 +406,14 @@ export function encodeCanonicalToOpenAIResponsesResponse(
     object: "response",
     created_at: 0,
     model: response.model,
-    status: "completed",
+    status: encodeCanonicalResponsesStatus(response.finishReason),
+    ...(encodeCanonicalResponsesIncompleteDetails(response.finishReason)
+      ? {
+          incomplete_details: encodeCanonicalResponsesIncompleteDetails(
+            response.finishReason
+          )
+        }
+      : {}),
     parallel_tool_calls: true,
     tools: [],
     output: [
@@ -461,12 +498,21 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
   }
 
   const outputText = state.outputText ?? "";
+  const responseStatus = encodeCanonicalResponsesStatus(event.finishReason);
   const completedResponse = {
     ...createOpenAIResponsesBaseResponse(
       event.responseId,
       event.model,
-      "completed"
+      responseStatus === "incomplete" ? "completed" : responseStatus
     ),
+    status: responseStatus,
+    ...(encodeCanonicalResponsesIncompleteDetails(event.finishReason)
+      ? {
+          incomplete_details: encodeCanonicalResponsesIncompleteDetails(
+            event.finishReason
+          )
+        }
+      : {}),
     output: [
       createOpenAIResponsesOutputMessage(
         event.responseId,
@@ -529,7 +575,7 @@ export function encodeCanonicalToAnthropicMessagesResponse(
     type: "message",
     role: "assistant",
     model: response.model,
-    stop_reason: "end_turn",
+    stop_reason: encodeCanonicalAnthropicStopReason(response.finishReason),
     stop_sequence: null,
     ...(response.usage
       ? { usage: encodeCanonicalAnthropicUsage(response.usage) }
@@ -589,7 +635,7 @@ export function encodeCanonicalToAnthropicMessagesStreamEvents(
     {
       type: "message_delta" as const,
       delta: {
-        stop_reason: "end_turn" as const,
+        stop_reason: encodeCanonicalAnthropicStopReason(event.finishReason),
         stop_sequence: null
       },
       ...(event.usage

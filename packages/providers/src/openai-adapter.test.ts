@@ -104,6 +104,47 @@ describe("OpenAIProviderAdapter", () => {
     });
   });
 
+  it("maps OpenAI length finishes into canonical max_tokens", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "length",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const response = await adapter.complete(createCanonicalRequest(), {
+      requestId: "req_123"
+    });
+
+    expect(response.finishReason).toBe("max_tokens");
+  });
+
   it("applies auth through the shared auth strategy layer", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
