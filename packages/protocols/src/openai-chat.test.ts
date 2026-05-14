@@ -111,6 +111,41 @@ describe("openAIChatCompletionRequestSchema", () => {
 
     expect(parsed.messages).toHaveLength(1);
   });
+
+  it("accepts chat completion developer-role messages", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "developer",
+          content: "You are precise."
+        },
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.messages[0]?.role).toBe("developer");
+  });
+
+  it("accepts max_completion_tokens for chat completions requests", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      max_completion_tokens: 128,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.max_completion_tokens).toBe(128);
+  });
 });
 
 describe("openAIResponsesRequestSchema", () => {
@@ -163,6 +198,25 @@ describe("openAIResponsesRequestSchema", () => {
     expect(Array.isArray(parsed.input)).toBe(true);
   });
 
+  it("accepts responses input messages with developer role", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          role: "developer",
+          content: "You are precise."
+        },
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(Array.isArray(parsed.input)).toBe(true);
+  });
+
   it("accepts an optional airlock request shaping extension", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",
@@ -182,6 +236,17 @@ describe("openAIResponsesRequestSchema", () => {
         trace: "1"
       }
     });
+  });
+
+  it("accepts top-level responses instructions", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      instructions: "Be concise.",
+      stream: false
+    });
+
+    expect(parsed.instructions).toBe("Be concise.");
   });
 
   it("accepts a streaming responses request", () => {

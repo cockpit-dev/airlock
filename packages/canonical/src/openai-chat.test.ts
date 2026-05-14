@@ -64,6 +64,45 @@ describe("normalizeOpenAIChatRequest", () => {
       { role: "user", content: "hello\nthere" }
     ]);
   });
+
+  it("maps openai chat developer role to canonical system", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "developer",
+          content: "You are precise."
+        },
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      { role: "system", content: "You are precise." },
+      { role: "user", content: "hello" }
+    ]);
+  });
+
+  it("prefers max_completion_tokens when normalizing chat token limits", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      max_tokens: 64,
+      max_completion_tokens: 128,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.maxOutputTokens).toBe(128);
+  });
 });
 
 describe("encodeCanonicalToOpenAIChatResponse", () => {
@@ -231,6 +270,42 @@ describe("normalizeOpenAIResponsesRequest", () => {
 
     expect(canonical.messages).toEqual([
       { role: "user", content: "hello\nthere" }
+    ]);
+  });
+
+  it("maps responses developer role to canonical system", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          role: "developer",
+          content: "You are precise."
+        },
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      { role: "system", content: "You are precise." },
+      { role: "user", content: "hello" }
+    ]);
+  });
+
+  it("prepends responses instructions as a canonical system message", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      instructions: "Be concise.",
+      input: "hello"
+    });
+
+    expect(canonical.messages).toEqual([
+      { role: "system", content: "Be concise." },
+      { role: "user", content: "hello" }
     ]);
   });
 

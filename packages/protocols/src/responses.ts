@@ -8,7 +8,7 @@ const openAIResponsesTextContentBlockSchema = z.object({
 });
 
 const openAIResponsesInputMessageSchema = z.object({
-  role: z.enum(["user", "assistant", "system"]),
+  role: z.enum(["user", "assistant", "system", "developer"]),
   content: z.union([
     z.string().min(1),
     z.array(openAIResponsesTextContentBlockSchema).min(1)
@@ -19,6 +19,7 @@ export const openAIResponsesRequestSchema = z.object({
   model: z.string().min(1),
   stream: z.boolean().default(false),
   max_output_tokens: z.number().int().positive().optional(),
+  instructions: z.string().min(1).optional(),
   input: z.union([
     z.string().min(1),
     z.array(openAIResponsesInputMessageSchema).min(1)

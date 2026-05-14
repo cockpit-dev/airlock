@@ -56,14 +56,14 @@ function encodeCanonicalAnthropicUsage(
 export function normalizeOpenAIChatRequest(
   request: OpenAIChatCompletionRequest
 ): CanonicalRequest {
+  const maxOutputTokens = request.max_completion_tokens ?? request.max_tokens;
+
   return {
     model: request.model,
     stream: request.stream,
-    ...(request.max_tokens !== undefined
-      ? { maxOutputTokens: request.max_tokens }
-      : {}),
+    ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
     messages: request.messages.map((message) => ({
-      role: message.role,
+      role: message.role === "developer" ? "system" : message.role,
       content:
         typeof message.content === "string"
           ? message.content
@@ -75,16 +75,19 @@ export function normalizeOpenAIChatRequest(
 export function normalizeOpenAIResponsesRequest(
   request: OpenAIResponsesRequest
 ): CanonicalRequest {
-  const messages =
+  const inputMessages =
     typeof request.input === "string"
       ? [{ role: "user" as const, content: request.input }]
       : request.input.map((message) => ({
-          role: message.role,
+          role: message.role === "developer" ? "system" : message.role,
           content:
             typeof message.content === "string"
               ? message.content
               : message.content.map((block) => block.text).join("\n")
         }));
+  const instructionMessages = request.instructions
+    ? [{ role: "system" as const, content: request.instructions }]
+    : [];
 
   return {
     model: request.model,
@@ -92,7 +95,7 @@ export function normalizeOpenAIResponsesRequest(
     ...(request.max_output_tokens !== undefined
       ? { maxOutputTokens: request.max_output_tokens }
       : {}),
-    messages
+    messages: [...instructionMessages, ...inputMessages]
   };
 }
 
