@@ -630,6 +630,59 @@ describe("OpenAIProviderAdapter", () => {
     ]);
   });
 
+  it("includes include_obfuscation=false in native openai responses stream requests", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
+              'data: {"type":"response.completed","sequence_number":1,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
+              "data: [DONE]\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true,
+        messages: []
+      },
+      {
+        requestId: "req_stream_123",
+        requestMode: "openai_responses"
+      }
+    )) {
+      void event;
+    }
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stream: true,
+      stream_options: {
+        include_obfuscation: false
+      }
+    });
+  });
+
   it("normalizes native responses tool indexes to canonical ordinals after a reasoning output item", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({

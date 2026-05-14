@@ -1662,6 +1662,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ? { temperature: request.temperature }
                   : {}),
                 ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+                stream_options: {
+                  include_obfuscation: false
+                },
                 ...(request.tools !== undefined
                   ? {
                       tools: request.tools.map((tool) => ({
