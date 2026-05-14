@@ -20,6 +20,15 @@ const openAIResponsesInputMessageSchema = z.object({
   ])
 });
 
+const openAIResponsesMessageItemSchema = z.object({
+  type: z.literal("message"),
+  role: z.enum(["user", "assistant", "system", "developer"]),
+  content: z.union([
+    z.string().min(1),
+    z.array(openAIResponsesTextContentBlockSchema).min(1)
+  ])
+});
+
 export const openAIResponsesRequestSchema = z.object({
   model: z.string().min(1),
   stream: z.boolean().default(false),
@@ -28,6 +37,7 @@ export const openAIResponsesRequestSchema = z.object({
   input: z.union([
     z.string().min(1),
     z.array(openAIResponsesInputMessageSchema).min(1),
+    z.array(openAIResponsesMessageItemSchema).min(1),
     z.array(openAIResponsesTopLevelInputItemSchema).min(1)
   ]),
   airlock: airlockRequestExtensionsSchema.optional()

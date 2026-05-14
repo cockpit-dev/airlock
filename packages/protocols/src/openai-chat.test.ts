@@ -268,6 +268,32 @@ describe("openAIResponsesRequestSchema", () => {
     expect(Array.isArray(parsed.input)).toBe(true);
   });
 
+  it("accepts top-level responses message item arrays", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          type: "message",
+          role: "developer",
+          content: [
+            {
+              type: "input_text",
+              text: "You are precise."
+            }
+          ]
+        },
+        {
+          type: "message",
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(Array.isArray(parsed.input)).toBe(true);
+  });
+
   it("accepts a streaming responses request", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",

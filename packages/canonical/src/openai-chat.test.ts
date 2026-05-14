@@ -330,6 +330,35 @@ describe("normalizeOpenAIResponsesRequest", () => {
     ]);
   });
 
+  it("normalizes top-level responses message items into canonical messages", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          type: "message",
+          role: "developer",
+          content: [
+            {
+              type: "input_text",
+              text: "You are precise."
+            }
+          ]
+        },
+        {
+          type: "message",
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      { role: "system", content: "You are precise." },
+      { role: "user", content: "hello" }
+    ]);
+  });
+
   it("preserves streaming intent for a responses request", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",
