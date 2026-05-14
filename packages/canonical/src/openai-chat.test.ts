@@ -261,6 +261,33 @@ describe("normalizeOpenAIChatRequest", () => {
     expect(canonical.toolChoice).toBe("required");
   });
 
+  it("normalizes openai chat none tool_choice into canonical request fields", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      tool_choice: "none",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "lookup_weather",
+            parameters: {
+              type: "object"
+            }
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    });
+
+    expect(canonical.toolChoice).toBe("none");
+  });
+
   it("normalizes assistant tool_calls and tool results into canonical message history", () => {
     const canonical = normalizeOpenAIChatRequest({
       model: "gpt-4.1-mini",
@@ -907,6 +934,26 @@ describe("normalizeOpenAIResponsesRequest", () => {
     });
 
     expect(canonical.toolChoice).toBe("required");
+  });
+
+  it("normalizes responses none tool_choice into canonical request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      tool_choice: "none",
+      tools: [
+        {
+          type: "function",
+          name: "lookup_weather",
+          parameters: {
+            type: "object"
+          }
+        }
+      ]
+    });
+
+    expect(canonical.toolChoice).toBe("none");
   });
 
   it("normalizes responses function_call replay and function_call_output into canonical tool history", () => {

@@ -317,6 +317,33 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(parsed.tool_choice).toBe("required");
   });
 
+  it("accepts chat function tools with tool_choice none", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      tool_choice: "none",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "lookup_weather",
+            parameters: {
+              type: "object"
+            }
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    });
+
+    expect(parsed.tool_choice).toBe("none");
+  });
+
   it("accepts assistant tool_calls and tool result messages for replay", () => {
     const parsed = openAIChatCompletionRequestSchema.parse({
       model: "gpt-4.1-mini",
@@ -650,6 +677,26 @@ describe("openAIResponsesRequestSchema", () => {
     });
 
     expect(parsed.tool_choice).toBe("required");
+  });
+
+  it("accepts responses function tools with tool_choice none", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      tool_choice: "none",
+      tools: [
+        {
+          type: "function",
+          name: "lookup_weather",
+          parameters: {
+            type: "object"
+          }
+        }
+      ]
+    });
+
+    expect(parsed.tool_choice).toBe("none");
   });
 
   it("accepts responses function_call replay items and function_call_output items", () => {

@@ -88,6 +88,7 @@ export const openAIChatCompletionRequestSchema = z.object({
   tool_choice: z.union([
     z.literal("auto"),
     z.literal("required"),
+    z.literal("none"),
     openAIChatForcedFunctionToolChoiceSchema
   ]).optional(),
   messages: z.array(openAIChatMessageSchema).min(1),

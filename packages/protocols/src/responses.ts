@@ -78,6 +78,7 @@ export const openAIResponsesRequestSchema = z.object({
   tool_choice: z.union([
     z.literal("auto"),
     z.literal("required"),
+    z.literal("none"),
     openAIResponsesForcedFunctionToolChoiceSchema
   ]).optional(),
   input: z.union([

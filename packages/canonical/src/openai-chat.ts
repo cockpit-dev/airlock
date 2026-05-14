@@ -274,6 +274,10 @@ function normalizeOpenAIToolChoice(
     return "required" as const;
   }
 
+  if (toolChoice === "none") {
+    return "none" as const;
+  }
+
   if ("function" in toolChoice) {
     return {
       type: "tool" as const,
