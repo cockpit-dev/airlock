@@ -963,6 +963,21 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.messages).toEqual([]);
   });
 
+  it("normalizes responses reasoning summary controls into canonical request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      reasoning: {
+        effort: "low",
+        summary: "auto"
+      }
+    });
+
+    expect(canonical.reasoningEffort).toBe("low");
+    expect(canonical.messages).toEqual([{ role: "user", content: "hello" }]);
+  });
+
   it("normalizes responses json_schema text format into canonical output format", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",
@@ -1191,6 +1206,43 @@ describe("normalizeOpenAIResponsesRequest", () => {
       }
     ]);
   });
+
+  it("normalizes responses reasoning replay items into canonical assistant history", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          type: "reasoning",
+          id: "rs_123",
+          encrypted_content: "enc_123",
+          summary: [
+            {
+              type: "summary_text",
+              text: "The model checked the answer."
+            }
+          ]
+        },
+        {
+          type: "message",
+          role: "user",
+          content: "Continue."
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      {
+        role: "assistant",
+        content: "The model checked the answer.",
+        reasoningSummary: "The model checked the answer."
+      },
+      {
+        role: "user",
+        content: "Continue."
+      }
+    ]);
+  });
 });
 
 describe("encodeCanonicalToOpenAIResponsesResponse", () => {
@@ -1298,6 +1350,41 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
     });
 
     expect(encoded.parallel_tool_calls).toBe(false);
+  });
+
+  it("preserves reasoning output items in an OpenAI responses payload", () => {
+    const encoded = encodeCanonicalToOpenAIResponsesResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      outputText: "hello there",
+      finishReason: "stop",
+      reasoningSummary: "The model checked the answer."
+    });
+
+    expect(encoded.output).toEqual([
+      {
+        type: "reasoning",
+        summary: [
+          {
+            type: "summary_text",
+            text: "The model checked the answer."
+          }
+        ]
+      },
+      {
+        id: "resp_123_output_0",
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [
+          {
+            type: "output_text",
+            text: "hello there",
+            annotations: []
+          }
+        ]
+      }
+    ]);
   });
 });
 
@@ -1432,6 +1519,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           sequenceNumber: 5,
           outputIndex: 0,
           contentIndex: 0,
+          startedTextOutput: true,
           outputText: "hello"
         }
       )
@@ -1508,6 +1596,136 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
               output_tokens: 8,
               total_tokens: 20
             }
+          }
+        }
+      ],
+      nextSequenceNumber: 9
+    });
+  });
+
+  it("encodes reasoning summary deltas and terminal reasoning output items", async () => {
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIResponsesStreamEvent(
+        {
+          type: "reasoning_summary_delta",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          delta: "The model checked"
+        },
+        {
+          sequenceNumber: 2,
+          outputIndex: 0,
+          contentIndex: 0
+        }
+      )
+    ).toEqual({
+      events: [
+        {
+          type: "response.output_item.added",
+          sequence_number: 2,
+          output_index: 0,
+          item: {
+            type: "reasoning",
+            summary: []
+          }
+        },
+        {
+          type: "response.reasoning_summary_part.added",
+          sequence_number: 3,
+          output_index: 0,
+          summary_index: 0,
+          part: {
+            type: "summary_text",
+            text: ""
+          }
+        },
+        {
+          type: "response.reasoning_summary_text.delta",
+          sequence_number: 4,
+          output_index: 0,
+          summary_index: 0,
+          delta: "The model checked"
+        }
+      ],
+      nextSequenceNumber: 5
+    });
+
+    expect(
+      encodeCanonicalToOpenAIResponsesStreamEvent(
+        {
+          type: "response_completed",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          finishReason: "stop"
+        },
+        {
+          sequenceNumber: 5,
+          outputIndex: 0,
+          contentIndex: 0,
+          startedReasoningOutput: true,
+          reasoningSummary: "The model checked the answer."
+        }
+      )
+    ).toEqual({
+      events: [
+        {
+          type: "response.reasoning_summary_text.done",
+          sequence_number: 5,
+          output_index: 0,
+          summary_index: 0,
+          text: "The model checked the answer."
+        },
+        {
+          type: "response.reasoning_summary_part.done",
+          sequence_number: 6,
+          output_index: 0,
+          summary_index: 0,
+          part: {
+            type: "summary_text",
+            text: "The model checked the answer."
+          }
+        },
+        {
+          type: "response.output_item.done",
+          sequence_number: 7,
+          output_index: 0,
+          item: {
+            type: "reasoning",
+            summary: [
+              {
+                type: "summary_text",
+                text: "The model checked the answer."
+              }
+            ]
+          }
+        },
+        {
+          type: "response.completed",
+          sequence_number: 8,
+          response: {
+            id: "resp_123",
+            object: "response",
+            created_at: 0,
+            model: "gpt-4.1-mini",
+            status: "completed",
+            output: [
+              {
+                type: "reasoning",
+                summary: [
+                  {
+                    type: "summary_text",
+                    text: "The model checked the answer."
+                  }
+                ]
+              }
+            ],
+            output_text: "",
+            parallel_tool_calls: true,
+            tools: []
           }
         }
       ],
@@ -2026,6 +2244,178 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
         }
       ],
       nextSequenceNumber: 23
+    });
+  });
+
+  it("keeps reasoning, text, and tool output items distinct in mixed responses streaming completion", async () => {
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIResponsesStreamEvent(
+        {
+          type: "response_completed",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          finishReason: "tool_calls"
+        },
+        {
+          sequenceNumber: 17,
+          outputIndex: 1,
+          contentIndex: 0,
+          outputText: "Let me check that.",
+          reasoningSummary: "The model checked the answer.",
+          startedReasoningOutput: true,
+          startedTextOutput: true,
+          toolCalls: [
+            {
+              toolCallId: "call_123",
+              toolCallName: "lookup_weather",
+              toolCallArguments: "{\"city\":\"Shanghai\"}",
+              outputIndex: 2
+            }
+          ]
+        }
+      )
+    ).toEqual({
+      events: [
+        {
+          type: "response.reasoning_summary_text.done",
+          sequence_number: 17,
+          output_index: 0,
+          summary_index: 0,
+          text: "The model checked the answer."
+        },
+        {
+          type: "response.reasoning_summary_part.done",
+          sequence_number: 18,
+          output_index: 0,
+          summary_index: 0,
+          part: {
+            type: "summary_text",
+            text: "The model checked the answer."
+          }
+        },
+        {
+          type: "response.output_item.done",
+          sequence_number: 19,
+          output_index: 0,
+          item: {
+            type: "reasoning",
+            summary: [
+              {
+                type: "summary_text",
+                text: "The model checked the answer."
+              }
+            ]
+          }
+        },
+        {
+          type: "response.output_text.done",
+          sequence_number: 20,
+          item_id: "resp_123_output_0",
+          output_index: 1,
+          content_index: 0,
+          text: "Let me check that.",
+          logprobs: []
+        },
+        {
+          type: "response.content_part.done",
+          sequence_number: 21,
+          item_id: "resp_123_output_0",
+          output_index: 1,
+          content_index: 0,
+          part: {
+            type: "output_text",
+            text: "Let me check that.",
+            annotations: []
+          }
+        },
+        {
+          type: "response.output_item.done",
+          sequence_number: 22,
+          output_index: 1,
+          item: {
+            id: "resp_123_output_0",
+            type: "message",
+            role: "assistant",
+            status: "completed",
+            content: [
+              {
+                type: "output_text",
+                text: "Let me check that.",
+                annotations: []
+              }
+            ]
+          }
+        },
+        {
+          type: "response.function_call_arguments.done",
+          sequence_number: 23,
+          item_id: "call_123",
+          output_index: 2,
+          arguments: "{\"city\":\"Shanghai\"}"
+        },
+        {
+          type: "response.output_item.done",
+          sequence_number: 24,
+          output_index: 2,
+          item: {
+            type: "function_call",
+            call_id: "call_123",
+            name: "lookup_weather",
+            arguments: "{\"city\":\"Shanghai\"}",
+            status: "completed"
+          }
+        },
+        {
+          type: "response.completed",
+          sequence_number: 25,
+          response: {
+            id: "resp_123",
+            object: "response",
+            created_at: 0,
+            model: "gpt-4.1-mini",
+            status: "completed",
+            output: [
+              {
+                type: "reasoning",
+                summary: [
+                  {
+                    type: "summary_text",
+                    text: "The model checked the answer."
+                  }
+                ]
+              },
+              {
+                id: "resp_123_output_0",
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "Let me check that.",
+                    annotations: []
+                  }
+                ]
+              },
+              {
+                type: "function_call",
+                call_id: "call_123",
+                name: "lookup_weather",
+                arguments: "{\"city\":\"Shanghai\"}",
+                status: "completed"
+              }
+            ],
+            output_text: "Let me check that.",
+            parallel_tool_calls: true,
+            tools: []
+          }
+        }
+      ],
+      nextSequenceNumber: 26
     });
   });
 

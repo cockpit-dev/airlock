@@ -223,6 +223,13 @@ function buildOpenAIResponsesInput(
           type: "output_text";
           text: string;
         }>;
+      }
+    | {
+        type: "reasoning";
+        summary: Array<{
+          type: "summary_text";
+          text: string;
+        }>;
       };
 
   return request.messages.flatMap<OpenAIResponsesInputItem>((message) => {
@@ -263,6 +270,19 @@ function buildOpenAIResponsesInput(
 
     if (message.role === "assistant") {
       return [
+        ...(message.reasoningSummary
+          ? [
+              {
+                type: "reasoning" as const,
+                summary: [
+                  {
+                    type: "summary_text" as const,
+                    text: message.reasoningSummary
+                  }
+                ]
+              }
+            ]
+          : []),
         {
           type: "message" as const,
           role: "assistant" as const,
@@ -344,6 +364,27 @@ function extractToolCallsFromOpenAIResponsesOutput(
     .filter((item) => item.id.length > 0);
 
   return toolCalls && toolCalls.length > 0 ? toolCalls : undefined;
+}
+
+function extractReasoningSummaryFromOpenAIResponsesOutput(
+  output:
+    | Array<{
+        type?: string;
+        summary?: Array<{
+          type?: string;
+          text?: string;
+        }>;
+      }>
+    | undefined
+) {
+  return (
+    output
+      ?.filter((item) => item.type === "reasoning")
+      .flatMap((item) => item.summary ?? [])
+      .filter((part) => part.type === "summary_text")
+      .map((part) => part.text ?? "")
+      .join("") ?? ""
+  );
 }
 
 interface OpenAIChatLikeUsage {
@@ -1127,10 +1168,16 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.conversationId !== undefined
                     ? { conversation: request.conversationId }
                     : {}),
-                  ...(request.reasoningEffort !== undefined
+                  ...(request.reasoningEffort !== undefined ||
+                  request.reasoningSummary !== undefined
                     ? {
                         reasoning: {
-                          effort: request.reasoningEffort
+                          ...(request.reasoningEffort !== undefined
+                            ? { effort: request.reasoningEffort }
+                            : {}),
+                          ...(request.reasoningSummary !== undefined
+                            ? { summary: request.reasoningSummary }
+                            : {})
                         }
                       }
                     : {}),
@@ -1222,10 +1269,16 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(request.conversationId !== undefined
                   ? { conversation: request.conversationId }
                   : {}),
-                ...(request.reasoningEffort !== undefined
+                ...(request.reasoningEffort !== undefined ||
+                request.reasoningSummary !== undefined
                   ? {
                       reasoning: {
-                        effort: request.reasoningEffort
+                        ...(request.reasoningEffort !== undefined
+                          ? { effort: request.reasoningEffort }
+                          : {}),
+                        ...(request.reasoningSummary !== undefined
+                          ? { summary: request.reasoningSummary }
+                          : {})
                       }
                     }
                   : {}),
@@ -1395,11 +1448,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     }
 
     const toolCalls = extractToolCallsFromOpenAIResponsesOutput(payload.output);
+    const reasoningSummary = extractReasoningSummaryFromOpenAIResponsesOutput(
+      payload.output
+    );
 
     return {
       id: payload.id,
       model: payload.model,
       outputText: extractOutputTextFromOpenAIResponsesOutput(payload.output),
+      ...(reasoningSummary.length > 0 ? { reasoningSummary } : {}),
       ...(toolCalls ? { toolCalls } : {}),
       finishReason: normalizeOpenAIResponsesFinishReason(
         payload.status,
@@ -1479,9 +1536,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                     ? { conversation: request.conversationId }
                     : {}),
                   ...(request.reasoningEffort !== undefined
+                    || request.reasoningSummary !== undefined
                     ? {
                         reasoning: {
-                          effort: request.reasoningEffort
+                          ...(request.reasoningEffort !== undefined
+                            ? { effort: request.reasoningEffort }
+                            : {}),
+                          ...(request.reasoningSummary !== undefined
+                            ? { summary: request.reasoningSummary }
+                            : {})
                         }
                       }
                     : {}),
@@ -1574,9 +1637,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ? { conversation: request.conversationId }
                   : {}),
                 ...(request.reasoningEffort !== undefined
+                  || request.reasoningSummary !== undefined
                   ? {
                       reasoning: {
-                        effort: request.reasoningEffort
+                        ...(request.reasoningEffort !== undefined
+                          ? { effort: request.reasoningEffort }
+                          : {}),
+                        ...(request.reasoningSummary !== undefined
+                          ? { summary: request.reasoningSummary }
+                          : {})
                       }
                     }
                   : {}),
@@ -1698,6 +1767,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     const streamedToolCalls = new Map<
       string,
       {
+        toolIndex: number;
         outputIndex: number;
         name?: string;
       }
@@ -1709,6 +1779,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         name?: string;
       }
     >();
+    let streamedReasoningSummary = "";
 
     try {
       while (true) {
@@ -1779,6 +1850,13 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 model?: string;
                 status?: string;
                 parallel_tool_calls?: boolean;
+                output?: Array<{
+                  type?: string;
+                  summary?: Array<{
+                    type?: string;
+                    text?: string;
+                  }>;
+                }>;
                 incomplete_details?: {
                   reason?: string;
                 };
@@ -1926,11 +2004,44 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
             }
 
             if (
+              payload.type === "response.reasoning_summary_text.delta" &&
+              payload.delta !== undefined
+            ) {
+              const [responseId, model] =
+                Array.from(responseIdToModel.entries())[0] ?? [
+                  `resp_${context.requestId}`,
+                  request.model
+                ];
+
+              streamedReasoningSummary += payload.delta;
+
+              if (!hasStarted) {
+                hasStarted = true;
+                yield {
+                  type: "response_started",
+                  responseId,
+                  model
+                };
+              }
+
+              yield {
+                type: "reasoning_summary_delta",
+                responseId,
+                model,
+                delta: payload.delta
+              };
+              continue;
+            }
+
+            if (
               payload.type === "response.output_item.added" &&
               payload.item?.type === "function_call" &&
               payload.item.call_id
             ) {
+              const toolIndex =
+                Array.from(streamedToolCalls.values()).length;
               streamedToolCalls.set(payload.item.call_id, {
+                toolIndex,
                 outputIndex: payload.output_index ?? 0,
                 ...(payload.item.name ? { name: payload.item.name } : {})
               });
@@ -1947,6 +2058,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   request.model
                 ];
               const currentTool = streamedToolCalls.get(payload.item_id) ?? {
+                toolIndex: Array.from(streamedToolCalls.values()).length,
                 outputIndex: payload.output_index ?? 0
               };
 
@@ -1966,7 +2078,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 responseId,
                 model,
                 toolCallId: payload.item_id,
-                toolIndex: currentTool.outputIndex,
+                toolIndex: currentTool.toolIndex,
                 ...(currentTool.name ? { toolName: currentTool.name } : {}),
                 argumentsDelta: payload.delta ?? ""
               };
@@ -1979,6 +2091,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 payload.response.model ??
                 responseIdToModel.get(responseId) ??
                 request.model;
+              const reasoningSummary =
+                extractReasoningSummaryFromOpenAIResponsesOutput(
+                  payload.response.output
+                ) || streamedReasoningSummary;
 
               yield {
                 type: "response_completed",
@@ -1993,6 +2109,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ? {
                       parallelToolCalls: payload.response.parallel_tool_calls
                     }
+                  : {}),
+                ...(reasoningSummary.length > 0
+                  ? { reasoningSummary }
                   : {}),
                 ...(payload.response.usage
                   ? {

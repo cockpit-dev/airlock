@@ -12,64 +12,57 @@ import type {
 
 type CanonicalUsageValue = CanonicalResponse["usage"];
 
-type OpenAIResponsesInputValue = OpenAIResponsesRequest["input"];
-type OpenAIResponsesInputMessageValue = Exclude<
-  Extract<OpenAIResponsesInputValue, unknown[]>,
-  (
-    | { type: "input_text"; text: string }
-    | {
-        type: "message";
-        role: "user" | "assistant" | "system" | "developer";
-        content:
-          | string
-          | { type: "input_text"; text: string }[]
-          | { type: "output_text"; text: string }[];
-      }
-    | {
-        type: "function_call";
-        call_id: string;
-        name: string;
-        arguments: string;
-      }
-    | {
-        type: "function_call_output";
-        call_id: string;
-        output: string;
-      }
-  )[]
->[number];
-type OpenAIResponsesTypedInputItemValue = Extract<
-  OpenAIResponsesInputValue,
-  (
-    | { type: "input_text"; text: string }
-    | {
-        type: "message";
-        role: "user" | "assistant" | "system" | "developer";
-        content:
-          | string
-          | { type: "input_text"; text: string }[]
-          | { type: "output_text"; text: string }[];
-      }
-    | {
-        type: "function_call";
-        call_id: string;
-        name: string;
-        arguments: string;
-      }
-    | {
-        type: "function_call_output";
-        call_id: string;
-        output: string;
-      }
-  )[]
->[number];
+type OpenAIResponsesTextInputBlockValue = {
+  type: "input_text";
+  text: string;
+};
+type OpenAIResponsesTextOutputBlockValue = {
+  type: "output_text";
+  text: string;
+};
+type OpenAIResponsesMessageItemTypedValue = {
+  type: "message";
+  role: "user" | "assistant" | "system" | "developer";
+  content:
+    | string
+    | OpenAIResponsesTextInputBlockValue[]
+    | OpenAIResponsesTextOutputBlockValue[];
+};
+type OpenAIResponsesFunctionCallItemValue = {
+  type: "function_call";
+  call_id: string;
+  name: string;
+  arguments: string;
+};
+type OpenAIResponsesFunctionCallOutputItemValue = {
+  type: "function_call_output";
+  call_id: string;
+  output: string;
+};
+type OpenAIResponsesReasoningItemValue = {
+  type: "reasoning";
+  id?: string;
+  encrypted_content?: string;
+  summary?: Array<{
+    type: "summary_text";
+    text: string;
+  }>;
+};
+type OpenAIResponsesTypedInputItemValue =
+  | OpenAIResponsesTextInputBlockValue
+  | OpenAIResponsesMessageItemTypedValue
+  | OpenAIResponsesFunctionCallItemValue
+  | OpenAIResponsesFunctionCallOutputItemValue
+  | OpenAIResponsesReasoningItemValue;
 
 interface OpenAIResponsesEventEncodingState {
   sequenceNumber: number;
   outputIndex: number;
   contentIndex: number;
   outputText?: string;
+  reasoningSummary?: string;
   startedTextOutput?: boolean;
+  startedReasoningOutput?: boolean;
   startedToolCallIds?: string[];
   toolCallId?: string;
   toolCallName?: string;
@@ -212,6 +205,23 @@ function createOpenAIResponsesFunctionCallItem(
   };
 }
 
+function createOpenAIResponsesReasoningItem(
+  summaryText?: string
+) {
+  return {
+    type: "reasoning" as const,
+    summary:
+      summaryText && summaryText.length > 0
+        ? [
+            {
+              type: "summary_text" as const,
+              text: summaryText
+            }
+          ]
+        : []
+  };
+}
+
 function createOpenAIResponsesBaseResponse(
   responseId: string,
   model: string,
@@ -241,7 +251,8 @@ function isOpenAIResponsesTypedInputItems(
     (input[0].type === "message" ||
       input[0].type === "input_text" ||
       input[0].type === "function_call" ||
-      input[0].type === "function_call_output")
+      input[0].type === "function_call_output" ||
+      input[0].type === "reasoning")
   );
 }
 
@@ -374,6 +385,18 @@ function normalizeOpenAIResponsesTypedInputItems(
       continue;
     }
 
+    if (item.type === "reasoning") {
+      flushPendingUserTextItems();
+      const reasoningSummary =
+        item.summary?.map((summaryItem) => summaryItem.text).join("\n") ?? "";
+      messages.push({
+        role: "assistant",
+        content: reasoningSummary,
+        ...(reasoningSummary.length > 0 ? { reasoningSummary } : {})
+      });
+      continue;
+    }
+
     if (item.type === "function_call") {
       flushPendingUserTextItems();
       messages.push({
@@ -494,10 +517,18 @@ export function normalizeOpenAIResponsesRequest(
         ? [{ role: "user" as const, content: request.input }]
         : isOpenAIResponsesTypedInputItems(request.input)
           ? normalizeOpenAIResponsesTypedInputItems(request.input)
-          : request.input.map((message: OpenAIResponsesInputMessageValue) => ({
-              role: message.role === "developer" ? "system" : message.role,
-              content: encodeOpenAIResponsesMessageContent(message.content)
-            }));
+          : (request.input as Array<{
+              role: "user" | "assistant" | "system" | "developer";
+              content: string | OpenAIResponsesTextInputBlockValue[];
+            }>).map((message) => {
+              return {
+                role:
+                  message.role === "developer"
+                    ? ("system" as const)
+                    : message.role,
+                content: encodeOpenAIResponsesMessageContent(message.content)
+              };
+            });
   const instructionMessages = request.instructions
     ? [{ role: "system" as const, content: request.instructions }]
     : [];
@@ -530,6 +561,11 @@ export function normalizeOpenAIResponsesRequest(
     ...(request.reasoning?.effort !== undefined
       ? { reasoningEffort: request.reasoning.effort }
       : {}),
+    ...(typeof request.reasoning?.summary === "string"
+      ? { reasoningSummary: request.reasoning.summary }
+      : typeof request.reasoning?.generate_summary === "string"
+        ? { reasoningSummary: request.reasoning.generate_summary }
+        : {}),
     ...(request.max_output_tokens !== undefined
       ? { maxOutputTokens: request.max_output_tokens }
       : {}),
@@ -696,6 +732,22 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
     };
   }
 
+  if (event.type === "reasoning_summary_delta") {
+    return {
+      id: streamId,
+      object: "chat.completion.chunk" as const,
+      created: 0,
+      model: event.model,
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: null
+        }
+      ]
+    };
+  }
+
   if (event.type === "tool_call_delta") {
     return {
       id: streamId,
@@ -722,6 +774,10 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
         }
       ]
     };
+  }
+
+  if (event.type !== "response_completed") {
+    throw new Error("Unsupported canonical stream event for chat encoding");
   }
 
   return {
@@ -781,6 +837,9 @@ export function encodeCanonicalToOpenAIResponsesResponse(
   response: CanonicalResponse
 ) {
   const output = [
+    ...(response.reasoningSummary
+      ? [createOpenAIResponsesReasoningItem(response.reasoningSummary)]
+      : []),
     ...(response.outputText.length > 0
       ? [
           createOpenAIResponsesOutputMessage(
@@ -830,6 +889,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
   }
 ): OpenAIResponsesEncodedEventBatch {
   const itemId = `${event.responseId}_output_0`;
+  const textOutputIndex = state.startedReasoningOutput ? 1 : state.outputIndex;
 
   if (event.type === "response_started") {
     const baseResponse = createOpenAIResponsesBaseResponse(
@@ -863,7 +923,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
           {
             type: "response.output_item.added" as const,
             sequence_number: state.sequenceNumber,
-            output_index: state.outputIndex,
+            output_index: textOutputIndex,
             item: createOpenAIResponsesOutputMessage(
               event.responseId,
               "",
@@ -875,7 +935,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
             type: "response.content_part.added" as const,
             sequence_number: state.sequenceNumber + 1,
             item_id: itemId,
-            output_index: state.outputIndex,
+            output_index: textOutputIndex,
             content_index: state.contentIndex,
             part: createOpenAIResponsesOutputTextPart("")
           },
@@ -883,7 +943,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
             type: "response.output_text.delta" as const,
             sequence_number: state.sequenceNumber + 2,
             item_id: itemId,
-            output_index: state.outputIndex,
+            output_index: textOutputIndex,
             content_index: state.contentIndex,
             delta: event.delta,
             logprobs: []
@@ -899,10 +959,56 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
           type: "response.output_text.delta" as const,
           sequence_number: state.sequenceNumber,
           item_id: itemId,
-          output_index: state.outputIndex,
+          output_index: textOutputIndex,
           content_index: state.contentIndex,
           delta: event.delta,
           logprobs: []
+        }
+      ],
+      nextSequenceNumber: state.sequenceNumber + 1
+    };
+  }
+
+  if (event.type === "reasoning_summary_delta") {
+    if (!state.startedReasoningOutput) {
+      return {
+        events: [
+          {
+            type: "response.output_item.added" as const,
+            sequence_number: state.sequenceNumber,
+            output_index: 0,
+            item: createOpenAIResponsesReasoningItem()
+          },
+          {
+            type: "response.reasoning_summary_part.added" as const,
+            sequence_number: state.sequenceNumber + 1,
+            output_index: 0,
+            summary_index: 0,
+            part: {
+              type: "summary_text" as const,
+              text: ""
+            }
+          },
+          {
+            type: "response.reasoning_summary_text.delta" as const,
+            sequence_number: state.sequenceNumber + 2,
+            output_index: 0,
+            summary_index: 0,
+            delta: event.delta
+          }
+        ],
+        nextSequenceNumber: state.sequenceNumber + 3
+      };
+    }
+
+    return {
+      events: [
+        {
+          type: "response.reasoning_summary_text.delta" as const,
+          sequence_number: state.sequenceNumber,
+          output_index: 0,
+          summary_index: 0,
+          delta: event.delta
         }
       ],
       nextSequenceNumber: state.sequenceNumber + 1
@@ -957,6 +1063,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
   }
 
   const outputText = state.outputText ?? "";
+  const reasoningSummary = event.reasoningSummary ?? state.reasoningSummary ?? "";
   const responseStatus = encodeCanonicalResponsesStatus(event.finishReason);
   const isToolCallCompletion = event.finishReason === "tool_calls";
   const completedResponse = {
@@ -974,23 +1081,30 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
           )
         }
       : {}),
-    output: isToolCallCompletion
-      ? [
-          createOpenAIResponsesFunctionCallItem(
-            event.responseId,
-            state.toolCallId,
-            state.toolCallName,
-            state.toolCallArguments
-          )
-        ]
-      : [
-          createOpenAIResponsesOutputMessage(
-            event.responseId,
-            outputText,
-            "completed",
-            true
-          )
-        ],
+    output: [
+      ...(reasoningSummary.length > 0
+        ? [createOpenAIResponsesReasoningItem(reasoningSummary)]
+        : []),
+      ...(isToolCallCompletion
+        ? [
+            createOpenAIResponsesFunctionCallItem(
+              event.responseId,
+              state.toolCallId,
+              state.toolCallName,
+              state.toolCallArguments
+            )
+          ]
+        : outputText.length > 0
+          ? [
+              createOpenAIResponsesOutputMessage(
+                event.responseId,
+                outputText,
+                "completed",
+                true
+              )
+            ]
+          : [])
+    ],
     output_text: outputText,
     ...(event.usage
       ? { usage: encodeCanonicalResponsesUsage(event.usage) }
@@ -1009,30 +1123,58 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
               outputIndex: state.outputIndex
             }
           ];
+    const reasoningCompletionEvents =
+      reasoningSummary.length > 0 && state.startedReasoningOutput
+        ? [
+            {
+              type: "response.reasoning_summary_text.done" as const,
+              sequence_number: state.sequenceNumber,
+              output_index: 0,
+              summary_index: 0,
+              text: reasoningSummary
+            },
+            {
+              type: "response.reasoning_summary_part.done" as const,
+              sequence_number: state.sequenceNumber + 1,
+              output_index: 0,
+              summary_index: 0,
+              part: {
+                type: "summary_text" as const,
+                text: reasoningSummary
+              }
+            },
+            {
+              type: "response.output_item.done" as const,
+              sequence_number: state.sequenceNumber + 2,
+              output_index: 0,
+              item: createOpenAIResponsesReasoningItem(reasoningSummary)
+            }
+          ]
+        : [];
     const textCompletionEvents =
       outputText.length > 0 && state.startedTextOutput
         ? [
             {
               type: "response.output_text.done" as const,
-              sequence_number: state.sequenceNumber,
+              sequence_number: state.sequenceNumber + reasoningCompletionEvents.length,
               item_id: itemId,
-              output_index: 0,
+              output_index: state.startedReasoningOutput ? 1 : 0,
               content_index: state.contentIndex,
               text: outputText,
               logprobs: []
             },
             {
               type: "response.content_part.done" as const,
-              sequence_number: state.sequenceNumber + 1,
+              sequence_number: state.sequenceNumber + reasoningCompletionEvents.length + 1,
               item_id: itemId,
-              output_index: 0,
+              output_index: state.startedReasoningOutput ? 1 : 0,
               content_index: state.contentIndex,
               part: createOpenAIResponsesOutputTextPart(outputText)
             },
             {
               type: "response.output_item.done" as const,
-              sequence_number: state.sequenceNumber + 2,
-              output_index: 0,
+              sequence_number: state.sequenceNumber + reasoningCompletionEvents.length + 2,
+              output_index: state.startedReasoningOutput ? 1 : 0,
               item: createOpenAIResponsesOutputMessage(
                 event.responseId,
                 outputText,
@@ -1042,10 +1184,14 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
             }
           ]
         : [];
-    const toolSequenceStart = state.sequenceNumber + textCompletionEvents.length;
+    const toolSequenceStart =
+      state.sequenceNumber +
+      reasoningCompletionEvents.length +
+      textCompletionEvents.length;
 
     return {
       events: [
+        ...reasoningCompletionEvents,
         ...textCompletionEvents,
         ...completedToolCalls.flatMap((toolCall, index) => {
           const functionCallItem = createOpenAIResponsesFunctionCallItem(
@@ -1079,6 +1225,9 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
           response: {
             ...completedResponse,
             output: [
+              ...(reasoningSummary.length > 0
+                ? [createOpenAIResponsesReasoningItem(reasoningSummary)]
+                : []),
               ...(outputText.length > 0
                 ? [
                     createOpenAIResponsesOutputMessage(
@@ -1106,43 +1255,89 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
     };
   }
 
+  const reasoningCompletionEvents =
+    reasoningSummary.length > 0 && state.startedReasoningOutput
+      ? [
+          {
+            type: "response.reasoning_summary_text.done" as const,
+            sequence_number: state.sequenceNumber,
+            output_index: 0,
+            summary_index: 0,
+            text: reasoningSummary
+          },
+          {
+            type: "response.reasoning_summary_part.done" as const,
+            sequence_number: state.sequenceNumber + 1,
+            output_index: 0,
+            summary_index: 0,
+            part: {
+              type: "summary_text" as const,
+              text: reasoningSummary
+            }
+          },
+          {
+            type: "response.output_item.done" as const,
+            sequence_number: state.sequenceNumber + 2,
+            output_index: 0,
+            item: createOpenAIResponsesReasoningItem(reasoningSummary)
+          }
+        ]
+      : [];
+
+  const textCompletionEvents =
+    outputText.length > 0 && state.startedTextOutput
+      ? [
+          {
+            type: "response.output_text.done" as const,
+            sequence_number: state.sequenceNumber + reasoningCompletionEvents.length,
+            item_id: itemId,
+            output_index: state.startedReasoningOutput ? 1 : state.outputIndex,
+            content_index: state.contentIndex,
+            text: outputText,
+            logprobs: []
+          },
+          {
+            type: "response.content_part.done" as const,
+            sequence_number:
+              state.sequenceNumber + reasoningCompletionEvents.length + 1,
+            item_id: itemId,
+            output_index: state.startedReasoningOutput ? 1 : state.outputIndex,
+            content_index: state.contentIndex,
+            part: createOpenAIResponsesOutputTextPart(outputText)
+          },
+          {
+            type: "response.output_item.done" as const,
+            sequence_number:
+              state.sequenceNumber + reasoningCompletionEvents.length + 2,
+            output_index: state.startedReasoningOutput ? 1 : state.outputIndex,
+            item: createOpenAIResponsesOutputMessage(
+              event.responseId,
+              outputText,
+              "completed",
+              true
+            )
+          }
+        ]
+      : [];
+
   return {
     events: [
-      {
-        type: "response.output_text.done" as const,
-        sequence_number: state.sequenceNumber,
-        item_id: itemId,
-        output_index: state.outputIndex,
-        content_index: state.contentIndex,
-        text: outputText,
-        logprobs: []
-      },
-      {
-        type: "response.content_part.done" as const,
-        sequence_number: state.sequenceNumber + 1,
-        item_id: itemId,
-        output_index: state.outputIndex,
-        content_index: state.contentIndex,
-        part: createOpenAIResponsesOutputTextPart(outputText)
-      },
-      {
-        type: "response.output_item.done" as const,
-        sequence_number: state.sequenceNumber + 2,
-        output_index: state.outputIndex,
-        item: createOpenAIResponsesOutputMessage(
-          event.responseId,
-          outputText,
-          "completed",
-          true
-        )
-      },
+      ...reasoningCompletionEvents,
+      ...textCompletionEvents,
       {
         type: "response.completed" as const,
-        sequence_number: state.sequenceNumber + 3,
+        sequence_number:
+          state.sequenceNumber +
+          reasoningCompletionEvents.length +
+          textCompletionEvents.length,
         response: completedResponse
       }
     ],
-    nextSequenceNumber: state.sequenceNumber + 4
+    nextSequenceNumber:
+      state.sequenceNumber +
+      reasoningCompletionEvents.length +
+      textCompletionEvents.length +
+      1
   };
 }
 
@@ -1240,6 +1435,10 @@ export function encodeCanonicalToAnthropicMessagesStreamEvents(
     ];
   }
 
+  if (event.type === "reasoning_summary_delta") {
+    return [];
+  }
+
   if (event.type === "tool_call_delta") {
     const toolIndex = event.toolIndex;
     const toolBlockIndex = state.startedTextBlock ? toolIndex + 1 : toolIndex;
@@ -1278,6 +1477,10 @@ export function encodeCanonicalToAnthropicMessagesStreamEvents(
     });
 
     return events;
+  }
+
+  if (event.type !== "response_completed") {
+    return [];
   }
 
   const stopEvents = [];

@@ -138,14 +138,10 @@ export function assertSupportedOpenAIResponsesSemantics(
   if ("reasoning" in payload && payload.reasoning !== undefined) {
     if (
       typeof payload.reasoning !== "object" ||
-      payload.reasoning === null ||
-      ("summary" in payload.reasoning &&
-        payload.reasoning.summary !== undefined) ||
-      ("generate_summary" in payload.reasoning &&
-        payload.reasoning.generate_summary !== undefined)
+      payload.reasoning === null
     ) {
       throw new GatewayError(
-        "Unsupported OpenAI Responses reasoning config: only reasoning.effort is supported",
+        "Unsupported OpenAI Responses reasoning config",
         {
           code: "request_unsupported_openai_semantics",
           category: "request",

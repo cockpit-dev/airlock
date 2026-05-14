@@ -28,6 +28,7 @@ export type CanonicalMessage =
       role: "assistant";
       content: string;
       toolCalls?: CanonicalToolCall[];
+      reasoningSummary?: string;
     }
   | {
       role: "tool";
@@ -65,6 +66,11 @@ export interface CanonicalRequest {
   previousResponseId?: string;
   conversationId?: string;
   reasoningEffort?: "minimal" | "low" | "medium" | "high";
+  reasoningSummary?:
+    | "auto"
+    | "concise"
+    | "detailed"
+    | (string & {});
   maxOutputTokens?: number;
   temperature?: number;
   topP?: number;
@@ -101,6 +107,7 @@ export interface CanonicalResponse {
   usage?: CanonicalUsage;
   toolCalls?: CanonicalToolCall[];
   parallelToolCalls?: boolean;
+  reasoningSummary?: string;
 }
 
 export type CanonicalStreamEvent =
@@ -126,10 +133,17 @@ export type CanonicalStreamEvent =
       delta: string;
     }
   | {
+      type: "reasoning_summary_delta";
+      responseId: string;
+      model: string;
+      delta: string;
+    }
+  | {
       type: "response_completed";
       responseId: string;
       model: string;
       finishReason: "stop" | "max_tokens" | "tool_calls";
       usage?: CanonicalUsage;
       parallelToolCalls?: boolean;
+      reasoningSummary?: string;
     };

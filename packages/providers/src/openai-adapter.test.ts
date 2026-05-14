@@ -476,6 +476,251 @@ describe("OpenAIProviderAdapter", () => {
     });
   });
 
+  it("forwards reasoning.summary through the native openai responses endpoint and preserves reasoning output items", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              type: "reasoning",
+              id: "rs_123",
+              summary: [
+                {
+                  type: "summary_text",
+                  text: "The model checked the answer."
+                }
+              ]
+            },
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const response = await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        messages: [],
+        reasoningEffort: "medium",
+        reasoningSummary: "auto"
+      },
+      {
+        requestId: "req_123",
+        requestMode: "openai_responses"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      reasoning: {
+        effort: "medium",
+        summary: "auto"
+      }
+    });
+    expect(response.reasoningSummary).toBe("The model checked the answer.");
+    expect(response.outputText).toBe("hello there");
+  });
+
+  it("streams reasoning summary events through the native openai responses endpoint", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
+              'data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"reasoning","id":"rs_123","summary":[]}}\n\n',
+              'data: {"type":"response.reasoning_summary_text.delta","sequence_number":2,"output_index":0,"summary_index":0,"delta":"The model checked"}\n\n',
+              'data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"type":"reasoning","id":"rs_123","summary":[{"type":"summary_text","text":"The model checked the answer."}]}],"parallel_tool_calls":true,"tools":[]}}\n\n',
+              "data: [DONE]\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true,
+        messages: [],
+        reasoningSummary: "auto"
+      },
+      {
+        requestId: "req_stream_123",
+        requestMode: "openai_responses"
+      }
+    )) {
+      events.push(event);
+    }
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      reasoning: {
+        summary: "auto"
+      }
+    });
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini"
+      },
+      {
+        type: "reasoning_summary_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        delta: "The model checked"
+      },
+      {
+        type: "response_completed",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        finishReason: "stop",
+        parallelToolCalls: true,
+        reasoningSummary: "The model checked the answer."
+      }
+    ]);
+  });
+
+  it("normalizes native responses tool indexes to canonical ordinals after a reasoning output item", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
+              'data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"reasoning","id":"rs_123","summary":[]}}\n\n',
+              'data: {"type":"response.reasoning_summary_text.delta","sequence_number":2,"output_index":0,"summary_index":0,"delta":"The model checked"}\n\n',
+              'data: {"type":"response.output_item.added","sequence_number":3,"output_index":1,"item":{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"","status":"in_progress"}}\n\n',
+              'data: {"type":"response.function_call_arguments.delta","sequence_number":4,"item_id":"call_123","output_index":1,"delta":"{\\"city\\":\\"Shanghai\\"}"}\n\n',
+              'data: {"type":"response.completed","sequence_number":5,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"type":"reasoning","id":"rs_123","summary":[{"type":"summary_text","text":"The model checked the answer."}]},{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"}],"parallel_tool_calls":true,"tools":[]}}\n\n',
+              "data: [DONE]\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true,
+        messages: [],
+        reasoningSummary: "auto",
+        tools: [
+          {
+            name: "lookup_weather",
+            inputSchema: {
+              type: "object"
+            }
+          }
+        ]
+      },
+      {
+        requestId: "req_stream_123",
+        requestMode: "openai_responses"
+      }
+    )) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini"
+      },
+      {
+        type: "reasoning_summary_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        delta: "The model checked"
+      },
+      {
+        type: "tool_call_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        toolCallId: "call_123",
+        toolIndex: 0,
+        toolName: "lookup_weather",
+        argumentsDelta: "{\"city\":\"Shanghai\"}"
+      },
+      {
+        type: "response_completed",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        finishReason: "tool_calls",
+        parallelToolCalls: true,
+        reasoningSummary: "The model checked the answer."
+      }
+    ]);
+  });
+
   it("forwards canonical json_schema output format to OpenAI chat completions", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

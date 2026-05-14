@@ -159,7 +159,9 @@ export async function handleResponses(
     const encoder = new TextEncoder();
     let responsesSequenceNumber = 0;
     let accumulatedOutputText = "";
+    let accumulatedReasoningSummary = "";
     let startedTextOutput = false;
+    let startedReasoningOutput = false;
     const startedToolCallIds = new Set<string>();
     const streamedToolCalls = new Map<
       string,
@@ -252,6 +254,10 @@ export async function handleResponses(
         accumulatedOutputText += event.delta;
       }
 
+      if (event.type === "reasoning_summary_delta") {
+        accumulatedReasoningSummary += event.delta;
+      }
+
       if (event.type === "tool_call_delta") {
         const currentToolCall = streamedToolCalls.get(event.toolCallId) ?? {
           toolCallId: event.toolCallId,
@@ -262,9 +268,10 @@ export async function handleResponses(
           currentToolCall.toolCallName = event.toolName;
         }
         currentToolCall.toolCallArguments += event.argumentsDelta;
-        currentToolCall.outputIndex = startedTextOutput
-          ? event.toolIndex + 1
-          : event.toolIndex;
+        currentToolCall.outputIndex =
+          event.toolIndex +
+          (startedReasoningOutput ? 1 : 0) +
+          (startedTextOutput ? 1 : 0);
         streamedToolCalls.set(event.toolCallId, currentToolCall);
       }
 
@@ -276,6 +283,7 @@ export async function handleResponses(
             : 0,
         contentIndex: 0,
         ...(startedTextOutput ? { startedTextOutput } : {}),
+        ...(startedReasoningOutput ? { startedReasoningOutput } : {}),
         ...(startedToolCallIds.size > 0
           ? { startedToolCallIds: Array.from(startedToolCallIds) }
           : {}),
@@ -304,6 +312,9 @@ export async function handleResponses(
         ...(event.type === "response_started" || event.type === "response_completed"
           ? { parallelToolCalls: event.parallelToolCalls }
           : {}),
+        ...(accumulatedReasoningSummary.length > 0
+          ? { reasoningSummary: accumulatedReasoningSummary }
+          : {}),
         ...(event.type === "response_completed"
           ? { outputText: accumulatedOutputText }
           : {})
@@ -311,6 +322,10 @@ export async function handleResponses(
 
       if (event.type === "output_text_delta") {
         startedTextOutput = true;
+      }
+
+      if (event.type === "reasoning_summary_delta") {
+        startedReasoningOutput = true;
       }
 
       if (event.type === "tool_call_delta") {

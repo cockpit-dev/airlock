@@ -106,11 +106,24 @@ const openAIResponsesFunctionCallOutputItemSchema = z.object({
   output: z.string()
 });
 
+const openAIResponsesReasoningSummaryTextSchema = z.object({
+  type: z.literal("summary_text"),
+  text: z.string().min(1)
+});
+
+const openAIResponsesReasoningItemSchema = z.object({
+  type: z.literal("reasoning"),
+  id: z.string().min(1).optional(),
+  encrypted_content: z.string().min(1).optional(),
+  summary: z.array(openAIResponsesReasoningSummaryTextSchema).optional()
+});
+
 const openAIResponsesTypedInputItemSchema = z.union([
   openAIResponsesTopLevelInputItemSchema,
   openAIResponsesMessageItemSchema,
   openAIResponsesFunctionCallItemSchema,
-  openAIResponsesFunctionCallOutputItemSchema
+  openAIResponsesFunctionCallOutputItemSchema,
+  openAIResponsesReasoningItemSchema
 ]);
 
 export const openAIResponsesRequestSchema = z.object({

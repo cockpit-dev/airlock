@@ -14,6 +14,16 @@ async function readText(response: Response): Promise<string> {
   return response.text();
 }
 
+function parseSseDataEvents(body: string): unknown[] {
+  return body
+    .split("\n\n")
+    .map((frame) => frame.trim())
+    .filter((frame) => frame.startsWith("data: "))
+    .map((frame) => frame.slice("data: ".length))
+    .filter((data) => data !== "[DONE]")
+    .map((data) => JSON.parse(data) as unknown);
+}
+
 function computeEffectiveTestCooldownMs(
   cooldownMs: number,
   halfOpenRetryableFailureCount: number | undefined
@@ -16005,6 +16015,177 @@ describe("gateway app", () => {
     expect(body).toContain("data: [DONE]");
   });
 
+  it("streams openai responses reasoning summary event fidelity and terminates with done", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
+                  'data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"reasoning","id":"rs_123","summary":[]}}\n\n',
+                  'data: {"type":"response.reasoning_summary_text.delta","sequence_number":2,"output_index":0,"summary_index":0,"delta":"The model checked"}\n\n',
+                  'data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"type":"reasoning","id":"rs_123","summary":[{"type":"summary_text","text":"The model checked the answer."}]}],"parallel_tool_calls":true,"tools":[]}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi",
+          stream: true,
+          reasoning: {
+            summary: "auto"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const body = await readText(response);
+
+    expect(body).toContain('"type":"response.reasoning_summary_part.added"');
+    expect(body).toContain('"type":"response.reasoning_summary_text.delta"');
+    expect(body).toContain('"type":"response.reasoning_summary_text.done"');
+    expect(body).toContain('"type":"response.reasoning_summary_part.done"');
+    expect(body).toContain('"type":"response.output_item.done"');
+    expect(body).toContain('"type":"response.completed"');
+    expect(body).toContain("data: [DONE]");
+  });
+
+  it("offsets tool output indexes after reasoning in native openai responses streaming", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
+                  'data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"reasoning","id":"rs_123","summary":[]}}\n\n',
+                  'data: {"type":"response.reasoning_summary_text.delta","sequence_number":2,"output_index":0,"summary_index":0,"delta":"The model checked"}\n\n',
+                  'data: {"type":"response.output_item.added","sequence_number":3,"output_index":1,"item":{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"","status":"in_progress"}}\n\n',
+                  'data: {"type":"response.function_call_arguments.delta","sequence_number":4,"item_id":"call_123","output_index":1,"delta":"{\\"city\\":\\"Shanghai\\"}"}\n\n',
+                  'data: {"type":"response.completed","sequence_number":5,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"type":"reasoning","id":"rs_123","summary":[{"type":"summary_text","text":"The model checked the answer."}]},{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"}],"parallel_tool_calls":true,"tools":[]}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi",
+          stream: true,
+          reasoning: {
+            summary: "auto"
+          },
+          tools: [
+            {
+              type: "function",
+              name: "lookup_weather",
+              parameters: {
+                type: "object"
+              }
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const body = await readText(response);
+    const events = parseSseDataEvents(body);
+    const toolDeltaEvent = events.find((event) => {
+      return (
+        isRecord(event) &&
+        event.type === "response.function_call_arguments.delta"
+      );
+    });
+    const toolDoneEvent = events.find((event) => {
+      return (
+        isRecord(event) &&
+        event.type === "response.function_call_arguments.done"
+      );
+    });
+    const completedEvent = events.find((event) => {
+      return isRecord(event) && event.type === "response.completed";
+    });
+
+    expect(toolDeltaEvent).toMatchObject({
+      type: "response.function_call_arguments.delta",
+      item_id: "call_123",
+      output_index: 1
+    });
+    expect(toolDoneEvent).toMatchObject({
+      type: "response.function_call_arguments.done",
+      item_id: "call_123",
+      output_index: 1
+    });
+    expect(completedEvent).toMatchObject({
+      type: "response.completed",
+      response: {
+        output: [
+          {
+            type: "reasoning"
+          },
+          {
+            type: "function_call",
+            call_id: "call_123"
+          }
+        ]
+      }
+    });
+  });
+
   it("accepts chat parallel_tool_calls=true and forwards it upstream", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -17554,8 +17735,50 @@ describe("gateway app", () => {
     });
   });
 
-  it("rejects unsupported responses reasoning summary variants", async () => {
-    const app = createApp({ fetcher: vi.fn() });
+  it("accepts supported responses reasoning summary config and forwards it upstream for OpenAI", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              type: "reasoning",
+              id: "rs_123",
+              summary: [
+                {
+                  type: "summary_text",
+                  text: "The model checked the answer."
+                }
+              ]
+            },
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
 
     const response = await app.request(
       "http://localhost/v1/responses",
@@ -17577,14 +17800,30 @@ describe("gateway app", () => {
       createBindings()
     );
 
-    expect(response.status).toBe(400);
-    await expect(readJson(response)).resolves.toEqual({
-      error: {
-        message:
-          "Unsupported OpenAI Responses reasoning config: only reasoning.effort is supported",
-        type: "request",
-        code: "request_unsupported_openai_semantics"
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      reasoning: {
+        effort: "medium",
+        summary: "auto"
       }
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      output: [
+        {
+          type: "reasoning",
+          summary: [
+            {
+              type: "summary_text",
+              text: "The model checked the answer."
+            }
+          ]
+        },
+        {
+          type: "message",
+          role: "assistant"
+        }
+      ]
     });
   });
 

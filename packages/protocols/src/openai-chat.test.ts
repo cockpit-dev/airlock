@@ -768,6 +768,34 @@ describe("openAIResponsesRequestSchema", () => {
     });
   });
 
+  it("accepts responses reasoning.summary and deprecated reasoning.generate_summary", () => {
+    const summaryParsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      reasoning: {
+        effort: "low",
+        summary: "auto"
+      }
+    });
+    const generateSummaryParsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      reasoning: {
+        generate_summary: "concise"
+      }
+    });
+
+    expect(summaryParsed.reasoning).toEqual({
+      effort: "low",
+      summary: "auto"
+    });
+    expect(generateSummaryParsed.reasoning).toEqual({
+      generate_summary: "concise"
+    });
+  });
+
   it("accepts responses text.format when type is json_schema", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",
@@ -1009,6 +1037,33 @@ describe("openAIResponsesRequestSchema", () => {
           type: "function_call_output",
           call_id: "call_123",
           output: "{\"temperature_c\":26}"
+        }
+      ]
+    });
+
+    expect(Array.isArray(parsed.input)).toBe(true);
+  });
+
+  it("accepts responses reasoning replay items", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          type: "reasoning",
+          id: "rs_123",
+          encrypted_content: "enc_123",
+          summary: [
+            {
+              type: "summary_text",
+              text: "The model checked the answer."
+            }
+          ]
+        },
+        {
+          type: "message",
+          role: "user",
+          content: "Continue."
         }
       ]
     });
