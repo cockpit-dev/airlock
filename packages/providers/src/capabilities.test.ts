@@ -57,7 +57,7 @@ describe("provider capability descriptors", () => {
         supportsConversationId: false,
         supportsPrompt: false,
         supportsReasoning: false,
-        supportsStructuredOutputs: false,
+        supportsStructuredOutputs: true,
         supportsParallelToolCallControl: false,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
@@ -79,7 +79,7 @@ describe("provider capability descriptors", () => {
       supportsConversationId: false,
       supportsPrompt: false,
       supportsReasoning: false,
-      supportsStructuredOutputs: false,
+      supportsStructuredOutputs: true,
       supportsParallelToolCallControl: false,
       supportsRouteScopedShaping: true,
       supportsStaticFallbackSameProvider: true

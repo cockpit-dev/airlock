@@ -4597,8 +4597,34 @@ describe("gateway app", () => {
     });
   });
 
-  it("fails closed when chat response_format.type=json_object is sent to gemini", async () => {
-    const app = createApp({ fetcher: vi.fn() });
+  it("accepts chat response_format.type=json_object and forwards it upstream for gemini", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "{\"city\":\"Shanghai\"}"
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
 
     const response = await app.request(
       "http://localhost/v1/chat/completions",
@@ -4626,13 +4652,85 @@ describe("gateway app", () => {
       }
     );
 
-    expect(response.status).toBe(400);
-    await expect(readJson(response)).resolves.toEqual({
-      error: {
-        message:
-          "Provider gemini does not support required capability: structured_outputs",
-        type: "routing",
-        code: "provider_capability_not_supported"
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      generationConfig: {
+        responseMimeType: "application/json"
+      }
+    });
+  });
+
+  it("accepts chat response_format.type=json_schema and forwards it upstream for gemini", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "{\"city\":\"Shanghai\"}"
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          stream: false,
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "weather",
+              schema: {
+                type: "object"
+              },
+              strict: true
+            }
+          },
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseJsonSchema: {
+          type: "object"
+        }
       }
     });
   });
@@ -18856,8 +18954,34 @@ describe("gateway app", () => {
     });
   });
 
-  it("fails closed when responses text.format.type=json_object is sent to gemini", async () => {
-    const app = createApp({ fetcher: vi.fn() });
+  it("accepts responses text.format.type=json_object and forwards it upstream for gemini", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "{\"city\":\"Shanghai\"}"
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
 
     const response = await app.request(
       "http://localhost/v1/responses",
@@ -18886,13 +19010,84 @@ describe("gateway app", () => {
       }
     );
 
-    expect(response.status).toBe(400);
-    await expect(readJson(response)).resolves.toEqual({
-      error: {
-        message:
-          "Provider gemini does not support required capability: structured_outputs",
-        type: "routing",
-        code: "provider_capability_not_supported"
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      generationConfig: {
+        responseMimeType: "application/json"
+      }
+    });
+  });
+
+  it("accepts responses text.format.type=json_schema and forwards it upstream for gemini", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "{\"city\":\"Shanghai\"}"
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          input: "hello",
+          text: {
+            format: {
+              type: "json_schema",
+              name: "weather",
+              schema: {
+                type: "object"
+              },
+              strict: true
+            }
+          }
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseJsonSchema: {
+          type: "object"
+        }
       }
     });
   });

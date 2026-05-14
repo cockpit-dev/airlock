@@ -54,7 +54,7 @@ const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
     supportsConversationId: false,
     supportsPrompt: false,
     supportsReasoning: false,
-    supportsStructuredOutputs: false,
+    supportsStructuredOutputs: true,
     supportsParallelToolCallControl: false,
     supportsRouteScopedShaping: true,
     supportsStaticFallbackSameProvider: true

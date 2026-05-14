@@ -45,7 +45,7 @@ export function assertSupportedOpenAIChatStreamOptions(
   payload: unknown,
   requestId: string
 ) {
-  if (typeof payload !== "object" || payload === null) {
+  if (!isRecord(payload)) {
     return;
   }
 
@@ -255,7 +255,7 @@ export function assertSupportedOpenAIResponsesStreamOptions(
   payload: unknown,
   requestId: string
 ) {
-  if (typeof payload !== "object" || payload === null) {
+  if (!isRecord(payload)) {
     return;
   }
 

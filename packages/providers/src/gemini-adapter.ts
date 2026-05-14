@@ -529,6 +529,7 @@ function buildGeminiRequestBody(request: CanonicalRequest) {
         }
       : {}),
     ...((request.maxOutputTokens !== undefined ||
+      request.outputFormat !== undefined ||
       request.temperature !== undefined ||
       request.topP !== undefined ||
       request.stopSequences !== undefined)
@@ -536,6 +537,15 @@ function buildGeminiRequestBody(request: CanonicalRequest) {
           generationConfig: {
             ...(request.maxOutputTokens !== undefined
               ? { maxOutputTokens: request.maxOutputTokens }
+              : {}),
+            ...(request.outputFormat?.type === "json_object"
+              ? { responseMimeType: "application/json" }
+              : {}),
+            ...(request.outputFormat?.type === "json_schema"
+              ? {
+                  responseMimeType: "application/json",
+                  responseJsonSchema: request.outputFormat.schema
+                }
               : {}),
             ...(request.temperature !== undefined
               ? { temperature: request.temperature }

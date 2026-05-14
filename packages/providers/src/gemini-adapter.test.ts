@@ -443,6 +443,124 @@ describe("GeminiProviderAdapter", () => {
     });
   });
 
+  it("forwards canonical json_object output format into Gemini JSON generation config", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "{\"city\":\"Shanghai\"}"
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        outputFormat: {
+          type: "json_object"
+        }
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      generationConfig: {
+        responseMimeType: "application/json"
+      }
+    });
+  });
+
+  it("forwards canonical json_schema output format into Gemini JSON schema generation config", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "{\"city\":\"Shanghai\"}"
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        outputFormat: {
+          type: "json_schema",
+          name: "weather",
+          schema: {
+            type: "object"
+          },
+          strict: true
+        }
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseJsonSchema: {
+          type: "object"
+        }
+      }
+    });
+  });
+
   it("maps Gemini functionCall responses into canonical tool calls", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

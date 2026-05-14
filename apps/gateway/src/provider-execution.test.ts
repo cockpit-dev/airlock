@@ -268,23 +268,52 @@ describe("assertProviderSupportsCanonicalRequest", () => {
 
     expect(() =>
       assertProviderSupportsCanonicalRequest(
-        getProviderCapabilityDescriptor("gemini"),
+        getProviderCapabilityDescriptor("anthropic"),
         request,
         "req_123"
       )
     ).toThrow(
       new GatewayError(
-        "Provider gemini does not support required capability: structured_outputs",
+        "Provider anthropic does not support required capability: structured_outputs",
         {
           code: "provider_capability_not_supported",
           category: "routing",
           httpStatus: 400,
           retryable: false,
-          provider: "gemini",
+          provider: "anthropic",
           requestId: "req_123"
         }
       )
     );
+  });
+
+  it("allows structured output requests for gemini", () => {
+    const request: CanonicalRequest = {
+      model: "gemini-2.5-flash",
+      stream: false,
+      outputFormat: {
+        type: "json_schema",
+        name: "weather",
+        schema: {
+          type: "object"
+        },
+        strict: true
+      },
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    expect(() =>
+      assertProviderSupportsCanonicalRequest(
+        getProviderCapabilityDescriptor("gemini"),
+        request,
+        "req_123"
+      )
+    ).not.toThrow();
   });
 
   it("throws a typed error when the provider descriptor lacks parallel tool call control support", () => {
@@ -2063,6 +2092,8 @@ describe("executeRoutedRequest", () => {
             displayName: "Gemini",
             supportsStreaming: false,
             supportsTools: false,
+            supportsToolReplay: false,
+            supportsStreamingTools: false,
             supportsMultimodalInput: false,
             supportsSystemMessages: false,
             supportsPreviousResponseId: false,
