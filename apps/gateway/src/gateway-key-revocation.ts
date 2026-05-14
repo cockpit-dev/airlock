@@ -36,6 +36,16 @@ import {
   listGatewayRegistryApiKeys,
   resolveGatewayRuntimeApiKey
 } from "./gateway-key-registry.js";
+import {
+  REVOCATION_OPERATION_LOG_OBJECT_NAME,
+  buildGatewayKeyRevocationEventsRequest,
+  buildGatewayKeyRevocationOperationEventAppendRequest,
+  buildGatewayKeyRevocationOperationEventsRequest,
+  buildGatewayKeyRevocationStateRequest,
+  fetchParsedRevocationResponse,
+  isGatewayKeyRevocationEnabled,
+  requireGatewayKeyRevocationNamespace
+} from "./gateway-key-revocation-transport.js";
 
 interface DurableObjectStateLike {
   storage: {
@@ -44,7 +54,6 @@ interface DurableObjectStateLike {
   };
 }
 const REVOCATION_EVENTS_KEY = "revocation_events";
-const REVOCATION_OPERATION_LOG_OBJECT_NAME = "gateway-key-revocation-operations";
 const REVOCATION_OPERATION_EVENTS_PREFIX = "revocation_operation:";
 
 export class GatewayKeyRevocationDurableObject {
@@ -132,59 +141,26 @@ export async function assertGatewayKeyNotRevoked(
     throw createUnauthorizedGatewayKeyError(requestId);
   }
 
-  const namespace = env.AIRLOCK_GATEWAY_KEY_REVOCATION;
-
-  if (!namespace) {
+  if (!isGatewayKeyRevocationEnabled(env)) {
     return;
   }
 
-  const stub = namespace.get(namespace.idFromName(gatewayApiKey.id));
-  let response: Response;
-
-  try {
-    response = await stub.fetch(
-      new Request("https://airlock.internal/gateway-key-revocation", {
+  const state = await fetchParsedRevocationResponse(
+    () => {
+      return env.AIRLOCK_GATEWAY_KEY_REVOCATION!.get(
+        env.AIRLOCK_GATEWAY_KEY_REVOCATION!.idFromName(gatewayApiKey.id)
+      );
+    },
+    buildGatewayKeyRevocationStateRequest(requestId, {
         method: "GET"
-      })
-    );
-  } catch (cause) {
-    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
-      code: "gateway_key_revocation_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId,
-      cause
-    });
-  }
-
-  if (!response.ok) {
-    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
-      code: "gateway_key_revocation_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId
-    });
-  }
-
-  let state: GatewayKeyRevocationState;
-
-  try {
-    state = parseGatewayKeyRevocationState(await response.json());
-  } catch (cause) {
-    throw new GatewayError(
-      "Gateway key revocation subsystem returned an invalid response",
-      {
-        code: "gateway_key_revocation_invalid_response",
-        category: "governance",
-        httpStatus: 503,
-        retryable: true,
-        requestId,
-        cause
+      }),
+    requestId,
+    {
+      parse: async (response) => {
+        return parseGatewayKeyRevocationState(await response.json());
       }
-    );
-  }
+    }
+  );
 
   if (state.revoked) {
     throw createUnauthorizedGatewayKeyError(requestId);
@@ -468,49 +444,16 @@ export async function getGatewayKeyRevocationEvents(
   requestId: string
 ): Promise<GatewayKeyAuditEvent[]> {
   const namespace = requireGatewayKeyRevocationNamespace(env, requestId);
-  const stub = namespace.get(namespace.idFromName(keyId));
-  let response: Response;
-
-  try {
-    response = await stub.fetch(
-      buildGatewayKeyRevocationEventsRequest(keyId)
-    );
-  } catch (cause) {
-    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
-      code: "gateway_key_revocation_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId,
-      cause
-    });
-  }
-
-  if (!response.ok) {
-    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
-      code: "gateway_key_revocation_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId
-    });
-  }
-
-  try {
-    return parseGatewayKeyAuditEventsResponse(await response.json()).events;
-  } catch (cause) {
-    throw new GatewayError(
-      "Gateway key revocation subsystem returned an invalid response",
-      {
-        code: "gateway_key_revocation_invalid_response",
-        category: "governance",
-        httpStatus: 503,
-        retryable: true,
-        requestId,
-        cause
+  return fetchParsedRevocationResponse(
+    () => namespace.get(namespace.idFromName(keyId)),
+    buildGatewayKeyRevocationEventsRequest(requestId, keyId),
+    requestId,
+    {
+      parse: async (response) => {
+        return parseGatewayKeyAuditEventsResponse(await response.json()).events;
       }
-    );
-  }
+    }
+  );
 }
 
 export async function getGatewayKeyRevocationOperationEvents(
@@ -518,59 +461,33 @@ export async function getGatewayKeyRevocationOperationEvents(
   operationId: string,
   requestId: string
 ): Promise<GatewayKeyAuditEvent[]> {
-  const namespace = env.AIRLOCK_GATEWAY_KEY_REVOCATION;
-
-  if (!namespace) {
+  if (!isGatewayKeyRevocationEnabled(env)) {
     return [];
   }
 
-  const stub = namespace.get(namespace.idFromName(REVOCATION_OPERATION_LOG_OBJECT_NAME));
-  let response: Response;
+  return fetchParsedRevocationResponse(
+    () => {
+      return env.AIRLOCK_GATEWAY_KEY_REVOCATION!.get(
+        env.AIRLOCK_GATEWAY_KEY_REVOCATION!.idFromName(
+          REVOCATION_OPERATION_LOG_OBJECT_NAME
+        )
+      );
+    },
+    buildGatewayKeyRevocationOperationEventsRequest(requestId, operationId),
+    requestId,
+    {
+      parse: async (response) => {
+        return parseGatewayKeyOperationEventsResponse(await response.json()).events;
+      },
+      handleStatus: (response) => {
+        if (response.status === 404) {
+          return [];
+        }
 
-  try {
-    response = await stub.fetch(
-      buildGatewayKeyRevocationOperationEventsRequest(operationId)
-    );
-  } catch (cause) {
-    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
-      code: "gateway_key_revocation_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId,
-      cause
-    });
-  }
-
-  if (response.status === 404) {
-    return [];
-  }
-
-  if (!response.ok) {
-    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
-      code: "gateway_key_revocation_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId
-    });
-  }
-
-  try {
-    return parseGatewayKeyOperationEventsResponse(await response.json()).events;
-  } catch (cause) {
-    throw new GatewayError(
-      "Gateway key revocation subsystem returned an invalid response",
-      {
-        code: "gateway_key_revocation_invalid_response",
-        category: "governance",
-        httpStatus: 503,
-        retryable: true,
-        requestId,
-        cause
+        return undefined;
       }
-    );
-  }
+    }
+  );
 }
 
 async function readGatewayKeyRevocationStateForKey(
@@ -579,37 +496,18 @@ async function readGatewayKeyRevocationStateForKey(
   requestId: string
 ): Promise<GatewayKeyRevocationState> {
   const namespace = requireGatewayKeyRevocationNamespace(env, requestId);
-  const stub = namespace.get(namespace.idFromName(gatewayApiKey.id));
-  let response: Response;
-
-  try {
-    response = await stub.fetch(
-      new Request("https://airlock.internal/gateway-key-revocation", {
+  return fetchParsedRevocationResponse(
+    () => namespace.get(namespace.idFromName(gatewayApiKey.id)),
+    buildGatewayKeyRevocationStateRequest(requestId, {
         method: "GET"
-      })
-    );
-  } catch (cause) {
-    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
-      code: "gateway_key_revocation_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId,
-      cause
-    });
-  }
-
-  if (!response.ok) {
-    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
-      code: "gateway_key_revocation_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId
-    });
-  }
-
-  return parseGatewayKeyRevocationState(await response.json());
+      }),
+    requestId,
+    {
+      parse: async (response) => {
+        return parseGatewayKeyRevocationState(await response.json());
+      }
+    }
+  );
 }
 
 async function writeGatewayKeyRevocationStateForKey(
@@ -620,7 +518,6 @@ async function writeGatewayKeyRevocationStateForKey(
   options?: GatewayKeyRevocationWriteRequest
 ): Promise<GatewayKeyRevocationState> {
   const namespace = requireGatewayKeyRevocationNamespace(env, requestId);
-  const stub = namespace.get(namespace.idFromName(gatewayApiKey.id));
   const recordEvent = options?.recordEvent ?? true;
   const ownership = recordEvent
     ? options?.ownership ??
@@ -631,11 +528,9 @@ async function writeGatewayKeyRevocationStateForKey(
       ))
     : undefined;
   const operationId = recordEvent ? options?.operationId ?? requestId : undefined;
-  let response: Response;
-
-  try {
-    response = await stub.fetch(
-      new Request("https://airlock.internal/gateway-key-revocation", {
+  const state = await fetchParsedRevocationResponse(
+    () => namespace.get(namespace.idFromName(gatewayApiKey.id)),
+    buildGatewayKeyRevocationStateRequest(requestId, {
         method: revoked ? "POST" : "DELETE",
         headers: {
           "content-type": "application/json"
@@ -649,30 +544,14 @@ async function writeGatewayKeyRevocationStateForKey(
           ...(options?.actorSource ? { actorSource: options.actorSource } : {}),
           ...(ownership ? { ownership } : {})
         } satisfies GatewayKeyRevocationWriteRequest)
-      })
-    );
-  } catch (cause) {
-    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
-      code: "gateway_key_revocation_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId,
-      cause
-    });
-  }
-
-  if (!response.ok) {
-    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
-      code: "gateway_key_revocation_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId
-    });
-  }
-
-  const state = parseGatewayKeyRevocationState(await response.json());
+      }),
+    requestId,
+    {
+      parse: async (response) => {
+        return parseGatewayKeyRevocationState(await response.json());
+      }
+    }
+  );
 
   if (recordEvent && ownership && operationId) {
     await appendGatewayKeyRevocationOperationEventForKey(
@@ -693,26 +572,6 @@ async function writeGatewayKeyRevocationStateForKey(
 
   return state;
 }
-
-function requireGatewayKeyRevocationNamespace(
-  env: GatewayBindings,
-  requestId: string
-) {
-  const namespace = env.AIRLOCK_GATEWAY_KEY_REVOCATION;
-
-  if (!namespace) {
-    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
-      code: "gateway_key_revocation_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId
-    });
-  }
-
-  return namespace;
-}
-
 async function readGatewayKeyRevocationState(
   storage: DurableObjectStateLike["storage"]
 ): Promise<GatewayKeyRevocationState> {
@@ -843,36 +702,14 @@ async function appendGatewayKeyRevocationOperationEventForKey(
   }
 
   const namespace = requireGatewayKeyRevocationNamespace(env, requestId);
-  const stub = namespace.get(namespace.idFromName(REVOCATION_OPERATION_LOG_OBJECT_NAME));
-
-  try {
-    const response = await stub.fetch(
-      buildGatewayKeyRevocationOperationEventAppendRequest(event)
-    );
-
-    if (!response.ok) {
-      throw new GatewayError("Gateway key revocation subsystem is unavailable", {
-        code: "gateway_key_revocation_unavailable",
-        category: "governance",
-        httpStatus: 503,
-        retryable: true,
-        requestId
-      });
+  await fetchParsedRevocationResponse(
+    () => namespace.get(namespace.idFromName(REVOCATION_OPERATION_LOG_OBJECT_NAME)),
+    buildGatewayKeyRevocationOperationEventAppendRequest(requestId, event),
+    requestId,
+    {
+      parse: () => null
     }
-  } catch (cause) {
-    if (cause instanceof GatewayError) {
-      throw cause;
-    }
-
-    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
-      code: "gateway_key_revocation_unavailable",
-      category: "governance",
-      httpStatus: 503,
-      retryable: true,
-      requestId,
-      cause
-    });
-  }
+  );
 }
 
 async function readGatewayKeyRevocationWriteRequest(
@@ -885,43 +722,6 @@ async function readGatewayKeyRevocationWriteRequest(
   }
 
   return parseGatewayKeyRevocationWriteRequest(await request.json());
-}
-
-function buildGatewayKeyRevocationEventsRequest(keyId: string): Request {
-  const url = new URL("https://airlock.internal/gateway-key-revocation");
-  url.searchParams.set("kind", "events");
-  url.searchParams.set("keyId", keyId);
-
-  return new Request(url, {
-    method: "GET"
-  });
-}
-
-function buildGatewayKeyRevocationOperationEventsRequest(
-  operationId: string
-): Request {
-  const url = new URL("https://airlock.internal/gateway-key-revocation");
-  url.searchParams.set("kind", "operation_events");
-  url.searchParams.set("operationId", operationId);
-
-  return new Request(url, {
-    method: "GET"
-  });
-}
-
-function buildGatewayKeyRevocationOperationEventAppendRequest(
-  event: GatewayKeyAuditEvent
-): Request {
-  const url = new URL("https://airlock.internal/gateway-key-revocation");
-  url.searchParams.set("kind", "operation_events");
-
-  return new Request(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify(event)
-  });
 }
 
 async function resolveGatewayKeyAuditOwnership(
