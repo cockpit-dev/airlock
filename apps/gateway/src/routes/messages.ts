@@ -42,6 +42,16 @@ import {
   emitGatewayRequestSuccessTelemetry
 } from "../telemetry.js";
 import type { CreateAppOptions } from "../app.js";
+import { assertAllowedAnthropicTopLevelFields } from "../anthropic-request-validation.js";
+
+const allowedAnthropicTopLevelFields = [
+  "model",
+  "max_tokens",
+  "stream",
+  "system",
+  "messages",
+  "airlock"
+] as const;
 
 export async function handleMessages(
   context: Context<{
@@ -67,6 +77,11 @@ export async function handleMessages(
   );
 
   const json: unknown = await context.req.json();
+  assertAllowedAnthropicTopLevelFields(
+    json,
+    requestId,
+    allowedAnthropicTopLevelFields
+  );
   const parsed = anthropicMessagesRequestSchema.parse(json);
   const route = resolveModelRoute(parsed.model, config.modelAliases, requestId);
   assertGatewayKeyAllowsRoute(gatewayApiKey, route, requestId);

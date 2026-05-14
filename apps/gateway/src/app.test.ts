@@ -14973,6 +14973,210 @@ describe("gateway app", () => {
     });
   });
 
+  it("allowlist anthropic semantics rejects unsupported temperature", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          temperature: 0.2,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    const body = await readJson(response);
+
+    expect(body).toMatchObject({
+      type: "error",
+      error: {
+        type: "request",
+        message: "Unsupported Anthropic semantic field: temperature"
+      }
+    });
+    if (!isRecord(body)) {
+      throw new Error("Expected an Anthropic error payload");
+    }
+    expect(typeof body.request_id).toBe("string");
+  });
+
+  it("allowlist anthropic semantics rejects unsupported tools", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          tools: [
+            {
+              name: "lookup"
+            }
+          ],
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    const body = await readJson(response);
+
+    expect(body).toMatchObject({
+      type: "error",
+      error: {
+        type: "request",
+        message: "Unsupported Anthropic semantic field: tools"
+      }
+    });
+    if (!isRecord(body)) {
+      throw new Error("Expected an Anthropic error payload");
+    }
+    expect(typeof body.request_id).toBe("string");
+  });
+
+  it("allowlist anthropic semantics rejects unsupported metadata", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          metadata: {
+            source: "client"
+          },
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    const body = await readJson(response);
+
+    expect(body).toMatchObject({
+      type: "error",
+      error: {
+        type: "request",
+        message: "Unsupported Anthropic semantic field: metadata"
+      }
+    });
+    if (!isRecord(body)) {
+      throw new Error("Expected an Anthropic error payload");
+    }
+    expect(typeof body.request_id).toBe("string");
+  });
+
   it("rejects reserved request-scoped shaping headers as a request error", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
