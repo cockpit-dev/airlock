@@ -9,6 +9,7 @@ export * from "./gateway-key-governance-read.js";
 export * from "./gateway-key-runtime-dependencies.js";
 export * from "./gateway-key-registry.js";
 export * from "./gateway-key-registry-lifecycle.js";
+export * from "./gateway-key-registry-lifecycle-transitions.js";
 export * from "./gateway-key-registry-mutations.js";
 export * from "./gateway-key-registry-rotation.js";
 export * from "./gateway-key-revocation.js";

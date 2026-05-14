@@ -2,6 +2,14 @@ import {
   assertGatewayApiKeyRuntimeDependencies,
   applyGatewayApiKeyMetadataOverride,
   archiveGatewayRegistryKey as archiveGatewayRegistryKeyUseCase,
+  buildArchiveGatewayRegistryKeyTransition,
+  buildBulkArchiveGatewayRegistryKeyTransitions,
+  buildBulkCancelGatewayRegistryKeyRotationTransitions,
+  buildBulkFinalizeGatewayRegistryKeyRotationTransitions,
+  buildBulkRestoreGatewayRegistryKeyTransitions,
+  buildCancelGatewayRegistryKeyRotationTransition,
+  buildFinalizeGatewayRegistryKeyRotationTransition,
+  buildRestoreGatewayRegistryKeyTransition,
   bulkCreateGatewayRegistryKeys as bulkCreateGatewayRegistryKeysUseCase,
   bulkDeleteGatewayRegistryKeys as bulkDeleteGatewayRegistryKeysUseCase,
   bulkArchiveGatewayRegistryKeys as bulkArchiveGatewayRegistryKeysUseCase,
@@ -769,27 +777,25 @@ export class GatewayKeyRegistryDurableObject {
       );
       const actorContext =
         gatewayKeyAuditActorContextFromRegistryRequest(payload);
-      const previousKey = existingKey;
-      const key = await updateStoredDynamicKey(
-        this.state.storage,
+      const transitionNow = new Date().toISOString();
+      const transition = buildFinalizeGatewayRegistryKeyRotationTransition(
         existingKey,
-        await listStoredDynamicKeys(this.state.storage),
-        { clearPreviousValueHash: true }
-      );
-      await appendStoredDynamicKeyAuditEvent(
-        this.state.storage,
-        createGatewayKeyAuditEvent({
-          keyId: key.id,
-          kind: "rotation_finalized",
-          ownership: "registry",
-          occurredAt: key.updatedAt,
-          changes: createStoredGatewayRegistryFieldDiffs(previousKey, key),
+        {
           ...(payload.reason ? { reason: payload.reason } : {}),
           ...(actorContext
             ? toGatewayKeyAuditActorContextRecord(actorContext)
             : {})
-        })
+        },
+        transitionNow
       );
+      const key = await updateStoredDynamicKey(
+        this.state.storage,
+        transition.nextKey,
+        await listStoredDynamicKeys(this.state.storage),
+        { clearPreviousValueHash: true },
+        transitionNow
+      );
+      await appendStoredDynamicKeyAuditEvent(this.state.storage, transition.auditEvent);
 
       return Response.json({
         key: createGatewayKeyRegistryDynamicKeyView(key)
@@ -824,30 +830,25 @@ export class GatewayKeyRegistryDurableObject {
       );
       const actorContext =
         gatewayKeyAuditActorContextFromRegistryRequest(payload);
-      const previousKey = existingKey;
-      const key = await updateStoredDynamicKey(
-        this.state.storage,
+      const transitionNow = new Date().toISOString();
+      const transition = buildCancelGatewayRegistryKeyRotationTransition(
+        existingKey,
         {
-          ...existingKey,
-          valueHash: existingKey.previousValueHash
-        },
-        await listStoredDynamicKeys(this.state.storage),
-        { clearPreviousValueHash: true }
-      );
-      await appendStoredDynamicKeyAuditEvent(
-        this.state.storage,
-        createGatewayKeyAuditEvent({
-          keyId: key.id,
-          kind: "rotation_canceled",
-          ownership: "registry",
-          occurredAt: key.updatedAt,
-          changes: createStoredGatewayRegistryFieldDiffs(previousKey, key),
           ...(payload.reason ? { reason: payload.reason } : {}),
           ...(actorContext
             ? toGatewayKeyAuditActorContextRecord(actorContext)
             : {})
-        })
+        },
+        transitionNow
       );
+      const key = await updateStoredDynamicKey(
+        this.state.storage,
+        transition.nextKey,
+        await listStoredDynamicKeys(this.state.storage),
+        { clearPreviousValueHash: true },
+        transitionNow
+      );
+      await appendStoredDynamicKeyAuditEvent(this.state.storage, transition.auditEvent);
 
       return Response.json({
         key: createGatewayKeyRegistryDynamicKeyView(key)
@@ -898,45 +899,41 @@ export class GatewayKeyRegistryDurableObject {
       const actorContext = gatewayKeyAuditActorContextFromRegistryRequest(
         bulkRequest.auditMetadata
       );
-      const archivedKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
-
-      for (const plan of archivePlan) {
-        if (!plan || plan === "already_archived") {
-          continue;
-        }
-
-        archivedKeys.push(
-          await updateStoredDynamicKey(
-            this.state.storage,
-            plan.nextKey,
-            dynamicKeys
-          )
-        );
-      }
-
-      for (const key of archivedKeys) {
-        const previousKey = existingKeysById.get(key.id);
-
-        if (!previousKey) {
-          continue;
-        }
-
-        await appendStoredDynamicKeyAuditEvent(
-          this.state.storage,
-          createGatewayKeyAuditEvent({
-            keyId: key.id,
-            kind: "archived",
-            ownership: "registry",
-            occurredAt: key.updatedAt,
+      const transitionNow = new Date().toISOString();
+      const archiveTransitions =
+        buildBulkArchiveGatewayRegistryKeyTransitions(
+          bulkRequest.keyIds.map((candidateKeyId) => {
+            return existingKeysById.get(candidateKeyId)!;
+          }),
+          {
             ...(operationId ? { operationId } : {}),
-            changes: createStoredGatewayRegistryFieldDiffs(previousKey, key),
             ...(bulkRequest.auditMetadata.reason
               ? { reason: bulkRequest.auditMetadata.reason }
               : {}),
             ...(actorContext
               ? toGatewayKeyAuditActorContextRecord(actorContext)
               : {})
-          })
+          },
+          transitionNow
+        );
+      const archivedKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
+
+      for (const transition of archiveTransitions) {
+        archivedKeys.push(
+          await updateStoredDynamicKey(
+            this.state.storage,
+            transition.nextKey,
+            dynamicKeys,
+            undefined,
+            transitionNow
+          )
+        );
+      }
+
+      for (const transition of archiveTransitions) {
+        await appendStoredDynamicKeyAuditEvent(
+          this.state.storage,
+          transition.auditEvent
         );
       }
 
@@ -990,46 +987,41 @@ export class GatewayKeyRegistryDurableObject {
       const actorContext = gatewayKeyAuditActorContextFromRegistryRequest(
         bulkRequest.auditMetadata
       );
-      const restoredKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
-
-      for (const plan of restorePlan) {
-        if (!plan || plan === "not_archived") {
-          continue;
-        }
-
-        restoredKeys.push(
-          await updateStoredDynamicKey(
-            this.state.storage,
-            plan.nextKey,
-            dynamicKeys,
-            { clearArchivedAt: true }
-          )
-        );
-      }
-
-      for (const key of restoredKeys) {
-        const previousKey = existingKeysById.get(key.id);
-
-        if (!previousKey) {
-          continue;
-        }
-
-        await appendStoredDynamicKeyAuditEvent(
-          this.state.storage,
-          createGatewayKeyAuditEvent({
-            keyId: key.id,
-            kind: "restored",
-            ownership: "registry",
-            occurredAt: key.updatedAt,
+      const transitionNow = new Date().toISOString();
+      const restoreTransitions =
+        buildBulkRestoreGatewayRegistryKeyTransitions(
+          bulkRequest.keyIds.map((candidateKeyId) => {
+            return existingKeysById.get(candidateKeyId)!;
+          }),
+          {
             ...(operationId ? { operationId } : {}),
-            changes: createStoredGatewayRegistryFieldDiffs(previousKey, key),
             ...(bulkRequest.auditMetadata.reason
               ? { reason: bulkRequest.auditMetadata.reason }
               : {}),
             ...(actorContext
               ? toGatewayKeyAuditActorContextRecord(actorContext)
               : {})
-          })
+          },
+          transitionNow
+        );
+      const restoredKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
+
+      for (const transition of restoreTransitions) {
+        restoredKeys.push(
+          await updateStoredDynamicKey(
+            this.state.storage,
+            transition.nextKey,
+            dynamicKeys,
+            { clearArchivedAt: true },
+            transitionNow
+          )
+        );
+      }
+
+      for (const transition of restoreTransitions) {
+        await appendStoredDynamicKeyAuditEvent(
+          this.state.storage,
+          transition.auditEvent
         );
       }
 
@@ -1075,48 +1067,41 @@ export class GatewayKeyRegistryDurableObject {
       const actorContext = gatewayKeyAuditActorContextFromRegistryRequest(
         bulkRequest.auditMetadata
       );
-      const finalizedKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
-
-      for (const candidateKeyId of bulkRequest.keyIds) {
-        const existingKey = existingKeysById.get(candidateKeyId);
-
-        if (!existingKey) {
-          continue;
-        }
-
-        finalizedKeys.push(
-          await updateStoredDynamicKey(
-            this.state.storage,
-            existingKey,
-            dynamicKeys,
-            { clearPreviousValueHash: true }
-          )
-        );
-      }
-
-      for (const key of finalizedKeys) {
-        const previousKey = existingKeysById.get(key.id);
-
-        if (!previousKey) {
-          continue;
-        }
-
-        await appendStoredDynamicKeyAuditEvent(
-          this.state.storage,
-          createGatewayKeyAuditEvent({
-            keyId: key.id,
-            kind: "rotation_finalized",
-            ownership: "registry",
-            occurredAt: key.updatedAt,
+      const transitionNow = new Date().toISOString();
+      const finalizeTransitions =
+        buildBulkFinalizeGatewayRegistryKeyRotationTransitions(
+          bulkRequest.keyIds.map((candidateKeyId) => {
+            return existingKeysById.get(candidateKeyId)!;
+          }),
+          {
             ...(operationId ? { operationId } : {}),
-            changes: createStoredGatewayRegistryFieldDiffs(previousKey, key),
             ...(bulkRequest.auditMetadata.reason
               ? { reason: bulkRequest.auditMetadata.reason }
               : {}),
             ...(actorContext
               ? toGatewayKeyAuditActorContextRecord(actorContext)
               : {})
-          })
+          },
+          transitionNow
+        );
+      const finalizedKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
+
+      for (const transition of finalizeTransitions) {
+        finalizedKeys.push(
+          await updateStoredDynamicKey(
+            this.state.storage,
+            transition.nextKey,
+            dynamicKeys,
+            { clearPreviousValueHash: true },
+            transitionNow
+          )
+        );
+      }
+
+      for (const transition of finalizeTransitions) {
+        await appendStoredDynamicKeyAuditEvent(
+          this.state.storage,
+          transition.auditEvent
         );
       }
 
@@ -1166,51 +1151,41 @@ export class GatewayKeyRegistryDurableObject {
       const actorContext = gatewayKeyAuditActorContextFromRegistryRequest(
         bulkRequest.auditMetadata
       );
-      const canceledKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
-
-      for (const candidateKeyId of bulkRequest.keyIds) {
-        const existingKey = existingKeysById.get(candidateKeyId);
-
-        if (!existingKey || !existingKey.previousValueHash) {
-          continue;
-        }
-
-        canceledKeys.push(
-          await updateStoredDynamicKey(
-            this.state.storage,
-            {
-              ...existingKey,
-              valueHash: existingKey.previousValueHash
-            },
-            dynamicKeys,
-            { clearPreviousValueHash: true }
-          )
-        );
-      }
-
-      for (const key of canceledKeys) {
-        const previousKey = existingKeysById.get(key.id);
-
-        if (!previousKey) {
-          continue;
-        }
-
-        await appendStoredDynamicKeyAuditEvent(
-          this.state.storage,
-          createGatewayKeyAuditEvent({
-            keyId: key.id,
-            kind: "rotation_canceled",
-            ownership: "registry",
-            occurredAt: key.updatedAt,
+      const transitionNow = new Date().toISOString();
+      const cancelTransitions =
+        buildBulkCancelGatewayRegistryKeyRotationTransitions(
+          bulkRequest.keyIds.map((candidateKeyId) => {
+            return existingKeysById.get(candidateKeyId)!;
+          }),
+          {
             ...(operationId ? { operationId } : {}),
-            changes: createStoredGatewayRegistryFieldDiffs(previousKey, key),
             ...(bulkRequest.auditMetadata.reason
               ? { reason: bulkRequest.auditMetadata.reason }
               : {}),
             ...(actorContext
               ? toGatewayKeyAuditActorContextRecord(actorContext)
               : {})
-          })
+          },
+          transitionNow
+        );
+      const canceledKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
+
+      for (const transition of cancelTransitions) {
+        canceledKeys.push(
+          await updateStoredDynamicKey(
+            this.state.storage,
+            transition.nextKey,
+            dynamicKeys,
+            { clearPreviousValueHash: true },
+            transitionNow
+          )
+        );
+      }
+
+      for (const transition of cancelTransitions) {
+        await appendStoredDynamicKeyAuditEvent(
+          this.state.storage,
+          transition.auditEvent
         );
       }
 
@@ -1243,29 +1218,25 @@ export class GatewayKeyRegistryDurableObject {
       );
       const actorContext =
         gatewayKeyAuditActorContextFromRegistryRequest(payload);
-      const previousKey = existingKey;
-      const key = await updateStoredDynamicKey(
-        this.state.storage,
+      const transitionNow = new Date().toISOString();
+      const transition = buildArchiveGatewayRegistryKeyTransition(
+        existingKey,
         {
-          ...existingKey,
-          archivedAt: new Date().toISOString()
-        },
-        await listStoredDynamicKeys(this.state.storage)
-      );
-      await appendStoredDynamicKeyAuditEvent(
-        this.state.storage,
-        createGatewayKeyAuditEvent({
-          keyId: key.id,
-          kind: "archived",
-          ownership: "registry",
-          occurredAt: key.updatedAt,
-          changes: createStoredGatewayRegistryFieldDiffs(previousKey, key),
           ...(payload.reason ? { reason: payload.reason } : {}),
           ...(actorContext
             ? toGatewayKeyAuditActorContextRecord(actorContext)
             : {})
-        })
+        },
+        transitionNow
       );
+      const key = await updateStoredDynamicKey(
+        this.state.storage,
+        transition.nextKey,
+        await listStoredDynamicKeys(this.state.storage),
+        undefined,
+        transitionNow
+      );
+      await appendStoredDynamicKeyAuditEvent(this.state.storage, transition.auditEvent);
 
       return Response.json({
         key: createGatewayKeyRegistryDynamicKeyView(key)
@@ -1293,29 +1264,25 @@ export class GatewayKeyRegistryDurableObject {
       );
       const actorContext =
         gatewayKeyAuditActorContextFromRegistryRequest(payload);
-      const nextKey = { ...existingKey };
-      delete nextKey.archivedAt;
-      const previousKey = existingKey;
-      const key = await updateStoredDynamicKey(
-        this.state.storage,
-        nextKey,
-        await listStoredDynamicKeys(this.state.storage),
-        { clearArchivedAt: true }
-      );
-      await appendStoredDynamicKeyAuditEvent(
-        this.state.storage,
-        createGatewayKeyAuditEvent({
-          keyId: key.id,
-          kind: "restored",
-          ownership: "registry",
-          occurredAt: key.updatedAt,
-          changes: createStoredGatewayRegistryFieldDiffs(previousKey, key),
+      const transitionNow = new Date().toISOString();
+      const transition = buildRestoreGatewayRegistryKeyTransition(
+        existingKey,
+        {
           ...(payload.reason ? { reason: payload.reason } : {}),
           ...(actorContext
             ? toGatewayKeyAuditActorContextRecord(actorContext)
             : {})
-        })
+        },
+        transitionNow
       );
+      const key = await updateStoredDynamicKey(
+        this.state.storage,
+        transition.nextKey,
+        await listStoredDynamicKeys(this.state.storage),
+        { clearArchivedAt: true },
+        transitionNow
+      );
+      await appendStoredDynamicKeyAuditEvent(this.state.storage, transition.auditEvent);
 
       return Response.json({
         key: createGatewayKeyRegistryDynamicKeyView(key)
@@ -3311,7 +3278,8 @@ async function updateStoredDynamicKey(
     previousValueHashExpiresAt?: string;
   },
   existingGatewayApiKeys: readonly GatewayKeyRegistryStoredDynamicKey[],
-  options?: GatewayKeyRegistryStoredDynamicKeyUpdateOptions
+  options?: GatewayKeyRegistryStoredDynamicKeyUpdateOptions,
+  now?: string
 ): Promise<GatewayKeyRegistryStoredDynamicKey> {
   const existing = await readStoredDynamicKey(storage, gatewayApiKey.id);
 
@@ -3328,7 +3296,8 @@ async function updateStoredDynamicKey(
     existing,
     gatewayApiKey,
     existingGatewayApiKeys,
-    options
+    options,
+    now
   );
 
   await storage.put(`dynamic:${gatewayApiKey.id}`, next);
