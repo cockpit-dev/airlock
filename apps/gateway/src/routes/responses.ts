@@ -248,13 +248,18 @@ export async function handleResponses(
         };
         currentToolCall.toolCallName = event.toolName ?? currentToolCall.toolCallName;
         currentToolCall.toolCallArguments += event.argumentsDelta;
-        currentToolCall.outputIndex = event.toolIndex;
+        currentToolCall.outputIndex = startedTextOutput
+          ? event.toolIndex + 1
+          : event.toolIndex;
         streamedToolCalls.set(event.toolCallId, currentToolCall);
       }
 
       const encodedBatch = encodeCanonicalToOpenAIResponsesStreamEvent(event, {
         sequenceNumber: responsesSequenceNumber,
-        outputIndex: event.type === "tool_call_delta" ? event.toolIndex : 0,
+        outputIndex:
+          event.type === "tool_call_delta"
+            ? (streamedToolCalls.get(event.toolCallId)?.outputIndex ?? event.toolIndex)
+            : 0,
         contentIndex: 0,
         ...(startedTextOutput ? { startedTextOutput } : {}),
         ...(startedToolCallIds.size > 0
@@ -264,8 +269,9 @@ export async function handleResponses(
           ? {
               toolCallId: event.toolCallId,
               toolCallName: event.toolName,
-              toolCallArguments:
-                streamedToolCalls.get(event.toolCallId)?.toolCallArguments
+              toolCallArguments: startedToolCallIds.has(event.toolCallId)
+                ? streamedToolCalls.get(event.toolCallId)?.toolCallArguments
+                : undefined
             }
           : {}),
         ...(streamedToolCalls.size > 0
