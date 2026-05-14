@@ -17680,6 +17680,102 @@ describe("gateway app", () => {
     });
   });
 
+  it("fails closed when responses prompt_id is sent to a non-openai provider", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          prompt_id: "pmpt_legacy_123"
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message: "Provider anthropic does not support required capability: prompt",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
+  it("fails closed when responses prompt_id is sent to gemini", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          prompt_id: "pmpt_legacy_123"
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message: "Provider gemini does not support required capability: prompt",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
+  it("rejects conflicting responses prompt_id and prompt.id payloads", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          prompt_id: "pmpt_top_level",
+          prompt: {
+            id: "pmpt_nested"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message: "Invalid OpenAI Responses request payload",
+        type: "request",
+        code: "request_invalid_openai_payload"
+      }
+    });
+  });
+
   it("accepts supported responses reasoning.generate_summary alias and forwards it upstream for OpenAI", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
