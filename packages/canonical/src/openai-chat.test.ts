@@ -121,6 +121,34 @@ describe("normalizeOpenAIChatRequest", () => {
     expect(canonical.temperature).toBe(0.8);
     expect(canonical.topP).toBe(0.9);
   });
+
+  it("normalizes chat stop sequences into canonical request fields", () => {
+    const canonicalSingle = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      stop: "\n\n",
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+    const canonicalMultiple = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      stop: ["END", "STOP"],
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonicalSingle.stopSequences).toEqual(["\n\n"]);
+    expect(canonicalMultiple.stopSequences).toEqual(["END", "STOP"]);
+  });
 });
 
 describe("encodeCanonicalToOpenAIChatResponse", () => {
@@ -759,6 +787,23 @@ describe("normalizeAnthropicMessagesRequest", () => {
 
     expect(canonical.temperature).toBe(0.8);
     expect(canonical.topP).toBe(0.95);
+  });
+
+  it("normalizes anthropic stop_sequences into canonical request fields", () => {
+    const canonical = normalizeAnthropicMessagesRequest({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: false,
+      stop_sequences: ["END", "STOP"],
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.stopSequences).toEqual(["END", "STOP"]);
   });
 });
 

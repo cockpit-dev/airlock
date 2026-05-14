@@ -10,6 +10,7 @@ export interface CanonicalRequest {
   maxOutputTokens?: number;
   temperature?: number;
   topP?: number;
+  stopSequences?: string[];
 }
 
 export interface CanonicalRequestCapabilityRequirements {

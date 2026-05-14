@@ -76,7 +76,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.temperature !== undefined
                     ? { temperature: request.temperature }
                     : {}),
-                  ...(request.topP !== undefined ? { top_p: request.topP } : {})
+                  ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+                  ...(request.stopSequences !== undefined
+                    ? { stop: request.stopSequences }
+                    : {})
                 }
               },
               authStrategy,
@@ -108,7 +111,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(request.temperature !== undefined
                   ? { temperature: request.temperature }
                   : {}),
-                ...(request.topP !== undefined ? { top_p: request.topP } : {})
+                ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+                ...(request.stopSequences !== undefined
+                  ? { stop: request.stopSequences }
+                  : {})
               }
             },
             authStrategy,
@@ -239,6 +245,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                     ? { temperature: request.temperature }
                     : {}),
                   ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+                  ...(request.stopSequences !== undefined
+                    ? { stop: request.stopSequences }
+                    : {}),
                   stream_options: {
                     include_usage: true
                   }
@@ -274,6 +283,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ? { temperature: request.temperature }
                   : {}),
                 ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+                ...(request.stopSequences !== undefined
+                  ? { stop: request.stopSequences }
+                  : {}),
                 stream_options: {
                   include_usage: true
                 }

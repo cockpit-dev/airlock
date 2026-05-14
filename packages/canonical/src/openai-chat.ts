@@ -202,6 +202,12 @@ export function normalizeOpenAIChatRequest(
   request: OpenAIChatCompletionRequest
 ): CanonicalRequest {
   const maxOutputTokens = request.max_completion_tokens ?? request.max_tokens;
+  const stopSequences =
+    request.stop === undefined
+      ? undefined
+      : typeof request.stop === "string"
+        ? [request.stop]
+        : request.stop;
 
   return {
     model: request.model,
@@ -211,6 +217,7 @@ export function normalizeOpenAIChatRequest(
       ? { temperature: request.temperature }
       : {}),
     ...(request.top_p !== undefined ? { topP: request.top_p } : {}),
+    ...(stopSequences !== undefined ? { stopSequences } : {}),
     messages: request.messages.map((message) => ({
       role: message.role === "developer" ? "system" : message.role,
       content:
@@ -276,6 +283,9 @@ export function normalizeAnthropicMessagesRequest(
       ? { temperature: request.temperature }
       : {}),
     ...(request.top_p !== undefined ? { topP: request.top_p } : {}),
+    ...(request.stop_sequences !== undefined
+      ? { stopSequences: request.stop_sequences }
+      : {}),
     messages: [...systemMessages, ...messages]
   };
 }

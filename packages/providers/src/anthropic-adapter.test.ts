@@ -253,6 +253,55 @@ describe("AnthropicProviderAdapter", () => {
     });
   });
 
+  it("forwards canonical stop sequences to Anthropic", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new AnthropicProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultMaxTokens: 256,
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        stopSequences: ["END", "STOP"]
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stop_sequences: ["END", "STOP"]
+    });
+  });
+
   it("rejects shaping that attempts to override reserved auth headers", async () => {
     const adapter = new AnthropicProviderAdapter({
       apiKey: "test-key",

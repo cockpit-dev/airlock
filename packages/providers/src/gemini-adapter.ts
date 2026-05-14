@@ -491,7 +491,8 @@ function buildGeminiRequestBody(request: CanonicalRequest) {
     contents,
     ...((request.maxOutputTokens !== undefined ||
       request.temperature !== undefined ||
-      request.topP !== undefined)
+      request.topP !== undefined ||
+      request.stopSequences !== undefined)
       ? {
           generationConfig: {
             ...(request.maxOutputTokens !== undefined
@@ -500,7 +501,10 @@ function buildGeminiRequestBody(request: CanonicalRequest) {
             ...(request.temperature !== undefined
               ? { temperature: request.temperature }
               : {}),
-            ...(request.topP !== undefined ? { topP: request.topP } : {})
+            ...(request.topP !== undefined ? { topP: request.topP } : {}),
+            ...(request.stopSequences !== undefined
+              ? { stopSequences: request.stopSequences }
+              : {})
           }
         }
       : {})

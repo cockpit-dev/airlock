@@ -88,6 +88,9 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                     ? { temperature: request.temperature }
                     : {}),
                   ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+                  ...(request.stopSequences !== undefined
+                    ? { stop_sequences: request.stopSequences }
+                    : {}),
                   messages
                 }
               },
@@ -119,6 +122,9 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                   ? { temperature: request.temperature }
                   : {}),
                 ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+                ...(request.stopSequences !== undefined
+                  ? { stop_sequences: request.stopSequences }
+                  : {}),
                 messages
               }
             },
@@ -258,6 +264,9 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                     ? { temperature: request.temperature }
                     : {}),
                   ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+                  ...(request.stopSequences !== undefined
+                    ? { stop_sequences: request.stopSequences }
+                    : {}),
                   messages
                 }
               },
@@ -290,6 +299,9 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                   ? { temperature: request.temperature }
                   : {}),
                 ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+                ...(request.stopSequences !== undefined
+                  ? { stop_sequences: request.stopSequences }
+                  : {}),
                 messages
               }
             },

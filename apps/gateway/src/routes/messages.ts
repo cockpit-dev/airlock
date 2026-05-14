@@ -51,6 +51,7 @@ const allowedAnthropicTopLevelFields = [
   "system",
   "temperature",
   "top_p",
+  "stop_sequences",
   "messages",
   "airlock"
 ] as const;

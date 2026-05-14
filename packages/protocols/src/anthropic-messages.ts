@@ -22,6 +22,7 @@ export const anthropicMessagesRequestSchema = z.object({
   system: z.string().min(1).optional(),
   temperature: z.number().min(0).max(1).optional(),
   top_p: z.number().min(0).max(1).optional(),
+  stop_sequences: z.array(z.string().min(1)).min(1).optional(),
   messages: z.array(anthropicMessageInputSchema).min(1),
   airlock: airlockRequestExtensionsSchema.optional()
 });

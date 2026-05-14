@@ -164,6 +164,34 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(parsed.temperature).toBe(0.8);
     expect(parsed.top_p).toBe(0.9);
   });
+
+  it("accepts chat completion stop sequences as a string or array", () => {
+    const single = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      stop: "\n\n",
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+    const multiple = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      stop: ["END", "STOP"],
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(single.stop).toBe("\n\n");
+    expect(multiple.stop).toEqual(["END", "STOP"]);
+  });
 });
 
 describe("openAIResponsesRequestSchema", () => {
@@ -440,6 +468,22 @@ describe("anthropicMessagesRequestSchema", () => {
 
     expect(parsed.temperature).toBe(0.8);
     expect(parsed.top_p).toBe(0.95);
+  });
+
+  it("accepts anthropic stop_sequences", () => {
+    const parsed = anthropicMessagesRequestSchema.parse({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stop_sequences: ["END", "STOP"],
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.stop_sequences).toEqual(["END", "STOP"]);
   });
 
   it("accepts an optional airlock request shaping extension", () => {
