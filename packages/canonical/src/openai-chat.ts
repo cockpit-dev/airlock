@@ -42,6 +42,18 @@ type OpenAIResponsesTypedInputItemValue = Extract<
   )[]
 >[number];
 
+interface OpenAIResponsesEventEncodingState {
+  sequenceNumber: number;
+  outputIndex: number;
+  contentIndex: number;
+  outputText?: string;
+}
+
+interface OpenAIResponsesEncodedEventBatch {
+  events: unknown[];
+  nextSequenceNumber: number;
+}
+
 function encodeCanonicalUsage(
   usage: CanonicalUsageValue
 ) {
@@ -80,6 +92,48 @@ function encodeCanonicalAnthropicUsage(
   return {
     input_tokens: usage.inputTokens,
     output_tokens: usage.outputTokens
+  };
+}
+
+function createOpenAIResponsesOutputTextPart(
+  text: string
+) {
+  return {
+    type: "output_text" as const,
+    text,
+    annotations: []
+  };
+}
+
+function createOpenAIResponsesOutputMessage(
+  responseId: string,
+  text: string,
+  status: "in_progress" | "completed",
+  includeContent: boolean
+) {
+  return {
+    id: `${responseId}_output_0`,
+    type: "message" as const,
+    role: "assistant" as const,
+    status,
+    content: includeContent ? [createOpenAIResponsesOutputTextPart(text)] : []
+  };
+}
+
+function createOpenAIResponsesBaseResponse(
+  responseId: string,
+  model: string,
+  status: "in_progress" | "completed"
+) {
+  return {
+    id: responseId,
+    object: "response" as const,
+    created_at: 0,
+    model,
+    status,
+    output: [],
+    parallel_tool_calls: true,
+    tools: []
   };
 }
 
@@ -298,19 +352,18 @@ export function encodeCanonicalToOpenAIResponsesResponse(
   return {
     id: response.id,
     object: "response",
+    created_at: 0,
     model: response.model,
     status: "completed",
+    parallel_tool_calls: true,
+    tools: [],
     output: [
-      {
-        type: "message",
-        role: "assistant",
-        content: [
-          {
-            type: "output_text",
-            text: response.outputText
-          }
-        ]
-      }
+      createOpenAIResponsesOutputMessage(
+        response.id,
+        response.outputText,
+        "completed",
+        true
+      )
     ],
     output_text: response.outputText,
     ...(response.usage
@@ -320,38 +373,129 @@ export function encodeCanonicalToOpenAIResponsesResponse(
 }
 
 export function encodeCanonicalToOpenAIResponsesStreamEvent(
-  event: CanonicalStreamEvent
-) {
+  event: CanonicalStreamEvent,
+  state: OpenAIResponsesEventEncodingState
+): OpenAIResponsesEncodedEventBatch {
+  const itemId = `${event.responseId}_output_0`;
+
   if (event.type === "response_started") {
+    const baseResponse = createOpenAIResponsesBaseResponse(
+      event.responseId,
+      event.model,
+      "in_progress"
+    );
+
     return {
-      type: "response.created" as const,
-      response: {
-        id: event.responseId,
-        object: "response" as const,
-        model: event.model
-      }
+      events: [
+        {
+          type: "response.created" as const,
+          sequence_number: state.sequenceNumber,
+          response: baseResponse
+        },
+        {
+          type: "response.in_progress" as const,
+          sequence_number: state.sequenceNumber + 1,
+          response: baseResponse
+        },
+        {
+          type: "response.output_item.added" as const,
+          sequence_number: state.sequenceNumber + 2,
+          output_index: state.outputIndex,
+          item: createOpenAIResponsesOutputMessage(
+            event.responseId,
+            "",
+            "in_progress",
+            false
+          )
+        },
+        {
+          type: "response.content_part.added" as const,
+          sequence_number: state.sequenceNumber + 3,
+          item_id: itemId,
+          output_index: state.outputIndex,
+          content_index: state.contentIndex,
+          part: createOpenAIResponsesOutputTextPart("")
+        }
+      ],
+      nextSequenceNumber: state.sequenceNumber + 4
     };
   }
 
   if (event.type === "output_text_delta") {
     return {
-      type: "response.output_text.delta" as const,
-      response_id: event.responseId,
-      delta: event.delta
+      events: [
+        {
+          type: "response.output_text.delta" as const,
+          sequence_number: state.sequenceNumber,
+          item_id: itemId,
+          output_index: state.outputIndex,
+          content_index: state.contentIndex,
+          delta: event.delta,
+          logprobs: []
+        }
+      ],
+      nextSequenceNumber: state.sequenceNumber + 1
     };
   }
 
+  const outputText = state.outputText ?? "";
+  const completedResponse = {
+    ...createOpenAIResponsesBaseResponse(
+      event.responseId,
+      event.model,
+      "completed"
+    ),
+    output: [
+      createOpenAIResponsesOutputMessage(
+        event.responseId,
+        outputText,
+        "completed",
+        true
+      )
+    ],
+    output_text: outputText,
+    ...(event.usage
+      ? { usage: encodeCanonicalResponsesUsage(event.usage) }
+      : {})
+  };
+
   return {
-    type: "response.completed" as const,
-    response: {
-      id: event.responseId,
-      object: "response" as const,
-      model: event.model,
-      status: "completed" as const,
-      ...(event.usage
-        ? { usage: encodeCanonicalResponsesUsage(event.usage) }
-        : {})
-    }
+    events: [
+      {
+        type: "response.output_text.done" as const,
+        sequence_number: state.sequenceNumber,
+        item_id: itemId,
+        output_index: state.outputIndex,
+        content_index: state.contentIndex,
+        text: outputText,
+        logprobs: []
+      },
+      {
+        type: "response.content_part.done" as const,
+        sequence_number: state.sequenceNumber + 1,
+        item_id: itemId,
+        output_index: state.outputIndex,
+        content_index: state.contentIndex,
+        part: createOpenAIResponsesOutputTextPart(outputText)
+      },
+      {
+        type: "response.output_item.done" as const,
+        sequence_number: state.sequenceNumber + 2,
+        output_index: state.outputIndex,
+        item: createOpenAIResponsesOutputMessage(
+          event.responseId,
+          outputText,
+          "completed",
+          true
+        )
+      },
+      {
+        type: "response.completed" as const,
+        sequence_number: state.sequenceNumber + 3,
+        response: completedResponse
+      }
+    ],
+    nextSequenceNumber: state.sequenceNumber + 4
   };
 }
 

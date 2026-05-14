@@ -110,6 +110,8 @@ export async function handleResponses(
 
   if (canonicalRequest.stream) {
     const encoder = new TextEncoder();
+    let responsesSequenceNumber = 0;
+    let accumulatedOutputText = "";
     let streamUsage:
       | {
           inputTokens: number;
@@ -187,13 +189,26 @@ export async function handleResponses(
         }
       }
 
-      controller.enqueue(
-        encoder.encode(
-          `data: ${JSON.stringify(
-            encodeCanonicalToOpenAIResponsesStreamEvent(event)
-          )}\n\n`
-        )
-      );
+      if (event.type === "output_text_delta") {
+        accumulatedOutputText += event.delta;
+      }
+
+      const encodedBatch = encodeCanonicalToOpenAIResponsesStreamEvent(event, {
+        sequenceNumber: responsesSequenceNumber,
+        outputIndex: 0,
+        contentIndex: 0,
+        ...(event.type === "response_completed"
+          ? { outputText: accumulatedOutputText }
+          : {})
+      });
+
+      responsesSequenceNumber = encodedBatch.nextSequenceNumber;
+
+      for (const encodedEvent of encodedBatch.events) {
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(encodedEvent)}\n\n`)
+        );
+      }
     };
     let firstEvent: CanonicalStreamEvent | undefined;
 

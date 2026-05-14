@@ -14056,7 +14056,7 @@ describe("gateway app", () => {
     });
   });
 
-  it("streams openai responses events and terminates with done", async () => {
+  it("streams openai responses event fidelity and terminates with done", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi.fn().mockResolvedValueOnce(
       new Response(
@@ -14109,7 +14109,13 @@ describe("gateway app", () => {
     const body = await readText(response);
 
     expect(body).toContain('"type":"response.created"');
+    expect(body).toContain('"type":"response.in_progress"');
+    expect(body).toContain('"type":"response.output_item.added"');
+    expect(body).toContain('"type":"response.content_part.added"');
     expect(body).toContain('"type":"response.output_text.delta"');
+    expect(body).toContain('"type":"response.output_text.done"');
+    expect(body).toContain('"type":"response.content_part.done"');
+    expect(body).toContain('"type":"response.output_item.done"');
     expect(body).toContain('"type":"response.completed"');
     expect(body).toContain("data: [DONE]");
   });

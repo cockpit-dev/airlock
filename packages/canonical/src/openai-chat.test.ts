@@ -436,14 +436,20 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
 
     expect(encoded.object).toBe("response");
     expect(encoded.output_text).toBe("hello there");
+    expect(encoded.created_at).toBe(0);
+    expect(encoded.parallel_tool_calls).toBe(true);
+    expect(encoded.tools).toEqual([]);
     expect(encoded.output).toEqual([
       {
+        id: "resp_123_output_0",
         type: "message",
         role: "assistant",
+        status: "completed",
         content: [
           {
             type: "output_text",
-            text: "hello there"
+            text: "hello there",
+            annotations: []
           }
         ]
       }
@@ -457,24 +463,76 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
 });
 
 describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
-  it("encodes a response_started event into a response.created event", async () => {
+  it("encodes a response_started event into the official initial responses event sequence", async () => {
     const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
       "./openai-chat.js"
     );
 
     expect(
-      encodeCanonicalToOpenAIResponsesStreamEvent({
-        type: "response_started",
-        responseId: "resp_123",
-        model: "gpt-4.1-mini"
-      })
+      encodeCanonicalToOpenAIResponsesStreamEvent(
+        {
+          type: "response_started",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini"
+        },
+        { sequenceNumber: 0, outputIndex: 0, contentIndex: 0 }
+      )
     ).toEqual({
-      type: "response.created",
-      response: {
-        id: "resp_123",
-        object: "response",
-        model: "gpt-4.1-mini"
-      }
+      events: [
+        {
+          type: "response.created",
+          sequence_number: 0,
+          response: {
+            id: "resp_123",
+            object: "response",
+            created_at: 0,
+            model: "gpt-4.1-mini",
+            status: "in_progress",
+            output: [],
+            parallel_tool_calls: true,
+            tools: []
+          }
+        },
+        {
+          type: "response.in_progress",
+          sequence_number: 1,
+          response: {
+            id: "resp_123",
+            object: "response",
+            created_at: 0,
+            model: "gpt-4.1-mini",
+            status: "in_progress",
+            output: [],
+            parallel_tool_calls: true,
+            tools: []
+          }
+        },
+        {
+          type: "response.output_item.added",
+          sequence_number: 2,
+          output_index: 0,
+          item: {
+            id: "resp_123_output_0",
+            type: "message",
+            role: "assistant",
+            status: "in_progress",
+            content: []
+          }
+        },
+        {
+          type: "response.content_part.added",
+          sequence_number: 3,
+          item_id: "resp_123_output_0",
+          output_index: 0,
+          content_index: 0,
+          part: {
+            type: "output_text",
+            text: "",
+            annotations: []
+          }
+        }
+      ],
+      nextSequenceNumber: 4
     });
   });
 
@@ -484,49 +542,133 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
     );
 
     expect(
-      encodeCanonicalToOpenAIResponsesStreamEvent({
-        type: "output_text_delta",
-        responseId: "resp_123",
-        model: "gpt-4.1-mini",
-        delta: "hel"
-      })
+      encodeCanonicalToOpenAIResponsesStreamEvent(
+        {
+          type: "output_text_delta",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          delta: "hel"
+        },
+        { sequenceNumber: 4, outputIndex: 0, contentIndex: 0 }
+      )
     ).toEqual({
-      type: "response.output_text.delta",
-      response_id: "resp_123",
-      delta: "hel"
+      events: [
+        {
+          type: "response.output_text.delta",
+          sequence_number: 4,
+          item_id: "resp_123_output_0",
+          output_index: 0,
+          content_index: 0,
+          delta: "hel",
+          logprobs: []
+        }
+      ],
+      nextSequenceNumber: 5
     });
   });
 
-  it("encodes a response_completed event into a response.completed event", async () => {
+  it("encodes a response_completed event into the official terminal responses event sequence", async () => {
     const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
       "./openai-chat.js"
     );
 
     expect(
-      encodeCanonicalToOpenAIResponsesStreamEvent({
-        type: "response_completed",
-        responseId: "resp_123",
-        model: "gpt-4.1-mini",
-        finishReason: "stop",
-        usage: {
-          inputTokens: 12,
-          outputTokens: 8,
-          totalTokens: 20
+      encodeCanonicalToOpenAIResponsesStreamEvent(
+        {
+          type: "response_completed",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          finishReason: "stop",
+          usage: {
+            inputTokens: 12,
+            outputTokens: 8,
+            totalTokens: 20
+          }
+        },
+        {
+          sequenceNumber: 5,
+          outputIndex: 0,
+          contentIndex: 0,
+          outputText: "hello"
         }
-      })
+      )
     ).toEqual({
-      type: "response.completed",
-      response: {
-        id: "resp_123",
-        object: "response",
-        model: "gpt-4.1-mini",
-        status: "completed",
-        usage: {
-          input_tokens: 12,
-          output_tokens: 8,
-          total_tokens: 20
+      events: [
+        {
+          type: "response.output_text.done",
+          sequence_number: 5,
+          item_id: "resp_123_output_0",
+          output_index: 0,
+          content_index: 0,
+          text: "hello",
+          logprobs: []
+        },
+        {
+          type: "response.content_part.done",
+          sequence_number: 6,
+          item_id: "resp_123_output_0",
+          output_index: 0,
+          content_index: 0,
+          part: {
+            type: "output_text",
+            text: "hello",
+            annotations: []
+          }
+        },
+        {
+          type: "response.output_item.done",
+          sequence_number: 7,
+          output_index: 0,
+          item: {
+            id: "resp_123_output_0",
+            type: "message",
+            role: "assistant",
+            status: "completed",
+            content: [
+              {
+                type: "output_text",
+                text: "hello",
+                annotations: []
+              }
+            ]
+          }
+        },
+        {
+          type: "response.completed",
+          sequence_number: 8,
+          response: {
+            id: "resp_123",
+            object: "response",
+            created_at: 0,
+            model: "gpt-4.1-mini",
+            status: "completed",
+            output: [
+              {
+                id: "resp_123_output_0",
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "hello",
+                    annotations: []
+                  }
+                ]
+              }
+            ],
+            output_text: "hello",
+            parallel_tool_calls: true,
+            tools: [],
+            usage: {
+              input_tokens: 12,
+              output_tokens: 8,
+              total_tokens: 20
+            }
+          }
         }
-      }
+      ],
+      nextSequenceNumber: 9
     });
   });
 });
