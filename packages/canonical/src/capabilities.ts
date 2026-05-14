@@ -14,6 +14,8 @@ export function getCanonicalRequestCapabilityRequirements(
       return message.role === "system";
     }),
     requiresPreviousResponseId: request.previousResponseId !== undefined,
-    requiresConversationId: request.conversationId !== undefined
+    requiresConversationId: request.conversationId !== undefined,
+    requiresPrompt: request.prompt !== undefined,
+    requiresReasoning: request.reasoningEffort !== undefined
   };
 }

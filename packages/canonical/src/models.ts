@@ -39,8 +39,14 @@ export interface CanonicalRequest {
   model: string;
   messages: CanonicalMessage[];
   stream: boolean;
+  prompt?: {
+    id: string;
+    version?: string;
+    variables?: Record<string, string | number | boolean>;
+  };
   previousResponseId?: string;
   conversationId?: string;
+  reasoningEffort?: "minimal" | "low" | "medium" | "high";
   maxOutputTokens?: number;
   temperature?: number;
   topP?: number;
@@ -56,6 +62,8 @@ export interface CanonicalRequestCapabilityRequirements {
   requiresSystemMessages: boolean;
   requiresPreviousResponseId: boolean;
   requiresConversationId: boolean;
+  requiresPrompt: boolean;
+  requiresReasoning: boolean;
 }
 
 export interface CanonicalUsage {

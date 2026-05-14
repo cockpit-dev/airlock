@@ -857,6 +857,33 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.conversationId).toBe("conv_123");
   });
 
+  it("normalizes responses prompt and reasoning effort into canonical request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      prompt: {
+        id: "pmpt_123",
+        variables: {
+          city: "Shanghai"
+        },
+        version: "7"
+      },
+      stream: false,
+      reasoning: {
+        effort: "medium"
+      }
+    });
+
+    expect(canonical.prompt).toEqual({
+      id: "pmpt_123",
+      variables: {
+        city: "Shanghai"
+      },
+      version: "7"
+    });
+    expect(canonical.reasoningEffort).toBe("medium");
+    expect(canonical.messages).toEqual([]);
+  });
+
   it("normalizes responses sampling fields into canonical request fields", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",

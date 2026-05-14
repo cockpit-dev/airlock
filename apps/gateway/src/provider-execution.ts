@@ -168,6 +168,22 @@ export function assertProviderSupportsCanonicalRequest(
       requestId
     );
   }
+
+  if (requirements.requiresPrompt && !descriptor.supportsPrompt) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "prompt",
+      requestId
+    );
+  }
+
+  if (requirements.requiresReasoning && !descriptor.supportsReasoning) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "reasoning",
+      requestId
+    );
+  }
 }
 
 function createProviderAdapter(

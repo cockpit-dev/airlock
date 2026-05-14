@@ -958,11 +958,31 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   model: request.model,
                   stream: false,
                   input: buildOpenAIResponsesInput(request),
+                  ...(request.prompt !== undefined
+                    ? {
+                        prompt: {
+                          id: request.prompt.id,
+                          ...(request.prompt.version !== undefined
+                            ? { version: request.prompt.version }
+                            : {}),
+                          ...(request.prompt.variables !== undefined
+                            ? { variables: request.prompt.variables }
+                            : {})
+                        }
+                      }
+                    : {}),
                   ...(request.previousResponseId !== undefined
                     ? { previous_response_id: request.previousResponseId }
                     : {}),
                   ...(request.conversationId !== undefined
                     ? { conversation: request.conversationId }
+                    : {}),
+                  ...(request.reasoningEffort !== undefined
+                    ? {
+                        reasoning: {
+                          effort: request.reasoningEffort
+                        }
+                      }
                     : {}),
                   ...(request.maxOutputTokens !== undefined
                     ? { max_output_tokens: request.maxOutputTokens }
@@ -1015,11 +1035,31 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 model: request.model,
                 stream: false,
                 input: buildOpenAIResponsesInput(request),
+                ...(request.prompt !== undefined
+                  ? {
+                      prompt: {
+                        id: request.prompt.id,
+                        ...(request.prompt.version !== undefined
+                          ? { version: request.prompt.version }
+                          : {}),
+                        ...(request.prompt.variables !== undefined
+                          ? { variables: request.prompt.variables }
+                          : {})
+                      }
+                    }
+                  : {}),
                 ...(request.previousResponseId !== undefined
                   ? { previous_response_id: request.previousResponseId }
                   : {}),
                 ...(request.conversationId !== undefined
                   ? { conversation: request.conversationId }
+                  : {}),
+                ...(request.reasoningEffort !== undefined
+                  ? {
+                      reasoning: {
+                        effort: request.reasoningEffort
+                      }
+                    }
                   : {}),
                 ...(request.maxOutputTokens !== undefined
                   ? { max_output_tokens: request.maxOutputTokens }
@@ -1226,11 +1266,31 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   model: request.model,
                   stream: true,
                   input: buildOpenAIResponsesInput(request),
+                  ...(request.prompt !== undefined
+                    ? {
+                        prompt: {
+                          id: request.prompt.id,
+                          ...(request.prompt.version !== undefined
+                            ? { version: request.prompt.version }
+                            : {}),
+                          ...(request.prompt.variables !== undefined
+                            ? { variables: request.prompt.variables }
+                            : {})
+                        }
+                      }
+                    : {}),
                   ...(request.previousResponseId !== undefined
                     ? { previous_response_id: request.previousResponseId }
                     : {}),
                   ...(request.conversationId !== undefined
                     ? { conversation: request.conversationId }
+                    : {}),
+                  ...(request.reasoningEffort !== undefined
+                    ? {
+                        reasoning: {
+                          effort: request.reasoningEffort
+                        }
+                      }
                     : {}),
                   ...(request.maxOutputTokens !== undefined
                     ? { max_output_tokens: request.maxOutputTokens }
@@ -1283,11 +1343,31 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 model: request.model,
                 stream: true,
                 input: buildOpenAIResponsesInput(request),
+                ...(request.prompt !== undefined
+                  ? {
+                      prompt: {
+                        id: request.prompt.id,
+                        ...(request.prompt.version !== undefined
+                          ? { version: request.prompt.version }
+                          : {}),
+                        ...(request.prompt.variables !== undefined
+                          ? { variables: request.prompt.variables }
+                          : {})
+                      }
+                    }
+                  : {}),
                 ...(request.previousResponseId !== undefined
                   ? { previous_response_id: request.previousResponseId }
                   : {}),
                 ...(request.conversationId !== undefined
                   ? { conversation: request.conversationId }
+                  : {}),
+                ...(request.reasoningEffort !== undefined
+                  ? {
+                      reasoning: {
+                        effort: request.reasoningEffort
+                      }
+                    }
                   : {}),
                 ...(request.maxOutputTokens !== undefined
                   ? { max_output_tokens: request.maxOutputTokens }

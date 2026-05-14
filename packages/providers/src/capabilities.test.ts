@@ -17,6 +17,8 @@ describe("provider capability descriptors", () => {
         supportsSystemMessages: true,
         supportsPreviousResponseId: true,
         supportsConversationId: true,
+        supportsPrompt: true,
+        supportsReasoning: true,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       },
@@ -29,6 +31,8 @@ describe("provider capability descriptors", () => {
         supportsSystemMessages: true,
         supportsPreviousResponseId: false,
         supportsConversationId: false,
+        supportsPrompt: false,
+        supportsReasoning: false,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       },
@@ -41,6 +45,8 @@ describe("provider capability descriptors", () => {
         supportsSystemMessages: true,
         supportsPreviousResponseId: false,
         supportsConversationId: false,
+        supportsPrompt: false,
+        supportsReasoning: false,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       }
@@ -57,6 +63,8 @@ describe("provider capability descriptors", () => {
       supportsSystemMessages: true,
       supportsPreviousResponseId: false,
       supportsConversationId: false,
+      supportsPrompt: false,
+      supportsReasoning: false,
       supportsRouteScopedShaping: true,
       supportsStaticFallbackSameProvider: true
     });
@@ -67,7 +75,9 @@ describe("provider capability descriptors", () => {
       provider: "openai",
       supportsTools: true,
       supportsPreviousResponseId: true,
-      supportsConversationId: true
+      supportsConversationId: true,
+      supportsPrompt: true,
+      supportsReasoning: true
     });
   });
 

@@ -16159,6 +16159,89 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts responses prompt and reasoning.effort and forwards them through the native openai responses path", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          prompt: {
+            id: "pmpt_123",
+            variables: {
+              city: "Shanghai"
+            },
+            version: "7"
+          },
+          reasoning: {
+            effort: "medium"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.openai.com/v1/responses");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      prompt: {
+        id: "pmpt_123",
+        variables: {
+          city: "Shanghai"
+        },
+        version: "7"
+      },
+      reasoning: {
+        effort: "medium"
+      }
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      id: "resp_123",
+      object: "response",
+      model: "gpt-4.1-mini",
+      output_text: "hello there"
+    });
+  });
+
   it("fails closed when responses conversation is sent to a non-openai provider", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -16184,6 +16267,70 @@ describe("gateway app", () => {
       error: {
         message:
           "Provider anthropic does not support required capability: conversation",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
+  it("fails closed when responses prompt is sent to a non-openai provider", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          prompt: {
+            id: "pmpt_123"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message: "Provider anthropic does not support required capability: prompt",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
+  it("fails closed when responses reasoning.effort is sent to a non-openai provider", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          input: "hello",
+          reasoning: {
+            effort: "medium"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider anthropic does not support required capability: reasoning",
         type: "routing",
         code: "provider_capability_not_supported"
       }
@@ -17131,6 +17278,40 @@ describe("gateway app", () => {
       error: {
         message:
           "Unsupported OpenAI Responses text config: only text.format.type=text is supported",
+        type: "request",
+        code: "request_unsupported_openai_semantics"
+      }
+    });
+  });
+
+  it("rejects unsupported responses reasoning summary variants", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          reasoning: {
+            effort: "medium",
+            summary: "auto"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Unsupported OpenAI Responses reasoning config: only reasoning.effort is supported",
         type: "request",
         code: "request_unsupported_openai_semantics"
       }

@@ -32,6 +32,25 @@ const openAIResponsesTextConfigSchema = z.object({
   format: openAIResponsesTextFormatSchema
 });
 
+const openAIResponsesPromptSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    prompt_id: z.string().min(1).optional(),
+    version: z.union([z.string().min(1), z.number().int().positive()]).optional(),
+    variables: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+      .optional()
+  })
+  .refine((value) => value.id !== undefined || value.prompt_id !== undefined, {
+    message: "Prompt id is required",
+    path: ["id"]
+  });
+
+const openAIResponsesReasoningSchema = z.object({
+  effort: z.enum(["minimal", "low", "medium", "high"]).optional(),
+  summary: z.unknown().optional(),
+  generate_summary: z.unknown().optional()
+});
+
 const openAIResponsesStreamOptionsSchema = z.object({
   include_obfuscation: z.literal(false)
 });
@@ -82,12 +101,14 @@ const openAIResponsesTypedInputItemSchema = z.union([
 export const openAIResponsesRequestSchema = z.object({
   model: z.string().min(1),
   stream: z.boolean().default(false),
+  prompt: openAIResponsesPromptSchema.optional(),
   previous_response_id: z.string().min(1).optional(),
   conversation: z.string().min(1).optional(),
   max_output_tokens: z.number().int().positive().optional(),
   temperature: z.number().min(0).max(2).optional(),
   top_p: z.number().min(0).max(1).optional(),
   instructions: z.string().min(1).optional(),
+  reasoning: openAIResponsesReasoningSchema.optional(),
   text: openAIResponsesTextConfigSchema.optional(),
   stream_options: openAIResponsesStreamOptionsSchema.optional(),
   parallel_tool_calls: z.boolean().optional(),
@@ -98,12 +119,17 @@ export const openAIResponsesRequestSchema = z.object({
     z.literal("none"),
     openAIResponsesForcedFunctionToolChoiceSchema
   ]).optional(),
-  input: z.union([
-    z.string().min(1),
-    z.array(openAIResponsesInputMessageSchema).min(1),
-    z.array(openAIResponsesTypedInputItemSchema).min(1)
-  ]),
+  input: z
+    .union([
+      z.string().min(1),
+      z.array(openAIResponsesInputMessageSchema).min(1),
+      z.array(openAIResponsesTypedInputItemSchema).min(1)
+    ])
+    .optional(),
   airlock: airlockRequestExtensionsSchema.optional()
+}).refine((value) => value.input !== undefined || value.prompt !== undefined, {
+  message: "Either input or prompt is required",
+  path: ["input"]
 });
 
 export const openAIResponsesResponseSchema = z.object({

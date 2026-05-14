@@ -17,6 +17,8 @@ export interface ProviderCapabilityDescriptor {
   supportsSystemMessages: boolean;
   supportsPreviousResponseId: boolean;
   supportsConversationId: boolean;
+  supportsPrompt: boolean;
+  supportsReasoning: boolean;
   supportsRouteScopedShaping: boolean;
   supportsStaticFallbackSameProvider: boolean;
 }

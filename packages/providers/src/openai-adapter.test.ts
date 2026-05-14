@@ -195,6 +195,85 @@ describe("OpenAIProviderAdapter", () => {
     });
   });
 
+  it("forwards prompt and reasoning.effort through the native openai responses endpoint", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        messages: [],
+        prompt: {
+          id: "pmpt_123",
+          variables: {
+            city: "Shanghai"
+          },
+          version: "7"
+        },
+        reasoningEffort: "medium"
+      },
+      {
+        requestId: "req_123",
+        requestMode: "openai_responses"
+      }
+    );
+
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe("https://api.openai.com/v1/responses");
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [],
+      prompt: {
+        id: "pmpt_123",
+        variables: {
+          city: "Shanghai"
+        },
+        version: "7"
+      },
+      reasoning: {
+        effort: "medium"
+      }
+    });
+  });
+
   it("parses upstream responses SSE into canonical stream events when requestMode=openai_responses", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({

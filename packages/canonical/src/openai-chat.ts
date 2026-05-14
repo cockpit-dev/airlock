@@ -424,14 +424,16 @@ export function normalizeOpenAIResponsesRequest(
   request: OpenAIResponsesRequest
 ): CanonicalRequest {
   const inputMessages =
-    typeof request.input === "string"
-      ? [{ role: "user" as const, content: request.input }]
-      : isOpenAIResponsesTypedInputItems(request.input)
-        ? normalizeOpenAIResponsesTypedInputItems(request.input)
-        : request.input.map((message: OpenAIResponsesInputMessageValue) => ({
-            role: message.role === "developer" ? "system" : message.role,
-            content: encodeOpenAIResponsesMessageContent(message.content)
-          }));
+    request.input === undefined
+      ? []
+      : typeof request.input === "string"
+        ? [{ role: "user" as const, content: request.input }]
+        : isOpenAIResponsesTypedInputItems(request.input)
+          ? normalizeOpenAIResponsesTypedInputItems(request.input)
+          : request.input.map((message: OpenAIResponsesInputMessageValue) => ({
+              role: message.role === "developer" ? "system" : message.role,
+              content: encodeOpenAIResponsesMessageContent(message.content)
+            }));
   const instructionMessages = request.instructions
     ? [{ role: "system" as const, content: request.instructions }]
     : [];
@@ -445,6 +447,22 @@ export function normalizeOpenAIResponsesRequest(
       : {}),
     ...(request.conversation !== undefined
       ? { conversationId: request.conversation }
+      : {}),
+    ...(request.prompt !== undefined
+      ? {
+          prompt: {
+            id: request.prompt.id ?? request.prompt.prompt_id ?? "",
+            ...(request.prompt.version !== undefined
+              ? { version: String(request.prompt.version) }
+              : {}),
+            ...(request.prompt.variables !== undefined
+              ? { variables: request.prompt.variables }
+              : {})
+          }
+        }
+      : {}),
+    ...(request.reasoning?.effort !== undefined
+      ? { reasoningEffort: request.reasoning.effort }
       : {}),
     ...(request.max_output_tokens !== undefined
       ? { maxOutputTokens: request.max_output_tokens }

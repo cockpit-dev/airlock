@@ -674,6 +674,34 @@ describe("openAIResponsesRequestSchema", () => {
     expect(parsed.conversation).toBe("conv_123");
   });
 
+  it("accepts responses prompt and reasoning.effort fields", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      prompt: {
+        id: "pmpt_123",
+        variables: {
+          city: "Shanghai"
+        },
+        version: "7"
+      },
+      stream: false,
+      reasoning: {
+        effort: "medium"
+      }
+    });
+
+    expect(parsed.prompt).toEqual({
+      id: "pmpt_123",
+      variables: {
+        city: "Shanghai"
+      },
+      version: "7"
+    });
+    expect(parsed.reasoning).toEqual({
+      effort: "medium"
+    });
+  });
+
   it("accepts responses sampling fields", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",

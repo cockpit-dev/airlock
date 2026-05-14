@@ -27,7 +27,9 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresMultimodalInput: false,
       requiresSystemMessages: true,
       requiresPreviousResponseId: false,
-      requiresConversationId: false
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false
     });
   });
 
@@ -49,7 +51,9 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
       requiresPreviousResponseId: false,
-      requiresConversationId: false
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false
     });
   });
 
@@ -79,7 +83,9 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
       requiresPreviousResponseId: false,
-      requiresConversationId: false
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false
     });
   });
 
@@ -103,7 +109,32 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
       requiresPreviousResponseId: true,
-      requiresConversationId: true
+      requiresConversationId: true,
+      requiresPrompt: false,
+      requiresReasoning: false
+    });
+  });
+
+  it("marks prompt and reasoning requirements when present", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      prompt: {
+        id: "pmpt_123"
+      },
+      reasoningEffort: "medium",
+      messages: []
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: false,
+      requiresTools: false,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: true,
+      requiresReasoning: true
     });
   });
 });
