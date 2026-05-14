@@ -84,7 +84,10 @@ export function createInMemoryCircuitBreakerBackend(): ProviderCircuitBreakerBac
               )
             }
           : {}),
-        ...(now !== undefined ? { lastSuccessAt: now } : {})
+        ...(now !== undefined ? { lastSuccessAt: now } : {}),
+        ...(existing?.lastFailureAt !== undefined
+          ? { lastFailureAt: existing.lastFailureAt }
+          : {})
       });
       return Promise.resolve();
     },
@@ -230,7 +233,10 @@ export class ProviderCircuitBreakerDurableObject {
           ...(nextSmoothedLatencyMs !== undefined
             ? { smoothedSuccessLatencyMs: nextSmoothedLatencyMs }
             : {}),
-          ...(body.now !== undefined ? { lastSuccessAt: body.now } : {})
+          ...(body.now !== undefined ? { lastSuccessAt: body.now } : {}),
+          ...(current.lastFailureAt !== undefined
+            ? { lastFailureAt: current.lastFailureAt }
+            : {})
         };
         await this.state.storage.put("state", next);
         return Response.json(next);
@@ -239,6 +245,15 @@ export class ProviderCircuitBreakerDurableObject {
       const nextFailures = current.consecutiveRetryableFailures + 1;
       const next: ProviderCircuitState = {
         consecutiveRetryableFailures: nextFailures,
+        ...(current.lastSuccessLatencyMs !== undefined
+          ? { lastSuccessLatencyMs: current.lastSuccessLatencyMs }
+          : {}),
+        ...(current.smoothedSuccessLatencyMs !== undefined
+          ? { smoothedSuccessLatencyMs: current.smoothedSuccessLatencyMs }
+          : {}),
+        ...(current.lastSuccessAt !== undefined
+          ? { lastSuccessAt: current.lastSuccessAt }
+          : {}),
         ...(nextFailures >= (body.threshold ?? 1) && body.now !== undefined
           ? { openedAt: body.now }
           : {}),

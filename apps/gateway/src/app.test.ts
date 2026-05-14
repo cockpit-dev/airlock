@@ -653,7 +653,12 @@ function createPersistentBreakerNamespace() {
             if (body.kind === "success") {
               const nextSmoothedLatencyMs =
                 body.latencyMs !== undefined
-                  ? body.latencyMs
+                  ? current.smoothedSuccessLatencyMs !== undefined
+                    ? Math.round(
+                        current.smoothedSuccessLatencyMs * 0.7 +
+                          body.latencyMs * 0.3
+                      )
+                    : body.latencyMs
                   : body.smoothedLatencyMs;
               const next = {
                 consecutiveRetryableFailures: 0,
@@ -663,7 +668,10 @@ function createPersistentBreakerNamespace() {
                 ...(nextSmoothedLatencyMs !== undefined
                   ? { smoothedSuccessLatencyMs: nextSmoothedLatencyMs }
                   : {}),
-                ...(body.now !== undefined ? { lastSuccessAt: body.now } : {})
+                ...(body.now !== undefined ? { lastSuccessAt: body.now } : {}),
+                ...(current.lastFailureAt !== undefined
+                  ? { lastFailureAt: current.lastFailureAt }
+                  : {})
               };
               state.set(id.name, next);
               return Response.json(next);
@@ -672,6 +680,15 @@ function createPersistentBreakerNamespace() {
             const nextFailures = current.consecutiveRetryableFailures + 1;
             const next = {
               consecutiveRetryableFailures: nextFailures,
+              ...(current.lastSuccessLatencyMs !== undefined
+                ? { lastSuccessLatencyMs: current.lastSuccessLatencyMs }
+                : {}),
+              ...(current.smoothedSuccessLatencyMs !== undefined
+                ? { smoothedSuccessLatencyMs: current.smoothedSuccessLatencyMs }
+                : {}),
+              ...(current.lastSuccessAt !== undefined
+                ? { lastSuccessAt: current.lastSuccessAt }
+                : {}),
               ...(nextFailures >= (body.threshold ?? 1)
                 ? { openedAt: body.now ?? 0 }
                 : {}),
@@ -690,11 +707,33 @@ function createPersistentBreakerNamespace() {
   return {
     ...namespace,
     seedSuccess(targetKey: string, latencyMs: number, now: number) {
+      const current = state.get(targetKey);
+
       state.set(targetKey, {
         consecutiveRetryableFailures: 0,
         lastSuccessLatencyMs: latencyMs,
-        smoothedSuccessLatencyMs: latencyMs,
-        lastSuccessAt: now
+        smoothedSuccessLatencyMs:
+          current?.smoothedSuccessLatencyMs !== undefined
+            ? Math.round(current.smoothedSuccessLatencyMs * 0.7 + latencyMs * 0.3)
+            : latencyMs,
+        lastSuccessAt: now,
+        ...(current?.lastFailureAt !== undefined
+          ? { lastFailureAt: current.lastFailureAt }
+          : {})
+      });
+    },
+    seedFailure(targetKey: string, now: number, threshold = 3) {
+      const current = state.get(targetKey) ?? {
+        consecutiveRetryableFailures: 0
+      };
+
+      state.set(targetKey, {
+        ...current,
+        consecutiveRetryableFailures: current.consecutiveRetryableFailures + 1,
+        ...(current.consecutiveRetryableFailures + 1 >= threshold
+          ? { openedAt: now }
+          : {}),
+        lastFailureAt: now
       });
     }
   };
@@ -12414,6 +12453,89 @@ describe("gateway app", () => {
     expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
     await expect(readJson(response)).resolves.toMatchObject({
       model: "gpt-4.1-mini"
+    });
+  });
+
+  it("keeps a recently failed recovering target behind a stable peer for priority routing", async () => {
+    const routeFetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "msg_priority_recovery",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello from anthropic"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const breakerNamespace = createPersistentBreakerNamespace();
+    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, 1000);
+    breakerNamespace.seedFailure("openai:gpt-4.1-mini", 1500);
+    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 220, 2000);
+    breakerNamespace.seedSuccess("anthropic:claude-haiku-4-5", 220, 1000);
+
+    const app = createApp({ fetcher: routeFetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "recover carefully" }]
+        })
+      },
+      {
+        ...createBindings(),
+        ANTHROPIC_API_KEY: "anthropic-secret",
+        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER: breakerNamespace,
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "priority",
+            latencySloMs: {
+              "openai:gpt-4.1-mini": 600,
+              "anthropic:claude-haiku-4-5": 600
+            },
+            costs: {
+              "openai:gpt-4.1-mini": 1,
+              "anthropic:claude-haiku-4-5": 10
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(routeFetcher).toHaveBeenCalledTimes(1);
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "claude-haiku-4-5"
     });
   });
 

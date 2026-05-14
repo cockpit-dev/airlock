@@ -84,7 +84,10 @@ function createPersistentBreakerNamespace() {
                 ...(nextSmoothedLatencyMs !== undefined
                   ? { smoothedSuccessLatencyMs: nextSmoothedLatencyMs }
                   : {}),
-                ...(body.now !== undefined ? { lastSuccessAt: body.now } : {})
+                ...(body.now !== undefined ? { lastSuccessAt: body.now } : {}),
+                ...(current.lastFailureAt !== undefined
+                  ? { lastFailureAt: current.lastFailureAt }
+                  : {})
               };
               state.set(id.name, next);
               return Response.json(next);
@@ -93,6 +96,15 @@ function createPersistentBreakerNamespace() {
             const nextFailures = current.consecutiveRetryableFailures + 1;
             const next = {
               consecutiveRetryableFailures: nextFailures,
+              ...(current.lastSuccessLatencyMs !== undefined
+                ? { lastSuccessLatencyMs: current.lastSuccessLatencyMs }
+                : {}),
+              ...(current.smoothedSuccessLatencyMs !== undefined
+                ? { smoothedSuccessLatencyMs: current.smoothedSuccessLatencyMs }
+                : {}),
+              ...(current.lastSuccessAt !== undefined
+                ? { lastSuccessAt: current.lastSuccessAt }
+                : {}),
               ...(nextFailures >= (body.threshold ?? 1)
                 ? { openedAt: body.now ?? 0 }
                 : {}),
@@ -1286,6 +1298,35 @@ describe("executeRoutedRequest", () => {
     });
   });
 
+  it("retains the last failure signal across a recovery success", async () => {
+    const backend = createPersistentCircuitBreakerBackend(
+      createPersistentBreakerNamespace()
+    );
+    const target = {
+      provider: "openai" as const,
+      providerModel: "gpt-4.1-mini"
+    };
+
+    await backend.recordSuccess(target, 300, 1000);
+    await backend.recordRetryableFailure(
+      target,
+      {
+        threshold: 3,
+        cooldownMs: 60_000
+      },
+      1500
+    );
+    await backend.recordSuccess(target, 250, 2000);
+
+    await expect(backend.getState(target)).resolves.toMatchObject({
+      consecutiveRetryableFailures: 0,
+      lastSuccessLatencyMs: 250,
+      smoothedSuccessLatencyMs: 285,
+      lastSuccessAt: 2000,
+      lastFailureAt: 1500
+    });
+  });
+
   it("uses smoothed latency instead of only the latest raw latency for priority routing", async () => {
     const route: ModelRoute = {
       externalModel: "assistant-default",
@@ -1406,6 +1447,144 @@ describe("executeRoutedRequest", () => {
       },
       fetcher,
       now: () => 3000,
+      circuitBreakerBackend: backend
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(response.model).toBe("claude-haiku-4-5");
+  });
+
+  it("keeps a recently failed target behind a stable peer during priority recovery", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ],
+      targetSelection: {
+        strategy: "priority",
+        latencySloMs: {
+          "openai:gpt-4.1-mini": 600,
+          "anthropic:claude-haiku-4-5": 600
+        },
+        costs: {
+          "openai:gpt-4.1-mini": 1,
+          "anthropic:claude-haiku-4-5": 10
+        }
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const backend = createPersistentCircuitBreakerBackend(
+      createPersistentBreakerNamespace()
+    );
+
+    await backend.recordSuccess(
+      {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      200,
+      1000
+    );
+    await backend.recordRetryableFailure(
+      {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      {
+        threshold: 3,
+        cooldownMs: 60_000
+      },
+      1500
+    );
+    await backend.recordSuccess(
+      {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      220,
+      2000
+    );
+    await backend.recordSuccess(
+      {
+        provider: "anthropic",
+        providerModel: "claude-haiku-4-5"
+      },
+      220,
+      1000
+    );
+
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "msg_priority_recovery",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello from anthropic"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const response = await executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
+        providerCircuitBreakerThreshold: 3,
+        providerCircuitBreakerCooldownMs: 60_000,
+        providerCircuitBreakerPersistent: true,
+        modelGroups: {},
+        gatewayApiKeys: [],
+        modelAliases: [],
+        anthropic: {
+          apiKey: "anthropic-secret",
+          baseUrl: "https://api.anthropic.com/v1",
+          defaultMaxTokens: 256
+        },
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_priority_recovery",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 2500,
       circuitBreakerBackend: backend
     });
 

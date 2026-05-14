@@ -276,6 +276,10 @@ function reorderTargetsForRoute(
     {
       isOpen: boolean;
       consecutiveRetryableFailures: number;
+      lastSuccessLatencyMs?: number;
+      smoothedSuccessLatencyMs?: number;
+      lastSuccessAt?: number;
+      lastFailureAt?: number;
     }
   >
 ): ProviderTarget[] {
@@ -394,9 +398,40 @@ function reorderTargetsForPrioritySelection(
       isOpen: boolean;
       consecutiveRetryableFailures: number;
       lastSuccessLatencyMs?: number;
+      smoothedSuccessLatencyMs?: number;
+      lastSuccessAt?: number;
+      lastFailureAt?: number;
     }
   >
 ): ProviderTarget[] {
+  const PRIORITY_RECOVERY_WINDOW_MS = 30_000;
+
+  function getPriorityRecoveryPenalty(
+    health: {
+      lastSuccessAt?: number;
+      lastFailureAt?: number;
+    }
+  ): number {
+    if (health.lastFailureAt === undefined) {
+      return 0;
+    }
+
+    if (
+      health.lastSuccessAt === undefined ||
+      health.lastFailureAt > health.lastSuccessAt
+    ) {
+      return 2;
+    }
+
+    if (
+      health.lastSuccessAt - health.lastFailureAt <= PRIORITY_RECOVERY_WINDOW_MS
+    ) {
+      return 1;
+    }
+
+    return 0;
+  }
+
   return [...targets].sort((left, right) => {
     const leftKey = serializeProviderTarget(left);
     const rightKey = serializeProviderTarget(right);
@@ -421,6 +456,13 @@ function reorderTargetsForPrioritySelection(
         leftHealth.consecutiveRetryableFailures -
         rightHealth.consecutiveRetryableFailures
       );
+    }
+
+    const leftRecoveryPenalty = getPriorityRecoveryPenalty(leftHealth);
+    const rightRecoveryPenalty = getPriorityRecoveryPenalty(rightHealth);
+
+    if (leftRecoveryPenalty !== rightRecoveryPenalty) {
+      return leftRecoveryPenalty - rightRecoveryPenalty;
     }
 
     const leftLatencyStatus = getPriorityLatencyStatus(
@@ -473,6 +515,8 @@ function selectEligibleTargets(
         consecutiveRetryableFailures: number;
         lastSuccessLatencyMs?: number;
         smoothedSuccessLatencyMs?: number;
+        lastSuccessAt?: number;
+        lastFailureAt?: number;
       }
     >();
 
@@ -523,6 +567,12 @@ function selectEligibleTargets(
           : {}),
         ...(circuitState?.smoothedSuccessLatencyMs !== undefined
           ? { smoothedSuccessLatencyMs: circuitState.smoothedSuccessLatencyMs }
+          : {}),
+        ...(circuitState?.lastSuccessAt !== undefined
+          ? { lastSuccessAt: circuitState.lastSuccessAt }
+          : {}),
+        ...(circuitState?.lastFailureAt !== undefined
+          ? { lastFailureAt: circuitState.lastFailureAt }
           : {})
       });
 
