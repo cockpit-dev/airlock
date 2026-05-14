@@ -2958,7 +2958,7 @@ describe("gateway app", () => {
     });
   });
 
-  it("rejects unsupported chat semantics like tools", async () => {
+  it("rejects invalid chat tools payloads", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -3015,10 +3015,125 @@ describe("gateway app", () => {
     expect(response.status).toBe(400);
     await expect(readJson(response)).resolves.toEqual({
       error: {
-        message: "Unsupported OpenAI Chat semantic field: tools",
+        message: "Invalid OpenAI Chat request payload",
         type: "request",
-        code: "request_unsupported_openai_semantics"
+        code: "request_invalid_openai_payload"
       }
+    });
+  });
+
+  it("routes chat function tools through anthropic and returns OpenAI tool_calls", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_123",
+              name: "lookup_weather",
+              input: {
+                city: "Shanghai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          stream: false,
+          tool_choice: "auto",
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "lookup_weather",
+                description: "Lookup weather by city",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    city: {
+                      type: "string"
+                    }
+                  },
+                  required: ["city"]
+                }
+              }
+            }
+          ],
+          messages: [{ role: "user", content: "Weather in Shanghai?" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      model: "claude-sonnet-4-5",
+      tools: [
+        {
+          name: "lookup_weather",
+          description: "Lookup weather by city",
+          input_schema: {
+            type: "object",
+            properties: {
+              city: {
+                type: "string"
+              }
+            },
+            required: ["city"]
+          }
+        }
+      ],
+      tool_choice: {
+        type: "auto"
+      },
+      messages: [{ role: "user", content: "Weather in Shanghai?" }]
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "chat.completion",
+      choices: [
+        {
+          finish_reason: "stop",
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "toolu_123",
+                type: "function",
+                function: {
+                  name: "lookup_weather",
+                  arguments: "{\"city\":\"Shanghai\"}"
+                }
+              }
+            ]
+          }
+        }
+      ]
     });
   });
 

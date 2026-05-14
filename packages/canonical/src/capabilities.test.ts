@@ -48,4 +48,32 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresSystemMessages: false
     });
   });
+
+  it("marks tool requirements when canonical requests include tools", () => {
+    const request: CanonicalRequest = {
+      model: "claude-sonnet-4-5",
+      stream: false,
+      tools: [
+        {
+          name: "lookup_weather",
+          inputSchema: {
+            type: "object"
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: false,
+      requiresTools: true,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false
+    });
+  });
 });

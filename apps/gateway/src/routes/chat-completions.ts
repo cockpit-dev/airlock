@@ -58,6 +58,8 @@ const allowedOpenAIChatTopLevelFields = [
   "top_p",
   "stop",
   "stream_options",
+  "tools",
+  "tool_choice",
   "messages",
   "airlock"
 ] as const;

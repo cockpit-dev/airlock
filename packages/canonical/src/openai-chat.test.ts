@@ -149,6 +149,55 @@ describe("normalizeOpenAIChatRequest", () => {
     expect(canonicalSingle.stopSequences).toEqual(["\n\n"]);
     expect(canonicalMultiple.stopSequences).toEqual(["END", "STOP"]);
   });
+
+  it("normalizes openai chat function tools into canonical request fields", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      tool_choice: "auto",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "lookup_weather",
+            description: "Lookup weather by city",
+            parameters: {
+              type: "object",
+              properties: {
+                city: {
+                  type: "string"
+                }
+              },
+              required: ["city"]
+            }
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    });
+
+    expect(canonical.toolChoice).toBe("auto");
+    expect(canonical.tools).toEqual([
+      {
+        name: "lookup_weather",
+        description: "Lookup weather by city",
+        inputSchema: {
+          type: "object",
+          properties: {
+            city: {
+              type: "string"
+            }
+          },
+          required: ["city"]
+        }
+      }
+    ]);
+  });
 });
 
 describe("encodeCanonicalToOpenAIChatResponse", () => {
@@ -184,6 +233,37 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
     });
 
     expect(encoded.choices[0]?.finish_reason).toBe("length");
+  });
+
+  it("encodes canonical tool calls into an OpenAI chat tool_calls response", () => {
+    const encoded = encodeCanonicalToOpenAIChatResponse({
+      id: "resp_123",
+      model: "claude-sonnet-4-5",
+      outputText: "",
+      finishReason: "stop",
+      toolCalls: [
+        {
+          id: "toolu_123",
+          name: "lookup_weather",
+          arguments: "{\"city\":\"Shanghai\"}"
+        }
+      ]
+    });
+
+    expect(encoded.choices[0]?.message).toEqual({
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        {
+          id: "toolu_123",
+          type: "function",
+          function: {
+            name: "lookup_weather",
+            arguments: "{\"city\":\"Shanghai\"}"
+          }
+        }
+      ]
+    });
   });
 });
 

@@ -19,7 +19,7 @@ const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
     provider: "anthropic",
     displayName: "Anthropic",
     supportsStreaming: true,
-    supportsTools: false,
+    supportsTools: true,
     supportsMultimodalInput: false,
     supportsSystemMessages: true,
     supportsRouteScopedShaping: true,

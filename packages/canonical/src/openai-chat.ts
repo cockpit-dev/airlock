@@ -248,6 +248,20 @@ export function normalizeOpenAIChatRequest(
       : {}),
     ...(request.top_p !== undefined ? { topP: request.top_p } : {}),
     ...(stopSequences !== undefined ? { stopSequences } : {}),
+    ...(request.tools !== undefined
+      ? {
+          tools: request.tools.map((tool) => ({
+            name: tool.function.name,
+            ...(tool.function.description
+              ? { description: tool.function.description }
+              : {}),
+            inputSchema: tool.function.parameters
+          }))
+        }
+      : {}),
+    ...(request.tool_choice !== undefined
+      ? { toolChoice: request.tool_choice }
+      : {}),
     messages: request.messages.map((message) => ({
       role: message.role === "developer" ? "system" : message.role,
       content:
@@ -391,7 +405,21 @@ export function encodeCanonicalToOpenAIChatResponse(
         finish_reason: encodeCanonicalOpenAIFinishReason(response.finishReason),
         message: {
           role: "assistant",
-          content: response.outputText
+          ...(response.toolCalls && response.toolCalls.length > 0
+            ? {
+                content: null,
+                tool_calls: response.toolCalls.map((toolCall) => ({
+                  id: toolCall.id,
+                  type: "function" as const,
+                  function: {
+                    name: toolCall.name,
+                    arguments: toolCall.arguments
+                  }
+                }))
+              }
+            : {
+                content: response.outputText
+              })
         }
       }
     ]

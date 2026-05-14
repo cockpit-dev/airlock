@@ -24,6 +24,18 @@ function normalizeAnthropicFinishReason(
   return stopReason === "max_tokens" ? "max_tokens" : "stop";
 }
 
+function mapCanonicalToolChoiceToAnthropic(
+  toolChoice: CanonicalRequest["toolChoice"]
+) {
+  if (toolChoice === undefined) {
+    return undefined;
+  }
+
+  return {
+    type: toolChoice
+  };
+}
+
 export interface AnthropicProviderAdapterOptions {
   apiKey: string;
   baseUrl: string;
@@ -97,6 +109,24 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                   ...(request.stopSequences !== undefined
                     ? { stop_sequences: request.stopSequences }
                     : {}),
+                  ...(request.tools !== undefined
+                    ? {
+                        tools: request.tools.map((tool) => ({
+                          name: tool.name,
+                          ...(tool.description
+                            ? { description: tool.description }
+                            : {}),
+                          input_schema: tool.inputSchema
+                        }))
+                      }
+                    : {}),
+                  ...(mapCanonicalToolChoiceToAnthropic(request.toolChoice)
+                    ? {
+                        tool_choice: mapCanonicalToolChoiceToAnthropic(
+                          request.toolChoice
+                        )
+                      }
+                    : {}),
                   messages
                 }
               },
@@ -130,6 +160,22 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                 ...(request.topP !== undefined ? { top_p: request.topP } : {}),
                 ...(request.stopSequences !== undefined
                   ? { stop_sequences: request.stopSequences }
+                  : {}),
+                ...(request.tools !== undefined
+                  ? {
+                      tools: request.tools.map((tool) => ({
+                        name: tool.name,
+                        ...(tool.description ? { description: tool.description } : {}),
+                        input_schema: tool.inputSchema
+                      }))
+                    }
+                  : {}),
+                ...(mapCanonicalToolChoiceToAnthropic(request.toolChoice)
+                  ? {
+                      tool_choice: mapCanonicalToolChoiceToAnthropic(
+                        request.toolChoice
+                      )
+                    }
                   : {}),
                 messages
               }
@@ -197,10 +243,18 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
       id: string;
       model: string;
       stop_reason?: string | null;
-      content: Array<{
-        type: "text";
-        text: string;
-      }>;
+      content: Array<
+        | {
+            type: "text";
+            text: string;
+          }
+        | {
+            type: "tool_use";
+            id: string;
+            name: string;
+            input: unknown;
+          }
+      >;
       usage?: {
         input_tokens?: number;
         output_tokens?: number;
@@ -214,6 +268,17 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
         .filter((block) => block.type === "text")
         .map((block) => block.text)
         .join("\n"),
+      ...(payload.content.some((block) => block.type === "tool_use")
+        ? {
+            toolCalls: payload.content
+              .filter((block) => block.type === "tool_use")
+              .map((block) => ({
+                id: block.id,
+                name: block.name,
+                arguments: JSON.stringify(block.input ?? {})
+              }))
+          }
+        : {}),
       finishReason: normalizeAnthropicFinishReason(payload.stop_reason ?? undefined),
       ...(payload.usage
         ? {

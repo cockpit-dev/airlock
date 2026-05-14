@@ -212,6 +212,46 @@ describe("openAIChatCompletionRequestSchema", () => {
       include_usage: true
     });
   });
+
+  it("accepts chat function tools and tool_choice", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      tool_choice: "auto",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "lookup_weather",
+            description: "Lookup weather by city",
+            parameters: {
+              type: "object",
+              properties: {
+                city: {
+                  type: "string"
+                }
+              },
+              required: ["city"]
+            }
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    });
+
+    expect(parsed.tool_choice).toBe("auto");
+    expect(parsed.tools?.[0]).toMatchObject({
+      type: "function",
+      function: {
+        name: "lookup_weather"
+      }
+    });
+  });
 });
 
 describe("openAIResponsesRequestSchema", () => {

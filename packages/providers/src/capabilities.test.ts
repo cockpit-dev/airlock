@@ -22,7 +22,7 @@ describe("provider capability descriptors", () => {
         provider: "anthropic",
         displayName: "Anthropic",
         supportsStreaming: true,
-        supportsTools: false,
+        supportsTools: true,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
         supportsRouteScopedShaping: true,
@@ -51,6 +51,13 @@ describe("provider capability descriptors", () => {
       supportsSystemMessages: true,
       supportsRouteScopedShaping: true,
       supportsStaticFallbackSameProvider: true
+    });
+  });
+
+  it("returns Anthropic as tool-capable", () => {
+    expect(getProviderCapabilityDescriptor("anthropic")).toMatchObject({
+      provider: "anthropic",
+      supportsTools: true
     });
   });
 });

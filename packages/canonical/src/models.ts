@@ -3,6 +3,18 @@ export interface CanonicalMessage {
   content: string;
 }
 
+export interface CanonicalToolDefinition {
+  name: string;
+  description?: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface CanonicalToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
 export interface CanonicalRequest {
   model: string;
   messages: CanonicalMessage[];
@@ -11,6 +23,8 @@ export interface CanonicalRequest {
   temperature?: number;
   topP?: number;
   stopSequences?: string[];
+  tools?: CanonicalToolDefinition[];
+  toolChoice?: "auto";
 }
 
 export interface CanonicalRequestCapabilityRequirements {
@@ -32,6 +46,7 @@ export interface CanonicalResponse {
   outputText: string;
   finishReason: "stop" | "max_tokens";
   usage?: CanonicalUsage;
+  toolCalls?: CanonicalToolCall[];
 }
 
 export type CanonicalStreamEvent =

@@ -8,7 +8,7 @@ export function getCanonicalRequestCapabilityRequirements(
 ): CanonicalRequestCapabilityRequirements {
   return {
     requiresStreaming: false,
-    requiresTools: false,
+    requiresTools: (request.tools?.length ?? 0) > 0,
     requiresMultimodalInput: false,
     requiresSystemMessages: request.messages.some((message) => {
       return message.role === "system";
