@@ -46,12 +46,22 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
       id: "resp_123",
       model: "gpt-4.1-mini",
       outputText: "hello there",
-      finishReason: "stop"
+      finishReason: "stop",
+      usage: {
+        inputTokens: 12,
+        outputTokens: 8,
+        totalTokens: 20
+      }
     });
 
     expect(encoded.object).toBe("chat.completion");
     expect(encoded.model).toBe("gpt-4.1-mini");
     expect(encoded.choices[0]?.message.content).toBe("hello there");
+    expect(encoded.usage).toEqual({
+      prompt_tokens: 12,
+      completion_tokens: 8,
+      total_tokens: 20
+    });
   });
 });
 
@@ -130,7 +140,12 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
           type: "response_completed",
           responseId: "resp_123",
           model: "gpt-4.1-mini",
-          finishReason: "stop"
+          finishReason: "stop",
+          usage: {
+            inputTokens: 12,
+            outputTokens: 8,
+            totalTokens: 20
+          }
         },
         "chatcmpl-stream-123"
       )
@@ -145,7 +160,12 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
           delta: {},
           finish_reason: "stop"
         }
-      ]
+      ],
+      usage: {
+        prompt_tokens: 12,
+        completion_tokens: 8,
+        total_tokens: 20
+      }
     });
   });
 });
@@ -160,6 +180,32 @@ describe("normalizeOpenAIResponsesRequest", () => {
 
     expect(canonical.model).toBe("gpt-4.1-mini");
     expect(canonical.messages).toEqual([{ role: "user", content: "hello" }]);
+  });
+
+  it("flattens openai responses text content blocks into canonical text", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "hello"
+            },
+            {
+              type: "input_text",
+              text: "there"
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      { role: "user", content: "hello\nthere" }
+    ]);
   });
 
   it("preserves streaming intent for a responses request", () => {
@@ -181,11 +227,33 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
       id: "resp_123",
       model: "gpt-4.1-mini",
       outputText: "hello there",
-      finishReason: "stop"
+      finishReason: "stop",
+      usage: {
+        inputTokens: 12,
+        outputTokens: 8,
+        totalTokens: 20
+      }
     });
 
     expect(encoded.object).toBe("response");
     expect(encoded.output_text).toBe("hello there");
+    expect(encoded.output).toEqual([
+      {
+        type: "message",
+        role: "assistant",
+        content: [
+          {
+            type: "output_text",
+            text: "hello there"
+          }
+        ]
+      }
+    ]);
+    expect(encoded.usage).toEqual({
+      input_tokens: 12,
+      output_tokens: 8,
+      total_tokens: 20
+    });
   });
 });
 
@@ -240,7 +308,12 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
         type: "response_completed",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
-        finishReason: "stop"
+        finishReason: "stop",
+        usage: {
+          inputTokens: 12,
+          outputTokens: 8,
+          totalTokens: 20
+        }
       })
     ).toEqual({
       type: "response.completed",
@@ -248,7 +321,12 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
         id: "resp_123",
         object: "response",
         model: "gpt-4.1-mini",
-        status: "completed"
+        status: "completed",
+        usage: {
+          input_tokens: 12,
+          output_tokens: 8,
+          total_tokens: 20
+        }
       }
     });
   });
@@ -299,11 +377,21 @@ describe("encodeCanonicalToAnthropicMessagesResponse", () => {
       id: "msg_123",
       model: "claude-sonnet-4-5",
       outputText: "hello there",
-      finishReason: "stop"
+      finishReason: "stop",
+      usage: {
+        inputTokens: 12,
+        outputTokens: 8,
+        totalTokens: 20
+      }
     });
 
     expect(encoded.type).toBe("message");
     expect(encoded.content[0]?.text).toBe("hello there");
+    expect(encoded.stop_sequence).toBeNull();
+    expect(encoded.usage).toEqual({
+      input_tokens: 12,
+      output_tokens: 8
+    });
   });
 });
 
@@ -364,7 +452,7 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
     ]);
   });
 
-  it("encodes a response_completed event into content_block_stop and message_stop events", async () => {
+  it("encodes a response_completed event into content_block_stop, message_delta, and message_stop events", async () => {
     const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
       "./openai-chat.js"
     );
@@ -374,12 +462,28 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
         type: "response_completed",
         responseId: "msg_123",
         model: "claude-sonnet-4-5",
-        finishReason: "stop"
+        finishReason: "stop",
+        usage: {
+          inputTokens: 12,
+          outputTokens: 8,
+          totalTokens: 20
+        }
       })
     ).toEqual([
       {
         type: "content_block_stop",
         index: 0
+      },
+      {
+        type: "message_delta",
+        delta: {
+          stop_reason: "end_turn",
+          stop_sequence: null
+        },
+        usage: {
+          input_tokens: 12,
+          output_tokens: 8
+        }
       },
       {
         type: "message_stop"

@@ -10,6 +10,49 @@ import type {
   CanonicalStreamEvent
 } from "./models.js";
 
+type CanonicalUsageValue = CanonicalResponse["usage"];
+
+function encodeCanonicalUsage(
+  usage: CanonicalUsageValue
+) {
+  if (!usage) {
+    return undefined;
+  }
+
+  return {
+    prompt_tokens: usage.inputTokens,
+    completion_tokens: usage.outputTokens,
+    total_tokens: usage.totalTokens
+  };
+}
+
+function encodeCanonicalResponsesUsage(
+  usage: CanonicalUsageValue
+) {
+  if (!usage) {
+    return undefined;
+  }
+
+  return {
+    input_tokens: usage.inputTokens,
+    output_tokens: usage.outputTokens,
+    total_tokens: usage.totalTokens
+  };
+}
+
+function encodeCanonicalAnthropicUsage(
+  usage: CanonicalUsageValue
+) {
+  if (!usage) {
+    return undefined;
+  }
+
+  return {
+    input_tokens: usage.inputTokens,
+    output_tokens: usage.outputTokens
+  };
+}
+
 export function normalizeOpenAIChatRequest(
   request: OpenAIChatCompletionRequest
 ): CanonicalRequest {
@@ -34,7 +77,10 @@ export function normalizeOpenAIResponsesRequest(
       ? [{ role: "user" as const, content: request.input }]
       : request.input.map((message) => ({
           role: message.role,
-          content: message.content
+          content:
+            typeof message.content === "string"
+              ? message.content
+              : message.content.map((block) => block.text).join("\n")
         }));
 
   return {
@@ -117,6 +163,7 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
     object: "chat.completion.chunk" as const,
     created: 0,
     model: event.model,
+    ...(event.usage ? { usage: encodeCanonicalUsage(event.usage) } : {}),
     choices: [
       {
         index: 0,
@@ -135,6 +182,7 @@ export function encodeCanonicalToOpenAIChatResponse(
     object: "chat.completion",
     created: 0,
     model: response.model,
+    ...(response.usage ? { usage: encodeCanonicalUsage(response.usage) } : {}),
     choices: [
       {
         index: 0,
@@ -156,8 +204,22 @@ export function encodeCanonicalToOpenAIResponsesResponse(
     object: "response",
     model: response.model,
     status: "completed",
-    output: [],
-    output_text: response.outputText
+    output: [
+      {
+        type: "message",
+        role: "assistant",
+        content: [
+          {
+            type: "output_text",
+            text: response.outputText
+          }
+        ]
+      }
+    ],
+    output_text: response.outputText,
+    ...(response.usage
+      ? { usage: encodeCanonicalResponsesUsage(response.usage) }
+      : {})
   };
 }
 
@@ -189,7 +251,10 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
       id: event.responseId,
       object: "response" as const,
       model: event.model,
-      status: "completed" as const
+      status: "completed" as const,
+      ...(event.usage
+        ? { usage: encodeCanonicalResponsesUsage(event.usage) }
+        : {})
     }
   };
 }
@@ -203,6 +268,10 @@ export function encodeCanonicalToAnthropicMessagesResponse(
     role: "assistant",
     model: response.model,
     stop_reason: "end_turn",
+    stop_sequence: null,
+    ...(response.usage
+      ? { usage: encodeCanonicalAnthropicUsage(response.usage) }
+      : {}),
     content: [
       {
         type: "text",
@@ -254,6 +323,16 @@ export function encodeCanonicalToAnthropicMessagesStreamEvents(
     {
       type: "content_block_stop" as const,
       index: 0
+    },
+    {
+      type: "message_delta" as const,
+      delta: {
+        stop_reason: "end_turn" as const,
+        stop_sequence: null
+      },
+      ...(event.usage
+        ? { usage: encodeCanonicalAnthropicUsage(event.usage) }
+        : {})
     },
     {
       type: "message_stop" as const

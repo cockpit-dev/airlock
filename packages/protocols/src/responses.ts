@@ -2,9 +2,17 @@ import { z } from "zod";
 
 import { airlockRequestExtensionsSchema } from "./airlock-extensions.js";
 
+const openAIResponsesTextContentBlockSchema = z.object({
+  type: z.literal("input_text"),
+  text: z.string().min(1)
+});
+
 const openAIResponsesInputMessageSchema = z.object({
   role: z.enum(["user", "assistant", "system"]),
-  content: z.string().min(1)
+  content: z.union([
+    z.string().min(1),
+    z.array(openAIResponsesTextContentBlockSchema).min(1)
+  ])
 });
 
 export const openAIResponsesRequestSchema = z.object({
@@ -24,7 +32,14 @@ export const openAIResponsesResponseSchema = z.object({
   model: z.string().min(1),
   status: z.literal("completed"),
   output: z.array(z.unknown()),
-  output_text: z.string()
+  output_text: z.string(),
+  usage: z
+    .object({
+      input_tokens: z.number().int().nonnegative(),
+      output_tokens: z.number().int().nonnegative(),
+      total_tokens: z.number().int().nonnegative()
+    })
+    .optional()
 });
 
 export type OpenAIResponsesRequest = z.infer<typeof openAIResponsesRequestSchema>;

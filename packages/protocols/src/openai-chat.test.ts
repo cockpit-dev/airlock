@@ -115,6 +115,30 @@ describe("openAIResponsesRequestSchema", () => {
     expect(Array.isArray(parsed.input)).toBe(true);
   });
 
+  it("accepts an array of input messages with text content blocks", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "hello"
+            },
+            {
+              type: "input_text",
+              text: "there"
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(Array.isArray(parsed.input)).toBe(true);
+  });
+
   it("accepts an optional airlock request shaping extension", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",

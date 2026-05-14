@@ -12653,7 +12653,7 @@ describe("gateway app", () => {
                   'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
                   'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"hel"},"finish_reason":null}]}\n\n',
                   'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"lo"},"finish_reason":null}]}\n\n',
-                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}\n\n',
                   "data: [DONE]\n\n"
                 ].join("")
               )
@@ -12691,7 +12691,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/event-stream");
-    await expect(readText(response)).resolves.toContain("data: [DONE]");
+    const body = await readText(response);
+    expect(body).toContain('"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}');
+    expect(body).toContain("data: [DONE]");
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
@@ -13493,7 +13495,12 @@ describe("gateway app", () => {
                 content: "hello there"
               }
             }
-          ]
+          ],
+          usage: {
+            prompt_tokens: 12,
+            completion_tokens: 8,
+            total_tokens: 20
+          }
         }),
         {
           status: 200,
@@ -13527,7 +13534,92 @@ describe("gateway app", () => {
     await expect(readJson(response)).resolves.toMatchObject({
       object: "response",
       model: "gpt-4.1-mini",
-      output_text: "hello there"
+      output_text: "hello there",
+      output: [
+        {
+          type: "message",
+          role: "assistant",
+          content: [
+            {
+              type: "output_text",
+              text: "hello there"
+            }
+          ]
+        }
+      ],
+      usage: {
+        input_tokens: 12,
+        output_tokens: 8,
+        total_tokens: 20
+      }
+    });
+  });
+
+  it("accepts openai responses text-block input and flattens it for upstream chat execution", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: "hello"
+                },
+                {
+                  type: "input_text",
+                  text: "there"
+                }
+              ]
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      messages: [{ role: "user", content: "hello\nthere" }]
     });
   });
 
@@ -13669,6 +13761,11 @@ describe("gateway app", () => {
           role: "assistant",
           model: "claude-sonnet-4-5",
           stop_reason: "end_turn",
+          stop_sequence: null,
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8
+          },
           content: [
             {
               type: "text",
@@ -13745,6 +13842,11 @@ describe("gateway app", () => {
     await expect(readJson(response)).resolves.toMatchObject({
       type: "message",
       role: "assistant",
+      stop_sequence: null,
+      usage: {
+        input_tokens: 12,
+        output_tokens: 8
+      },
       content: [
         {
           type: "text",
@@ -13766,6 +13868,7 @@ describe("gateway app", () => {
                   'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-sonnet-4-5"}}\n\n',
                   'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"hel"}}\n\n',
                   'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"lo"}}\n\n',
+                  'event: message_delta\ndata: {"delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":12,"output_tokens":8}}\n\n',
                   "event: message_stop\ndata: {}\n\n"
                 ].join("")
               )
@@ -13815,6 +13918,7 @@ describe("gateway app", () => {
     expect(body).toContain("event: content_block_start");
     expect(body).toContain("event: content_block_delta");
     expect(body).toContain("event: content_block_stop");
+    expect(body).toContain("event: message_delta");
     expect(body).toContain("event: message_stop");
   });
 
