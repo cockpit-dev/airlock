@@ -633,6 +633,123 @@ describe("GeminiProviderAdapter", () => {
     });
   });
 
+  it("forwards canonical tool replay history into Gemini contents", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              finishReason: "STOP",
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "The temperature is 26C."
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        model: "gemini-2.5-flash",
+        stream: false,
+        tools: [
+          {
+            name: "lookup_weather",
+            inputSchema: {
+              type: "object"
+            }
+          }
+        ],
+        messages: [
+          {
+            role: "user",
+            content: "Weather in Shanghai?"
+          },
+          {
+            role: "assistant",
+            content: "",
+            toolCalls: [
+              {
+                id: "call_123",
+                name: "lookup_weather",
+                arguments: "{\"city\":\"Shanghai\"}"
+              }
+            ]
+          },
+          {
+            role: "tool",
+            toolCallId: "call_123",
+            content: "{\"temperature_c\":26}"
+          }
+        ]
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: "Weather in Shanghai?"
+            }
+          ]
+        },
+        {
+          role: "model",
+          parts: [
+            {
+              functionCall: {
+                name: "lookup_weather",
+                args: {
+                  city: "Shanghai"
+                }
+              }
+            }
+          ]
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: "lookup_weather",
+                response: {
+                  temperature_c: 26
+                }
+              }
+            }
+          ]
+        }
+      ]
+    });
+  });
+
   it("maps upstream failures into a gateway error", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -968,6 +1085,184 @@ describe("GeminiProviderAdapter", () => {
         usage: {
           inputTokens: 10,
           outputTokens: 6,
+          totalTokens: 16
+        }
+      }
+    ]);
+  });
+
+  it("parses upstream gemini SSE tool calls into canonical tool_call_delta events", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"role":"model","parts":[{"text":"Let me check "},{"functionCall":{"name":"lookup_weather","args":{"city":"Shanghai"}}}]}}]}\n\n',
+              'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[]}}],"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":5,"totalTokenCount":16}}\n\n'
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true,
+        tools: [
+          {
+            name: "lookup_weather",
+            inputSchema: {
+              type: "object"
+            }
+          }
+        ]
+      },
+      {
+        requestId: "req_stream_tool_123"
+      }
+    )) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash",
+        delta: "Let me check "
+      },
+      {
+        type: "tool_call_delta",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash",
+        toolCallId: "gemini-response-123_tool_1",
+        toolIndex: 1,
+        toolName: "lookup_weather",
+        argumentsDelta: "{\"city\":\"Shanghai\"}"
+      },
+      {
+        type: "response_completed",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash",
+        finishReason: "tool_calls",
+        toolCalls: [
+          {
+            id: "gemini-response-123_tool_1",
+            name: "lookup_weather",
+            arguments: "{\"city\":\"Shanghai\"}"
+          }
+        ],
+        usage: {
+          inputTokens: 11,
+          outputTokens: 5,
+          totalTokens: 16
+        }
+      }
+    ]);
+  });
+
+  it("preserves zero-argument streamed gemini tool starts as empty argument deltas", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"lookup_weather"}}]}}]}\n\n',
+              'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[]}}],"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":5,"totalTokenCount":16}}\n\n'
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true,
+        tools: [
+          {
+            name: "lookup_weather",
+            inputSchema: {
+              type: "object"
+            }
+          }
+        ]
+      },
+      {
+        requestId: "req_stream_tool_123"
+      }
+    )) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash"
+      },
+      {
+        type: "tool_call_delta",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash",
+        toolCallId: "gemini-response-123_tool_0",
+        toolIndex: 0,
+        toolName: "lookup_weather",
+        argumentsDelta: ""
+      },
+      {
+        type: "response_completed",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash",
+        finishReason: "tool_calls",
+        toolCalls: [
+          {
+            id: "gemini-response-123_tool_0",
+            name: "lookup_weather",
+            arguments: ""
+          }
+        ],
+        usage: {
+          inputTokens: 11,
+          outputTokens: 5,
           totalTokens: 16
         }
       }

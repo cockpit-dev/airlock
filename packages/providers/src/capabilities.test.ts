@@ -49,8 +49,8 @@ describe("provider capability descriptors", () => {
         displayName: "Gemini",
         supportsStreaming: true,
         supportsTools: true,
-        supportsToolReplay: false,
-        supportsStreamingTools: false,
+        supportsToolReplay: true,
+        supportsStreamingTools: true,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
         supportsPreviousResponseId: false,
@@ -71,8 +71,8 @@ describe("provider capability descriptors", () => {
       displayName: "Gemini",
       supportsStreaming: true,
       supportsTools: true,
-      supportsToolReplay: false,
-      supportsStreamingTools: false,
+      supportsToolReplay: true,
+      supportsStreamingTools: true,
       supportsMultimodalInput: false,
       supportsSystemMessages: true,
       supportsPreviousResponseId: false,
@@ -121,8 +121,8 @@ describe("provider capability descriptors", () => {
     expect(getProviderCapabilityDescriptor("gemini")).toMatchObject({
       provider: "gemini",
       supportsTools: true,
-      supportsToolReplay: false,
-      supportsStreamingTools: false
+      supportsToolReplay: true,
+      supportsStreamingTools: true
     });
   });
 });

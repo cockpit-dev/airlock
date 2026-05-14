@@ -332,6 +332,15 @@ export class GeminiProviderAdapter implements ProviderAdapter {
     let activeResponseId = `gemini_${context.requestId}`;
     let activeModel = request.model;
     let hasStarted = false;
+    let sawToolCall = false;
+    const toolCallsById = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        arguments: string;
+      }
+    >();
 
     try {
       while (true) {
@@ -376,10 +385,8 @@ export class GeminiProviderAdapter implements ProviderAdapter {
             const responseId = payload.responseId ?? activeResponseId;
             const model = payload.modelVersion ?? activeModel;
             const candidate = payload.candidates?.[0];
-            const deltaText =
-              candidate?.content?.parts
-                ?.map((part) => part.text ?? "")
-                .join("") ?? "";
+            const parts = candidate?.content?.parts ?? [];
+            const deltaText = parts.map((part) => part.text ?? "").join("");
 
             activeResponseId = responseId;
             activeModel = model;
@@ -402,12 +409,47 @@ export class GeminiProviderAdapter implements ProviderAdapter {
               };
             }
 
-            if (normalizeGeminiFinishReason(candidate?.finishReason) === "stop") {
+            for (const [index, part] of parts.entries()) {
+              if (!part.functionCall?.name) {
+                continue;
+              }
+
+              sawToolCall = true;
+              const argumentsPayload =
+                part.functionCall.args === undefined
+                  ? ""
+                  : JSON.stringify(part.functionCall.args);
+              const toolCall = {
+                id: `${responseId}_tool_${index}`,
+                name: part.functionCall.name,
+                arguments: argumentsPayload
+              };
+              toolCallsById.set(toolCall.id, toolCall);
+
+              yield {
+                type: "tool_call_delta",
+                responseId,
+                model,
+                toolCallId: toolCall.id,
+                toolIndex: index,
+                toolName: toolCall.name,
+                argumentsDelta: toolCall.arguments
+              };
+            }
+
+            const normalizedFinishReason = normalizeGeminiFinishReason(
+              candidate?.finishReason
+            );
+
+            if (normalizedFinishReason === "stop" || normalizedFinishReason === "max_tokens") {
               yield {
                 type: "response_completed",
                 responseId,
                 model,
-                finishReason: "stop",
+                finishReason: sawToolCall ? "tool_calls" : normalizedFinishReason ?? "stop",
+                ...(toolCallsById.size > 0
+                  ? { toolCalls: Array.from(toolCallsById.values()) }
+                  : {}),
                 ...(payload.usageMetadata
                   ? {
                       usage: {
@@ -455,6 +497,10 @@ interface GeminiContentPart {
     name?: string;
     args?: Record<string, unknown>;
   };
+  functionResponse?: {
+    name?: string;
+    response?: Record<string, unknown>;
+  };
 }
 
 interface GeminiCandidate {
@@ -479,16 +525,93 @@ function buildGeminiRequestBody(request: CanonicalRequest) {
   const systemMessages = request.messages.filter((message) => {
     return message.role === "system";
   });
+  const declaredToolNames = new Set(
+    request.tools?.map((tool) => tool.name) ?? []
+  );
   const contents = request.messages
     .filter((message) => message.role !== "system")
-    .map((message) => ({
-      role: message.role === "assistant" ? "model" : "user",
-      parts: [
-        {
-          text: message.content
+    .map((message) => {
+      if (message.role === "assistant") {
+        if (message.toolCalls && message.toolCalls.length > 0) {
+          return {
+            role: "model" as const,
+            parts: [
+              ...(message.content.length > 0
+                ? [
+                    {
+                      text: message.content
+                    }
+                  ]
+                : []),
+              ...message.toolCalls.map((toolCall) => ({
+                functionCall: {
+                  name: toolCall.name,
+                  ...(toolCall.arguments.length > 0
+                    ? {
+                        args: parseGeminiToolArguments(
+                          toolCall.arguments,
+                          toolCall.name
+                        )
+                      }
+                    : {})
+                }
+              }))
+            ]
+          };
         }
-      ]
-    }));
+
+        return {
+          role: "model" as const,
+          parts: [
+            {
+              text: message.content
+            }
+          ]
+        };
+      }
+
+      if (message.role === "tool") {
+        const matchingToolCall = request.messages
+          .filter((candidate): candidate is Extract<CanonicalRequest["messages"][number], { role: "assistant" }> => {
+            return candidate.role === "assistant";
+          })
+          .flatMap((candidate) => candidate.toolCalls ?? [])
+          .find((toolCall) => toolCall.id === message.toolCallId);
+
+        if (!matchingToolCall || !declaredToolNames.has(matchingToolCall.name)) {
+          throw new GatewayError(
+            "Provider gemini cannot encode tool replay without a matching declared tool definition",
+            {
+              code: "request_invalid_tool_arguments",
+              category: "request",
+              httpStatus: 400,
+              retryable: false
+            }
+          );
+        }
+
+        return {
+          role: "user" as const,
+          parts: [
+            {
+              functionResponse: {
+                name: matchingToolCall.name,
+                response: parseGeminiToolResponse(message.content)
+              }
+            }
+          ]
+        };
+      }
+
+      return {
+        role: "user" as const,
+        parts: [
+          {
+            text: message.content
+          }
+        ]
+      };
+    });
 
   return {
     ...(systemMessages.length > 0
@@ -574,10 +697,59 @@ function extractGeminiToolCalls(parts: GeminiContentPart[] | undefined) {
       {
         id: `gemini_call_${index}`,
         name: part.functionCall.name,
-        arguments: JSON.stringify(part.functionCall.args ?? {})
+        arguments:
+          part.functionCall.args === undefined
+            ? ""
+            : JSON.stringify(part.functionCall.args)
       }
     ];
   });
+}
+
+function parseGeminiToolArguments(
+  value: string,
+  toolName: string
+): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Tool arguments must be a JSON object");
+    }
+
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    throw new GatewayError(
+      `Provider gemini cannot encode tool replay for ${toolName}: tool arguments must be a JSON object`,
+      {
+        code: "request_invalid_tool_arguments",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        cause: error
+      }
+    );
+  }
+}
+
+function parseGeminiToolResponse(
+  value: string
+): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {
+        result: parsed
+      };
+    }
+
+    return parsed as Record<string, unknown>;
+  } catch {
+    return {
+      result: value
+    };
+  }
 }
 
 function normalizeGeminiFinishReason(

@@ -358,7 +358,7 @@ describe("assertProviderSupportsCanonicalRequest", () => {
     );
   });
 
-  it("throws a typed error when the provider descriptor lacks tool replay support", () => {
+  it("allows buffered tool replay requests for gemini", () => {
     const request: CanonicalRequest = {
       model: "gemini-2.5-flash",
       stream: false,
@@ -383,22 +383,10 @@ describe("assertProviderSupportsCanonicalRequest", () => {
         request,
         "req_123"
       )
-    ).toThrow(
-      new GatewayError(
-        "Provider gemini does not support required capability: tool_replay",
-        {
-          code: "provider_capability_not_supported",
-          category: "routing",
-          httpStatus: 400,
-          retryable: false,
-          provider: "gemini",
-          requestId: "req_123"
-        }
-      )
-    );
+    ).not.toThrow();
   });
 
-  it("throws a typed error when the provider descriptor lacks streaming tool support", () => {
+  it("allows streamed tool requests for gemini", () => {
     const request: CanonicalRequest = {
       model: "gemini-2.5-flash",
       stream: true,
@@ -424,19 +412,7 @@ describe("assertProviderSupportsCanonicalRequest", () => {
         request,
         "req_123"
       )
-    ).toThrow(
-      new GatewayError(
-        "Provider gemini does not support required capability: streaming_tools",
-        {
-          code: "provider_capability_not_supported",
-          category: "routing",
-          httpStatus: 400,
-          retryable: false,
-          provider: "gemini",
-          requestId: "req_123"
-        }
-      )
-    );
+    ).not.toThrow();
   });
 });
 
