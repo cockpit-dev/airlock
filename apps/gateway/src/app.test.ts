@@ -16772,6 +16772,38 @@ describe("gateway app", () => {
     });
   });
 
+  it("rejects chat parallel_tool_calls when no tools are declared", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          parallel_tool_calls: true,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Unsupported OpenAI Chat tools semantics: parallel_tool_calls requires declared tools",
+        type: "request",
+        code: "request_unsupported_openai_semantics"
+      }
+    });
+  });
+
   it("accepts chat parallel_tool_calls=false and forwards it upstream", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -20237,6 +20269,38 @@ describe("gateway app", () => {
           name: "lookup_weather"
         }
       ]
+    });
+  });
+
+  it("rejects responses parallel_tool_calls when no tools are declared", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          stream: false,
+          parallel_tool_calls: true
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Unsupported OpenAI Responses tools semantics: parallel_tool_calls requires declared tools",
+        type: "request",
+        code: "request_unsupported_openai_semantics"
+      }
     });
   });
 

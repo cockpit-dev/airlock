@@ -96,7 +96,22 @@ export function assertSupportedOpenAIChatToolsSemantics(
     return;
   }
 
-  if (!("tools" in payload) || payload.tools === undefined) {
+  const hasDeclaredTools = "tools" in payload && payload.tools !== undefined;
+
+  if (!hasDeclaredTools) {
+    if ("parallel_tool_calls" in payload && payload.parallel_tool_calls !== undefined) {
+      throw new GatewayError(
+        "Unsupported OpenAI Chat tools semantics: parallel_tool_calls requires declared tools",
+        {
+          code: "request_unsupported_openai_semantics",
+          category: "request",
+          httpStatus: 400,
+          retryable: false,
+          requestId
+        }
+      );
+    }
+
     return;
   }
 
@@ -122,7 +137,22 @@ export function assertSupportedOpenAIResponsesToolsSemantics(
     return;
   }
 
-  if (!("tools" in payload) || payload.tools === undefined) {
+  const hasDeclaredTools = "tools" in payload && payload.tools !== undefined;
+
+  if (!hasDeclaredTools) {
+    if ("parallel_tool_calls" in payload && payload.parallel_tool_calls !== undefined) {
+      throw new GatewayError(
+        "Unsupported OpenAI Responses tools semantics: parallel_tool_calls requires declared tools",
+        {
+          code: "request_unsupported_openai_semantics",
+          category: "request",
+          httpStatus: 400,
+          retryable: false,
+          requestId
+        }
+      );
+    }
+
     return;
   }
 
