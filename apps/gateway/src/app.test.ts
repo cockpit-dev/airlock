@@ -13864,6 +13864,84 @@ describe("gateway app", () => {
     });
   });
 
+  it("fails closed when chat reasoning_effort is sent to a non-openai provider", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          reasoning_effort: "high",
+          messages: [
+            {
+              role: "user",
+              content: "hello"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider anthropic does not support required capability: reasoning",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
+  it("fails closed when chat reasoning_effort is sent to gemini", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          reasoning_effort: "high",
+          messages: [
+            {
+              role: "user",
+              content: "hello"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider gemini does not support required capability: reasoning",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
   it("lets request-scoped shaping override route-level shaping for chat completions", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
