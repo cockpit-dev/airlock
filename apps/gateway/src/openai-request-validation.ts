@@ -169,10 +169,11 @@ export function assertSupportedOpenAIResponsesSemantics(
     payload.text.format === null ||
     !("type" in payload.text.format) ||
     (payload.text.format.type !== "text" &&
+      payload.text.format.type !== "json_object" &&
       payload.text.format.type !== "json_schema")
   ) {
     throw new GatewayError(
-      "Unsupported OpenAI Responses text config: only text.format.type=text or json_schema is supported",
+      "Unsupported OpenAI Responses text config: only text.format.type=text, json_object, or json_schema is supported",
       {
         code: "request_unsupported_openai_semantics",
         category: "request",
@@ -202,10 +203,12 @@ export function assertSupportedOpenAIChatResponseFormat(
     typeof responseFormat !== "object" ||
     responseFormat === null ||
     !("type" in responseFormat) ||
-    (responseFormat.type !== "text" && responseFormat.type !== "json_schema")
+    (responseFormat.type !== "text" &&
+      responseFormat.type !== "json_object" &&
+      responseFormat.type !== "json_schema")
   ) {
     throw new GatewayError(
-      "Unsupported OpenAI Chat response_format: only type=text or json_schema is supported",
+      "Unsupported OpenAI Chat response_format: only type=text, json_object, or json_schema is supported",
       {
         code: "request_unsupported_openai_semantics",
         category: "request",

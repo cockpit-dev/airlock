@@ -916,6 +916,26 @@ describe("normalizeOpenAIResponsesRequest", () => {
     });
   });
 
+  it("normalizes chat json_object response_format into canonical output format", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      response_format: {
+        type: "json_object"
+      },
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.outputFormat).toEqual({
+      type: "json_object"
+    });
+  });
+
   it("normalizes responses prompt and reasoning effort into canonical request fields", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",
@@ -967,6 +987,23 @@ describe("normalizeOpenAIResponsesRequest", () => {
         type: "object"
       },
       strict: true
+    });
+  });
+
+  it("normalizes responses json_object text format into canonical output format", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      text: {
+        format: {
+          type: "json_object"
+        }
+      }
+    });
+
+    expect(canonical.outputFormat).toEqual({
+      type: "json_object"
     });
   });
 

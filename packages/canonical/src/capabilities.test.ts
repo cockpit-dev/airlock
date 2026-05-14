@@ -182,6 +182,35 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     });
   });
 
+  it("marks structured output requirements when json_object output format is present", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      outputFormat: {
+        type: "json_object"
+      },
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: false,
+      requiresTools: false,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false,
+      requiresStructuredOutputs: true,
+      requiresParallelToolCallControl: false
+    });
+  });
+
   it("marks parallel tool call control requirements when explicitly disabled", () => {
     const request: CanonicalRequest = {
       model: "gpt-4.1-mini",

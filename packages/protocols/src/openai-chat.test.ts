@@ -453,6 +453,26 @@ describe("openAIChatCompletionRequestSchema", () => {
     });
   });
 
+  it("accepts chat response_format when type is json_object", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      response_format: {
+        type: "json_object"
+      },
+      messages: [
+        {
+          role: "user",
+          content: "Hello!"
+        }
+      ]
+    });
+
+    expect(parsed.response_format).toEqual({
+      type: "json_object"
+    });
+  });
+
   it("accepts assistant tool_calls and tool result messages for replay", () => {
     const parsed = openAIChatCompletionRequestSchema.parse({
       model: "gpt-4.1-mini",
@@ -784,6 +804,24 @@ describe("openAIResponsesRequestSchema", () => {
           required: ["city"]
         },
         strict: true
+      }
+    });
+  });
+
+  it("accepts responses text.format when type is json_object", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      text: {
+        format: {
+          type: "json_object"
+        }
+      }
+    });
+
+    expect(parsed.text).toEqual({
+      format: {
+        type: "json_object"
       }
     });
   });

@@ -305,6 +305,12 @@ function normalizeOpenAIChatResponseFormat(
     };
   }
 
+  if (responseFormat.type === "json_object") {
+    return {
+      type: "json_object" as const
+    };
+  }
+
   return {
     type: "json_schema" as const,
     name: responseFormat.json_schema.name,
@@ -325,6 +331,12 @@ function normalizeOpenAIResponsesTextFormat(
   if (text.format.type === "text") {
     return {
       type: "text" as const
+    };
+  }
+
+  if (text.format.type === "json_object") {
+    return {
+      type: "json_object" as const
     };
   }
 

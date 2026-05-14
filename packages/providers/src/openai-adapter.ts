@@ -109,6 +109,12 @@ function mapCanonicalOutputFormatToOpenAIChat(
     };
   }
 
+  if (outputFormat.type === "json_object") {
+    return {
+      type: "json_object" as const
+    };
+  }
+
   return {
     type: "json_schema" as const,
     json_schema: {
@@ -132,6 +138,14 @@ function mapCanonicalOutputFormatToOpenAIResponses(
     return {
       format: {
         type: "text" as const
+      }
+    };
+  }
+
+  if (outputFormat.type === "json_object") {
+    return {
+      format: {
+        type: "json_object" as const
       }
     };
   }

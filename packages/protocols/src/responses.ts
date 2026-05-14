@@ -28,6 +28,10 @@ const openAIResponsesTextFormatSchema = z.object({
   type: z.literal("text")
 });
 
+const openAIResponsesJsonObjectFormatSchema = z.object({
+  type: z.literal("json_object")
+});
+
 const openAIResponsesJsonSchemaFormatSchema = z.object({
   type: z.literal("json_schema"),
   name: z.string().min(1),
@@ -38,6 +42,7 @@ const openAIResponsesJsonSchemaFormatSchema = z.object({
 const openAIResponsesTextConfigSchema = z.object({
   format: z.union([
     openAIResponsesTextFormatSchema,
+    openAIResponsesJsonObjectFormatSchema,
     openAIResponsesJsonSchemaFormatSchema
   ])
 });

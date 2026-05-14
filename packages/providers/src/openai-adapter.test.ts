@@ -544,6 +544,62 @@ describe("OpenAIProviderAdapter", () => {
     });
   });
 
+  it("forwards canonical json_object output format to OpenAI chat completions", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "{\"city\":\"Shanghai\"}"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        outputFormat: {
+          type: "json_object"
+        }
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe("https://api.openai.com/v1/chat/completions");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      response_format: {
+        type: "json_object"
+      }
+    });
+  });
+
   it("forwards canonical json_schema output format through the native openai responses endpoint", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -608,12 +664,77 @@ describe("OpenAIProviderAdapter", () => {
     expect(JSON.parse(init.body as string)).toMatchObject({
       text: {
         format: {
-          type: "json_schema",
+        type: "json_schema",
           name: "weather",
           schema: {
             type: "object"
           },
           strict: true
+        }
+      }
+    });
+  });
+
+  it("forwards canonical json_object output format through the native openai responses endpoint", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "{\"city\":\"Shanghai\"}",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        outputFormat: {
+          type: "json_object"
+        }
+      },
+      {
+        requestId: "req_123",
+        requestMode: "openai_responses"
+      }
+    );
+
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe("https://api.openai.com/v1/responses");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      text: {
+        format: {
+          type: "json_object"
         }
       }
     });

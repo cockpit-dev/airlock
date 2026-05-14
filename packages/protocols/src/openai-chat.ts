@@ -15,6 +15,10 @@ const openAIChatTextResponseFormatSchema = z.object({
   type: z.literal("text")
 });
 
+const openAIChatJsonObjectResponseFormatSchema = z.object({
+  type: z.literal("json_object")
+});
+
 const openAIChatJsonSchemaResponseFormatSchema = z.object({
   type: z.literal("json_schema"),
   json_schema: z.object({
@@ -26,6 +30,7 @@ const openAIChatJsonSchemaResponseFormatSchema = z.object({
 
 const openAIChatResponseFormatSchema = z.union([
   openAIChatTextResponseFormatSchema,
+  openAIChatJsonObjectResponseFormatSchema,
   openAIChatJsonSchemaResponseFormatSchema
 ]);
 

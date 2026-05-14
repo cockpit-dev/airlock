@@ -44,6 +44,9 @@ export interface CanonicalRequest {
         type: "text";
       }
     | {
+        type: "json_object";
+      }
+    | {
         type: "json_schema";
         name: string;
         schema: Record<string, unknown>;
