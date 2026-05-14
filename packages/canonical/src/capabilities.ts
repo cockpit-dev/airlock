@@ -6,18 +6,21 @@ import type {
 export function getCanonicalRequestCapabilityRequirements(
   request: CanonicalRequest
 ): CanonicalRequestCapabilityRequirements {
+  const requiresToolReplay = request.messages.some((message) => {
+    return (
+      message.role === "tool" ||
+      (message.role === "assistant" && (message.toolCalls?.length ?? 0) > 0)
+    );
+  });
   const requiresTools =
-    (request.tools?.length ?? 0) > 0 ||
-    request.messages.some((message) => {
-      return (
-        message.role === "tool" ||
-        (message.role === "assistant" && (message.toolCalls?.length ?? 0) > 0)
-      );
-    });
+    (request.tools?.length ?? 0) > 0 || requiresToolReplay;
+  const requiresStreamingTools = request.stream && (request.tools?.length ?? 0) > 0;
 
   return {
     requiresStreaming: request.stream,
     requiresTools,
+    requiresToolReplay,
+    requiresStreamingTools,
     requiresMultimodalInput: false,
     requiresSystemMessages: request.messages.some((message) => {
       return message.role === "system";

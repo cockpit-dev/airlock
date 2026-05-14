@@ -13,6 +13,8 @@ export interface ProviderCapabilityDescriptor {
   displayName: string;
   supportsStreaming: boolean;
   supportsTools: boolean;
+  supportsToolReplay: boolean;
+  supportsStreamingTools: boolean;
   supportsMultimodalInput: boolean;
   supportsSystemMessages: boolean;
   supportsPreviousResponseId: boolean;

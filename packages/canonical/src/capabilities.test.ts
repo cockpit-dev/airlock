@@ -24,6 +24,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
       requiresStreaming: false,
       requiresTools: false,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: true,
       requiresPreviousResponseId: false,
@@ -50,6 +52,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
       requiresStreaming: false,
       requiresTools: false,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
       requiresPreviousResponseId: false,
@@ -84,6 +88,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
       requiresStreaming: false,
       requiresTools: true,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
       requiresPreviousResponseId: false,
@@ -121,6 +127,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
       requiresStreaming: false,
       requiresTools: true,
+      requiresToolReplay: true,
+      requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
       requiresPreviousResponseId: false,
@@ -148,6 +156,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
       requiresStreaming: false,
       requiresTools: true,
+      requiresToolReplay: true,
+      requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
       requiresPreviousResponseId: false,
@@ -176,6 +186,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
       requiresStreaming: true,
       requiresTools: false,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
       requiresPreviousResponseId: true,
@@ -201,6 +213,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
       requiresStreaming: false,
       requiresTools: false,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
       requiresPreviousResponseId: false,
@@ -223,6 +237,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
       requiresStreaming: false,
       requiresTools: false,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
       requiresPreviousResponseId: false,
@@ -257,6 +273,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
       requiresStreaming: false,
       requiresTools: false,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
       requiresPreviousResponseId: false,
@@ -286,6 +304,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
       requiresStreaming: false,
       requiresTools: false,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
       requiresPreviousResponseId: false,
@@ -321,6 +341,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
       requiresStreaming: false,
       requiresTools: true,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
       requiresPreviousResponseId: false,
@@ -329,6 +351,42 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: true
+    });
+  });
+
+  it("marks streaming tool requirements when canonical requests stream declared tools", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: true,
+      tools: [
+        {
+          name: "lookup_weather",
+          inputSchema: {
+            type: "object"
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: true,
+      requiresTools: true,
+      requiresToolReplay: false,
+      requiresStreamingTools: true,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false,
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: false
     });
   });
 });

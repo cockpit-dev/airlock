@@ -83,6 +83,8 @@ export interface CanonicalRequest {
 export interface CanonicalRequestCapabilityRequirements {
   requiresStreaming: boolean;
   requiresTools: boolean;
+  requiresToolReplay: boolean;
+  requiresStreamingTools: boolean;
   requiresMultimodalInput: boolean;
   requiresSystemMessages: boolean;
   requiresPreviousResponseId: boolean;

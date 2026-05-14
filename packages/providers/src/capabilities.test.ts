@@ -13,6 +13,8 @@ describe("provider capability descriptors", () => {
         displayName: "OpenAI",
         supportsStreaming: true,
         supportsTools: true,
+        supportsToolReplay: true,
+        supportsStreamingTools: true,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
         supportsPreviousResponseId: true,
@@ -29,6 +31,8 @@ describe("provider capability descriptors", () => {
         displayName: "Anthropic",
         supportsStreaming: true,
         supportsTools: true,
+        supportsToolReplay: true,
+        supportsStreamingTools: true,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
         supportsPreviousResponseId: false,
@@ -44,7 +48,9 @@ describe("provider capability descriptors", () => {
         provider: "gemini",
         displayName: "Gemini",
         supportsStreaming: true,
-        supportsTools: false,
+        supportsTools: true,
+        supportsToolReplay: false,
+        supportsStreamingTools: false,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
         supportsPreviousResponseId: false,
@@ -64,7 +70,9 @@ describe("provider capability descriptors", () => {
       provider: "gemini",
       displayName: "Gemini",
       supportsStreaming: true,
-      supportsTools: false,
+      supportsTools: true,
+      supportsToolReplay: false,
+      supportsStreamingTools: false,
       supportsMultimodalInput: false,
       supportsSystemMessages: true,
       supportsPreviousResponseId: false,
@@ -82,6 +90,8 @@ describe("provider capability descriptors", () => {
     expect(getProviderCapabilityDescriptor("openai")).toMatchObject({
       provider: "openai",
       supportsTools: true,
+      supportsToolReplay: true,
+      supportsStreamingTools: true,
       supportsPreviousResponseId: true,
       supportsConversationId: true,
       supportsPrompt: true,
@@ -101,7 +111,18 @@ describe("provider capability descriptors", () => {
   it("returns Anthropic as tool-capable", () => {
     expect(getProviderCapabilityDescriptor("anthropic")).toMatchObject({
       provider: "anthropic",
-      supportsTools: true
+      supportsTools: true,
+      supportsToolReplay: true,
+      supportsStreamingTools: true
+    });
+  });
+
+  it("returns Gemini as tool-capable for first-turn buffered function calling", () => {
+    expect(getProviderCapabilityDescriptor("gemini")).toMatchObject({
+      provider: "gemini",
+      supportsTools: true,
+      supportsToolReplay: false,
+      supportsStreamingTools: false
     });
   });
 });

@@ -139,6 +139,22 @@ export function assertProviderSupportsCanonicalRequest(
     );
   }
 
+  if (requirements.requiresToolReplay && !descriptor.supportsToolReplay) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "tool_replay",
+      requestId
+    );
+  }
+
+  if (requirements.requiresStreamingTools && !descriptor.supportsStreamingTools) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "streaming_tools",
+      requestId
+    );
+  }
+
   if (
     requirements.requiresMultimodalInput &&
     !descriptor.supportsMultimodalInput

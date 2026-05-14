@@ -168,19 +168,24 @@ export class GeminiProviderAdapter implements ProviderAdapter {
       };
     };
 
+    const candidate = payload.candidates?.[0];
     const outputText =
-      payload.candidates?.[0]?.content?.parts
+      candidate?.content?.parts
         ?.map((part) => part.text ?? "")
         .join("")
         .trim() ?? "";
+    const toolCalls = extractGeminiToolCalls(candidate?.content?.parts);
     const finishReason =
-      normalizeGeminiFinishReason(payload.candidates?.[0]?.finishReason) ?? "stop";
+      toolCalls.length > 0
+        ? "tool_calls"
+        : normalizeGeminiFinishReason(candidate?.finishReason) ?? "stop";
 
     return {
       id: payload.responseId ?? `gemini_${context.requestId}`,
       model: payload.modelVersion ?? request.model,
       outputText,
       finishReason,
+      ...(toolCalls.length > 0 ? { toolCalls } : {}),
       ...(payload.usageMetadata
         ? {
             usage: {
@@ -446,6 +451,10 @@ export class GeminiProviderAdapter implements ProviderAdapter {
 
 interface GeminiContentPart {
   text?: string;
+  functionCall?: {
+    name?: string;
+    args?: Record<string, unknown>;
+  };
 }
 
 interface GeminiCandidate {
@@ -492,6 +501,33 @@ function buildGeminiRequestBody(request: CanonicalRequest) {
         }
       : {}),
     contents,
+    ...(request.tools && request.tools.length > 0
+      ? {
+          tools: [
+            {
+              functionDeclarations: request.tools.map((tool) => ({
+                name: tool.name,
+                ...(tool.description ? { description: tool.description } : {}),
+                parameters: tool.inputSchema
+              }))
+            }
+          ],
+          toolConfig: {
+            functionCallingConfig:
+              request.toolChoice === "required"
+                ? { mode: "ANY" as const }
+                : request.toolChoice === "none"
+                  ? { mode: "NONE" as const }
+                  : typeof request.toolChoice === "object" &&
+                      request.toolChoice.type === "tool"
+                    ? {
+                        mode: "ANY" as const,
+                        allowedFunctionNames: [request.toolChoice.name]
+                      }
+                    : { mode: "AUTO" as const }
+          }
+        }
+      : {}),
     ...((request.maxOutputTokens !== undefined ||
       request.temperature !== undefined ||
       request.topP !== undefined ||
@@ -512,6 +548,26 @@ function buildGeminiRequestBody(request: CanonicalRequest) {
         }
       : {})
   };
+}
+
+function extractGeminiToolCalls(parts: GeminiContentPart[] | undefined) {
+  if (!parts) {
+    return [];
+  }
+
+  return parts.flatMap((part, index) => {
+    if (!part.functionCall?.name) {
+      return [];
+    }
+
+    return [
+      {
+        id: `gemini_call_${index}`,
+        name: part.functionCall.name,
+        arguments: JSON.stringify(part.functionCall.args ?? {})
+      }
+    ];
+  });
 }
 
 function normalizeGeminiFinishReason(

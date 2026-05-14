@@ -227,6 +227,8 @@ describe("assertProviderSupportsCanonicalRequest", () => {
           displayName: "Gemini",
           supportsStreaming: false,
           supportsTools: false,
+          supportsToolReplay: false,
+          supportsStreamingTools: false,
           supportsMultimodalInput: false,
           supportsSystemMessages: false,
           supportsPreviousResponseId: false,
@@ -321,6 +323,87 @@ describe("assertProviderSupportsCanonicalRequest", () => {
           httpStatus: 400,
           retryable: false,
           provider: "anthropic",
+          requestId: "req_123"
+        }
+      )
+    );
+  });
+
+  it("throws a typed error when the provider descriptor lacks tool replay support", () => {
+    const request: CanonicalRequest = {
+      model: "gemini-2.5-flash",
+      stream: false,
+      messages: [
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [
+            {
+              id: "call_123",
+              name: "lookup_weather",
+              arguments: "{\"city\":\"Shanghai\"}"
+            }
+          ]
+        }
+      ]
+    };
+
+    expect(() =>
+      assertProviderSupportsCanonicalRequest(
+        getProviderCapabilityDescriptor("gemini"),
+        request,
+        "req_123"
+      )
+    ).toThrow(
+      new GatewayError(
+        "Provider gemini does not support required capability: tool_replay",
+        {
+          code: "provider_capability_not_supported",
+          category: "routing",
+          httpStatus: 400,
+          retryable: false,
+          provider: "gemini",
+          requestId: "req_123"
+        }
+      )
+    );
+  });
+
+  it("throws a typed error when the provider descriptor lacks streaming tool support", () => {
+    const request: CanonicalRequest = {
+      model: "gemini-2.5-flash",
+      stream: true,
+      tools: [
+        {
+          name: "lookup_weather",
+          inputSchema: {
+            type: "object"
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    };
+
+    expect(() =>
+      assertProviderSupportsCanonicalRequest(
+        getProviderCapabilityDescriptor("gemini"),
+        request,
+        "req_123"
+      )
+    ).toThrow(
+      new GatewayError(
+        "Provider gemini does not support required capability: streaming_tools",
+        {
+          code: "provider_capability_not_supported",
+          category: "routing",
+          httpStatus: 400,
+          retryable: false,
+          provider: "gemini",
           requestId: "req_123"
         }
       )
