@@ -8,6 +8,8 @@ export interface ProviderCircuitBreakerPolicy {
 export interface ProviderCircuitState {
   consecutiveRetryableFailures: number;
   openedAt?: number;
+  probeStartedAt?: number;
+  halfOpen?: boolean;
   lastSuccessLatencyMs?: number;
   smoothedSuccessLatencyMs?: number;
   lastSuccessAt?: number;
@@ -16,6 +18,11 @@ export interface ProviderCircuitState {
 
 export interface ProviderCircuitBreakerBackend {
   getState(target: ProviderTarget): Promise<ProviderCircuitState | undefined>;
+  claimHalfOpenProbe(
+    target: ProviderTarget,
+    policy: ProviderCircuitBreakerPolicy,
+    now: number
+  ): Promise<boolean>;
   recordSuccess(
     target: ProviderTarget,
     latencyMs?: number,
@@ -71,6 +78,27 @@ export function createInMemoryCircuitBreakerBackend(): ProviderCircuitBreakerBac
     getState(target) {
       return Promise.resolve(providerCircuitStates.get(getCircuitKey(target)));
     },
+    claimHalfOpenProbe(target, policy, now) {
+      const state = providerCircuitStates.get(getCircuitKey(target));
+
+      if (!state || state.openedAt === undefined) {
+        return Promise.resolve(false);
+      }
+
+      if (now - state.openedAt < policy.cooldownMs) {
+        return Promise.resolve(false);
+      }
+
+      if (
+        state.probeStartedAt !== undefined &&
+        now - state.probeStartedAt < policy.cooldownMs
+      ) {
+        return Promise.resolve(false);
+      }
+
+      state.probeStartedAt = now;
+      return Promise.resolve(true);
+    },
     recordSuccess(target, latencyMs, now) {
       const existing = providerCircuitStates.get(getCircuitKey(target));
       providerCircuitStates.set(getCircuitKey(target), {
@@ -97,10 +125,11 @@ export function createInMemoryCircuitBreakerBackend(): ProviderCircuitBreakerBac
 
       state.consecutiveRetryableFailures = nextFailures;
 
-      if (nextFailures >= policy.threshold) {
+      if (state.probeStartedAt !== undefined || nextFailures >= policy.threshold) {
         state.openedAt = now;
       }
 
+      delete state.probeStartedAt;
       state.lastFailureAt = now;
 
       return Promise.resolve();
@@ -117,7 +146,7 @@ function parseProviderCircuitState(value: unknown): ProviderCircuitState {
     throw new Error("Provider circuit state must be an object");
   }
 
-  const { consecutiveRetryableFailures, openedAt } = value;
+  const { consecutiveRetryableFailures, openedAt, probeStartedAt } = value;
 
   if (
     typeof consecutiveRetryableFailures !== "number" ||
@@ -132,6 +161,13 @@ function parseProviderCircuitState(value: unknown): ProviderCircuitState {
     (typeof openedAt !== "number" || !Number.isInteger(openedAt))
   ) {
     throw new Error("Provider circuit state openedAt is invalid");
+  }
+
+  if (
+    probeStartedAt !== undefined &&
+    (typeof probeStartedAt !== "number" || !Number.isInteger(probeStartedAt))
+  ) {
+    throw new Error("Provider circuit state probeStartedAt is invalid");
   }
 
   const {
@@ -176,6 +212,7 @@ function parseProviderCircuitState(value: unknown): ProviderCircuitState {
   return {
     consecutiveRetryableFailures,
     ...(openedAt !== undefined ? { openedAt } : {}),
+    ...(probeStartedAt !== undefined ? { probeStartedAt } : {}),
     ...(lastSuccessLatencyMs !== undefined ? { lastSuccessLatencyMs } : {}),
     ...(smoothedSuccessLatencyMs !== undefined
       ? { smoothedSuccessLatencyMs }
@@ -207,8 +244,9 @@ export class ProviderCircuitBreakerDurableObject {
 
     if (request.method === "POST") {
       const body = (await request.json()) as {
-        kind: "success" | "retryable_failure";
+        kind: "success" | "retryable_failure" | "claim_half_open_probe";
         threshold?: number;
+        cooldownMs?: number;
         latencyMs?: number;
         now?: number;
       };
@@ -242,6 +280,32 @@ export class ProviderCircuitBreakerDurableObject {
         return Response.json(next);
       }
 
+      if (body.kind === "claim_half_open_probe") {
+        const cooldownMs = body.cooldownMs ?? 0;
+
+        if (!current.openedAt || body.now === undefined) {
+          return Response.json({ claimed: false });
+        }
+
+        if (body.now - current.openedAt < cooldownMs) {
+          return Response.json({ claimed: false });
+        }
+
+        if (
+          current.probeStartedAt !== undefined &&
+          body.now - current.probeStartedAt < cooldownMs
+        ) {
+          return Response.json({ claimed: false });
+        }
+
+        const next: ProviderCircuitState = {
+          ...current,
+          probeStartedAt: body.now
+        };
+        await this.state.storage.put("state", next);
+        return Response.json({ claimed: true });
+      }
+
       const nextFailures = current.consecutiveRetryableFailures + 1;
       const next: ProviderCircuitState = {
         consecutiveRetryableFailures: nextFailures,
@@ -254,11 +318,14 @@ export class ProviderCircuitBreakerDurableObject {
         ...(current.lastSuccessAt !== undefined
           ? { lastSuccessAt: current.lastSuccessAt }
           : {}),
-        ...(nextFailures >= (body.threshold ?? 1) && body.now !== undefined
+        ...((current.probeStartedAt !== undefined ||
+          nextFailures >= (body.threshold ?? 1)) &&
+        body.now !== undefined
           ? { openedAt: body.now }
           : {}),
         ...(body.now !== undefined ? { lastFailureAt: body.now } : {})
       };
+      delete next.probeStartedAt;
       await this.state.storage.put("state", next);
       return Response.json(next);
     }
@@ -284,6 +351,25 @@ export function createPersistentCircuitBreakerBackend(namespace: {
         );
 
       return parseProviderCircuitState(await response.json());
+    },
+    async claimHalfOpenProbe(target, policy, now) {
+      const response = await namespace
+        .get(namespace.idFromName(getCircuitKey(target)))
+        .fetch(
+          new Request("https://airlock.internal/provider-circuit-breaker", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              kind: "claim_half_open_probe",
+              cooldownMs: policy.cooldownMs,
+              now
+            })
+          })
+        );
+      const body = (await response.json()) as { claimed?: boolean };
+      return body.claimed === true;
     },
     async recordSuccess(target, latencyMs, now) {
       await namespace
@@ -334,8 +420,12 @@ export async function isProviderTargetCircuitOpen(
     return false;
   }
 
-  if (now() - state.openedAt >= policy.cooldownMs) {
-    await backend.recordSuccess(target);
+  const currentNow = now();
+
+  if (
+    currentNow - state.openedAt >= policy.cooldownMs &&
+    state.probeStartedAt === undefined
+  ) {
     return false;
   }
 
@@ -354,14 +444,30 @@ export async function getProviderTargetCircuitState(
     return state;
   }
 
-  if (now() - state.openedAt >= policy.cooldownMs) {
-    await backend.recordSuccess(target);
-    return {
-      consecutiveRetryableFailures: 0
-    };
+  const currentNow = now();
+
+  if (currentNow - state.openedAt < policy.cooldownMs) {
+    return state;
   }
 
-  return state;
+  if (
+    state.probeStartedAt !== undefined &&
+    currentNow - state.probeStartedAt < policy.cooldownMs
+  ) {
+    return state;
+  }
+
+  const claimed = await backend.claimHalfOpenProbe(target, policy, currentNow);
+
+  if (!claimed) {
+    return state;
+  }
+
+  return {
+    ...state,
+    probeStartedAt: currentNow,
+    halfOpen: true
+  };
 }
 
 export function resetProviderCircuitBreakerState() {

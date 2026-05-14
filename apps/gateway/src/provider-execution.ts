@@ -276,6 +276,7 @@ function reorderTargetsForRoute(
     string,
     {
       isOpen: boolean;
+      isHalfOpen?: boolean;
       consecutiveRetryableFailures: number;
       lastSuccessLatencyMs?: number;
       smoothedSuccessLatencyMs?: number;
@@ -303,6 +304,10 @@ function reorderTargetsForRoute(
 
       if (leftHealth.isOpen !== rightHealth.isOpen) {
         return leftHealth.isOpen ? 1 : -1;
+      }
+
+      if ((leftHealth.isHalfOpen ?? false) !== (rightHealth.isHalfOpen ?? false)) {
+        return leftHealth.isHalfOpen ? 1 : -1;
       }
 
       if (
@@ -370,6 +375,7 @@ function getPriorityLatencyStatus(
     string,
     {
       isOpen: boolean;
+      isHalfOpen?: boolean;
       consecutiveRetryableFailures: number;
       lastSuccessLatencyMs?: number;
       smoothedSuccessLatencyMs?: number;
@@ -406,6 +412,7 @@ function reorderTargetsForPrioritySelection(
     string,
     {
       isOpen: boolean;
+      isHalfOpen?: boolean;
       consecutiveRetryableFailures: number;
       lastSuccessLatencyMs?: number;
       smoothedSuccessLatencyMs?: number;
@@ -456,6 +463,10 @@ function reorderTargetsForPrioritySelection(
 
     if (leftHealth.isOpen !== rightHealth.isOpen) {
       return leftHealth.isOpen ? 1 : -1;
+    }
+
+    if ((leftHealth.isHalfOpen ?? false) !== (rightHealth.isHalfOpen ?? false)) {
+      return leftHealth.isHalfOpen ? 1 : -1;
     }
 
     if (
@@ -524,6 +535,7 @@ function selectEligibleTargets(
       string,
       {
         isOpen: boolean;
+        isHalfOpen?: boolean;
         consecutiveRetryableFailures: number;
         lastSuccessLatencyMs?: number;
         smoothedSuccessLatencyMs?: number;
@@ -570,9 +582,11 @@ function selectEligibleTargets(
         now,
         circuitBreakerBackend
       );
-      const isOpen = circuitState?.openedAt !== undefined;
+      const isHalfOpen = circuitState?.halfOpen === true;
+      const isOpen = circuitState?.openedAt !== undefined && !isHalfOpen;
       healthByTarget.set(serializeProviderTarget(target), {
         isOpen,
+        ...(isHalfOpen ? { isHalfOpen } : {}),
         consecutiveRetryableFailures: circuitState?.consecutiveRetryableFailures ?? 0,
         ...(circuitState?.lastSuccessLatencyMs !== undefined
           ? { lastSuccessLatencyMs: circuitState.lastSuccessLatencyMs }

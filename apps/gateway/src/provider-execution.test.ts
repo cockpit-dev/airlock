@@ -37,6 +37,7 @@ function createPersistentBreakerNamespace() {
     {
       consecutiveRetryableFailures: number;
       openedAt?: number;
+      probeStartedAt?: number;
       lastSuccessLatencyMs?: number;
       smoothedSuccessLatencyMs?: number;
       lastSuccessAt?: number;
@@ -61,8 +62,9 @@ function createPersistentBreakerNamespace() {
 
           if (request.method === "POST") {
             const body = (await request.json()) as {
-              kind: "success" | "retryable_failure";
+              kind: "success" | "retryable_failure" | "claim_half_open_probe";
               threshold?: number;
+              cooldownMs?: number;
               latencyMs?: number;
               smoothedLatencyMs?: number;
               now?: number;
@@ -93,8 +95,42 @@ function createPersistentBreakerNamespace() {
               return Response.json(next);
             }
 
+            if (body.kind === "claim_half_open_probe") {
+              const cooldownMs = body.cooldownMs ?? 0;
+
+              if (!current.openedAt || body.now === undefined) {
+                return Response.json({ claimed: false });
+              }
+
+              if (body.now - current.openedAt < cooldownMs) {
+                return Response.json({ claimed: false });
+              }
+
+              if (
+                current.probeStartedAt !== undefined &&
+                body.now - current.probeStartedAt < cooldownMs
+              ) {
+                return Response.json({ claimed: false });
+              }
+
+              const next = {
+                ...current,
+                probeStartedAt: body.now
+              };
+              state.set(id.name, next);
+              return Response.json({ claimed: true });
+            }
+
             const nextFailures = current.consecutiveRetryableFailures + 1;
-            const next = {
+            const next: {
+              consecutiveRetryableFailures: number;
+              openedAt?: number;
+              probeStartedAt?: number;
+              lastSuccessLatencyMs?: number;
+              smoothedSuccessLatencyMs?: number;
+              lastSuccessAt?: number;
+              lastFailureAt?: number;
+            } = {
               consecutiveRetryableFailures: nextFailures,
               ...(current.lastSuccessLatencyMs !== undefined
                 ? { lastSuccessLatencyMs: current.lastSuccessLatencyMs }
@@ -105,11 +141,13 @@ function createPersistentBreakerNamespace() {
               ...(current.lastSuccessAt !== undefined
                 ? { lastSuccessAt: current.lastSuccessAt }
                 : {}),
-              ...(nextFailures >= (body.threshold ?? 1)
+              ...((current.probeStartedAt !== undefined ||
+                nextFailures >= (body.threshold ?? 1))
                 ? { openedAt: body.now ?? 0 }
                 : {}),
               ...(body.now !== undefined ? { lastFailureAt: body.now } : {})
             };
+            delete next.probeStartedAt;
             state.set(id.name, next);
             return Response.json(next);
           }
@@ -656,6 +694,306 @@ describe("executeRoutedRequest", () => {
     expect(recoveredResponse.model).toBe("gpt-4.1-mini");
     expect(fetcher).toHaveBeenCalledTimes(3);
     expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+  });
+
+  it("reopens the circuit immediately when a half-open probe fails retryably", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    let openAIAttempts = 0;
+    let anthropicAttempts = 0;
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/chat/completions")) {
+        openAIAttempts += 1;
+
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: openAIAttempts === 1 ? "rate limited" : "still rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        );
+      }
+
+      anthropicAttempts += 1;
+
+      return new Response(
+        JSON.stringify({
+          id: `msg_fallback_${anthropicAttempts}`,
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: `fallback ${anthropicAttempts}`
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      );
+    });
+    const baseConfig = {
+      mode: "free" as const,
+      providerTimeoutMs: 1000,
+      providerMaxRetries: 0,
+      providerRetryBackoffMs: 0,
+      providerCircuitBreakerThreshold: 1,
+      providerCircuitBreakerCooldownMs: 100,
+      modelGroups: {},
+      gatewayApiKeys: [],
+      modelAliases: [],
+      anthropic: {
+        apiKey: "anthropic-secret",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultMaxTokens: 256
+      },
+      openAI: {
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    };
+
+    await executeRoutedRequest(route, request, {
+      config: baseConfig,
+      requestId: "req_half_open_first",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1000
+    });
+
+    const secondResponse = await executeRoutedRequest(route, request, {
+      config: baseConfig,
+      requestId: "req_half_open_probe",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1200
+    });
+
+    expect(secondResponse.model).toBe("claude-haiku-4-5");
+
+    await expect(
+      executeRoutedRequest(route, request, {
+        config: baseConfig,
+        requestId: "req_half_open_reopened",
+        gatewayApiKey: {
+          id: "key_any",
+          label: "Any Provider",
+          value: "gateway-secret",
+          status: "active"
+        },
+        fetcher,
+        now: () => 1250
+      })
+    ).resolves.toMatchObject({
+      model: "claude-haiku-4-5"
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(5);
+    expect(openAIAttempts).toBe(2);
+    expect(anthropicAttempts).toBe(3);
+  });
+
+  it("keeps a closed healthy peer ahead of a half-open target for health-priority routing", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ],
+      targetSelection: {
+        strategy: "health_priority"
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "assistant-default",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const backend = createPersistentCircuitBreakerBackend(
+      createPersistentBreakerNamespace()
+    );
+    let openAIAttempts = 0;
+    let anthropicAttempts = 0;
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/chat/completions")) {
+        openAIAttempts += 1;
+
+        if (openAIAttempts === 1) {
+          return new Response(
+            JSON.stringify({
+              error: {
+                message: "rate limited"
+              }
+            }),
+            {
+              status: 429,
+              headers: {
+                "content-type": "application/json"
+              }
+            }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl_half_open_health",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "half-open primary was used"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        );
+      }
+
+      anthropicAttempts += 1;
+
+      return new Response(
+        JSON.stringify({
+          id: `msg_healthy_peer_${anthropicAttempts}`,
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: `healthy fallback ${anthropicAttempts}`
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      );
+    });
+    const config = {
+      mode: "free" as const,
+      providerTimeoutMs: 1000,
+      providerMaxRetries: 0,
+      providerRetryBackoffMs: 0,
+      providerCircuitBreakerThreshold: 1,
+      providerCircuitBreakerCooldownMs: 100,
+      modelGroups: {},
+      gatewayApiKeys: [],
+      modelAliases: [],
+      anthropic: {
+        apiKey: "anthropic-secret",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultMaxTokens: 256
+      },
+      openAI: {
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    };
+
+    await executeRoutedRequest(route, request, {
+      config,
+      requestId: "req_half_open_health_first",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1000,
+      circuitBreakerBackend: backend
+    });
+
+    const secondResponse = await executeRoutedRequest(route, request, {
+      config,
+      requestId: "req_half_open_health_second",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1200,
+      circuitBreakerBackend: backend
+    });
+
+    expect(secondResponse.model).toBe("claude-haiku-4-5");
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(openAIAttempts).toBe(1);
+    expect(anthropicAttempts).toBe(2);
   });
 
   it("returns a typed routing error when every otherwise-eligible target is open", async () => {

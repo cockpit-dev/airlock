@@ -49,6 +49,7 @@ export async function handleChatCompletions(
     Variables: {
       requestId: string;
       fetcher?: CreateAppOptions["fetcher"];
+      now?: () => number;
       requestStartedAt: number;
       telemetrySink?: TelemetrySink;
       telemetryErrorEmitted?: boolean;
@@ -104,6 +105,7 @@ export async function handleChatCompletions(
         )
       : undefined;
   const fetcher = context.get("fetcher");
+  const now = context.get("now");
   let attemptedTarget: ProviderTarget | undefined;
 
   if (canonicalRequest.stream) {
@@ -130,6 +132,7 @@ export async function handleChatCompletions(
               onAttemptTarget(target) {
                 attemptedTarget = target;
               },
+              ...(now ? { now } : {}),
               ...(requestShaping ? { requestShaping } : {}),
               ...(fetcher ? { fetcher } : {})
             }
@@ -245,6 +248,7 @@ export async function handleChatCompletions(
       onAttemptTarget(target) {
         attemptedTarget = target;
       },
+      ...(now ? { now } : {}),
       ...(requestShaping ? { requestShaping } : {}),
       ...(fetcher ? { fetcher } : {})
     });

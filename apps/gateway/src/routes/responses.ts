@@ -48,6 +48,7 @@ export async function handleResponses(
     Variables: {
       requestId: string;
       fetcher?: CreateAppOptions["fetcher"];
+      now?: () => number;
       requestStartedAt: number;
       telemetrySink?: TelemetrySink;
       telemetryErrorEmitted?: boolean;
@@ -103,6 +104,7 @@ export async function handleResponses(
         )
       : undefined;
   const fetcher = context.get("fetcher");
+  const now = context.get("now");
   let attemptedTarget: ProviderTarget | undefined;
 
   if (canonicalRequest.stream) {
@@ -128,6 +130,7 @@ export async function handleResponses(
               onAttemptTarget(target) {
                 attemptedTarget = target;
               },
+              ...(now ? { now } : {}),
               ...(requestShaping ? { requestShaping } : {}),
               ...(fetcher ? { fetcher } : {})
             }
@@ -243,6 +246,7 @@ export async function handleResponses(
       onAttemptTarget(target) {
         attemptedTarget = target;
       },
+      ...(now ? { now } : {}),
       ...(requestShaping ? { requestShaping } : {}),
       ...(fetcher ? { fetcher } : {})
     });

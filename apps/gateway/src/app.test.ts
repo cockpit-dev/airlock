@@ -619,6 +619,7 @@ function createPersistentBreakerNamespace() {
     {
       consecutiveRetryableFailures: number;
       openedAt?: number;
+      probeStartedAt?: number;
       lastSuccessLatencyMs?: number;
       smoothedSuccessLatencyMs?: number;
       lastSuccessAt?: number;
@@ -643,8 +644,9 @@ function createPersistentBreakerNamespace() {
 
           if (request.method === "POST") {
             const body = (await request.json()) as {
-              kind: "success" | "retryable_failure";
+              kind: "success" | "retryable_failure" | "claim_half_open_probe";
               threshold?: number;
+              cooldownMs?: number;
               latencyMs?: number;
               smoothedLatencyMs?: number;
               now?: number;
@@ -677,8 +679,42 @@ function createPersistentBreakerNamespace() {
               return Response.json(next);
             }
 
+            if (body.kind === "claim_half_open_probe") {
+              const cooldownMs = body.cooldownMs ?? 0;
+
+              if (!current.openedAt || body.now === undefined) {
+                return Response.json({ claimed: false });
+              }
+
+              if (body.now - current.openedAt < cooldownMs) {
+                return Response.json({ claimed: false });
+              }
+
+              if (
+                current.probeStartedAt !== undefined &&
+                body.now - current.probeStartedAt < cooldownMs
+              ) {
+                return Response.json({ claimed: false });
+              }
+
+              const next = {
+                ...current,
+                probeStartedAt: body.now
+              };
+              state.set(id.name, next);
+              return Response.json({ claimed: true });
+            }
+
             const nextFailures = current.consecutiveRetryableFailures + 1;
-            const next = {
+            const next: {
+              consecutiveRetryableFailures: number;
+              openedAt?: number;
+              probeStartedAt?: number;
+              lastSuccessLatencyMs?: number;
+              smoothedSuccessLatencyMs?: number;
+              lastSuccessAt?: number;
+              lastFailureAt?: number;
+            } = {
               consecutiveRetryableFailures: nextFailures,
               ...(current.lastSuccessLatencyMs !== undefined
                 ? { lastSuccessLatencyMs: current.lastSuccessLatencyMs }
@@ -689,11 +725,13 @@ function createPersistentBreakerNamespace() {
               ...(current.lastSuccessAt !== undefined
                 ? { lastSuccessAt: current.lastSuccessAt }
                 : {}),
-              ...(nextFailures >= (body.threshold ?? 1)
+              ...((current.probeStartedAt !== undefined ||
+                nextFailures >= (body.threshold ?? 1))
                 ? { openedAt: body.now ?? 0 }
                 : {}),
               ...(body.now !== undefined ? { lastFailureAt: body.now } : {})
             };
+            delete next.probeStartedAt;
             state.set(id.name, next);
             return Response.json(next);
           }
@@ -11883,6 +11921,121 @@ describe("gateway app", () => {
     await expect(readJson(secondResponse)).resolves.toMatchObject({
       model: "claude-haiku-4-5"
     });
+  });
+
+  it("reopens the circuit after a failed half-open probe and skips the target again", async () => {
+    let openAIAttempts = 0;
+    let anthropicAttempts = 0;
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/chat/completions")) {
+        openAIAttempts += 1;
+
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: openAIAttempts === 1 ? "rate limited" : "still rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        );
+      }
+
+      anthropicAttempts += 1;
+
+      return new Response(
+        JSON.stringify({
+          id: `msg_fallback_${anthropicAttempts}`,
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: `fallback ${anthropicAttempts}`
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      );
+    });
+    let currentNow = 1000;
+    const app = createApp({
+      fetcher,
+      now: () => currentNow
+    });
+    const request = {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer gateway-secret"
+      },
+      body: JSON.stringify({
+        model: "assistant-default",
+        stream: false,
+        messages: [{ role: "user", content: "hi" }]
+      })
+    };
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "1",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "100",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER: createPersistentBreakerNamespace(),
+      AIRLOCK_MODEL_ALIASES:
+        "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+      AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+        "assistant-default": ["anthropic:claude-haiku-4-5"]
+      })
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      request,
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+
+    currentNow = 1200;
+    const secondResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      request,
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(200);
+
+    currentNow = 1250;
+    const thirdResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      request,
+      bindings
+    );
+
+    expect(thirdResponse.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(5);
+    expect(fetcher.mock.calls[2]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+    expect(fetcher.mock.calls[3]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
+    expect(fetcher.mock.calls[4]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
+    expect(openAIAttempts).toBe(2);
+    expect(anthropicAttempts).toBe(3);
   });
 
   it("streams openai chat completion chunks and terminates with done", async () => {

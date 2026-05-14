@@ -16,12 +16,14 @@ import { emitGatewayRequestErrorTelemetry } from "./telemetry.js";
 
 export interface CreateAppOptions {
   fetcher?: typeof fetch;
+  now?: () => number;
   telemetrySink?: TelemetrySink;
 }
 
 type AppVariables = {
   requestId: string;
   fetcher?: typeof fetch;
+  now?: () => number;
   requestStartedAt: number;
   telemetrySink?: TelemetrySink;
   telemetryErrorEmitted?: boolean;
@@ -72,6 +74,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use("*", async (context, next) => {
     context.set("requestId", createRequestId());
     context.set("fetcher", options.fetcher);
+    context.set("now", options.now);
     context.set("requestStartedAt", getRequestStartTime());
     context.set("telemetrySink", options.telemetrySink);
     context.set("telemetryErrorEmitted", false);
