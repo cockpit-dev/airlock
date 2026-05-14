@@ -365,11 +365,14 @@ function getPriorityLatencyStatus(
       isOpen: boolean;
       consecutiveRetryableFailures: number;
       lastSuccessLatencyMs?: number;
+      smoothedSuccessLatencyMs?: number;
     }
   >
 ): number {
   const latencySlo = selection.latencySloMs?.[targetKey];
-  const observedLatency = healthByTarget?.get(targetKey)?.lastSuccessLatencyMs;
+  const observedLatency =
+    healthByTarget?.get(targetKey)?.smoothedSuccessLatencyMs ??
+    healthByTarget?.get(targetKey)?.lastSuccessLatencyMs;
 
   if (latencySlo === undefined) {
     return 1;
@@ -469,6 +472,7 @@ function selectEligibleTargets(
         isOpen: boolean;
         consecutiveRetryableFailures: number;
         lastSuccessLatencyMs?: number;
+        smoothedSuccessLatencyMs?: number;
       }
     >();
 
@@ -516,6 +520,9 @@ function selectEligibleTargets(
         consecutiveRetryableFailures: circuitState?.consecutiveRetryableFailures ?? 0,
         ...(circuitState?.lastSuccessLatencyMs !== undefined
           ? { lastSuccessLatencyMs: circuitState.lastSuccessLatencyMs }
+          : {}),
+        ...(circuitState?.smoothedSuccessLatencyMs !== undefined
+          ? { smoothedSuccessLatencyMs: circuitState.smoothedSuccessLatencyMs }
           : {})
       });
 

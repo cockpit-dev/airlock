@@ -9,6 +9,7 @@ export interface ProviderCircuitState {
   consecutiveRetryableFailures: number;
   openedAt?: number;
   lastSuccessLatencyMs?: number;
+  smoothedSuccessLatencyMs?: number;
   lastSuccessAt?: number;
   lastFailureAt?: number;
 }
@@ -28,6 +29,8 @@ export interface ProviderCircuitBreakerBackend {
 }
 
 const providerCircuitStates = new Map<string, ProviderCircuitState>();
+const LATENCY_SMOOTHING_PREVIOUS_WEIGHT = 0.7;
+const LATENCY_SMOOTHING_CURRENT_WEIGHT = 0.3;
 
 function getCircuitKey(target: ProviderTarget): string {
   return serializeProviderTarget(target);
@@ -49,15 +52,38 @@ function getOrCreateCircuitState(target: ProviderTarget): ProviderCircuitState {
   return created;
 }
 
+function computeSmoothedSuccessLatency(
+  previous: number | undefined,
+  current: number
+): number {
+  if (previous === undefined) {
+    return current;
+  }
+
+  return Math.round(
+    previous * LATENCY_SMOOTHING_PREVIOUS_WEIGHT +
+      current * LATENCY_SMOOTHING_CURRENT_WEIGHT
+  );
+}
+
 export function createInMemoryCircuitBreakerBackend(): ProviderCircuitBreakerBackend {
   return {
     getState(target) {
       return Promise.resolve(providerCircuitStates.get(getCircuitKey(target)));
     },
     recordSuccess(target, latencyMs, now) {
+      const existing = providerCircuitStates.get(getCircuitKey(target));
       providerCircuitStates.set(getCircuitKey(target), {
         consecutiveRetryableFailures: 0,
         ...(latencyMs !== undefined ? { lastSuccessLatencyMs: latencyMs } : {}),
+        ...(latencyMs !== undefined
+          ? {
+              smoothedSuccessLatencyMs: computeSmoothedSuccessLatency(
+                existing?.smoothedSuccessLatencyMs,
+                latencyMs
+              )
+            }
+          : {}),
         ...(now !== undefined ? { lastSuccessAt: now } : {})
       });
       return Promise.resolve();
@@ -105,7 +131,12 @@ function parseProviderCircuitState(value: unknown): ProviderCircuitState {
     throw new Error("Provider circuit state openedAt is invalid");
   }
 
-  const { lastSuccessLatencyMs, lastSuccessAt, lastFailureAt } = value;
+  const {
+    lastSuccessLatencyMs,
+    smoothedSuccessLatencyMs,
+    lastSuccessAt,
+    lastFailureAt
+  } = value;
 
   if (
     lastSuccessLatencyMs !== undefined &&
@@ -114,6 +145,15 @@ function parseProviderCircuitState(value: unknown): ProviderCircuitState {
       lastSuccessLatencyMs < 0)
   ) {
     throw new Error("Provider circuit state lastSuccessLatencyMs is invalid");
+  }
+
+  if (
+    smoothedSuccessLatencyMs !== undefined &&
+    (typeof smoothedSuccessLatencyMs !== "number" ||
+      !Number.isFinite(smoothedSuccessLatencyMs) ||
+      smoothedSuccessLatencyMs < 0)
+  ) {
+    throw new Error("Provider circuit state smoothedSuccessLatencyMs is invalid");
   }
 
   if (
@@ -134,6 +174,9 @@ function parseProviderCircuitState(value: unknown): ProviderCircuitState {
     consecutiveRetryableFailures,
     ...(openedAt !== undefined ? { openedAt } : {}),
     ...(lastSuccessLatencyMs !== undefined ? { lastSuccessLatencyMs } : {}),
+    ...(smoothedSuccessLatencyMs !== undefined
+      ? { smoothedSuccessLatencyMs }
+      : {}),
     ...(lastSuccessAt !== undefined ? { lastSuccessAt } : {}),
     ...(lastFailureAt !== undefined ? { lastFailureAt } : {})
   };
@@ -172,10 +215,20 @@ export class ProviderCircuitBreakerDurableObject {
         };
 
       if (body.kind === "success") {
+        const nextSmoothedLatencyMs =
+          body.latencyMs !== undefined
+            ? computeSmoothedSuccessLatency(
+                current.smoothedSuccessLatencyMs,
+                body.latencyMs
+              )
+            : undefined;
         const next = {
           consecutiveRetryableFailures: 0,
           ...(body.latencyMs !== undefined
             ? { lastSuccessLatencyMs: body.latencyMs }
+            : {}),
+          ...(nextSmoothedLatencyMs !== undefined
+            ? { smoothedSuccessLatencyMs: nextSmoothedLatencyMs }
             : {}),
           ...(body.now !== undefined ? { lastSuccessAt: body.now } : {})
         };

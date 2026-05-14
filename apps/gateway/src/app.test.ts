@@ -620,6 +620,7 @@ function createPersistentBreakerNamespace() {
       consecutiveRetryableFailures: number;
       openedAt?: number;
       lastSuccessLatencyMs?: number;
+      smoothedSuccessLatencyMs?: number;
       lastSuccessAt?: number;
       lastFailureAt?: number;
     }
@@ -645,14 +646,22 @@ function createPersistentBreakerNamespace() {
               kind: "success" | "retryable_failure";
               threshold?: number;
               latencyMs?: number;
+              smoothedLatencyMs?: number;
               now?: number;
             };
 
             if (body.kind === "success") {
+              const nextSmoothedLatencyMs =
+                body.latencyMs !== undefined
+                  ? body.latencyMs
+                  : body.smoothedLatencyMs;
               const next = {
                 consecutiveRetryableFailures: 0,
                 ...(body.latencyMs !== undefined
                   ? { lastSuccessLatencyMs: body.latencyMs }
+                  : {}),
+                ...(nextSmoothedLatencyMs !== undefined
+                  ? { smoothedSuccessLatencyMs: nextSmoothedLatencyMs }
                   : {}),
                 ...(body.now !== undefined ? { lastSuccessAt: body.now } : {})
               };
@@ -684,6 +693,7 @@ function createPersistentBreakerNamespace() {
       state.set(targetKey, {
         consecutiveRetryableFailures: 0,
         lastSuccessLatencyMs: latencyMs,
+        smoothedSuccessLatencyMs: latencyMs,
         lastSuccessAt: now
       });
     }
