@@ -13919,7 +13919,7 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toMatchObject({
-      user: "user_123"
+      safety_identifier: "user_123"
     });
   });
 
@@ -13978,7 +13978,7 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toMatchObject({
-      user: "user_123"
+      safety_identifier: "user_123"
     });
   });
 
@@ -24011,7 +24011,7 @@ describe("gateway app", () => {
     });
   });
 
-  it("maps anthropic metadata.user_id into OpenAI user on /v1/messages", async () => {
+  it("maps anthropic metadata.user_id into OpenAI safety_identifier on /v1/messages", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -24068,7 +24068,7 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toMatchObject({
-      user: "user_123"
+      safety_identifier: "user_123"
     });
   });
 

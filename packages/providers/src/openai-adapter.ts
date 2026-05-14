@@ -99,7 +99,9 @@ function mapCanonicalParallelToolCallsToOpenAI(
 function mapCanonicalEndUserIdToOpenAIChat(
   endUserId: CanonicalRequest["endUserId"]
 ) {
-  return endUserId !== undefined ? { user: endUserId } : undefined;
+  return endUserId !== undefined
+    ? { safety_identifier: endUserId }
+    : undefined;
 }
 
 function mapCanonicalEndUserIdToOpenAIResponses(

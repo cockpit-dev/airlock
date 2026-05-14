@@ -195,7 +195,7 @@ describe("OpenAIProviderAdapter", () => {
     });
   });
 
-  it("forwards canonical endUserId through OpenAI chat completions as user", async () => {
+  it("forwards canonical endUserId through OpenAI chat completions as safety_identifier", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -242,7 +242,7 @@ describe("OpenAIProviderAdapter", () => {
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
 
     expect(JSON.parse(init.body as string)).toMatchObject({
-      user: "user_123"
+      safety_identifier: "user_123"
     });
   });
 
