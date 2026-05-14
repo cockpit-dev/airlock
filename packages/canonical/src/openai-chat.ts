@@ -25,6 +25,17 @@ type OpenAIResponsesInputMessageValue = Exclude<
           | { type: "input_text"; text: string }[]
           | { type: "output_text"; text: string }[];
       }
+    | {
+        type: "function_call";
+        call_id: string;
+        name: string;
+        arguments: string;
+      }
+    | {
+        type: "function_call_output";
+        call_id: string;
+        output: string;
+      }
   )[]
 >[number];
 type OpenAIResponsesTypedInputItemValue = Extract<
@@ -38,6 +49,17 @@ type OpenAIResponsesTypedInputItemValue = Extract<
           | string
           | { type: "input_text"; text: string }[]
           | { type: "output_text"; text: string }[];
+      }
+    | {
+        type: "function_call";
+        call_id: string;
+        name: string;
+        arguments: string;
+      }
+    | {
+        type: "function_call_output";
+        call_id: string;
+        output: string;
       }
   )[]
 >[number];
@@ -175,7 +197,10 @@ function isOpenAIResponsesTypedInputItems(
     input.length > 0 &&
     input[0] !== undefined &&
     "type" in input[0] &&
-    (input[0].type === "message" || input[0].type === "input_text")
+    (input[0].type === "message" ||
+      input[0].type === "input_text" ||
+      input[0].type === "function_call" ||
+      input[0].type === "function_call_output")
   );
 }
 
@@ -213,6 +238,32 @@ function normalizeOpenAIResponsesTypedInputItems(
   for (const item of input) {
     if (item.type === "input_text") {
       pendingUserTextItems.push(item.text);
+      continue;
+    }
+
+    if (item.type === "function_call") {
+      flushPendingUserTextItems();
+      messages.push({
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: item.call_id,
+            name: item.name,
+            arguments: item.arguments
+          }
+        ]
+      });
+      continue;
+    }
+
+    if (item.type === "function_call_output") {
+      flushPendingUserTextItems();
+      messages.push({
+        role: "tool",
+        content: item.output,
+        toolCallId: item.call_id
+      });
       continue;
     }
 
@@ -322,6 +373,18 @@ export function normalizeOpenAIResponsesRequest(
       ? { temperature: request.temperature }
       : {}),
     ...(request.top_p !== undefined ? { topP: request.top_p } : {}),
+    ...(request.tools !== undefined
+      ? {
+          tools: request.tools.map((tool) => ({
+            name: tool.name,
+            ...(tool.description ? { description: tool.description } : {}),
+            inputSchema: tool.parameters
+          }))
+        }
+      : {}),
+    ...(request.tool_choice !== undefined
+      ? { toolChoice: request.tool_choice }
+      : {}),
     messages: [...instructionMessages, ...inputMessages]
   };
 }
@@ -453,6 +516,24 @@ export function encodeCanonicalToOpenAIChatResponse(
 export function encodeCanonicalToOpenAIResponsesResponse(
   response: CanonicalResponse
 ) {
+  const output =
+    response.toolCalls && response.toolCalls.length > 0
+      ? response.toolCalls.map((toolCall) => ({
+          type: "function_call" as const,
+          call_id: toolCall.id,
+          name: toolCall.name,
+          arguments: toolCall.arguments,
+          status: "completed" as const
+        }))
+      : [
+          createOpenAIResponsesOutputMessage(
+            response.id,
+            response.outputText,
+            "completed",
+            true
+          )
+        ];
+
   return {
     id: response.id,
     object: "response",
@@ -468,14 +549,7 @@ export function encodeCanonicalToOpenAIResponsesResponse(
       : {}),
     parallel_tool_calls: true,
     tools: [],
-    output: [
-      createOpenAIResponsesOutputMessage(
-        response.id,
-        response.outputText,
-        "completed",
-        true
-      )
-    ],
+    output,
     output_text: response.outputText,
     ...(response.usage
       ? { usage: encodeCanonicalResponsesUsage(response.usage) }

@@ -650,6 +650,92 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.temperature).toBe(0.7);
     expect(canonical.topP).toBe(0.85);
   });
+
+  it("normalizes responses function tools into canonical request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      tool_choice: "auto",
+      tools: [
+        {
+          type: "function",
+          name: "lookup_weather",
+          description: "Lookup weather by city",
+          parameters: {
+            type: "object",
+            properties: {
+              city: {
+                type: "string"
+              }
+            },
+            required: ["city"]
+          }
+        }
+      ]
+    });
+
+    expect(canonical.tools).toEqual([
+      {
+        name: "lookup_weather",
+        description: "Lookup weather by city",
+        inputSchema: {
+          type: "object",
+          properties: {
+            city: {
+              type: "string"
+            }
+          },
+          required: ["city"]
+        }
+      }
+    ]);
+    expect(canonical.toolChoice).toBe("auto");
+  });
+
+  it("normalizes responses function_call replay and function_call_output into canonical tool history", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          type: "input_text",
+          text: "Weather in Shanghai?"
+        },
+        {
+          type: "function_call",
+          call_id: "call_123",
+          name: "lookup_weather",
+          arguments: "{\"city\":\"Shanghai\"}"
+        },
+        {
+          type: "function_call_output",
+          call_id: "call_123",
+          output: "{\"temperature_c\":26}"
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      { role: "user", content: "Weather in Shanghai?" },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "call_123",
+            name: "lookup_weather",
+            arguments: "{\"city\":\"Shanghai\"}"
+          }
+        ]
+      },
+      {
+        role: "tool",
+        content: "{\"temperature_c\":26}",
+        toolCallId: "call_123"
+      }
+    ]);
+  });
 });
 
 describe("encodeCanonicalToOpenAIResponsesResponse", () => {

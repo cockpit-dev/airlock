@@ -510,6 +510,63 @@ describe("openAIResponsesRequestSchema", () => {
     expect(parsed.temperature).toBe(0.7);
     expect(parsed.top_p).toBe(0.85);
   });
+
+  it("accepts responses function tools and tool_choice", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      tool_choice: "auto",
+      tools: [
+        {
+          type: "function",
+          name: "lookup_weather",
+          description: "Lookup weather by city",
+          parameters: {
+            type: "object",
+            properties: {
+              city: {
+                type: "string"
+              }
+            },
+            required: ["city"]
+          }
+        }
+      ]
+    });
+
+    expect(parsed.tool_choice).toBe("auto");
+    expect(parsed.tools?.[0]).toMatchObject({
+      type: "function",
+      name: "lookup_weather"
+    });
+  });
+
+  it("accepts responses function_call replay items and function_call_output items", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          type: "input_text",
+          text: "Weather in Shanghai?"
+        },
+        {
+          type: "function_call",
+          call_id: "call_123",
+          name: "lookup_weather",
+          arguments: "{\"city\":\"Shanghai\"}"
+        },
+        {
+          type: "function_call_output",
+          call_id: "call_123",
+          output: "{\"temperature_c\":26}"
+        }
+      ]
+    });
+
+    expect(Array.isArray(parsed.input)).toBe(true);
+  });
 });
 
 describe("openAIResponsesResponseSchema", () => {

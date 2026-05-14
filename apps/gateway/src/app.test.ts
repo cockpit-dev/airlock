@@ -15207,21 +15207,22 @@ describe("gateway app", () => {
     });
   });
 
-  it("rejects unsupported responses semantics like tools", async () => {
+  it("routes responses function tools through anthropic and returns Responses function_call output items", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          id: "chatcmpl_123",
-          object: "chat.completion",
-          created: 1,
-          model: "gpt-4.1-mini",
-          choices: [
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "tool_use",
+          content: [
             {
-              index: 0,
-              finish_reason: "stop",
-              message: {
-                role: "assistant",
-                content: "hello there"
+              type: "tool_use",
+              id: "call_123",
+              name: "lookup_weather",
+              input: {
+                city: "Shanghai"
               }
             }
           ]
@@ -15245,12 +15246,212 @@ describe("gateway app", () => {
           authorization: "Bearer gateway-secret"
         },
         body: JSON.stringify({
-          model: "gpt-4.1-mini",
-          input: "hello",
+          model: "claude-sonnet-4-5",
+          input: "Weather in Shanghai?",
+          tool_choice: "auto",
           tools: [
             {
               type: "function",
-              name: "lookup"
+              name: "lookup_weather",
+              description: "Lookup weather by city",
+              parameters: {
+                type: "object",
+                properties: {
+                  city: {
+                    type: "string"
+                  }
+                },
+                required: ["city"]
+              }
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      model: "claude-sonnet-4-5",
+      tools: [
+        {
+          name: "lookup_weather",
+          description: "Lookup weather by city",
+          input_schema: {
+            type: "object",
+            properties: {
+              city: {
+                type: "string"
+              }
+            },
+            required: ["city"]
+          }
+        }
+      ],
+      tool_choice: {
+        type: "auto"
+      },
+      messages: [{ role: "user", content: "Weather in Shanghai?" }]
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "response",
+      model: "claude-sonnet-4-5",
+      output_text: "",
+      output: [
+        {
+          type: "function_call",
+          call_id: "call_123",
+          name: "lookup_weather",
+          arguments: "{\"city\":\"Shanghai\"}",
+          status: "completed"
+        }
+      ]
+    });
+  });
+
+  it("replays responses function_call and function_call_output items through anthropic", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "The temperature is 26C."
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          stream: false,
+          tool_choice: "auto",
+          tools: [
+            {
+              type: "function",
+              name: "lookup_weather",
+              parameters: {
+                type: "object"
+              }
+            }
+          ],
+          input: [
+            {
+              type: "input_text",
+              text: "Weather in Shanghai?"
+            },
+            {
+              type: "function_call",
+              call_id: "call_123",
+              name: "lookup_weather",
+              arguments: "{\"city\":\"Shanghai\"}"
+            },
+            {
+              type: "function_call_output",
+              call_id: "call_123",
+              output: "{\"temperature_c\":26}"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      messages: [
+        { role: "user", content: "Weather in Shanghai?" },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "call_123",
+              name: "lookup_weather",
+              input: {
+                city: "Shanghai"
+              }
+            }
+          ]
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call_123",
+              content: "{\"temperature_c\":26}"
+            }
+          ]
+        }
+      ]
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "response",
+      output_text: "The temperature is 26C.",
+      output: [
+        {
+          type: "message",
+          role: "assistant",
+          content: [
+            {
+              type: "output_text",
+              text: "The temperature is 26C."
+            }
+          ]
+        }
+      ]
+    });
+  });
+
+  it("rejects streaming responses requests that include tools", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "Weather in Shanghai?",
+          stream: true,
+          tool_choice: "auto",
+          tools: [
+            {
+              type: "function",
+              name: "lookup_weather",
+              parameters: {
+                type: "object"
+              }
             }
           ]
         })
@@ -15261,7 +15462,8 @@ describe("gateway app", () => {
     expect(response.status).toBe(400);
     await expect(readJson(response)).resolves.toEqual({
       error: {
-        message: "Unsupported OpenAI Responses semantic field: tools",
+        message:
+          "Unsupported OpenAI Responses tools semantics: streaming tool calls are not yet supported",
         type: "request",
         code: "request_unsupported_openai_semantics"
       }

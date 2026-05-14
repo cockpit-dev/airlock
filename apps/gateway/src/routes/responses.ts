@@ -44,6 +44,7 @@ import {
 import type { CreateAppOptions } from "../app.js";
 import {
   assertAllowedOpenAITopLevelFields,
+  assertSupportedOpenAIResponsesToolsSemantics,
   parseOpenAIRequestSchema
 } from "../openai-request-validation.js";
 
@@ -54,6 +55,8 @@ const allowedOpenAIResponsesTopLevelFields = [
   "temperature",
   "top_p",
   "instructions",
+  "tools",
+  "tool_choice",
   "input",
   "airlock"
 ] as const;
@@ -88,6 +91,7 @@ export async function handleResponses(
     "OpenAI Responses",
     allowedOpenAIResponsesTopLevelFields
   );
+  assertSupportedOpenAIResponsesToolsSemantics(json, requestId);
   const parsed = parseOpenAIRequestSchema(
     openAIResponsesRequestSchema,
     json,

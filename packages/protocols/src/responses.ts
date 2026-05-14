@@ -12,6 +12,13 @@ const openAIResponsesTopLevelInputItemSchema = z.object({
   text: z.string().min(1)
 });
 
+const openAIResponsesFunctionToolSchema = z.object({
+  type: z.literal("function"),
+  name: z.string().min(1),
+  description: z.string().min(1).optional(),
+  parameters: z.record(z.string(), z.unknown())
+});
+
 const openAIResponsesOutputTextContentBlockSchema = z.object({
   type: z.literal("output_text"),
   text: z.string().min(1)
@@ -35,9 +42,24 @@ const openAIResponsesMessageItemSchema = z.object({
   ])
 });
 
+const openAIResponsesFunctionCallItemSchema = z.object({
+  type: z.literal("function_call"),
+  call_id: z.string().min(1),
+  name: z.string().min(1),
+  arguments: z.string()
+});
+
+const openAIResponsesFunctionCallOutputItemSchema = z.object({
+  type: z.literal("function_call_output"),
+  call_id: z.string().min(1),
+  output: z.string()
+});
+
 const openAIResponsesTypedInputItemSchema = z.union([
   openAIResponsesTopLevelInputItemSchema,
-  openAIResponsesMessageItemSchema
+  openAIResponsesMessageItemSchema,
+  openAIResponsesFunctionCallItemSchema,
+  openAIResponsesFunctionCallOutputItemSchema
 ]);
 
 export const openAIResponsesRequestSchema = z.object({
@@ -47,6 +69,8 @@ export const openAIResponsesRequestSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   top_p: z.number().min(0).max(1).optional(),
   instructions: z.string().min(1).optional(),
+  tools: z.array(openAIResponsesFunctionToolSchema).min(1).optional(),
+  tool_choice: z.literal("auto").optional(),
   input: z.union([
     z.string().min(1),
     z.array(openAIResponsesInputMessageSchema).min(1),

@@ -552,6 +552,78 @@ describe("OpenAIProviderAdapter", () => {
     });
   });
 
+  it("encodes canonical tool calls into responses-style output when used through the Responses route", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "call_123",
+                    type: "function",
+                    function: {
+                      name: "lookup_weather",
+                      arguments: "{\"city\":\"Shanghai\"}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const response = await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        tools: [
+          {
+            name: "lookup_weather",
+            inputSchema: {
+              type: "object"
+            }
+          }
+        ],
+        toolChoice: "auto"
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    expect(response.outputText).toBe("");
+    expect(response.toolCalls).toEqual([
+      {
+        id: "call_123",
+        name: "lookup_weather",
+        arguments: "{\"city\":\"Shanghai\"}"
+      }
+    ]);
+  });
+
   it("rejects shaping that attempts to override reserved auth headers", async () => {
     const adapter = new OpenAIProviderAdapter({
       apiKey: "test-key",
