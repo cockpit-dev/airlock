@@ -87,6 +87,30 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(parsed.stream).toBe(true);
     expect(parsed.max_tokens).toBe(128);
   });
+
+  it("accepts chat completion messages with text content parts", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "hello"
+            },
+            {
+              type: "text",
+              text: "there"
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(parsed.messages).toHaveLength(1);
+  });
 });
 
 describe("openAIResponsesRequestSchema", () => {

@@ -38,6 +38,32 @@ describe("normalizeOpenAIChatRequest", () => {
     expect(canonical.stream).toBe(true);
     expect(canonical.maxOutputTokens).toBe(128);
   });
+
+  it("flattens openai chat text content parts into canonical text", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "hello"
+            },
+            {
+              type: "text",
+              text: "there"
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      { role: "user", content: "hello\nthere" }
+    ]);
+  });
 });
 
 describe("encodeCanonicalToOpenAIChatResponse", () => {

@@ -2,9 +2,17 @@ import { z } from "zod";
 
 import { airlockRequestExtensionsSchema } from "./airlock-extensions.js";
 
+const openAIChatTextContentPartSchema = z.object({
+  type: z.literal("text"),
+  text: z.string().min(1)
+});
+
 export const openAIChatMessageSchema = z.object({
   role: z.enum(["system", "user", "assistant"]),
-  content: z.string().min(1)
+  content: z.union([
+    z.string().min(1),
+    z.array(openAIChatTextContentPartSchema).min(1)
+  ])
 });
 
 export const openAIChatCompletionRequestSchema = z.object({

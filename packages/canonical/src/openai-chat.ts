@@ -64,7 +64,10 @@ export function normalizeOpenAIChatRequest(
       : {}),
     messages: request.messages.map((message) => ({
       role: message.role,
-      content: message.content
+      content:
+        typeof message.content === "string"
+          ? message.content
+          : message.content.map((part) => part.text).join("\n")
     }))
   };
 }
