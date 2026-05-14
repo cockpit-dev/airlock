@@ -184,6 +184,17 @@ export function assertProviderSupportsCanonicalRequest(
       requestId
     );
   }
+
+  if (
+    requirements.requiresStructuredOutputs &&
+    !descriptor.supportsStructuredOutputs
+  ) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "structured_outputs",
+      requestId
+    );
+  }
 }
 
 function createProviderAdapter(

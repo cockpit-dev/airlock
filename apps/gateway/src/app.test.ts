@@ -4245,6 +4245,78 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts chat response_format.type=json_schema and forwards it upstream for OpenAI", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "{\"city\":\"Shanghai\"}"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "weather",
+              schema: {
+                type: "object"
+              },
+              strict: true
+            }
+          },
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "weather",
+          schema: {
+            type: "object"
+          },
+          strict: true
+        }
+      }
+    });
+  });
+
   it("rejects unsupported chat semantics like modalities", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -17223,7 +17295,7 @@ describe("gateway app", () => {
     expect(body).toContain("data: [DONE]");
   });
 
-  it("rejects unsupported responses semantics like text config", async () => {
+  it("rejects unsupported responses semantics like invalid text config", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -17265,7 +17337,7 @@ describe("gateway app", () => {
           input: "hello",
           text: {
             format: {
-              type: "json_schema"
+              type: "binary"
             }
           }
         })
@@ -17277,7 +17349,7 @@ describe("gateway app", () => {
     await expect(readJson(response)).resolves.toEqual({
       error: {
         message:
-          "Unsupported OpenAI Responses text config: only text.format.type=text is supported",
+          "Unsupported OpenAI Responses text config: only text.format.type=text or json_schema is supported",
         type: "request",
         code: "request_unsupported_openai_semantics"
       }
@@ -17372,6 +17444,83 @@ describe("gateway app", () => {
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toMatchObject({
       model: "gpt-4.1-mini"
+    });
+  });
+
+  it("accepts responses text.format.type=json_schema and forwards it upstream for OpenAI", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "{\"city\":\"Shanghai\"}",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          text: {
+            format: {
+              type: "json_schema",
+              name: "weather",
+              schema: {
+                type: "object"
+              },
+              strict: true
+            }
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      text: {
+        format: {
+          type: "json_schema",
+          name: "weather",
+          schema: {
+            type: "object"
+          },
+          strict: true
+        }
+      }
     });
   });
 

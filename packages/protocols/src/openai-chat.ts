@@ -11,9 +11,23 @@ const openAIChatStreamOptionsSchema = z.object({
   include_usage: z.boolean()
 });
 
-const openAIChatResponseFormatSchema = z.object({
+const openAIChatTextResponseFormatSchema = z.object({
   type: z.literal("text")
 });
+
+const openAIChatJsonSchemaResponseFormatSchema = z.object({
+  type: z.literal("json_schema"),
+  json_schema: z.object({
+    name: z.string().min(1),
+    schema: z.record(z.string(), z.unknown()),
+    strict: z.boolean().optional()
+  })
+});
+
+const openAIChatResponseFormatSchema = z.union([
+  openAIChatTextResponseFormatSchema,
+  openAIChatJsonSchemaResponseFormatSchema
+]);
 
 const openAIChatFunctionToolSchema = z.object({
   type: z.literal("function"),

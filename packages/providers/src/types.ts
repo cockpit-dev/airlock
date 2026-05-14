@@ -19,6 +19,7 @@ export interface ProviderCapabilityDescriptor {
   supportsConversationId: boolean;
   supportsPrompt: boolean;
   supportsReasoning: boolean;
+  supportsStructuredOutputs: boolean;
   supportsRouteScopedShaping: boolean;
   supportsStaticFallbackSameProvider: boolean;
 }

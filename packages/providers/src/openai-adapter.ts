@@ -86,6 +86,58 @@ function mapCanonicalToolChoiceToOpenAIResponses(
   };
 }
 
+function mapCanonicalOutputFormatToOpenAIChat(
+  outputFormat: CanonicalRequest["outputFormat"]
+) {
+  if (outputFormat === undefined) {
+    return undefined;
+  }
+
+  if (outputFormat.type === "text") {
+    return {
+      type: "text" as const
+    };
+  }
+
+  return {
+    type: "json_schema" as const,
+    json_schema: {
+      name: outputFormat.name,
+      schema: outputFormat.schema,
+      ...(outputFormat.strict !== undefined
+        ? { strict: outputFormat.strict }
+        : {})
+    }
+  };
+}
+
+function mapCanonicalOutputFormatToOpenAIResponses(
+  outputFormat: CanonicalRequest["outputFormat"]
+) {
+  if (outputFormat === undefined) {
+    return undefined;
+  }
+
+  if (outputFormat.type === "text") {
+    return {
+      format: {
+        type: "text" as const
+      }
+    };
+  }
+
+  return {
+    format: {
+      type: "json_schema" as const,
+      name: outputFormat.name,
+      schema: outputFormat.schema,
+      ...(outputFormat.strict !== undefined
+        ? { strict: outputFormat.strict }
+        : {})
+    }
+  };
+}
+
 function buildOpenAIChatMessages(
   request: CanonicalRequest
 ) {
@@ -350,6 +402,13 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   model: request.model,
                   stream: false,
                   messages: buildOpenAIChatMessages(request),
+                  ...(mapCanonicalOutputFormatToOpenAIChat(request.outputFormat)
+                    ? {
+                        response_format: mapCanonicalOutputFormatToOpenAIChat(
+                          request.outputFormat
+                        )
+                      }
+                    : {}),
                   ...(request.maxOutputTokens !== undefined
                     ? { max_tokens: request.maxOutputTokens }
                     : {}),
@@ -406,6 +465,13 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 model: request.model,
                 stream: false,
                 messages: buildOpenAIChatMessages(request),
+                ...(mapCanonicalOutputFormatToOpenAIChat(request.outputFormat)
+                  ? {
+                      response_format: mapCanonicalOutputFormatToOpenAIChat(
+                        request.outputFormat
+                      )
+                    }
+                  : {}),
                 ...(request.maxOutputTokens !== undefined
                   ? { max_tokens: request.maxOutputTokens }
                   : {}),
@@ -582,6 +648,13 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   model: request.model,
                   stream: true,
                   messages: buildOpenAIChatMessages(request),
+                  ...(mapCanonicalOutputFormatToOpenAIChat(request.outputFormat)
+                    ? {
+                        response_format: mapCanonicalOutputFormatToOpenAIChat(
+                          request.outputFormat
+                        )
+                      }
+                    : {}),
                   ...(request.maxOutputTokens !== undefined
                     ? { max_tokens: request.maxOutputTokens }
                     : {}),
@@ -641,6 +714,13 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   model: request.model,
                   stream: true,
                   messages: buildOpenAIChatMessages(request),
+                ...(mapCanonicalOutputFormatToOpenAIChat(request.outputFormat)
+                  ? {
+                      response_format: mapCanonicalOutputFormatToOpenAIChat(
+                        request.outputFormat
+                      )
+                    }
+                  : {}),
                 ...(request.maxOutputTokens !== undefined
                   ? { max_tokens: request.maxOutputTokens }
                   : {}),
@@ -958,6 +1038,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   model: request.model,
                   stream: false,
                   input: buildOpenAIResponsesInput(request),
+                  ...(mapCanonicalOutputFormatToOpenAIResponses(
+                    request.outputFormat
+                  )
+                    ? {
+                        text: mapCanonicalOutputFormatToOpenAIResponses(
+                          request.outputFormat
+                        )
+                      }
+                    : {}),
                   ...(request.prompt !== undefined
                     ? {
                         prompt: {
@@ -1035,6 +1124,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 model: request.model,
                 stream: false,
                 input: buildOpenAIResponsesInput(request),
+                ...(mapCanonicalOutputFormatToOpenAIResponses(
+                  request.outputFormat
+                )
+                  ? {
+                      text: mapCanonicalOutputFormatToOpenAIResponses(
+                        request.outputFormat
+                      )
+                    }
+                  : {}),
                 ...(request.prompt !== undefined
                   ? {
                       prompt: {
@@ -1266,6 +1364,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   model: request.model,
                   stream: true,
                   input: buildOpenAIResponsesInput(request),
+                  ...(mapCanonicalOutputFormatToOpenAIResponses(
+                    request.outputFormat
+                  )
+                    ? {
+                        text: mapCanonicalOutputFormatToOpenAIResponses(
+                          request.outputFormat
+                        )
+                      }
+                    : {}),
                   ...(request.prompt !== undefined
                     ? {
                         prompt: {
@@ -1343,6 +1450,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 model: request.model,
                 stream: true,
                 input: buildOpenAIResponsesInput(request),
+                ...(mapCanonicalOutputFormatToOpenAIResponses(
+                  request.outputFormat
+                )
+                  ? {
+                      text: mapCanonicalOutputFormatToOpenAIResponses(
+                        request.outputFormat
+                      )
+                    }
+                  : {}),
                 ...(request.prompt !== undefined
                   ? {
                       prompt: {

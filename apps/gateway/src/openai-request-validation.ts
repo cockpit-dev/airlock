@@ -176,10 +176,44 @@ export function assertSupportedOpenAIResponsesSemantics(
     typeof payload.text.format !== "object" ||
     payload.text.format === null ||
     !("type" in payload.text.format) ||
-    payload.text.format.type !== "text"
+    (payload.text.format.type !== "text" &&
+      payload.text.format.type !== "json_schema")
   ) {
     throw new GatewayError(
-      "Unsupported OpenAI Responses text config: only text.format.type=text is supported",
+      "Unsupported OpenAI Responses text config: only text.format.type=text or json_schema is supported",
+      {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
+  }
+}
+
+export function assertSupportedOpenAIChatResponseFormat(
+  payload: unknown,
+  requestId: string
+) {
+  if (typeof payload !== "object" || payload === null) {
+    return;
+  }
+
+  if (!("response_format" in payload) || payload.response_format === undefined) {
+    return;
+  }
+
+  const responseFormat = payload.response_format;
+
+  if (
+    typeof responseFormat !== "object" ||
+    responseFormat === null ||
+    !("type" in responseFormat) ||
+    (responseFormat.type !== "text" && responseFormat.type !== "json_schema")
+  ) {
+    throw new GatewayError(
+      "Unsupported OpenAI Chat response_format: only type=text or json_schema is supported",
       {
         code: "request_unsupported_openai_semantics",
         category: "request",

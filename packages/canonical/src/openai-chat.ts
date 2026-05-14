@@ -291,6 +291,52 @@ function normalizeOpenAIToolChoice(
   };
 }
 
+function normalizeOpenAIChatResponseFormat(
+  responseFormat: OpenAIChatCompletionRequest["response_format"]
+) {
+  if (responseFormat === undefined) {
+    return undefined;
+  }
+
+  if (responseFormat.type === "text") {
+    return {
+      type: "text" as const
+    };
+  }
+
+  return {
+    type: "json_schema" as const,
+    name: responseFormat.json_schema.name,
+    schema: responseFormat.json_schema.schema,
+    ...(responseFormat.json_schema.strict !== undefined
+      ? { strict: responseFormat.json_schema.strict }
+      : {})
+  };
+}
+
+function normalizeOpenAIResponsesTextFormat(
+  text: OpenAIResponsesRequest["text"]
+) {
+  if (text === undefined) {
+    return undefined;
+  }
+
+  if (text.format.type === "text") {
+    return {
+      type: "text" as const
+    };
+  }
+
+  return {
+    type: "json_schema" as const,
+    name: text.format.name,
+    schema: text.format.schema,
+    ...(text.format.strict !== undefined
+      ? { strict: text.format.strict }
+      : {})
+  };
+}
+
 function normalizeOpenAIResponsesTypedInputItems(
   input: OpenAIResponsesTypedInputItemValue[]
 ) {
@@ -361,13 +407,15 @@ export function normalizeOpenAIChatRequest(
     request.stop === undefined
       ? undefined
       : typeof request.stop === "string"
-        ? [request.stop]
-        : request.stop;
+      ? [request.stop]
+      : request.stop;
   const toolChoice = normalizeOpenAIToolChoice(request.tool_choice);
+  const outputFormat = normalizeOpenAIChatResponseFormat(request.response_format);
 
   return {
     model: request.model,
     stream: request.stream,
+    ...(outputFormat ? { outputFormat } : {}),
     ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
     ...(request.temperature !== undefined
       ? { temperature: request.temperature }
@@ -438,10 +486,12 @@ export function normalizeOpenAIResponsesRequest(
     ? [{ role: "system" as const, content: request.instructions }]
     : [];
   const toolChoice = normalizeOpenAIToolChoice(request.tool_choice);
+  const outputFormat = normalizeOpenAIResponsesTextFormat(request.text);
 
   return {
     model: request.model,
     stream: request.stream,
+    ...(outputFormat ? { outputFormat } : {}),
     ...(request.previous_response_id !== undefined
       ? { previousResponseId: request.previous_response_id }
       : {}),

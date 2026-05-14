@@ -19,6 +19,7 @@ describe("provider capability descriptors", () => {
         supportsConversationId: true,
         supportsPrompt: true,
         supportsReasoning: true,
+        supportsStructuredOutputs: true,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       },
@@ -33,6 +34,7 @@ describe("provider capability descriptors", () => {
         supportsConversationId: false,
         supportsPrompt: false,
         supportsReasoning: false,
+        supportsStructuredOutputs: false,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       },
@@ -47,6 +49,7 @@ describe("provider capability descriptors", () => {
         supportsConversationId: false,
         supportsPrompt: false,
         supportsReasoning: false,
+        supportsStructuredOutputs: false,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       }
@@ -65,6 +68,7 @@ describe("provider capability descriptors", () => {
       supportsConversationId: false,
       supportsPrompt: false,
       supportsReasoning: false,
+      supportsStructuredOutputs: false,
       supportsRouteScopedShaping: true,
       supportsStaticFallbackSameProvider: true
     });
@@ -77,7 +81,8 @@ describe("provider capability descriptors", () => {
       supportsPreviousResponseId: true,
       supportsConversationId: true,
       supportsPrompt: true,
-      supportsReasoning: true
+      supportsReasoning: true,
+      supportsStructuredOutputs: true
     });
   });
 

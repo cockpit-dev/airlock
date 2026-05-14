@@ -407,6 +407,52 @@ describe("openAIChatCompletionRequestSchema", () => {
     });
   });
 
+  it("accepts chat response_format when type is json_schema", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "weather",
+          schema: {
+            type: "object",
+            properties: {
+              city: {
+                type: "string"
+              }
+            },
+            required: ["city"]
+          },
+          strict: true
+        }
+      },
+      messages: [
+        {
+          role: "user",
+          content: "Hello!"
+        }
+      ]
+    });
+
+    expect(parsed.response_format).toEqual({
+      type: "json_schema",
+      json_schema: {
+        name: "weather",
+        schema: {
+          type: "object",
+          properties: {
+            city: {
+              type: "string"
+            }
+          },
+          required: ["city"]
+        },
+        strict: true
+      }
+    });
+  });
+
   it("accepts assistant tool_calls and tool result messages for replay", () => {
     const parsed = openAIChatCompletionRequestSchema.parse({
       model: "gpt-4.1-mini",
@@ -699,6 +745,46 @@ describe("openAIResponsesRequestSchema", () => {
     });
     expect(parsed.reasoning).toEqual({
       effort: "medium"
+    });
+  });
+
+  it("accepts responses text.format when type is json_schema", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      text: {
+        format: {
+          type: "json_schema",
+          name: "weather",
+          schema: {
+            type: "object",
+            properties: {
+              city: {
+                type: "string"
+              }
+            },
+            required: ["city"]
+          },
+          strict: true
+        }
+      }
+    });
+
+    expect(parsed.text).toEqual({
+      format: {
+        type: "json_schema",
+        name: "weather",
+        schema: {
+          type: "object",
+          properties: {
+            city: {
+              type: "string"
+            }
+          },
+          required: ["city"]
+        },
+        strict: true
+      }
     });
   });
 

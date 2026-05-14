@@ -39,6 +39,16 @@ export interface CanonicalRequest {
   model: string;
   messages: CanonicalMessage[];
   stream: boolean;
+  outputFormat?:
+    | {
+        type: "text";
+      }
+    | {
+        type: "json_schema";
+        name: string;
+        schema: Record<string, unknown>;
+        strict?: boolean;
+      };
   providerMetadata?: {
     anthropic?: {
       user_id: string;
@@ -69,6 +79,7 @@ export interface CanonicalRequestCapabilityRequirements {
   requiresConversationId: boolean;
   requiresPrompt: boolean;
   requiresReasoning: boolean;
+  requiresStructuredOutputs: boolean;
 }
 
 export interface CanonicalUsage {

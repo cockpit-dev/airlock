@@ -857,6 +857,38 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.conversationId).toBe("conv_123");
   });
 
+  it("normalizes chat json_schema response_format into canonical output format", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "weather",
+          schema: {
+            type: "object"
+          },
+          strict: true
+        }
+      },
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.outputFormat).toEqual({
+      type: "json_schema",
+      name: "weather",
+      schema: {
+        type: "object"
+      },
+      strict: true
+    });
+  });
+
   it("normalizes responses prompt and reasoning effort into canonical request fields", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",
@@ -882,6 +914,33 @@ describe("normalizeOpenAIResponsesRequest", () => {
     });
     expect(canonical.reasoningEffort).toBe("medium");
     expect(canonical.messages).toEqual([]);
+  });
+
+  it("normalizes responses json_schema text format into canonical output format", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      text: {
+        format: {
+          type: "json_schema",
+          name: "weather",
+          schema: {
+            type: "object"
+          },
+          strict: true
+        }
+      }
+    });
+
+    expect(canonical.outputFormat).toEqual({
+      type: "json_schema",
+      name: "weather",
+      schema: {
+        type: "object"
+      },
+      strict: true
+    });
   });
 
   it("normalizes responses sampling fields into canonical request fields", () => {

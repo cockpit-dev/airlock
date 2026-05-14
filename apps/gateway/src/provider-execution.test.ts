@@ -233,6 +233,7 @@ describe("assertProviderSupportsCanonicalRequest", () => {
           supportsConversationId: false,
           supportsPrompt: false,
           supportsReasoning: false,
+          supportsStructuredOutputs: false,
           supportsRouteScopedShaping: true,
           supportsStaticFallbackSameProvider: true
         },
@@ -240,6 +241,47 @@ describe("assertProviderSupportsCanonicalRequest", () => {
         "req_123"
       )
     ).toThrow(GatewayError);
+  });
+
+  it("throws a typed error when the provider descriptor lacks structured output support", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      outputFormat: {
+        type: "json_schema",
+        name: "weather",
+        schema: {
+          type: "object"
+        },
+        strict: true
+      },
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    expect(() =>
+      assertProviderSupportsCanonicalRequest(
+        getProviderCapabilityDescriptor("gemini"),
+        request,
+        "req_123"
+      )
+    ).toThrow(
+      new GatewayError(
+        "Provider gemini does not support required capability: structured_outputs",
+        {
+          code: "provider_capability_not_supported",
+          category: "routing",
+          httpStatus: 400,
+          retryable: false,
+          provider: "gemini",
+          requestId: "req_123"
+        }
+      )
+    );
   });
 });
 
@@ -1901,6 +1943,7 @@ describe("executeRoutedRequest", () => {
             supportsConversationId: false,
             supportsPrompt: false,
             supportsReasoning: false,
+            supportsStructuredOutputs: false,
             supportsRouteScopedShaping: true,
             supportsStaticFallbackSameProvider: true
           };

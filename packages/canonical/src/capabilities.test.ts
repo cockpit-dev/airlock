@@ -29,7 +29,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: false,
-      requiresReasoning: false
+      requiresReasoning: false,
+      requiresStructuredOutputs: false
     });
   });
 
@@ -53,7 +54,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: false,
-      requiresReasoning: false
+      requiresReasoning: false,
+      requiresStructuredOutputs: false
     });
   });
 
@@ -85,7 +87,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: false,
-      requiresReasoning: false
+      requiresReasoning: false,
+      requiresStructuredOutputs: false
     });
   });
 
@@ -111,7 +114,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPreviousResponseId: true,
       requiresConversationId: true,
       requiresPrompt: false,
-      requiresReasoning: false
+      requiresReasoning: false,
+      requiresStructuredOutputs: false
     });
   });
 
@@ -134,7 +138,41 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: true,
-      requiresReasoning: true
+      requiresReasoning: true,
+      requiresStructuredOutputs: false
+    });
+  });
+
+  it("marks structured output requirements when json_schema output format is present", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      outputFormat: {
+        type: "json_schema",
+        name: "weather",
+        schema: {
+          type: "object"
+        },
+        strict: true
+      },
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: false,
+      requiresTools: false,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false,
+      requiresStructuredOutputs: true
     });
   });
 });

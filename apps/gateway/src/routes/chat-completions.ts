@@ -46,6 +46,7 @@ import type { CreateAppOptions } from "../app.js";
 import {
   assertAllowedOpenAITopLevelFields,
   assertOpenAIForcedToolChoiceMatchesDeclaredTools,
+  assertSupportedOpenAIChatResponseFormat,
   assertSupportedOpenAIChatStreamOptions,
   assertSupportedOpenAIChatToolsSemantics,
   parseOpenAIRequestSchema
@@ -99,6 +100,7 @@ export async function handleChatCompletions(
     "OpenAI Chat",
     allowedOpenAIChatTopLevelFields
   );
+  assertSupportedOpenAIChatResponseFormat(json, requestId);
   assertSupportedOpenAIChatStreamOptions(json, requestId);
   assertSupportedOpenAIChatToolsSemantics(json, requestId);
   assertOpenAIForcedToolChoiceMatchesDeclaredTools(
