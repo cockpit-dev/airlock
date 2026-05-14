@@ -16249,7 +16249,7 @@ describe("gateway app", () => {
     });
   });
 
-  it("allowlist anthropic semantics rejects unsupported tools", async () => {
+  it("routes anthropic function tools through anthropic and returns tool_use", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -16257,11 +16257,15 @@ describe("gateway app", () => {
           type: "message",
           role: "assistant",
           model: "claude-sonnet-4-5",
-          stop_reason: "end_turn",
+          stop_reason: "tool_use",
           content: [
             {
-              type: "text",
-              text: "hello there"
+              type: "tool_use",
+              id: "call_123",
+              name: "lookup_weather",
+              input: {
+                city: "Shanghai"
+              }
             }
           ]
         }),
@@ -16287,15 +16291,236 @@ describe("gateway app", () => {
         body: JSON.stringify({
           model: "claude-sonnet-4-5",
           max_tokens: 256,
+          tool_choice: {
+            type: "auto"
+          },
           tools: [
             {
-              name: "lookup"
+              name: "lookup_weather",
+              description: "Lookup weather by city",
+              input_schema: {
+                type: "object",
+                properties: {
+                  city: {
+                    type: "string"
+                  }
+                },
+                required: ["city"]
+              }
             }
           ],
           messages: [
             {
               role: "user",
-              content: "hi"
+              content: "Weather in Shanghai?"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const body = await readJson(response);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      tools: [
+        {
+          name: "lookup_weather",
+          description: "Lookup weather by city",
+          input_schema: {
+            type: "object",
+            properties: {
+              city: {
+                type: "string"
+              }
+            },
+            required: ["city"]
+          }
+        }
+      ],
+      tool_choice: {
+        type: "auto"
+      }
+    });
+    expect(body).toMatchObject({
+      type: "message",
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: "call_123",
+          name: "lookup_weather",
+          input: {
+            city: "Shanghai"
+          }
+        }
+      ]
+    });
+  });
+
+  it("replays anthropic tool_use and tool_result through anthropic public messages ingress", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "The temperature is 26C."
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          tool_choice: {
+            type: "auto"
+          },
+          tools: [
+            {
+              name: "lookup_weather",
+              input_schema: {
+                type: "object"
+              }
+            }
+          ],
+          messages: [
+            {
+              role: "user",
+              content: "Weather in Shanghai?"
+            },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: "call_123",
+                  name: "lookup_weather",
+                  input: {
+                    city: "Shanghai"
+                  }
+                }
+              ]
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "call_123",
+                  content: "{\"temperature_c\":26}"
+                }
+              ]
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "call_123",
+              name: "lookup_weather",
+              input: {
+                city: "Shanghai"
+              }
+            }
+          ]
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call_123",
+              content: "{\"temperature_c\":26}"
+            }
+          ]
+        }
+      ]
+    });
+    const body = await readJson(response);
+
+    expect(body).toMatchObject({
+      type: "message",
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "The temperature is 26C."
+        }
+      ]
+    });
+  });
+
+  it("rejects streaming anthropic messages requests that include tools", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          stream: true,
+          tool_choice: {
+            type: "auto"
+          },
+          tools: [
+            {
+              name: "lookup_weather",
+              input_schema: {
+                type: "object"
+              }
+            }
+          ],
+          messages: [
+            {
+              role: "user",
+              content: "Weather in Shanghai?"
             }
           ]
         })
@@ -16310,13 +16535,10 @@ describe("gateway app", () => {
       type: "error",
       error: {
         type: "request",
-        message: "Unsupported Anthropic semantic field: tools"
+        message:
+          "Unsupported Anthropic tools semantics: streaming tool calls are not yet supported"
       }
     });
-    if (!isRecord(body)) {
-      throw new Error("Expected an Anthropic error payload");
-    }
-    expect(typeof body.request_id).toBe("string");
   });
 
   it("allowlist anthropic semantics rejects unsupported metadata", async () => {

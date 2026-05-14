@@ -395,16 +395,53 @@ export function normalizeAnthropicMessagesRequest(
   const systemMessages = request.system
     ? [{ role: "system" as const, content: request.system }]
     : [];
-  const messages = request.messages.map((message) => ({
-    role: message.role,
-    content:
-      typeof message.content === "string"
-        ? message.content
-        : message.content
-            .filter((block) => block.type === "text")
-            .map((block) => block.text)
-            .join("\n")
-  }));
+  const messages = request.messages.map((message) => {
+    if (typeof message.content === "string") {
+      return {
+        role: message.role,
+        content: message.content
+      };
+    }
+
+    const toolUseBlocks = message.content.filter((block) => {
+      return block.type === "tool_use";
+    });
+
+    if (message.role === "assistant" && toolUseBlocks.length > 0) {
+      return {
+        role: "assistant" as const,
+        content: message.content
+          .filter((block) => block.type === "text")
+          .map((block) => block.text)
+          .join("\n"),
+        toolCalls: toolUseBlocks.map((block) => ({
+          id: block.id,
+          name: block.name,
+          arguments: JSON.stringify(block.input)
+        }))
+      };
+    }
+
+    const toolResultBlocks = message.content.filter((block) => {
+      return block.type === "tool_result";
+    });
+
+    if (message.role === "user" && toolResultBlocks.length > 0) {
+      return {
+        role: "tool" as const,
+        content: toolResultBlocks.map((block) => block.content).join("\n"),
+        toolCallId: toolResultBlocks[0]?.tool_use_id ?? ""
+      };
+    }
+
+    return {
+      role: message.role,
+      content: message.content
+        .filter((block) => block.type === "text")
+        .map((block) => block.text)
+        .join("\n")
+    };
+  });
 
   return {
     model: request.model,
@@ -416,6 +453,18 @@ export function normalizeAnthropicMessagesRequest(
     ...(request.top_p !== undefined ? { topP: request.top_p } : {}),
     ...(request.stop_sequences !== undefined
       ? { stopSequences: request.stop_sequences }
+      : {}),
+    ...(request.tools !== undefined
+      ? {
+          tools: request.tools.map((tool) => ({
+            name: tool.name,
+            ...(tool.description ? { description: tool.description } : {}),
+            inputSchema: tool.input_schema
+          }))
+        }
+      : {}),
+    ...(request.tool_choice !== undefined
+      ? { toolChoice: request.tool_choice.type }
       : {}),
     messages: [...systemMessages, ...messages]
   };
@@ -696,6 +745,21 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
 export function encodeCanonicalToAnthropicMessagesResponse(
   response: CanonicalResponse
 ) {
+  const content =
+    response.toolCalls && response.toolCalls.length > 0
+      ? response.toolCalls.map((toolCall) => ({
+          type: "tool_use" as const,
+          id: toolCall.id,
+          name: toolCall.name,
+          input: JSON.parse(toolCall.arguments) as Record<string, unknown>
+        }))
+      : [
+          {
+            type: "text" as const,
+            text: response.outputText
+          }
+        ];
+
   return {
     id: response.id,
     type: "message",
@@ -706,12 +770,7 @@ export function encodeCanonicalToAnthropicMessagesResponse(
     ...(response.usage
       ? { usage: encodeCanonicalAnthropicUsage(response.usage) }
       : {}),
-    content: [
-      {
-        type: "text",
-        text: response.outputText
-      }
-    ]
+    content
   };
 }
 

@@ -44,6 +44,7 @@ import {
 import type { CreateAppOptions } from "../app.js";
 import {
   assertAllowedAnthropicTopLevelFields,
+  assertSupportedAnthropicToolsSemantics,
   parseAnthropicRequestSchema
 } from "../anthropic-request-validation.js";
 
@@ -55,6 +56,8 @@ const allowedAnthropicTopLevelFields = [
   "temperature",
   "top_p",
   "stop_sequences",
+  "tools",
+  "tool_choice",
   "messages",
   "airlock"
 ] as const;
@@ -88,6 +91,7 @@ export async function handleMessages(
     requestId,
     allowedAnthropicTopLevelFields
   );
+  assertSupportedAnthropicToolsSemantics(json, requestId);
   const parsed = parseAnthropicRequestSchema(
     anthropicMessagesRequestSchema,
     json,

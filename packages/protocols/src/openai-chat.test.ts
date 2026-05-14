@@ -679,6 +679,84 @@ describe("anthropicMessagesRequestSchema", () => {
       }
     });
   });
+
+  it("accepts anthropic function tools and tool_choice auto", () => {
+    const parsed = anthropicMessagesRequestSchema.parse({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: false,
+      tool_choice: {
+        type: "auto"
+      },
+      tools: [
+        {
+          name: "lookup_weather",
+          description: "Lookup weather by city",
+          input_schema: {
+            type: "object",
+            properties: {
+              city: {
+                type: "string"
+              }
+            },
+            required: ["city"]
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    });
+
+    expect(parsed.tool_choice).toEqual({
+      type: "auto"
+    });
+    expect(parsed.tools?.[0]).toMatchObject({
+      name: "lookup_weather"
+    });
+  });
+
+  it("accepts anthropic tool_use and tool_result replay content blocks", () => {
+    const parsed = anthropicMessagesRequestSchema.parse({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "call_123",
+              name: "lookup_weather",
+              input: {
+                city: "Shanghai"
+              }
+            }
+          ]
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call_123",
+              content: "{\"temperature_c\":26}"
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(Array.isArray(parsed.messages)).toBe(true);
+  });
 });
 
 describe("anthropicMessagesResponseSchema", () => {

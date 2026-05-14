@@ -1116,6 +1116,112 @@ describe("normalizeAnthropicMessagesRequest", () => {
 
     expect(canonical.stopSequences).toEqual(["END", "STOP"]);
   });
+
+  it("normalizes anthropic tools and tool_choice into canonical request fields", () => {
+    const canonical = normalizeAnthropicMessagesRequest({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: false,
+      tool_choice: {
+        type: "auto"
+      },
+      tools: [
+        {
+          name: "lookup_weather",
+          description: "Lookup weather by city",
+          input_schema: {
+            type: "object",
+            properties: {
+              city: {
+                type: "string"
+              }
+            },
+            required: ["city"]
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    });
+
+    expect(canonical.tools).toEqual([
+      {
+        name: "lookup_weather",
+        description: "Lookup weather by city",
+        inputSchema: {
+          type: "object",
+          properties: {
+            city: {
+              type: "string"
+            }
+          },
+          required: ["city"]
+        }
+      }
+    ]);
+    expect(canonical.toolChoice).toBe("auto");
+  });
+
+  it("normalizes anthropic tool_use and tool_result replay into canonical tool history", () => {
+    const canonical = normalizeAnthropicMessagesRequest({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "call_123",
+              name: "lookup_weather",
+              input: {
+                city: "Shanghai"
+              }
+            }
+          ]
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call_123",
+              content: "{\"temperature_c\":26}"
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      { role: "user", content: "Weather in Shanghai?" },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "call_123",
+            name: "lookup_weather",
+            arguments: "{\"city\":\"Shanghai\"}"
+          }
+        ]
+      },
+      {
+        role: "tool",
+        content: "{\"temperature_c\":26}",
+        toolCallId: "call_123"
+      }
+    ]);
+  });
 });
 
 describe("encodeCanonicalToAnthropicMessagesResponse", () => {
@@ -1133,12 +1239,44 @@ describe("encodeCanonicalToAnthropicMessagesResponse", () => {
     });
 
     expect(encoded.type).toBe("message");
-    expect(encoded.content[0]?.text).toBe("hello there");
+    expect(encoded.content).toEqual([
+      {
+        type: "text",
+        text: "hello there"
+      }
+    ]);
     expect(encoded.stop_sequence).toBeNull();
     expect(encoded.usage).toEqual({
       input_tokens: 12,
       output_tokens: 8
     });
+  });
+
+  it("encodes canonical tool calls into anthropic tool_use content", () => {
+    const encoded = encodeCanonicalToAnthropicMessagesResponse({
+      id: "msg_123",
+      model: "claude-sonnet-4-5",
+      outputText: "",
+      finishReason: "stop",
+      toolCalls: [
+        {
+          id: "call_123",
+          name: "lookup_weather",
+          arguments: "{\"city\":\"Shanghai\"}"
+        }
+      ]
+    });
+
+    expect(encoded.content).toEqual([
+      {
+        type: "tool_use",
+        id: "call_123",
+        name: "lookup_weather",
+        input: {
+          city: "Shanghai"
+        }
+      }
+    ]);
   });
 
   it("encodes a max_tokens canonical response into an Anthropic max_tokens stop reason", () => {
