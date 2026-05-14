@@ -76,7 +76,8 @@ export function assertSupportedOpenAIChatStreamOptions(
 }
 
 export function assertSupportedOpenAIChatToolsSemantics(
-  payload: unknown
+  payload: unknown,
+  requestId: string
 ) {
   if (typeof payload !== "object" || payload === null) {
     return;
@@ -84,11 +85,29 @@ export function assertSupportedOpenAIChatToolsSemantics(
 
   if (!("tools" in payload) || payload.tools === undefined) {
     return;
+  }
+
+  if (
+    "parallel_tool_calls" in payload &&
+    payload.parallel_tool_calls !== undefined &&
+    payload.parallel_tool_calls !== true
+  ) {
+    throw new GatewayError(
+      "Unsupported OpenAI Chat tools semantics: parallel_tool_calls=false is not supported",
+      {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
   }
 }
 
 export function assertSupportedOpenAIResponsesToolsSemantics(
-  payload: unknown
+  payload: unknown,
+  requestId: string
 ) {
   if (typeof payload !== "object" || payload === null) {
     return;
@@ -96,6 +115,23 @@ export function assertSupportedOpenAIResponsesToolsSemantics(
 
   if (!("tools" in payload) || payload.tools === undefined) {
     return;
+  }
+
+  if (
+    "parallel_tool_calls" in payload &&
+    payload.parallel_tool_calls !== undefined &&
+    payload.parallel_tool_calls !== true
+  ) {
+    throw new GatewayError(
+      "Unsupported OpenAI Responses tools semantics: parallel_tool_calls=false is not supported",
+      {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
   }
 }
 

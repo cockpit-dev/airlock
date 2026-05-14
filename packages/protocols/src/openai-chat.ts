@@ -84,6 +84,7 @@ export const openAIChatCompletionRequestSchema = z.object({
   top_p: z.number().min(0).max(1).optional(),
   stop: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
   stream_options: openAIChatStreamOptionsSchema.optional(),
+  parallel_tool_calls: z.boolean().optional(),
   tools: z.array(openAIChatFunctionToolSchema).min(1).optional(),
   tool_choice: z.union([
     z.literal("auto"),

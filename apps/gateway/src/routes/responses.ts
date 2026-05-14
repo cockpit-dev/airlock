@@ -56,6 +56,7 @@ const allowedOpenAIResponsesTopLevelFields = [
   "temperature",
   "top_p",
   "instructions",
+  "parallel_tool_calls",
   "tools",
   "tool_choice",
   "input",
@@ -92,7 +93,7 @@ export async function handleResponses(
     "OpenAI Responses",
     allowedOpenAIResponsesTopLevelFields
   );
-  assertSupportedOpenAIResponsesToolsSemantics(json);
+  assertSupportedOpenAIResponsesToolsSemantics(json, requestId);
   assertOpenAIForcedToolChoiceMatchesDeclaredTools(
     json,
     requestId,

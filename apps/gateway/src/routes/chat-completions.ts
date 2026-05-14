@@ -60,6 +60,7 @@ const allowedOpenAIChatTopLevelFields = [
   "top_p",
   "stop",
   "stream_options",
+  "parallel_tool_calls",
   "tools",
   "tool_choice",
   "messages",
@@ -97,7 +98,7 @@ export async function handleChatCompletions(
     allowedOpenAIChatTopLevelFields
   );
   assertSupportedOpenAIChatStreamOptions(json, requestId);
-  assertSupportedOpenAIChatToolsSemantics(json);
+  assertSupportedOpenAIChatToolsSemantics(json, requestId);
   assertOpenAIForcedToolChoiceMatchesDeclaredTools(
     json,
     requestId,
