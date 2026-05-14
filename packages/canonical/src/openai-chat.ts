@@ -79,6 +79,10 @@ interface OpenAIResponsesEncodedEventBatch {
 function encodeCanonicalOpenAIFinishReason(
   finishReason: CanonicalResponse["finishReason"]
 ) {
+  if (finishReason === "tool_calls") {
+    return "tool_calls";
+  }
+
   return finishReason === "max_tokens" ? "length" : "stop";
 }
 
@@ -103,6 +107,10 @@ function encodeCanonicalResponsesIncompleteDetails(
 function encodeCanonicalAnthropicStopReason(
   finishReason: CanonicalResponse["finishReason"]
 ) {
+  if (finishReason === "tool_calls") {
+    return "tool_use";
+  }
+
   return finishReason === "max_tokens" ? "max_tokens" : "end_turn";
 }
 

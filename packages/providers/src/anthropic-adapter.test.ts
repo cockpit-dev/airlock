@@ -656,6 +656,7 @@ describe("AnthropicProviderAdapter", () => {
         arguments: "{\"city\":\"Shanghai\"}"
       }
     ]);
+    expect(response.finishReason).toBe("tool_calls");
   });
 
   it("rejects shaping that attempts to override reserved auth headers", async () => {

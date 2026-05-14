@@ -327,7 +327,7 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
       id: "resp_123",
       model: "claude-sonnet-4-5",
       outputText: "",
-      finishReason: "stop",
+      finishReason: "tool_calls",
       toolCalls: [
         {
           id: "toolu_123",
@@ -337,6 +337,7 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
       ]
     });
 
+    expect(encoded.choices[0]?.finish_reason).toBe("tool_calls");
     expect(encoded.choices[0]?.message).toEqual({
       role: "assistant",
       content: null,
@@ -1349,7 +1350,7 @@ describe("encodeCanonicalToAnthropicMessagesResponse", () => {
       id: "msg_123",
       model: "claude-sonnet-4-5",
       outputText: "",
-      finishReason: "stop",
+      finishReason: "tool_calls",
       toolCalls: [
         {
           id: "call_123",
@@ -1369,6 +1370,7 @@ describe("encodeCanonicalToAnthropicMessagesResponse", () => {
         }
       }
     ]);
+    expect(encoded.stop_reason).toBe("tool_use");
   });
 
   it("encodes a max_tokens canonical response into an Anthropic max_tokens stop reason", () => {

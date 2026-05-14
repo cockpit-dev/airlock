@@ -19,8 +19,12 @@ import { GatewayError } from "@airlock/shared";
 import type { ProviderAdapter, ProviderRequestContext } from "./types.js";
 
 function normalizeOpenAIFinishReason(
-  finishReason: "stop" | "length" | null | undefined
-): "stop" | "max_tokens" {
+  finishReason: "stop" | "length" | "tool_calls" | null | undefined
+): "stop" | "max_tokens" | "tool_calls" {
+  if (finishReason === "tool_calls") {
+    return "tool_calls";
+  }
+
   return finishReason === "length" ? "max_tokens" : "stop";
 }
 
@@ -285,7 +289,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       id: string;
       model: string;
       choices: Array<{
-        finish_reason: "stop" | "length";
+        finish_reason: "stop" | "length" | "tool_calls";
         message: {
           content: string | null;
           tool_calls?: Array<{
@@ -318,9 +322,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
             }))
           }
         : {}),
-      finishReason: normalizeOpenAIFinishReason(
-        payload.choices[0]?.finish_reason
-      ),
+      finishReason: payload.choices[0]?.message.tool_calls?.length
+        ? "tool_calls"
+        : normalizeOpenAIFinishReason(payload.choices[0]?.finish_reason),
       ...(payload.usage
         ? {
             usage: {

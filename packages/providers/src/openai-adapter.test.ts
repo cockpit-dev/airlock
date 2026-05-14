@@ -444,6 +444,7 @@ describe("OpenAIProviderAdapter", () => {
         arguments: "{\"city\":\"Shanghai\"}"
       }
     ]);
+    expect(response.finishReason).toBe("tool_calls");
   });
 
   it("forwards a forced canonical tool choice to OpenAI", async () => {

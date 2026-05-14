@@ -3117,7 +3117,7 @@ describe("gateway app", () => {
       object: "chat.completion",
       choices: [
         {
-          finish_reason: "stop",
+          finish_reason: "tool_calls",
           message: {
             role: "assistant",
             content: null,
@@ -3365,6 +3365,7 @@ describe("gateway app", () => {
       object: "chat.completion",
       choices: [
         {
+          finish_reason: "tool_calls",
           message: {
             role: "assistant",
             content: null,
@@ -16585,6 +16586,7 @@ describe("gateway app", () => {
     expect(body).toMatchObject({
       type: "message",
       role: "assistant",
+      stop_reason: "tool_use",
       content: [
         {
           type: "tool_use",

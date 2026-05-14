@@ -62,7 +62,7 @@ export interface CanonicalResponse {
   id: string;
   model: string;
   outputText: string;
-  finishReason: "stop" | "max_tokens";
+  finishReason: "stop" | "max_tokens" | "tool_calls";
   usage?: CanonicalUsage;
   toolCalls?: CanonicalToolCall[];
 }
@@ -83,6 +83,6 @@ export type CanonicalStreamEvent =
       type: "response_completed";
       responseId: string;
       model: string;
-      finishReason: "stop" | "max_tokens";
+      finishReason: "stop" | "max_tokens" | "tool_calls";
       usage?: CanonicalUsage;
     };

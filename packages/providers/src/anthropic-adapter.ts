@@ -28,7 +28,11 @@ type JsonValue =
 
 function normalizeAnthropicFinishReason(
   stopReason: string | undefined
-): "stop" | "max_tokens" {
+): "stop" | "max_tokens" | "tool_calls" {
+  if (stopReason === "tool_use") {
+    return "tool_calls";
+  }
+
   return stopReason === "max_tokens" ? "max_tokens" : "stop";
 }
 
