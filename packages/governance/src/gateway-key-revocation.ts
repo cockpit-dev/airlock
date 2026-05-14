@@ -20,6 +20,7 @@ export interface GatewayKeyRevocationState {
 export interface GatewayKeyRevocationWriteRequest {
   keyId?: string;
   recordEvent?: boolean;
+  operationId?: string;
   ownership?: GatewayKeyAuditOwnership;
   reason?: string;
   actor?: string;
@@ -65,7 +66,7 @@ export function parseGatewayKeyRevocationWriteRequest(
     throw new Error("Revocation write request must be an object");
   }
 
-  const { keyId, recordEvent, ownership } = body;
+  const { keyId, recordEvent, operationId, ownership } = body;
   let reason: string | undefined;
   let actor: string | undefined;
   let actorSource: GatewayKeyAuditActorSource | undefined;
@@ -76,6 +77,13 @@ export function parseGatewayKeyRevocationWriteRequest(
 
   if (recordEvent !== undefined && typeof recordEvent !== "boolean") {
     throw new Error("Revocation write request recordEvent is invalid");
+  }
+
+  if (
+    operationId !== undefined &&
+    (typeof operationId !== "string" || operationId.trim().length === 0)
+  ) {
+    throw new Error("Revocation write request operationId is invalid");
   }
 
   if (
@@ -101,6 +109,9 @@ export function parseGatewayKeyRevocationWriteRequest(
   return {
     ...(keyId !== undefined ? { keyId } : {}),
     ...(recordEvent !== undefined ? { recordEvent } : {}),
+    ...(typeof operationId === "string"
+      ? { operationId: operationId.trim() }
+      : {}),
     ...(ownership !== undefined ? { ownership } : {}),
     ...(reason ? { reason } : {}),
     ...(actor ? { actor } : {}),
@@ -296,6 +307,7 @@ export function buildGatewayKeyRevocationStateTransition(
       kind: revoked ? "revoked" : "unrevoked",
       ownership: request.ownership ?? "configured",
       occurredAt: now,
+      ...(request.operationId ? { operationId: request.operationId } : {}),
       ...(request.reason ? { reason: request.reason } : {}),
       ...(request.actor ? { actor: request.actor } : {}),
       ...(request.actorSource ? { actorSource: request.actorSource } : {})

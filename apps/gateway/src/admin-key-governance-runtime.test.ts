@@ -31,6 +31,7 @@ const runtimeMocks = vi.hoisted(() => ({
   getGatewayKeyRevocationStatusById: vi.fn(),
   getGatewayApiKeyStatusSnapshot: vi.fn(),
   getGatewayKeyRevocationEvents: vi.fn(),
+  getGatewayKeyRevocationOperationEvents: vi.fn(),
   resolveGatewayApiKeyByIdWithRegistry: vi.fn(),
   resolveGatewayApiKeyById: vi.fn(),
   revokeGatewayKeyById: vi.fn(),
@@ -85,6 +86,8 @@ vi.mock("./gateway-key-revocation.js", () => ({
     runtimeMocks.getGatewayKeyRevocationStatusById,
   getGatewayApiKeyStatusSnapshot: runtimeMocks.getGatewayApiKeyStatusSnapshot,
   getGatewayKeyRevocationEvents: runtimeMocks.getGatewayKeyRevocationEvents,
+  getGatewayKeyRevocationOperationEvents:
+    runtimeMocks.getGatewayKeyRevocationOperationEvents,
   resolveGatewayApiKeyByIdWithRegistry:
     runtimeMocks.resolveGatewayApiKeyByIdWithRegistry,
   resolveGatewayApiKeyById: runtimeMocks.resolveGatewayApiKeyById,
@@ -323,5 +326,63 @@ describe("createAdminKeyGovernanceRuntime", () => {
     await expect(
       runtime.read.getOperationEvents("req_bulk_missing")
     ).resolves.toEqual([]);
+  });
+
+  it("merges registry and revocation operation events", async () => {
+    const env = {
+      ...createEnv(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: {
+        idFromName(name: string) {
+          return { name };
+        },
+        get() {
+          return {
+            fetch: vi.fn()
+          };
+        }
+      }
+    } satisfies GatewayBindings;
+    const runtime = createAdminKeyGovernanceRuntime(
+      env,
+      "req_123"
+    );
+
+    runtimeMocks.getGatewayRegistryOperationEvents.mockResolvedValue([
+      {
+        keyId: "key_registry",
+        kind: "deleted",
+        ownership: "registry",
+        occurredAt: "2026-05-14T00:00:00.000Z",
+        operationId: "req_op_123"
+      }
+    ]);
+    runtimeMocks.getGatewayKeyRevocationOperationEvents.mockResolvedValue([
+      {
+        keyId: "key_registry",
+        kind: "revoked",
+        ownership: "registry",
+        occurredAt: "2026-05-14T00:00:01.000Z",
+        operationId: "req_op_123"
+      }
+    ]);
+
+    await expect(
+      runtime.read.getOperationEvents("req_op_123")
+    ).resolves.toEqual([
+      {
+        keyId: "key_registry",
+        kind: "deleted",
+        ownership: "registry",
+        occurredAt: "2026-05-14T00:00:00.000Z",
+        operationId: "req_op_123"
+      },
+      {
+        keyId: "key_registry",
+        kind: "revoked",
+        ownership: "registry",
+        occurredAt: "2026-05-14T00:00:01.000Z",
+        operationId: "req_op_123"
+      }
+    ]);
   });
 });

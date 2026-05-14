@@ -39,18 +39,20 @@ describe("parseGatewayKeyRevocationWriteRequest", () => {
       parseGatewayKeyRevocationWriteRequest({
         keyId: "gak_1",
         recordEvent: true,
+        operationId: "req_123",
         ownership: "registry",
         reason: "incident containment",
         actor: "ops@example.com",
         actorSource: "trusted_header"
       })
     ).toEqual({
-      keyId: "gak_1",
-      recordEvent: true,
-      ownership: "registry",
-      reason: "incident containment",
-      actor: "ops@example.com",
-      actorSource: "trusted_header"
+        keyId: "gak_1",
+        recordEvent: true,
+        operationId: "req_123",
+        ownership: "registry",
+        reason: "incident containment",
+        actor: "ops@example.com",
+        actorSource: "trusted_header"
     });
   });
 
@@ -106,6 +108,7 @@ describe("buildGatewayKeyRevocationStateTransition", () => {
     expect(
       buildGatewayKeyRevocationStateTransition(true, {
         keyId: "gak_1",
+        operationId: "req_123",
         ownership: "configured",
         reason: "incident containment",
         actor: "ops@example.com",
@@ -121,6 +124,7 @@ describe("buildGatewayKeyRevocationStateTransition", () => {
         kind: "revoked",
         ownership: "configured",
         occurredAt: "2026-05-13T00:00:00.000Z",
+        operationId: "req_123",
         reason: "incident containment",
         actor: "ops@example.com",
         actorSource: "payload"

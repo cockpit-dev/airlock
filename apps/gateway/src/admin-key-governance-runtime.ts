@@ -38,6 +38,7 @@ import {
   getGatewayApiKeyStatusSnapshot,
   getGatewayKeyRevocationStatus,
   getGatewayKeyRevocationEvents,
+  getGatewayKeyRevocationOperationEvents,
   getGatewayKeyRevocationStatusById,
   listGatewayApiKeyStatuses,
   resolveGatewayApiKeyByIdWithRegistry,
@@ -90,8 +91,32 @@ export function createAdminKeyGovernanceRuntime(
       getRevocationEvents(candidateKeyId: string) {
         return getGatewayKeyRevocationEvents(env, candidateKeyId, requestId);
       },
-      getOperationEvents(candidateOperationId: string) {
-        return getGatewayRegistryOperationEvents(env, candidateOperationId, requestId);
+      async getOperationEvents(candidateOperationId: string) {
+        const [registryEvents, revocationEvents] = await Promise.all([
+          getGatewayRegistryOperationEvents(env, candidateOperationId, requestId).catch(
+            (error: unknown) => {
+              if (
+                typeof error === "object" &&
+                error !== null &&
+                "code" in error &&
+                error.code === "gateway_key_not_found"
+              ) {
+                return [];
+              }
+
+              throw error;
+            }
+          ),
+          env.AIRLOCK_GATEWAY_KEY_REVOCATION
+            ? getGatewayKeyRevocationOperationEvents(
+                env,
+                candidateOperationId,
+                requestId
+              )
+            : Promise.resolve([])
+        ]);
+
+        return [...registryEvents, ...revocationEvents];
       },
       getKeyRevocationStatus(candidateKeyId: string) {
         return getGatewayKeyRevocationStatusById(

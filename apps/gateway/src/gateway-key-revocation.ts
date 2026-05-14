@@ -1,8 +1,8 @@
 import {
   createGatewayKeyStatusByIdReadPort,
   clearGatewayKeyRevocationById as clearGatewayKeyRevocationByIdUseCase,
-  buildGatewayKeyRevocationStateTransition,
   createGatewayKeyAuditEvent,
+  buildGatewayKeyRevocationStateTransition,
   DEFAULT_GATEWAY_KEY_REVOCATION_STATE,
   getGatewayApiKeyStatus as getGatewayApiKeyStatusUseCase,
   getGatewayApiKeyStatusSnapshot as getGatewayApiKeyStatusSnapshotUseCase,
@@ -12,6 +12,7 @@ import {
   requireConfiguredGatewayApiKeyById,
   resolveGatewayApiKeyByIdWithOwnership,
   MAX_GATEWAY_KEY_AUDIT_EVENTS,
+  parseGatewayKeyOperationEventsResponse,
   parseGatewayKeyRevocationState,
   parseGatewayKeyRevocationWriteRequest,
   parseGatewayKeyAuditEventsResponse,
@@ -43,12 +44,48 @@ interface DurableObjectStateLike {
   };
 }
 const REVOCATION_EVENTS_KEY = "revocation_events";
+const REVOCATION_OPERATION_LOG_OBJECT_NAME = "gateway-key-revocation-operations";
+const REVOCATION_OPERATION_EVENTS_PREFIX = "revocation_operation:";
 
 export class GatewayKeyRevocationDurableObject {
   constructor(private readonly state: DurableObjectStateLike) {}
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.searchParams.get("kind") === "operation_events") {
+      if (request.method === "GET") {
+        const operationId = url.searchParams.get("operationId");
+
+        if (!operationId) {
+          return new Response("Missing operationId", { status: 400 });
+        }
+
+        const events = await readGatewayKeyRevocationOperationEvents(
+          this.state.storage,
+          operationId
+        );
+
+        if (events.length === 0) {
+          return new Response("Not found", { status: 404 });
+        }
+
+        return Response.json({
+          operationId,
+          events
+        });
+      }
+
+      if (request.method === "POST") {
+        await appendGatewayKeyRevocationOperationEvent(
+          this.state.storage,
+          createGatewayKeyAuditEvent(await request.json() as GatewayKeyAuditEvent)
+        );
+        return new Response(null, { status: 204 });
+      }
+
+      return new Response("Method not allowed", { status: 405 });
+    }
 
     if (request.method === "GET" && url.searchParams.get("kind") === "events") {
       const keyId = url.searchParams.get("keyId");
@@ -476,6 +513,66 @@ export async function getGatewayKeyRevocationEvents(
   }
 }
 
+export async function getGatewayKeyRevocationOperationEvents(
+  env: GatewayBindings,
+  operationId: string,
+  requestId: string
+): Promise<GatewayKeyAuditEvent[]> {
+  const namespace = env.AIRLOCK_GATEWAY_KEY_REVOCATION;
+
+  if (!namespace) {
+    return [];
+  }
+
+  const stub = namespace.get(namespace.idFromName(REVOCATION_OPERATION_LOG_OBJECT_NAME));
+  let response: Response;
+
+  try {
+    response = await stub.fetch(
+      buildGatewayKeyRevocationOperationEventsRequest(operationId)
+    );
+  } catch (cause) {
+    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
+      code: "gateway_key_revocation_unavailable",
+      category: "governance",
+      httpStatus: 503,
+      retryable: true,
+      requestId,
+      cause
+    });
+  }
+
+  if (response.status === 404) {
+    return [];
+  }
+
+  if (!response.ok) {
+    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
+      code: "gateway_key_revocation_unavailable",
+      category: "governance",
+      httpStatus: 503,
+      retryable: true,
+      requestId
+    });
+  }
+
+  try {
+    return parseGatewayKeyOperationEventsResponse(await response.json()).events;
+  } catch (cause) {
+    throw new GatewayError(
+      "Gateway key revocation subsystem returned an invalid response",
+      {
+        code: "gateway_key_revocation_invalid_response",
+        category: "governance",
+        httpStatus: 503,
+        retryable: true,
+        requestId,
+        cause
+      }
+    );
+  }
+}
+
 async function readGatewayKeyRevocationStateForKey(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
@@ -524,6 +621,16 @@ async function writeGatewayKeyRevocationStateForKey(
 ): Promise<GatewayKeyRevocationState> {
   const namespace = requireGatewayKeyRevocationNamespace(env, requestId);
   const stub = namespace.get(namespace.idFromName(gatewayApiKey.id));
+  const recordEvent = options?.recordEvent ?? true;
+  const ownership = recordEvent
+    ? options?.ownership ??
+      (await resolveGatewayKeyAuditOwnership(
+        env,
+        gatewayApiKey,
+        requestId
+      ))
+    : undefined;
+  const operationId = recordEvent ? options?.operationId ?? requestId : undefined;
   let response: Response;
 
   try {
@@ -535,21 +642,12 @@ async function writeGatewayKeyRevocationStateForKey(
         },
         body: JSON.stringify({
           keyId: gatewayApiKey.id,
-          recordEvent: options?.recordEvent ?? true,
+          recordEvent,
+          ...(operationId ? { operationId } : {}),
           ...(options?.reason ? { reason: options.reason } : {}),
           ...(options?.actor ? { actor: options.actor } : {}),
           ...(options?.actorSource ? { actorSource: options.actorSource } : {}),
-          ...((options?.recordEvent ?? true)
-            ? {
-                ownership:
-                  options?.ownership ??
-                  (await resolveGatewayKeyAuditOwnership(
-                    env,
-                    gatewayApiKey,
-                    requestId
-                  ))
-              }
-            : {})
+          ...(ownership ? { ownership } : {})
         } satisfies GatewayKeyRevocationWriteRequest)
       })
     );
@@ -574,7 +672,26 @@ async function writeGatewayKeyRevocationStateForKey(
     });
   }
 
-  return parseGatewayKeyRevocationState(await response.json());
+  const state = parseGatewayKeyRevocationState(await response.json());
+
+  if (recordEvent && ownership && operationId) {
+    await appendGatewayKeyRevocationOperationEventForKey(
+      env,
+      createGatewayKeyAuditEvent({
+        keyId: gatewayApiKey.id,
+        kind: revoked ? "revoked" : "unrevoked",
+        ownership,
+        occurredAt: state.updatedAt,
+        operationId,
+        ...(options?.reason ? { reason: options.reason } : {}),
+        ...(options?.actor ? { actor: options.actor } : {}),
+        ...(options?.actorSource ? { actorSource: options.actorSource } : {})
+      }),
+      requestId
+    );
+  }
+
+  return state;
 }
 
 function requireGatewayKeyRevocationNamespace(
@@ -667,6 +784,97 @@ async function appendGatewayKeyRevocationEvent(
   ].slice(-MAX_GATEWAY_KEY_AUDIT_EVENTS));
 }
 
+async function readGatewayKeyRevocationOperationEvents(
+  storage: DurableObjectStateLike["storage"],
+  operationId: string
+): Promise<GatewayKeyAuditEvent[]> {
+  const value = await storage.get<unknown>(
+    `${REVOCATION_OPERATION_EVENTS_PREFIX}${operationId}`
+  );
+
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error("Revocation operation events are invalid");
+  }
+
+  return value.map((event) => {
+    const parsedEvent = parseGatewayKeyOperationEventsResponse({
+      operationId,
+      events: [event]
+    }).events[0];
+
+    if (!parsedEvent) {
+      throw new Error("Revocation operation event is missing");
+    }
+
+    return createGatewayKeyAuditEvent(parsedEvent);
+  });
+}
+
+async function appendGatewayKeyRevocationOperationEvent(
+  storage: DurableObjectStateLike["storage"],
+  event: GatewayKeyAuditEvent
+): Promise<void> {
+  if (!event.operationId) {
+    return;
+  }
+
+  const events = await readGatewayKeyRevocationOperationEvents(
+    storage,
+    event.operationId
+  );
+
+  await storage.put(
+    `${REVOCATION_OPERATION_EVENTS_PREFIX}${event.operationId}`,
+    [...events, createGatewayKeyAuditEvent(event)].slice(-MAX_GATEWAY_KEY_AUDIT_EVENTS)
+  );
+}
+
+async function appendGatewayKeyRevocationOperationEventForKey(
+  env: GatewayBindings,
+  event: GatewayKeyAuditEvent,
+  requestId: string
+): Promise<void> {
+  if (!event.operationId) {
+    return;
+  }
+
+  const namespace = requireGatewayKeyRevocationNamespace(env, requestId);
+  const stub = namespace.get(namespace.idFromName(REVOCATION_OPERATION_LOG_OBJECT_NAME));
+
+  try {
+    const response = await stub.fetch(
+      buildGatewayKeyRevocationOperationEventAppendRequest(event)
+    );
+
+    if (!response.ok) {
+      throw new GatewayError("Gateway key revocation subsystem is unavailable", {
+        code: "gateway_key_revocation_unavailable",
+        category: "governance",
+        httpStatus: 503,
+        retryable: true,
+        requestId
+      });
+    }
+  } catch (cause) {
+    if (cause instanceof GatewayError) {
+      throw cause;
+    }
+
+    throw new GatewayError("Gateway key revocation subsystem is unavailable", {
+      code: "gateway_key_revocation_unavailable",
+      category: "governance",
+      httpStatus: 503,
+      retryable: true,
+      requestId,
+      cause
+    });
+  }
+}
+
 async function readGatewayKeyRevocationWriteRequest(
   request: Request
 ): Promise<GatewayKeyRevocationWriteRequest> {
@@ -686,6 +894,33 @@ function buildGatewayKeyRevocationEventsRequest(keyId: string): Request {
 
   return new Request(url, {
     method: "GET"
+  });
+}
+
+function buildGatewayKeyRevocationOperationEventsRequest(
+  operationId: string
+): Request {
+  const url = new URL("https://airlock.internal/gateway-key-revocation");
+  url.searchParams.set("kind", "operation_events");
+  url.searchParams.set("operationId", operationId);
+
+  return new Request(url, {
+    method: "GET"
+  });
+}
+
+function buildGatewayKeyRevocationOperationEventAppendRequest(
+  event: GatewayKeyAuditEvent
+): Request {
+  const url = new URL("https://airlock.internal/gateway-key-revocation");
+  url.searchParams.set("kind", "operation_events");
+
+  return new Request(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(event)
   });
 }
 

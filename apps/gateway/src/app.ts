@@ -79,6 +79,8 @@ export function createApp(options: CreateAppOptions = {}) {
     context.set("telemetrySink", options.telemetrySink);
     context.set("telemetryErrorEmitted", false);
     await next();
+    context.header("request-id", context.get("requestId"));
+    context.header("x-request-id", context.get("requestId"));
   });
 
   app.get("/healthz", handleHealth);

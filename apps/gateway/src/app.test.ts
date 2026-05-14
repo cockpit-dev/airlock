@@ -505,8 +505,22 @@ function createRevocationNamespace() {
         reason?: string;
         actor?: string;
         actorSource?: "payload" | "trusted_header";
+        operationId?: string;
       }>;
     }
+  >();
+  const operationEvents = new Map<
+    string,
+    Array<{
+      keyId: string;
+      kind: "revoked" | "unrevoked";
+      ownership: "configured" | "registry";
+      occurredAt: string;
+      reason?: string;
+      actor?: string;
+      actorSource?: "payload" | "trusted_header";
+      operationId?: string;
+    }>
   >();
 
   const namespace: DurableObjectNamespaceLike = {
@@ -526,6 +540,51 @@ function createRevocationNamespace() {
               events: []
             };
 
+          if (url.searchParams.get("kind") === "operation_events") {
+            if (method === "GET") {
+              const operationId = url.searchParams.get("operationId");
+
+              if (!operationId) {
+                return new Response("Missing operationId", { status: 400 });
+              }
+
+              const events = operationEvents.get(operationId) ?? [];
+
+              if (events.length === 0) {
+                return new Response("Not found", { status: 404 });
+              }
+
+              return Response.json({
+                operationId,
+                events
+              });
+            }
+
+            if (method === "POST") {
+              const body = (await request.json()) as {
+                keyId: string;
+                kind: "revoked" | "unrevoked";
+                ownership: "configured" | "registry";
+                occurredAt: string;
+                reason?: string;
+                actor?: string;
+                actorSource?: "payload" | "trusted_header";
+                operationId?: string;
+              };
+
+              if (body.operationId) {
+                operationEvents.set(body.operationId, [
+                  ...(operationEvents.get(body.operationId) ?? []),
+                  body
+                ]);
+              }
+
+              return new Response(null, { status: 204 });
+            }
+
+            return new Response("Method not allowed", { status: 405 });
+          }
+
           if (method === "GET" && url.searchParams.get("kind") === "events") {
             return Response.json({
               keyId: id.name,
@@ -544,6 +603,7 @@ function createRevocationNamespace() {
             const body = (await request.json()) as {
               keyId?: string;
               recordEvent?: boolean;
+              operationId?: string;
               ownership?: "configured" | "registry";
               reason?: string;
               actor?: string;
@@ -563,6 +623,7 @@ function createRevocationNamespace() {
                         kind: "revoked" as const,
                         ownership: body.ownership ?? "configured",
                         occurredAt,
+                        ...(body.operationId ? { operationId: body.operationId } : {}),
                         ...(body.reason ? { reason: body.reason } : {}),
                         ...(body.actor ? { actor: body.actor } : {}),
                         ...(body.actorSource ? { actorSource: body.actorSource } : {})
@@ -580,6 +641,7 @@ function createRevocationNamespace() {
             const body = (await request.json()) as {
               keyId?: string;
               recordEvent?: boolean;
+              operationId?: string;
               ownership?: "configured" | "registry";
               reason?: string;
               actor?: string;
@@ -599,6 +661,7 @@ function createRevocationNamespace() {
                         kind: "unrevoked" as const,
                         ownership: body.ownership ?? "configured",
                         occurredAt,
+                        ...(body.operationId ? { operationId: body.operationId } : {}),
                         ...(body.reason ? { reason: body.reason } : {}),
                         ...(body.actor ? { actor: body.actor } : {}),
                         ...(body.actorSource ? { actorSource: body.actorSource } : {})
@@ -9863,6 +9926,70 @@ describe("gateway app", () => {
         code: "gateway_key_not_found"
       }
     });
+  });
+
+  it("exposes single-key revocation operations through operation-level audit reads", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    const revokeResponse = await app.request(
+      "http://localhost/_airlock/keys/gak_1/revocation",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          reason: "incident containment",
+          actor: "ops@example.com"
+        })
+      },
+      bindings
+    );
+
+    expect(revokeResponse.status).toBe(200);
+    const operationId =
+      revokeResponse.headers.get("x-request-id") ??
+      revokeResponse.headers.get("request-id");
+
+    expect(operationId).toBeTruthy();
+
+    const operationEventsResponse = await app.request(
+      `http://localhost/_airlock/keys/operations/${operationId}/events`,
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(operationEventsResponse.status).toBe(200);
+    const operationEventsPayload = await readJson(operationEventsResponse);
+    expect(isGatewayKeyOperationEventsPayload(operationEventsPayload)).toBe(true);
+
+    if (!isGatewayKeyOperationEventsPayload(operationEventsPayload)) {
+      throw new Error("operation events response shape was invalid");
+    }
+
+    expect(operationEventsPayload.operationId).toBe(operationId);
+    expect(operationEventsPayload.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          keyId: "gak_1",
+          kind: "revoked",
+          operationId
+        })
+      ])
+    );
   });
 
   it("rejects mixed configured and registry-owned bulk rotates atomically", async () => {
