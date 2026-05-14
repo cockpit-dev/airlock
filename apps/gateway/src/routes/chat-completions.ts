@@ -43,36 +43,16 @@ import {
   emitGatewayRequestErrorTelemetry
 } from "../telemetry.js";
 import type { CreateAppOptions } from "../app.js";
+import { assertAllowedOpenAITopLevelFields } from "../openai-request-validation.js";
 
-const unsupportedOpenAIChatSemanticFields = [
-  "tools",
-  "tool_choice",
-  "response_format",
-  "parallel_tool_calls",
-  "modalities",
-  "audio"
+const allowedOpenAIChatTopLevelFields = [
+  "model",
+  "stream",
+  "max_tokens",
+  "max_completion_tokens",
+  "messages",
+  "airlock"
 ] as const;
-
-function assertSupportedOpenAIChatSemantics(
-  payload: unknown,
-  requestId: string
-) {
-  if (typeof payload !== "object" || payload === null) {
-    return;
-  }
-
-  for (const field of unsupportedOpenAIChatSemanticFields) {
-    if (field in payload) {
-      throw new GatewayError(`Unsupported OpenAI Chat semantic field: ${field}`, {
-        code: "request_unsupported_openai_semantics",
-        category: "request",
-        httpStatus: 400,
-        retryable: false,
-        requestId
-      });
-    }
-  }
-}
 
 export async function handleChatCompletions(
   context: Context<{
@@ -98,7 +78,12 @@ export async function handleChatCompletions(
   );
 
   const json: unknown = await context.req.json();
-  assertSupportedOpenAIChatSemantics(json, requestId);
+  assertAllowedOpenAITopLevelFields(
+    json,
+    requestId,
+    "OpenAI Chat",
+    allowedOpenAIChatTopLevelFields
+  );
   const parsed = openAIChatCompletionRequestSchema.parse(json);
   const route = resolveModelRoute(parsed.model, config.modelAliases, requestId);
   assertGatewayKeyAllowsRoute(gatewayApiKey, route, requestId);
