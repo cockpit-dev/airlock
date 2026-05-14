@@ -419,6 +419,51 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
     });
   });
 
+  it("encodes a tool_call_delta event into a tool_calls delta chunk", async () => {
+    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIChatStreamChunk(
+        {
+          type: "tool_call_delta",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          toolCallId: "call_123",
+          toolIndex: 0,
+          toolName: "lookup_weather",
+          argumentsDelta: "{\"city\":\"Shang"
+        },
+        "chatcmpl-stream-123"
+      )
+    ).toEqual({
+      id: "chatcmpl-stream-123",
+      object: "chat.completion.chunk",
+      created: 0,
+      model: "gpt-4.1-mini",
+      choices: [
+        {
+          index: 0,
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_123",
+                type: "function",
+                function: {
+                  name: "lookup_weather",
+                  arguments: "{\"city\":\"Shang"
+                }
+              }
+            ]
+          },
+          finish_reason: null
+        }
+      ]
+    });
+  });
+
   it("encodes a response_completed event into a finish chunk", async () => {
     const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
       "./openai-chat.js"
@@ -1104,16 +1149,18 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
     expect(
       encodeCanonicalToOpenAIResponsesStreamEvent(
         {
-          type: "response_completed",
+          type: "tool_call_delta",
           responseId: "resp_123",
           model: "gpt-4.1-mini",
-          finishReason: "tool_calls"
+          toolCallId: "call_123",
+          toolIndex: 0,
+          toolName: "lookup_weather",
+          argumentsDelta: "{\"city\":\"Shang"
         },
         {
           sequenceNumber: 5,
           outputIndex: 0,
-          contentIndex: 0,
-          outputText: ""
+          contentIndex: 0
         }
       )
     ).toEqual({
@@ -1124,27 +1171,65 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           output_index: 0,
           item: {
             type: "function_call",
-            call_id: "resp_123_tool_call_0",
-            name: "tool_call",
-            arguments: "{}",
+            call_id: "call_123",
+            name: "lookup_weather",
+            arguments: "{\"city\":\"Shang",
             status: "completed"
           }
         },
         {
-          type: "response.output_item.done",
+          type: "response.function_call_arguments.delta",
           sequence_number: 6,
+          item_id: "call_123",
+          output_index: 0,
+          delta: "{\"city\":\"Shang"
+        }
+      ],
+      nextSequenceNumber: 7
+    });
+
+    expect(
+      encodeCanonicalToOpenAIResponsesStreamEvent(
+        {
+          type: "response_completed",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          finishReason: "tool_calls"
+        },
+        {
+          sequenceNumber: 7,
+          outputIndex: 0,
+          contentIndex: 0,
+          outputText: "",
+          toolCallId: "call_123",
+          toolCallName: "lookup_weather",
+          toolCallArguments: "{\"city\":\"Shanghai\"}"
+        }
+      )
+    ).toEqual({
+      events: [
+        {
+          type: "response.function_call_arguments.done",
+          sequence_number: 7,
+          item_id: "call_123",
+          output_index: 0,
+          arguments: "{\"city\":\"Shanghai\"}"
+        },
+        {
+          type: "response.output_item.done",
+          sequence_number: 8,
           output_index: 0,
           item: {
             type: "function_call",
-            call_id: "resp_123_tool_call_0",
-            name: "tool_call",
-            arguments: "{}",
+            call_id: "call_123",
+            name: "lookup_weather",
+            arguments: "{\"city\":\"Shanghai\"}",
             status: "completed"
           }
         },
         {
           type: "response.completed",
-          sequence_number: 7,
+          sequence_number: 9,
           response: {
             id: "resp_123",
             object: "response",
@@ -1154,9 +1239,9 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
             output: [
               {
                 type: "function_call",
-                call_id: "resp_123_tool_call_0",
-                name: "tool_call",
-                arguments: "{}",
+                call_id: "call_123",
+                name: "lookup_weather",
+                arguments: "{\"city\":\"Shanghai\"}",
                 status: "completed"
               }
             ],
@@ -1166,7 +1251,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           }
         }
       ],
-      nextSequenceNumber: 8
+      nextSequenceNumber: 10
     });
   });
 
@@ -1490,7 +1575,7 @@ describe("encodeCanonicalToAnthropicMessagesResponse", () => {
 });
 
 describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
-  it("encodes a response_started event into message_start and content_block_start events", async () => {
+  it("encodes a response_started event into a message_start event", async () => {
     const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
       "./openai-chat.js"
     );
@@ -1510,22 +1595,19 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
           role: "assistant",
           model: "claude-sonnet-4-5"
         }
-      },
-      {
-        type: "content_block_start",
-        index: 0,
-        content_block: {
-          type: "text",
-          text: ""
-        }
       }
     ]);
   });
 
-  it("encodes an output_text_delta event into a content_block_delta event", async () => {
+  it("encodes a first output_text_delta event into content_block_start and content_block_delta events", async () => {
     const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
       "./openai-chat.js"
     );
+    const state = {
+      startedTextBlock: false,
+      startedToolBlocks: [],
+      pendingToolStops: []
+    };
 
     expect(
       encodeCanonicalToAnthropicMessagesStreamEvents({
@@ -1533,8 +1615,16 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
         responseId: "msg_123",
         model: "claude-sonnet-4-5",
         delta: "hel"
-      })
+      }, state)
     ).toEqual([
+      {
+        type: "content_block_start",
+        index: 0,
+        content_block: {
+          type: "text",
+          text: ""
+        }
+      },
       {
         type: "content_block_delta",
         index: 0,
@@ -1546,10 +1636,57 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
     ]);
   });
 
+  it("encodes a tool_call_delta event into tool_use start and input_json_delta events", async () => {
+    const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
+      "./openai-chat.js"
+    );
+    const state = {
+      startedTextBlock: false,
+      startedToolBlocks: [],
+      pendingToolStops: []
+    };
+
+    expect(
+      encodeCanonicalToAnthropicMessagesStreamEvents({
+        type: "tool_call_delta",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        toolCallId: "call_123",
+        toolIndex: 0,
+        toolName: "lookup_weather",
+        argumentsDelta: "{\"city\":\"Shang"
+      }, state)
+    ).toEqual([
+      {
+        type: "content_block_start",
+        index: 0,
+        content_block: {
+          type: "tool_use",
+          id: "call_123",
+          name: "lookup_weather",
+          input: {}
+        }
+      },
+      {
+        type: "content_block_delta",
+        index: 0,
+        delta: {
+          type: "input_json_delta",
+          partial_json: "{\"city\":\"Shang"
+        }
+      }
+    ]);
+  });
+
   it("encodes a response_completed event into content_block_stop, message_delta, and message_stop events", async () => {
     const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
       "./openai-chat.js"
     );
+    const state = {
+      startedTextBlock: true,
+      startedToolBlocks: [],
+      pendingToolStops: []
+    };
 
     expect(
       encodeCanonicalToAnthropicMessagesStreamEvents({
@@ -1562,7 +1699,7 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
           outputTokens: 8,
           totalTokens: 20
         }
-      })
+      }, state)
     ).toEqual([
       {
         type: "content_block_stop",
@@ -1589,6 +1726,11 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
     const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
       "./openai-chat.js"
     );
+    const state = {
+      startedTextBlock: true,
+      startedToolBlocks: [],
+      pendingToolStops: []
+    };
 
     expect(
       encodeCanonicalToAnthropicMessagesStreamEvents({
@@ -1596,7 +1738,7 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
         responseId: "msg_123",
         model: "claude-sonnet-4-5",
         finishReason: "max_tokens"
-      })
+      }, state)
     ).toEqual([
       {
         type: "content_block_stop",
@@ -1606,6 +1748,41 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
         type: "message_delta",
         delta: {
           stop_reason: "max_tokens",
+          stop_sequence: null
+        }
+      },
+      {
+        type: "message_stop"
+      }
+    ]);
+  });
+
+  it("encodes a tool_calls completion event after a tool block into tool stop and tool_use stop reason", async () => {
+    const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
+      "./openai-chat.js"
+    );
+    const state = {
+      startedTextBlock: false,
+      startedToolBlocks: [0],
+      pendingToolStops: [0]
+    };
+
+    expect(
+      encodeCanonicalToAnthropicMessagesStreamEvents({
+        type: "response_completed",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        finishReason: "tool_calls"
+      }, state)
+    ).toEqual([
+      {
+        type: "content_block_stop",
+        index: 0
+      },
+      {
+        type: "message_delta",
+        delta: {
+          stop_reason: "tool_use",
           stop_sequence: null
         }
       },

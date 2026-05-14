@@ -74,18 +74,7 @@ export function assertSupportedAnthropicToolsSemantics(
     return;
   }
 
-  if ("stream" in payload && payload.stream === true) {
-    throw new GatewayError(
-      "Unsupported Anthropic tools semantics: streaming tool calls are not yet supported",
-      {
-        code: "request_unsupported_anthropic_semantics",
-        category: "request",
-        httpStatus: 400,
-        retryable: false,
-        requestId
-      }
-    );
-  }
+  void requestId;
 }
 
 export function assertAnthropicForcedToolChoiceMatchesDeclaredTools(

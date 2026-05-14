@@ -141,6 +141,11 @@ export async function handleMessages(
 
   if (canonicalRequest.stream) {
     const encoder = new TextEncoder();
+    const anthropicStreamEncodingState = {
+      startedTextBlock: false,
+      startedToolBlocks: [] as number[],
+      pendingToolStops: [] as number[]
+    };
     let streamUsage:
       | {
           inputTokens: number;
@@ -219,7 +224,8 @@ export async function handleMessages(
       }
 
       for (const anthropicEvent of encodeCanonicalToAnthropicMessagesStreamEvents(
-        event
+        event,
+        anthropicStreamEncodingState
       )) {
         controller.enqueue(
           encoder.encode(

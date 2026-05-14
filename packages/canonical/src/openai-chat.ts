@@ -69,6 +69,15 @@ interface OpenAIResponsesEventEncodingState {
   outputIndex: number;
   contentIndex: number;
   outputText?: string;
+  toolCallId?: string;
+  toolCallName?: string;
+  toolCallArguments?: string;
+}
+
+interface AnthropicMessagesStreamEncodingState {
+  startedTextBlock: boolean;
+  startedToolBlocks: number[];
+  pendingToolStops: number[];
 }
 
 interface OpenAIResponsesEncodedEventBatch {
@@ -181,13 +190,16 @@ function createOpenAIResponsesOutputMessage(
 }
 
 function createOpenAIResponsesFunctionCallItem(
-  responseId: string
+  responseId: string,
+  toolCallId?: string,
+  toolCallName?: string,
+  argumentsValue?: string
 ) {
   return {
     type: "function_call" as const,
-    call_id: `${responseId}_tool_call_0`,
-    name: "tool_call",
-    arguments: "{}",
+    call_id: toolCallId ?? `${responseId}_tool_call_0`,
+    name: toolCallName ?? "tool_call",
+    arguments: argumentsValue ?? "{}",
     status: "completed" as const
   };
 }
@@ -562,6 +574,34 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
     };
   }
 
+  if (event.type === "tool_call_delta") {
+    return {
+      id: streamId,
+      object: "chat.completion.chunk" as const,
+      created: 0,
+      model: event.model,
+      choices: [
+        {
+          index: 0,
+          delta: {
+            tool_calls: [
+              {
+                index: event.toolIndex,
+                ...(event.toolCallId ? { id: event.toolCallId } : {}),
+                type: "function" as const,
+                function: {
+                  ...(event.toolName ? { name: event.toolName } : {}),
+                  arguments: event.argumentsDelta
+                }
+              }
+            ]
+          },
+          finish_reason: null
+        }
+      ]
+    };
+  }
+
   return {
     id: streamId,
     object: "chat.completion.chunk" as const,
@@ -724,6 +764,49 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
     };
   }
 
+  if (event.type === "tool_call_delta") {
+    const functionCallItem = createOpenAIResponsesFunctionCallItem(
+      event.responseId,
+      event.toolCallId,
+      event.toolName ?? state.toolCallName,
+      (state.toolCallArguments ?? "") + event.argumentsDelta
+    );
+
+    if (!state.toolCallId) {
+      return {
+        events: [
+          {
+            type: "response.output_item.added" as const,
+            sequence_number: state.sequenceNumber,
+            output_index: state.outputIndex,
+            item: functionCallItem
+          },
+          {
+            type: "response.function_call_arguments.delta" as const,
+            sequence_number: state.sequenceNumber + 1,
+            item_id: functionCallItem.call_id,
+            output_index: state.outputIndex,
+            delta: event.argumentsDelta
+          }
+        ],
+        nextSequenceNumber: state.sequenceNumber + 2
+      };
+    }
+
+    return {
+      events: [
+        {
+          type: "response.function_call_arguments.delta" as const,
+          sequence_number: state.sequenceNumber,
+          item_id: functionCallItem.call_id,
+          output_index: state.outputIndex,
+          delta: event.argumentsDelta
+        }
+      ],
+      nextSequenceNumber: state.sequenceNumber + 1
+    };
+  }
+
   const outputText = state.outputText ?? "";
   const responseStatus = encodeCanonicalResponsesStatus(event.finishReason);
   const isToolCallCompletion = event.finishReason === "tool_calls";
@@ -742,7 +825,14 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
         }
       : {}),
     output: isToolCallCompletion
-      ? [createOpenAIResponsesFunctionCallItem(event.responseId)]
+      ? [
+          createOpenAIResponsesFunctionCallItem(
+            event.responseId,
+            state.toolCallId,
+            state.toolCallName,
+            state.toolCallArguments
+          )
+        ]
       : [
           createOpenAIResponsesOutputMessage(
             event.responseId,
@@ -759,16 +849,20 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
 
   if (isToolCallCompletion) {
     const functionCallItem = createOpenAIResponsesFunctionCallItem(
-      event.responseId
+      event.responseId,
+      state.toolCallId,
+      state.toolCallName,
+      state.toolCallArguments
     );
 
     return {
       events: [
         {
-          type: "response.output_item.added" as const,
+          type: "response.function_call_arguments.done" as const,
           sequence_number: state.sequenceNumber,
+          item_id: functionCallItem.call_id,
           output_index: state.outputIndex,
-          item: functionCallItem
+          arguments: functionCallItem.arguments
         },
         {
           type: "response.output_item.done" as const,
@@ -859,7 +953,12 @@ export function encodeCanonicalToAnthropicMessagesResponse(
 }
 
 export function encodeCanonicalToAnthropicMessagesStreamEvents(
-  event: CanonicalStreamEvent
+  event: CanonicalStreamEvent,
+  state: AnthropicMessagesStreamEncodingState = {
+    startedTextBlock: false,
+    startedToolBlocks: [],
+    pendingToolStops: []
+  }
 ) {
   if (event.type === "response_started") {
     return [
@@ -871,19 +970,33 @@ export function encodeCanonicalToAnthropicMessagesStreamEvents(
           role: "assistant" as const,
           model: event.model
         }
-      },
-      {
-        type: "content_block_start" as const,
-        index: 0,
-        content_block: {
-          type: "text" as const,
-          text: ""
-        }
       }
     ];
   }
 
   if (event.type === "output_text_delta") {
+    if (!state.startedTextBlock) {
+      state.startedTextBlock = true;
+      return [
+        {
+          type: "content_block_start" as const,
+          index: 0,
+          content_block: {
+            type: "text" as const,
+            text: ""
+          }
+        },
+        {
+          type: "content_block_delta" as const,
+          index: 0,
+          delta: {
+            type: "text_delta" as const,
+            text: event.delta
+          }
+        }
+      ];
+    }
+
     return [
       {
         type: "content_block_delta" as const,
@@ -896,11 +1009,66 @@ export function encodeCanonicalToAnthropicMessagesStreamEvents(
     ];
   }
 
-  return [
-    {
+  if (event.type === "tool_call_delta") {
+    const toolIndex = event.toolIndex;
+    const toolBlockIndex = toolIndex;
+    const encodedToolStartNeeded = !state.startedToolBlocks.includes(toolBlockIndex);
+
+    if (encodedToolStartNeeded) {
+      state.startedToolBlocks.push(toolBlockIndex);
+    }
+
+    if (!state.pendingToolStops.includes(toolBlockIndex)) {
+      state.pendingToolStops.push(toolBlockIndex);
+    }
+
+    const events = [];
+
+    if (encodedToolStartNeeded) {
+      events.push({
+        type: "content_block_start" as const,
+        index: toolBlockIndex,
+        content_block: {
+          type: "tool_use" as const,
+          id: event.toolCallId,
+          name: event.toolName ?? "tool_call",
+          input: {}
+        }
+      });
+    }
+
+    events.push({
+      type: "content_block_delta" as const,
+      index: toolBlockIndex,
+      delta: {
+        type: "input_json_delta" as const,
+        partial_json: event.argumentsDelta
+      }
+    });
+
+    return events;
+  }
+
+  const stopEvents = [];
+
+  if (state.startedTextBlock) {
+    stopEvents.push({
       type: "content_block_stop" as const,
       index: 0
-    },
+    });
+    state.startedTextBlock = false;
+  }
+
+  for (const pendingToolStop of state.pendingToolStops) {
+    stopEvents.push({
+      type: "content_block_stop" as const,
+      index: pendingToolStop
+    });
+  }
+  state.pendingToolStops = [];
+
+  return [
+    ...stopEvents,
     {
       type: "message_delta" as const,
       delta: {

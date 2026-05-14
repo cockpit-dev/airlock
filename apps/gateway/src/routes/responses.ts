@@ -148,6 +148,9 @@ export async function handleResponses(
     const encoder = new TextEncoder();
     let responsesSequenceNumber = 0;
     let accumulatedOutputText = "";
+    let streamedToolCallId: string | undefined;
+    let streamedToolCallName: string | undefined;
+    let accumulatedToolArguments = "";
     let streamUsage:
       | {
           inputTokens: number;
@@ -229,10 +232,21 @@ export async function handleResponses(
         accumulatedOutputText += event.delta;
       }
 
+      if (event.type === "tool_call_delta") {
+        streamedToolCallId = event.toolCallId;
+        streamedToolCallName = event.toolName ?? streamedToolCallName;
+        accumulatedToolArguments += event.argumentsDelta;
+      }
+
       const encodedBatch = encodeCanonicalToOpenAIResponsesStreamEvent(event, {
         sequenceNumber: responsesSequenceNumber,
         outputIndex: 0,
         contentIndex: 0,
+        ...(streamedToolCallId ? { toolCallId: streamedToolCallId } : {}),
+        ...(streamedToolCallName ? { toolCallName: streamedToolCallName } : {}),
+        ...(streamedToolCallId
+          ? { toolCallArguments: accumulatedToolArguments }
+          : {}),
         ...(event.type === "response_completed"
           ? { outputText: accumulatedOutputText }
           : {})

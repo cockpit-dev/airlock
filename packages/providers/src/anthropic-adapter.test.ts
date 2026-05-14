@@ -996,7 +996,7 @@ describe("AnthropicProviderAdapter", () => {
     ]);
   });
 
-  it("parses upstream streamed anthropic tool_use into a tool_calls completion event", async () => {
+  it("parses upstream streamed anthropic tool_use into tool_call_delta events and a tool_calls completion event", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -1005,6 +1005,8 @@ describe("AnthropicProviderAdapter", () => {
             [
               'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-sonnet-4-5"}}\n\n',
               'event: content_block_start\ndata: {"index":0,"content_block":{"type":"tool_use","id":"call_123","name":"lookup_weather","input":{}}}\n\n',
+              'event: content_block_delta\ndata: {"index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Shang"}}\n\n',
+              'event: content_block_delta\ndata: {"index":0,"delta":{"type":"input_json_delta","partial_json":"hai\\"}"}}\n\n',
               'event: message_delta\ndata: {"delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":14,"output_tokens":9}}\n\n',
               "event: message_stop\ndata: {}\n\n"
             ].join("")
@@ -1055,6 +1057,24 @@ describe("AnthropicProviderAdapter", () => {
         type: "response_started",
         responseId: "msg_123",
         model: "claude-sonnet-4-5"
+      },
+      {
+        type: "tool_call_delta",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        toolCallId: "call_123",
+        toolIndex: 0,
+        toolName: "lookup_weather",
+        argumentsDelta: "{\"city\":\"Shang"
+      },
+      {
+        type: "tool_call_delta",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        toolCallId: "call_123",
+        toolIndex: 0,
+        toolName: "lookup_weather",
+        argumentsDelta: "hai\"}"
       },
       {
         type: "response_completed",

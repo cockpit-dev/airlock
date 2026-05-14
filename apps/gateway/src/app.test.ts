@@ -3640,7 +3640,7 @@ describe("gateway app", () => {
     await expect(readText(response)).resolves.toContain("data: [DONE]");
   });
 
-  it("streams chat tool calls through openai and terminates with tool_calls", async () => {
+  it("streams chat tool calls through openai with tool argument deltas and terminates with tool_calls", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -3701,11 +3701,13 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const body = await readText(response);
 
+    expect(body).toContain('"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"lookup_weather","arguments":"{\\"city\\":\\"Shang"}}]');
+    expect(body).toContain('"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"lookup_weather","arguments":"hai\\"}"}}]');
     expect(body).toContain('"finish_reason":"tool_calls"');
     expect(body).toContain("data: [DONE]");
   });
 
-  it("streams chat tool calls through anthropic and terminates with tool_calls", async () => {
+  it("streams chat tool calls through anthropic with tool argument deltas and terminates with tool_calls", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -3716,6 +3718,8 @@ describe("gateway app", () => {
                 [
                   'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-sonnet-4-5"}}\n\n',
                   'event: content_block_start\ndata: {"index":0,"content_block":{"type":"tool_use","id":"toolu_123","name":"lookup_weather","input":{}}}\n\n',
+                  'event: content_block_delta\ndata: {"index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Shang"}}\n\n',
+                  'event: content_block_delta\ndata: {"index":0,"delta":{"type":"input_json_delta","partial_json":"hai\\"}"}}\n\n',
                   'event: message_delta\ndata: {"delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":14,"output_tokens":9}}\n\n',
                   "event: message_stop\ndata: {}\n\n"
                 ].join("")
@@ -3766,6 +3770,8 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const body = await readText(response);
 
+    expect(body).toContain('"tool_calls":[{"index":0,"id":"toolu_123","type":"function","function":{"name":"lookup_weather","arguments":"{\\"city\\":\\"Shang"}}]');
+    expect(body).toContain('"tool_calls":[{"index":0,"id":"toolu_123","type":"function","function":{"name":"lookup_weather","arguments":"hai\\"}"}}]');
     expect(body).toContain('"finish_reason":"tool_calls"');
     expect(body).toContain("data: [DONE]");
   });
@@ -15895,7 +15901,7 @@ describe("gateway app", () => {
     await expect(readText(response)).resolves.toContain("data: [DONE]");
   });
 
-  it("streams responses tool calls through anthropic and emits function_call output items", async () => {
+  it("streams responses tool calls through anthropic and emits function_call argument delta events", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -15906,6 +15912,8 @@ describe("gateway app", () => {
                 [
                   'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-sonnet-4-5"}}\n\n',
                   'event: content_block_start\ndata: {"index":0,"content_block":{"type":"tool_use","id":"call_123","name":"lookup_weather","input":{}}}\n\n',
+                  'event: content_block_delta\ndata: {"index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Shang"}}\n\n',
+                  'event: content_block_delta\ndata: {"index":0,"delta":{"type":"input_json_delta","partial_json":"hai\\"}"}}\n\n',
                   'event: message_delta\ndata: {"delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":14,"output_tokens":9}}\n\n',
                   "event: message_stop\ndata: {}\n\n"
                 ].join("")
@@ -15956,6 +15964,10 @@ describe("gateway app", () => {
 
     expect(body).toContain('"type":"response.output_item.added"');
     expect(body).toContain('"type":"function_call"');
+    expect(body).toContain('"type":"response.function_call_arguments.delta"');
+    expect(body).toContain('"delta":"{\\"city\\":\\"Shang"');
+    expect(body).toContain('"delta":"hai\\"}"');
+    expect(body).toContain('"type":"response.function_call_arguments.done"');
     expect(body).toContain('"type":"response.output_item.done"');
     expect(body).toContain('"type":"response.completed"');
     expect(body).toContain("data: [DONE]");
@@ -16417,7 +16429,7 @@ describe("gateway app", () => {
     });
   });
 
-  it("streams anthropic messages events for /v1/messages", async () => {
+  it("streams anthropic messages tool_use events for /v1/messages", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi.fn().mockResolvedValueOnce(
       new Response(
@@ -16427,9 +16439,10 @@ describe("gateway app", () => {
               encoder.encode(
                 [
                   'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-sonnet-4-5"}}\n\n',
-                  'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"hel"}}\n\n',
-                  'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"lo"}}\n\n',
-                  'event: message_delta\ndata: {"delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":12,"output_tokens":8}}\n\n',
+                  'event: content_block_start\ndata: {"index":0,"content_block":{"type":"tool_use","id":"call_123","name":"lookup_weather","input":{}}}\n\n',
+                  'event: content_block_delta\ndata: {"index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Shang"}}\n\n',
+                  'event: content_block_delta\ndata: {"index":0,"delta":{"type":"input_json_delta","partial_json":"hai\\"}"}}\n\n',
+                  'event: message_delta\ndata: {"delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":12,"output_tokens":8}}\n\n',
                   "event: message_stop\ndata: {}\n\n"
                 ].join("")
               )
@@ -16460,10 +16473,21 @@ describe("gateway app", () => {
           model: "claude-sonnet-4-5",
           max_tokens: 256,
           stream: true,
+          tool_choice: {
+            type: "auto"
+          },
+          tools: [
+            {
+              name: "lookup_weather",
+              input_schema: {
+                type: "object"
+              }
+            }
+          ],
           messages: [
             {
               role: "user",
-              content: "hi"
+              content: "Weather in Shanghai?"
             }
           ]
         })
@@ -16481,6 +16505,10 @@ describe("gateway app", () => {
     expect(body).toContain("event: content_block_stop");
     expect(body).toContain("event: message_delta");
     expect(body).toContain("event: message_stop");
+    expect(body).toContain('"type":"tool_use"');
+    expect(body).toContain('"partial_json":"{\\"city\\":\\"Shang"');
+    expect(body).toContain('"partial_json":"hai\\"}"');
+    expect(body).toContain('"stop_reason":"tool_use"');
   });
 
   it("applies request-scoped shaping to anthropic messages requests", async () => {
@@ -17106,56 +17134,6 @@ describe("gateway app", () => {
           text: "The temperature is 26C."
         }
       ]
-    });
-  });
-
-  it("rejects streaming anthropic messages requests that include tools", async () => {
-    const app = createApp({ fetcher: vi.fn() });
-
-    const response = await app.request(
-      "http://localhost/v1/messages",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: "Bearer gateway-secret"
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-5",
-          max_tokens: 256,
-          stream: true,
-          tool_choice: {
-            type: "auto"
-          },
-          tools: [
-            {
-              name: "lookup_weather",
-              input_schema: {
-                type: "object"
-              }
-            }
-          ],
-          messages: [
-            {
-              role: "user",
-              content: "Weather in Shanghai?"
-            }
-          ]
-        })
-      },
-      createBindings()
-    );
-
-    expect(response.status).toBe(400);
-    const body = await readJson(response);
-
-    expect(body).toMatchObject({
-      type: "error",
-      error: {
-        type: "request",
-        message:
-          "Unsupported Anthropic tools semantics: streaming tool calls are not yet supported"
-      }
     });
   });
 

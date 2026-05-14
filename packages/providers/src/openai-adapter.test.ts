@@ -932,7 +932,7 @@ describe("OpenAIProviderAdapter", () => {
     ]);
   });
 
-  it("parses upstream streamed chat tool calls into a tool_calls completion event", async () => {
+  it("parses upstream streamed chat tool calls into tool_call_delta events and a tool_calls completion event", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -991,6 +991,24 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_started",
         responseId: "chatcmpl_123",
         model: "gpt-4.1-mini"
+      },
+      {
+        type: "tool_call_delta",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini",
+        toolCallId: "call_123",
+        toolIndex: 0,
+        toolName: "lookup_weather",
+        argumentsDelta: "{\"city\":\"Shang"
+      },
+      {
+        type: "tool_call_delta",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini",
+        toolCallId: "call_123",
+        toolIndex: 0,
+        toolName: "lookup_weather",
+        argumentsDelta: "hai\"}"
       },
       {
         type: "response_completed",

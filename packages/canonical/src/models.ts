@@ -74,6 +74,15 @@ export type CanonicalStreamEvent =
       model: string;
     }
   | {
+      type: "tool_call_delta";
+      responseId: string;
+      model: string;
+      toolCallId: string;
+      toolIndex: number;
+      toolName?: string;
+      argumentsDelta: string;
+    }
+  | {
       type: "output_text_delta";
       responseId: string;
       model: string;

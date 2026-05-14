@@ -534,6 +534,13 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
           totalTokens: number;
         }
       | undefined;
+    const streamedToolCalls = new Map<
+      number,
+      {
+        id: string;
+        name: string;
+      }
+    >();
 
     try {
       while (true) {
@@ -601,8 +608,14 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
 
           if (currentEventType === "content_block_delta") {
             const delta = payload.delta as
-              | { type?: string; text?: string }
+              | {
+                  type?: string;
+                  text?: string;
+                  partial_json?: string;
+                }
               | undefined;
+            const index =
+              typeof payload.index === "number" ? payload.index : undefined;
 
             if (delta?.type === "text_delta" && delta.text) {
               yield {
@@ -611,6 +624,51 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                 model: activeModel,
                 delta: delta.text
               };
+            }
+
+            if (
+              delta?.type === "input_json_delta" &&
+              delta.partial_json !== undefined &&
+              index !== undefined
+            ) {
+              const toolCall = streamedToolCalls.get(index);
+
+              if (toolCall) {
+                yield {
+                  type: "tool_call_delta",
+                  responseId: activeResponseId,
+                  model: activeModel,
+                  toolCallId: toolCall.id,
+                  toolIndex: index,
+                  toolName: toolCall.name,
+                  argumentsDelta: delta.partial_json
+                };
+              }
+            }
+            continue;
+          }
+
+          if (currentEventType === "content_block_start") {
+            const index =
+              typeof payload.index === "number" ? payload.index : undefined;
+            const contentBlock = payload.content_block as
+              | {
+                  type?: string;
+                  id?: string;
+                  name?: string;
+                }
+              | undefined;
+
+            if (
+              index !== undefined &&
+              contentBlock?.type === "tool_use" &&
+              typeof contentBlock.id === "string" &&
+              typeof contentBlock.name === "string"
+            ) {
+              streamedToolCalls.set(index, {
+                id: contentBlock.id,
+                name: contentBlock.name
+              });
             }
             continue;
           }

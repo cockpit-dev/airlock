@@ -540,6 +540,13 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     const decoder = new TextDecoder();
     let buffer = "";
     let hasStarted = false;
+    const streamedToolCalls = new Map<
+      number,
+      {
+        id: string;
+        name?: string;
+      }
+    >();
 
     try {
       while (true) {
@@ -587,6 +594,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 delta?: {
                   role?: "assistant";
                   content?: string;
+                  tool_calls?: Array<{
+                    index?: number;
+                    id?: string;
+                    type?: "function";
+                    function?: {
+                      name?: string;
+                      arguments?: string;
+                    };
+                  }>;
                 };
                 finish_reason?: "stop" | "length" | "tool_calls" | null;
               }>;
@@ -616,6 +632,35 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 model,
                 delta: choice.delta.content
               };
+            }
+
+            for (const toolCallDelta of choice?.delta?.tool_calls ?? []) {
+              const toolIndex = toolCallDelta.index ?? 0;
+              const currentTool = streamedToolCalls.get(toolIndex) ?? {
+                id: toolCallDelta.id ?? `${responseId}_tool_call_${toolIndex}`
+              };
+
+              if (toolCallDelta.id) {
+                currentTool.id = toolCallDelta.id;
+              }
+
+              if (toolCallDelta.function?.name) {
+                currentTool.name = toolCallDelta.function.name;
+              }
+
+              streamedToolCalls.set(toolIndex, currentTool);
+
+              if (toolCallDelta.function?.arguments !== undefined) {
+                yield {
+                  type: "tool_call_delta",
+                  responseId,
+                  model,
+                  toolCallId: currentTool.id,
+                  toolIndex,
+                  ...(currentTool.name ? { toolName: currentTool.name } : {}),
+                  argumentsDelta: toolCallDelta.function.arguments
+                };
+              }
             }
 
             if (
