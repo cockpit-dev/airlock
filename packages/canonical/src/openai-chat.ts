@@ -891,9 +891,44 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
               outputIndex: state.outputIndex
             }
           ];
+    const textCompletionEvents =
+      outputText.length > 0 && state.startedTextOutput
+        ? [
+            {
+              type: "response.output_text.done" as const,
+              sequence_number: state.sequenceNumber,
+              item_id: itemId,
+              output_index: 0,
+              content_index: state.contentIndex,
+              text: outputText,
+              logprobs: []
+            },
+            {
+              type: "response.content_part.done" as const,
+              sequence_number: state.sequenceNumber + 1,
+              item_id: itemId,
+              output_index: 0,
+              content_index: state.contentIndex,
+              part: createOpenAIResponsesOutputTextPart(outputText)
+            },
+            {
+              type: "response.output_item.done" as const,
+              sequence_number: state.sequenceNumber + 2,
+              output_index: 0,
+              item: createOpenAIResponsesOutputMessage(
+                event.responseId,
+                outputText,
+                "completed",
+                true
+              )
+            }
+          ]
+        : [];
+    const toolSequenceStart = state.sequenceNumber + textCompletionEvents.length;
 
     return {
       events: [
+        ...textCompletionEvents,
         ...completedToolCalls.flatMap((toolCall, index) => {
           const functionCallItem = createOpenAIResponsesFunctionCallItem(
             event.responseId,
@@ -901,7 +936,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
             toolCall.toolCallName,
             toolCall.toolCallArguments
           );
-          const eventSequenceBase = state.sequenceNumber + index * 2;
+          const eventSequenceBase = toolSequenceStart + index * 2;
 
           return [
             {
@@ -922,22 +957,34 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
         {
           type: "response.completed" as const,
           sequence_number:
-            state.sequenceNumber + completedToolCalls.length * 2,
+            toolSequenceStart + completedToolCalls.length * 2,
           response: {
             ...completedResponse,
-            output: completedToolCalls.map((toolCall) => {
-              return createOpenAIResponsesFunctionCallItem(
-                event.responseId,
-                toolCall.toolCallId,
-                toolCall.toolCallName,
-                toolCall.toolCallArguments
-              );
-            })
+            output: [
+              ...(outputText.length > 0
+                ? [
+                    createOpenAIResponsesOutputMessage(
+                      event.responseId,
+                      outputText,
+                      "completed",
+                      true
+                    )
+                  ]
+                : []),
+              ...completedToolCalls.map((toolCall) => {
+                return createOpenAIResponsesFunctionCallItem(
+                  event.responseId,
+                  toolCall.toolCallId,
+                  toolCall.toolCallName,
+                  toolCall.toolCallArguments
+                );
+              })
+            ]
           }
         }
       ],
       nextSequenceNumber:
-        state.sequenceNumber + completedToolCalls.length * 2 + 1
+        toolSequenceStart + completedToolCalls.length * 2 + 1
     };
   }
 

@@ -16136,6 +16136,77 @@ describe("gateway app", () => {
     expect(body).toContain("data: [DONE]");
   });
 
+  it("preserves text and tool output items in mixed responses streaming", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"Let me check that."},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_123","type":"function","function":{"name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}"}}]},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "Weather in Shanghai?",
+          stream: true,
+          tool_choice: "auto",
+          tools: [
+            {
+              type: "function",
+              name: "lookup_weather",
+              parameters: {
+                type: "object"
+              }
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const body = await readText(response);
+
+    expect(body).toContain('"type":"response.output_text.done"');
+    expect(body).toContain('"item_id":"chatcmpl_123_output_0"');
+    expect(body).toContain('"output_index":0');
+    expect(body).toContain('"text":"Let me check that."');
+    expect(body).toContain('"type":"response.function_call_arguments.done"');
+    expect(body).toContain('"item_id":"call_123"');
+    expect(body).toContain('"output_index":1');
+    expect(body).toContain('"output":[{"id":"chatcmpl_123_output_0","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Let me check that.","annotations":[]}]},{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"}]');
+    expect(body).toContain("data: [DONE]");
+  });
+
   it("rejects unsupported responses semantics like text config", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

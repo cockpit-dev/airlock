@@ -1482,6 +1482,136 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
     });
   });
 
+  it("keeps text and tool output items distinct in mixed responses streaming completion", async () => {
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIResponsesStreamEvent(
+        {
+          type: "response_completed",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          finishReason: "tool_calls"
+        },
+        {
+          sequenceNumber: 17,
+          outputIndex: 1,
+          contentIndex: 0,
+          outputText: "Let me check that.",
+          startedTextOutput: true,
+          toolCalls: [
+            {
+              toolCallId: "call_123",
+              toolCallName: "lookup_weather",
+              toolCallArguments: "{\"city\":\"Shanghai\"}",
+              outputIndex: 1
+            }
+          ]
+        }
+      )
+    ).toEqual({
+      events: [
+        {
+          type: "response.output_text.done",
+          sequence_number: 17,
+          item_id: "resp_123_output_0",
+          output_index: 0,
+          content_index: 0,
+          text: "Let me check that.",
+          logprobs: []
+        },
+        {
+          type: "response.content_part.done",
+          sequence_number: 18,
+          item_id: "resp_123_output_0",
+          output_index: 0,
+          content_index: 0,
+          part: {
+            type: "output_text",
+            text: "Let me check that.",
+            annotations: []
+          }
+        },
+        {
+          type: "response.output_item.done",
+          sequence_number: 19,
+          output_index: 0,
+          item: {
+            id: "resp_123_output_0",
+            type: "message",
+            role: "assistant",
+            status: "completed",
+            content: [
+              {
+                type: "output_text",
+                text: "Let me check that.",
+                annotations: []
+              }
+            ]
+          }
+        },
+        {
+          type: "response.function_call_arguments.done",
+          sequence_number: 20,
+          item_id: "call_123",
+          output_index: 1,
+          arguments: "{\"city\":\"Shanghai\"}"
+        },
+        {
+          type: "response.output_item.done",
+          sequence_number: 21,
+          output_index: 1,
+          item: {
+            type: "function_call",
+            call_id: "call_123",
+            name: "lookup_weather",
+            arguments: "{\"city\":\"Shanghai\"}",
+            status: "completed"
+          }
+        },
+        {
+          type: "response.completed",
+          sequence_number: 22,
+          response: {
+            id: "resp_123",
+            object: "response",
+            created_at: 0,
+            model: "gpt-4.1-mini",
+            status: "completed",
+            output: [
+              {
+                id: "resp_123_output_0",
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "Let me check that.",
+                    annotations: []
+                  }
+                ]
+              },
+              {
+                type: "function_call",
+                call_id: "call_123",
+                name: "lookup_weather",
+                arguments: "{\"city\":\"Shanghai\"}",
+                status: "completed"
+              }
+            ],
+            output_text: "Let me check that.",
+            parallel_tool_calls: true,
+            tools: []
+          }
+        }
+      ],
+      nextSequenceNumber: 23
+    });
+  });
+
   it("encodes a max_tokens completion event into an incomplete terminal responses event sequence", async () => {
     const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
       "./openai-chat.js"
