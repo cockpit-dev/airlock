@@ -20,6 +20,8 @@ export const anthropicMessagesRequestSchema = z.object({
   max_tokens: z.number().int().positive(),
   stream: z.boolean().default(false),
   system: z.string().min(1).optional(),
+  temperature: z.number().min(0).max(1).optional(),
+  top_p: z.number().min(0).max(1).optional(),
   messages: z.array(anthropicMessageInputSchema).min(1),
   airlock: airlockRequestExtensionsSchema.optional()
 });

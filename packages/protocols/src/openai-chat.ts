@@ -20,6 +20,8 @@ export const openAIChatCompletionRequestSchema = z.object({
   stream: z.boolean().default(false),
   max_tokens: z.number().int().positive().optional(),
   max_completion_tokens: z.number().int().positive().optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  top_p: z.number().min(0).max(1).optional(),
   messages: z.array(openAIChatMessageSchema).min(1),
   airlock: airlockRequestExtensionsSchema.optional()
 });

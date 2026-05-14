@@ -8,6 +8,8 @@ export interface CanonicalRequest {
   messages: CanonicalMessage[];
   stream: boolean;
   maxOutputTokens?: number;
+  temperature?: number;
+  topP?: number;
 }
 
 export interface CanonicalRequestCapabilityRequirements {

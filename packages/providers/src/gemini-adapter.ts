@@ -489,10 +489,18 @@ function buildGeminiRequestBody(request: CanonicalRequest) {
         }
       : {}),
     contents,
-    ...(request.maxOutputTokens !== undefined
+    ...((request.maxOutputTokens !== undefined ||
+      request.temperature !== undefined ||
+      request.topP !== undefined)
       ? {
           generationConfig: {
-            maxOutputTokens: request.maxOutputTokens
+            ...(request.maxOutputTokens !== undefined
+              ? { maxOutputTokens: request.maxOutputTokens }
+              : {}),
+            ...(request.temperature !== undefined
+              ? { temperature: request.temperature }
+              : {}),
+            ...(request.topP !== undefined ? { topP: request.topP } : {})
           }
         }
       : {})

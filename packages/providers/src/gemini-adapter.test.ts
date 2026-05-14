@@ -207,6 +207,61 @@ describe("GeminiProviderAdapter", () => {
     });
   });
 
+  it("forwards canonical sampling fields into Gemini generationConfig", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "hello there"
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        temperature: 0.8,
+        topP: 0.9
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      generationConfig: {
+        temperature: 0.8,
+        topP: 0.9
+      }
+    });
+  });
+
   it("maps upstream failures into a gateway error", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

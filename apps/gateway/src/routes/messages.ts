@@ -49,6 +49,8 @@ const allowedAnthropicTopLevelFields = [
   "max_tokens",
   "stream",
   "system",
+  "temperature",
+  "top_p",
   "messages",
   "airlock"
 ] as const;

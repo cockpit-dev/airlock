@@ -207,6 +207,10 @@ export function normalizeOpenAIChatRequest(
     model: request.model,
     stream: request.stream,
     ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
+    ...(request.temperature !== undefined
+      ? { temperature: request.temperature }
+      : {}),
+    ...(request.top_p !== undefined ? { topP: request.top_p } : {}),
     messages: request.messages.map((message) => ({
       role: message.role === "developer" ? "system" : message.role,
       content:
@@ -239,6 +243,10 @@ export function normalizeOpenAIResponsesRequest(
     ...(request.max_output_tokens !== undefined
       ? { maxOutputTokens: request.max_output_tokens }
       : {}),
+    ...(request.temperature !== undefined
+      ? { temperature: request.temperature }
+      : {}),
+    ...(request.top_p !== undefined ? { topP: request.top_p } : {}),
     messages: [...instructionMessages, ...inputMessages]
   };
 }
@@ -264,6 +272,10 @@ export function normalizeAnthropicMessagesRequest(
     model: request.model,
     stream: request.stream,
     maxOutputTokens: request.max_tokens,
+    ...(request.temperature !== undefined
+      ? { temperature: request.temperature }
+      : {}),
+    ...(request.top_p !== undefined ? { topP: request.top_p } : {}),
     messages: [...systemMessages, ...messages]
   };
 }

@@ -44,6 +44,8 @@ export const openAIResponsesRequestSchema = z.object({
   model: z.string().min(1),
   stream: z.boolean().default(false),
   max_output_tokens: z.number().int().positive().optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  top_p: z.number().min(0).max(1).optional(),
   instructions: z.string().min(1).optional(),
   input: z.union([
     z.string().min(1),

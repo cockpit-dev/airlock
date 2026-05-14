@@ -3030,7 +3030,7 @@ describe("gateway app", () => {
     });
   });
 
-  it("allowlist openai semantics rejects unsupported chat temperature", async () => {
+  it("accepts supported chat sampling semantics and forwards them upstream", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -3071,19 +3071,19 @@ describe("gateway app", () => {
           model: "gpt-4.1-mini",
           stream: false,
           messages: [{ role: "user", content: "hi" }],
-          temperature: 0.2
+          temperature: 0.2,
+          top_p: 0.9
         })
       },
       createBindings()
     );
 
-    expect(response.status).toBe(400);
-    await expect(readJson(response)).resolves.toEqual({
-      error: {
-        message: "Unsupported OpenAI Chat semantic field: temperature",
-        type: "request",
-        code: "request_unsupported_openai_semantics"
-      }
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      temperature: 0.2,
+      top_p: 0.9
     });
   });
 
@@ -14606,7 +14606,7 @@ describe("gateway app", () => {
     });
   });
 
-  it("allowlist openai semantics rejects unsupported responses temperature", async () => {
+  it("accepts supported responses sampling semantics and forwards them upstream", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -14646,19 +14646,19 @@ describe("gateway app", () => {
         body: JSON.stringify({
           model: "gpt-4.1-mini",
           input: "hello",
-          temperature: 0.2
+          temperature: 0.2,
+          top_p: 0.9
         })
       },
       createBindings()
     );
 
-    expect(response.status).toBe(400);
-    await expect(readJson(response)).resolves.toEqual({
-      error: {
-        message: "Unsupported OpenAI Responses semantic field: temperature",
-        type: "request",
-        code: "request_unsupported_openai_semantics"
-      }
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      temperature: 0.2,
+      top_p: 0.9
     });
   });
 
@@ -14973,7 +14973,7 @@ describe("gateway app", () => {
     });
   });
 
-  it("allowlist anthropic semantics rejects unsupported temperature", async () => {
+  it("accepts supported anthropic sampling semantics and forwards them upstream", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -15012,6 +15012,7 @@ describe("gateway app", () => {
           model: "claude-sonnet-4-5",
           max_tokens: 256,
           temperature: 0.2,
+          top_p: 0.9,
           messages: [
             {
               role: "user",
@@ -15023,20 +15024,13 @@ describe("gateway app", () => {
       createBindings()
     );
 
-    expect(response.status).toBe(400);
-    const body = await readJson(response);
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
 
-    expect(body).toMatchObject({
-      type: "error",
-      error: {
-        type: "request",
-        message: "Unsupported Anthropic semantic field: temperature"
-      }
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      temperature: 0.2,
+      top_p: 0.9
     });
-    if (!isRecord(body)) {
-      throw new Error("Expected an Anthropic error payload");
-    }
-    expect(typeof body.request_id).toBe("string");
   });
 
   it("allowlist anthropic semantics rejects unsupported tools", async () => {

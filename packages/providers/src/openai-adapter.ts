@@ -69,11 +69,14 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 jsonBody: {
                   model: request.model,
                   stream: false,
-                  messages: request.messages
-                  ,
+                  messages: request.messages,
                   ...(request.maxOutputTokens !== undefined
                     ? { max_tokens: request.maxOutputTokens }
-                    : {})
+                    : {}),
+                  ...(request.temperature !== undefined
+                    ? { temperature: request.temperature }
+                    : {}),
+                  ...(request.topP !== undefined ? { top_p: request.topP } : {})
                 }
               },
               authStrategy,
@@ -98,11 +101,14 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               jsonBody: {
                 model: request.model,
                 stream: false,
-                messages: request.messages
-                ,
+                messages: request.messages,
                 ...(request.maxOutputTokens !== undefined
                   ? { max_tokens: request.maxOutputTokens }
-                  : {})
+                  : {}),
+                ...(request.temperature !== undefined
+                  ? { temperature: request.temperature }
+                  : {}),
+                ...(request.topP !== undefined ? { top_p: request.topP } : {})
               }
             },
             authStrategy,
@@ -229,6 +235,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.maxOutputTokens !== undefined
                     ? { max_tokens: request.maxOutputTokens }
                     : {}),
+                  ...(request.temperature !== undefined
+                    ? { temperature: request.temperature }
+                    : {}),
+                  ...(request.topP !== undefined ? { top_p: request.topP } : {}),
                   stream_options: {
                     include_usage: true
                   }
@@ -260,6 +270,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(request.maxOutputTokens !== undefined
                   ? { max_tokens: request.maxOutputTokens }
                   : {}),
+                ...(request.temperature !== undefined
+                  ? { temperature: request.temperature }
+                  : {}),
+                ...(request.topP !== undefined ? { top_p: request.topP } : {}),
                 stream_options: {
                   include_usage: true
                 }

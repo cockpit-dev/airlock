@@ -50,6 +50,8 @@ const allowedOpenAIChatTopLevelFields = [
   "stream",
   "max_tokens",
   "max_completion_tokens",
+  "temperature",
+  "top_p",
   "messages",
   "airlock"
 ] as const;

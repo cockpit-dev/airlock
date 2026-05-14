@@ -146,6 +146,24 @@ describe("openAIChatCompletionRequestSchema", () => {
 
     expect(parsed.max_completion_tokens).toBe(128);
   });
+
+  it("accepts chat completion sampling fields", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      temperature: 0.8,
+      top_p: 0.9,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.temperature).toBe(0.8);
+    expect(parsed.top_p).toBe(0.9);
+  });
 });
 
 describe("openAIResponsesRequestSchema", () => {
@@ -344,6 +362,19 @@ describe("openAIResponsesRequestSchema", () => {
     expect(parsed.stream).toBe(true);
     expect(parsed.max_output_tokens).toBe(96);
   });
+
+  it("accepts responses sampling fields", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      temperature: 0.7,
+      top_p: 0.85
+    });
+
+    expect(parsed.temperature).toBe(0.7);
+    expect(parsed.top_p).toBe(0.85);
+  });
 });
 
 describe("openAIResponsesResponseSchema", () => {
@@ -391,6 +422,24 @@ describe("anthropicMessagesRequestSchema", () => {
     });
 
     expect(parsed.stream).toBe(true);
+  });
+
+  it("accepts anthropic sampling fields", () => {
+    const parsed = anthropicMessagesRequestSchema.parse({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      temperature: 0.8,
+      top_p: 0.95,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.temperature).toBe(0.8);
+    expect(parsed.top_p).toBe(0.95);
   });
 
   it("accepts an optional airlock request shaping extension", () => {

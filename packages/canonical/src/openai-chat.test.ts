@@ -103,6 +103,24 @@ describe("normalizeOpenAIChatRequest", () => {
 
     expect(canonical.maxOutputTokens).toBe(128);
   });
+
+  it("normalizes chat sampling fields into canonical request fields", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      temperature: 0.8,
+      top_p: 0.9,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.temperature).toBe(0.8);
+    expect(canonical.topP).toBe(0.9);
+  });
 });
 
 describe("encodeCanonicalToOpenAIChatResponse", () => {
@@ -418,6 +436,19 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.stream).toBe(true);
     expect(canonical.maxOutputTokens).toBe(96);
   });
+
+  it("normalizes responses sampling fields into canonical request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      temperature: 0.7,
+      top_p: 0.85
+    });
+
+    expect(canonical.temperature).toBe(0.7);
+    expect(canonical.topP).toBe(0.85);
+  });
 });
 
 describe("encodeCanonicalToOpenAIResponsesResponse", () => {
@@ -709,6 +740,25 @@ describe("normalizeAnthropicMessagesRequest", () => {
 
     expect(canonical.stream).toBe(true);
     expect(canonical.maxOutputTokens).toBe(256);
+  });
+
+  it("normalizes anthropic sampling fields into canonical request fields", () => {
+    const canonical = normalizeAnthropicMessagesRequest({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: false,
+      temperature: 0.8,
+      top_p: 0.95,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.temperature).toBe(0.8);
+    expect(canonical.topP).toBe(0.95);
   });
 });
 

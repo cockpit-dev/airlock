@@ -48,6 +48,8 @@ const allowedOpenAIResponsesTopLevelFields = [
   "model",
   "stream",
   "max_output_tokens",
+  "temperature",
+  "top_p",
   "instructions",
   "input",
   "airlock"
