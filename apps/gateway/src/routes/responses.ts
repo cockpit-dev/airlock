@@ -253,7 +253,9 @@ export async function handleResponses(
           toolCallArguments: "",
           outputIndex: event.toolIndex
         };
-        currentToolCall.toolCallName = event.toolName ?? currentToolCall.toolCallName;
+        if (event.toolName !== undefined) {
+          currentToolCall.toolCallName = event.toolName;
+        }
         currentToolCall.toolCallArguments += event.argumentsDelta;
         currentToolCall.outputIndex = startedTextOutput
           ? event.toolIndex + 1
@@ -275,10 +277,16 @@ export async function handleResponses(
         ...(event.type === "tool_call_delta"
           ? {
               toolCallId: event.toolCallId,
-              toolCallName: event.toolName,
-              toolCallArguments: startedToolCallIds.has(event.toolCallId)
-                ? streamedToolCalls.get(event.toolCallId)?.toolCallArguments
-                : undefined
+              ...(event.toolName !== undefined
+                ? { toolCallName: event.toolName }
+                : {}),
+              ...(startedToolCallIds.has(event.toolCallId) &&
+              streamedToolCalls.get(event.toolCallId) !== undefined
+                ? {
+                    toolCallArguments:
+                      streamedToolCalls.get(event.toolCallId)!.toolCallArguments
+                  }
+                : {})
             }
           : {}),
         ...(streamedToolCalls.size > 0
