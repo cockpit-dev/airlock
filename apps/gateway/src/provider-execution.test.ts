@@ -837,7 +837,7 @@ describe("executeRoutedRequest", () => {
     expect(anthropicAttempts).toBe(3);
   });
 
-  it("keeps a closed healthy peer ahead of a half-open target for health-priority routing", async () => {
+  it("still probes a half-open target before a closed peer in the execution chain", async () => {
     const route: ModelRoute = {
       externalModel: "assistant-default",
       target: {
@@ -989,11 +989,222 @@ describe("executeRoutedRequest", () => {
       circuitBreakerBackend: backend
     });
 
-    expect(secondResponse.model).toBe("claude-haiku-4-5");
+    expect(secondResponse.model).toBe("gpt-4.1-mini");
     expect(fetcher).toHaveBeenCalledTimes(3);
-    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.anthropic.com/v1/messages");
-    expect(openAIAttempts).toBe(1);
-    expect(anthropicAttempts).toBe(2);
+    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(openAIAttempts).toBe(2);
+    expect(anthropicAttempts).toBe(1);
+  });
+
+  it("reuses bounded half-open probe promotion for streaming requests", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ],
+      targetSelection: {
+        strategy: "health_priority"
+      }
+    };
+    const bufferedRequest: CanonicalRequest = {
+      model: "assistant-default",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const streamingRequest: CanonicalRequest = {
+      ...bufferedRequest,
+      stream: true
+    };
+    const backend = createPersistentCircuitBreakerBackend(
+      createPersistentBreakerNamespace()
+    );
+    let openAIAttempts = 0;
+    let anthropicAttempts = 0;
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/chat/completions")) {
+        openAIAttempts += 1;
+
+        if (openAIAttempts === 1) {
+          return new Response(
+            JSON.stringify({
+              error: {
+                message: "rate limited"
+              }
+            }),
+            {
+              status: 429,
+              headers: {
+                "content-type": "application/json"
+              }
+            }
+          );
+        }
+
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'data: {"id":"chatcmpl_half_open_stream","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                    'data: {"id":"chatcmpl_half_open_stream","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"half-open stream"},"finish_reason":null}]}\n\n',
+                    'data: {"id":"chatcmpl_half_open_stream","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+                    "data: [DONE]\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        );
+      }
+
+      anthropicAttempts += 1;
+
+      if (anthropicAttempts === 1) {
+        return new Response(
+          JSON.stringify({
+            id: "msg_closed_peer_1",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "closed peer 1"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        );
+      }
+
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'event: message_start\ndata: {"message":{"id":"msg_closed_peer_stream","model":"claude-haiku-4-5"}}\n\n',
+                  'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"closed stream"}}\n\n',
+                  "event: message_stop\ndata: {}\n\n",
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      );
+    });
+    const config = {
+      mode: "free" as const,
+      providerTimeoutMs: 1000,
+      providerMaxRetries: 0,
+      providerRetryBackoffMs: 0,
+      providerCircuitBreakerThreshold: 1,
+      providerCircuitBreakerCooldownMs: 100,
+      modelGroups: {},
+      gatewayApiKeys: [],
+      modelAliases: [],
+      anthropic: {
+        apiKey: "anthropic-secret",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultMaxTokens: 256
+      },
+      openAI: {
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    };
+
+    await executeRoutedRequest(route, bufferedRequest, {
+      config,
+      requestId: "req_half_open_promote_first",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1000,
+      circuitBreakerBackend: backend
+    });
+
+    const events: Array<unknown> = [];
+
+    for await (const event of executeRoutedStreamRequest(route, streamingRequest, {
+      config,
+      requestId: "req_half_open_promote_stream",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1200,
+      circuitBreakerBackend: backend
+    })) {
+      events.push(event);
+    }
+
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(openAIAttempts).toBe(2);
+    expect(anthropicAttempts).toBe(1);
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "chatcmpl_half_open_stream",
+        model: "gpt-4.1-mini"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "chatcmpl_half_open_stream",
+        model: "gpt-4.1-mini",
+        delta: "half-open stream"
+      },
+      {
+        type: "response_completed",
+        responseId: "chatcmpl_half_open_stream",
+        model: "gpt-4.1-mini",
+        finishReason: "stop"
+      }
+    ]);
   });
 
   it("returns a typed routing error when every otherwise-eligible target is open", async () => {

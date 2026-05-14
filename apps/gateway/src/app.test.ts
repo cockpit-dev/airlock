@@ -12038,6 +12038,139 @@ describe("gateway app", () => {
     expect(anthropicAttempts).toBe(3);
   });
 
+  it("still probes one half-open target even when a closed peer exists", async () => {
+    let openAIAttempts = 0;
+    let anthropicAttempts = 0;
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/chat/completions")) {
+        openAIAttempts += 1;
+
+        if (openAIAttempts === 1) {
+          return new Response(
+            JSON.stringify({
+              error: {
+                message: "rate limited"
+              }
+            }),
+            {
+              status: 429,
+              headers: {
+                "content-type": "application/json"
+              }
+            }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl_half_open_recovered",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "half-open probe recovered"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        );
+      }
+
+      anthropicAttempts += 1;
+
+      return new Response(
+        JSON.stringify({
+          id: `msg_closed_peer_${anthropicAttempts}`,
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: `closed peer ${anthropicAttempts}`
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      );
+    });
+    let currentNow = 1000;
+    const app = createApp({
+      fetcher,
+      now: () => currentNow
+    });
+    const request = {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer gateway-secret"
+      },
+      body: JSON.stringify({
+        model: "assistant-default",
+        stream: false,
+        messages: [{ role: "user", content: "hi" }]
+      })
+    };
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "1",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "100",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER: createPersistentBreakerNamespace(),
+      AIRLOCK_MODEL_ALIASES:
+        "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+      AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+        "assistant-default": ["anthropic:claude-haiku-4-5"]
+      }),
+      AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+        "assistant-default": {
+          strategy: "health_priority"
+        }
+      })
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      request,
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+
+    currentNow = 1200;
+    const secondResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      request,
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(200);
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(openAIAttempts).toBe(2);
+    expect(anthropicAttempts).toBe(1);
+  });
+
   it("streams openai chat completion chunks and terminates with done", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi.fn().mockResolvedValueOnce(

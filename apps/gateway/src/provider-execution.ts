@@ -514,6 +514,43 @@ function reorderTargetsForPrioritySelection(
   });
 }
 
+function promoteHalfOpenProbeTarget(
+  targets: ProviderTarget[],
+  healthByTarget?: Map<
+    string,
+    {
+      isOpen: boolean;
+      isHalfOpen?: boolean;
+      consecutiveRetryableFailures: number;
+      lastSuccessLatencyMs?: number;
+      smoothedSuccessLatencyMs?: number;
+      lastSuccessAt?: number;
+      lastFailureAt?: number;
+    }
+  >
+): ProviderTarget[] {
+  // Preserve ordinary health ordering, but give one cooled-down target a real
+  // recovery probe so it cannot starve behind permanently healthy peers.
+  const firstHalfOpenIndex = targets.findIndex((target) => {
+    return healthByTarget?.get(serializeProviderTarget(target))?.isHalfOpen === true;
+  });
+
+  if (firstHalfOpenIndex < 0) {
+    return targets;
+  }
+
+  const promoted = targets[firstHalfOpenIndex];
+
+  if (!promoted) {
+    return targets;
+  }
+
+  const withoutPromoted = targets.filter((_, index) => {
+    return index !== firstHalfOpenIndex;
+  });
+  return [promoted, ...withoutPromoted];
+}
+
 function selectEligibleTargets(
   route: ModelRoute,
   request: CanonicalRequest,
@@ -611,11 +648,14 @@ function selectEligibleTargets(
     }
 
     if (eligibleTargets.length > 0) {
-      return reorderTargetsForRoute(
-        route,
-        eligibleTargets,
-        requestId,
-        now,
+      return promoteHalfOpenProbeTarget(
+        reorderTargetsForRoute(
+          route,
+          eligibleTargets,
+          requestId,
+          now,
+          healthByTarget
+        ),
         healthByTarget
       );
     }
