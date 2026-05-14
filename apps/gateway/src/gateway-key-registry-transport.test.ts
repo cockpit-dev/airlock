@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { GatewayBindings } from "./env.js";
 import {
+  createGatewayKeyRegistryInvalidResponseError,
   buildRegistryRequest,
   fetchParsedRegistryResponse,
   isGatewayKeyRegistryEnabled
@@ -51,6 +52,26 @@ describe("buildRegistryRequest", () => {
     const url = new URL(request.url);
     expect(url.searchParams.get("kind")).toBe("dynamic");
     expect(url.searchParams.get("keyId")).toBe("key_dynamic");
+  });
+
+  it("supports override write requests against the shared registry object", () => {
+    const request = buildRegistryRequest("req_123", "override", {
+      method: "PUT",
+      keyId: "gak_1",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        label: "Primary Key"
+      })
+    });
+
+    expect(request.method).toBe("PUT");
+    expect(request.headers.get("x-airlock-request-id")).toBe("req_123");
+    expect(request.headers.get("content-type")).toContain("application/json");
+    const url = new URL(request.url);
+    expect(url.searchParams.get("kind")).toBe("override");
+    expect(url.searchParams.get("keyId")).toBe("gak_1");
   });
 });
 
@@ -113,5 +134,115 @@ describe("fetchParsedRegistryResponse", () => {
         }
       )
     ).resolves.toBeNull();
+  });
+
+  it("parses configured-key registry override write responses through the shared transport flow", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          keyId: "gak_1",
+          override: {
+            label: "Primary Key",
+            updatedAt: "2026-05-14T00:00:00.000Z"
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    await expect(
+      fetchParsedRegistryResponse(
+        () => {
+          return {
+            fetch
+          };
+        },
+        buildRegistryRequest("req_123", "override", {
+          method: "PUT",
+          keyId: "gak_1",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            label: "Primary Key"
+          })
+        }),
+        "req_123",
+        {
+          parse: (value) => value as {
+            keyId: string;
+            override: {
+              label: string;
+              updatedAt: string;
+            };
+          }
+        }
+      )
+    ).resolves.toEqual({
+      keyId: "gak_1",
+      override: {
+        label: "Primary Key",
+        updatedAt: "2026-05-14T00:00:00.000Z"
+      }
+    });
+  });
+
+  it("wraps invalid override write responses as registry invalid-response errors", async () => {
+    await expect(
+      fetchParsedRegistryResponse(
+        () => {
+          return {
+            fetch: vi.fn().mockResolvedValue(
+              new Response(
+                JSON.stringify({
+                  keyId: "gak_1",
+                  override: null
+                }),
+                {
+                  status: 200,
+                  headers: {
+                    "content-type": "application/json"
+                  }
+                }
+              )
+            )
+          };
+        },
+        buildRegistryRequest("req_123", "override", {
+          method: "PUT",
+          keyId: "gak_1",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            label: "Primary Key"
+          })
+        }),
+        "req_123",
+        {
+          parse: (value) => {
+            const parsed = value as {
+              override: null | {
+                label: string;
+                updatedAt: string;
+              };
+            };
+
+            if (!parsed.override) {
+              throw new Error("Override response was empty");
+            }
+
+            return parsed.override;
+          }
+        }
+      )
+    ).rejects.toMatchObject(
+      createGatewayKeyRegistryInvalidResponseError("req_123")
+    );
   });
 });

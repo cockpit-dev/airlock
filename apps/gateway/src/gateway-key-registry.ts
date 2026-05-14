@@ -94,8 +94,6 @@ import { clearGatewayKeyRevocationOverlayState } from "./gateway-key-revocation.
 import {
   REGISTRY_OBJECT_NAME,
   buildRegistryRequest,
-  createGatewayKeyRegistryInvalidResponseError,
-  createGatewayKeyRegistryUnavailableError,
   fetchParsedRegistryResponse,
   isGatewayKeyRegistryEnabled,
   requireDynamicGatewayKeyRegistryNamespace,
@@ -1403,35 +1401,29 @@ export async function upsertGatewayKeyRegistryOverride(
   requestId: string
 ): Promise<GatewayKeyRegistryStoredOverride> {
   const namespace = requireGatewayKeyRegistryNamespace(env, requestId);
-  const stub = namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME));
-  let response: Response;
+  return fetchParsedRegistryResponse(
+    () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+    buildRegistryRequest(requestId, REGISTRY_KIND_OVERRIDE, {
+      method: "PUT",
+      keyId: gatewayApiKey.id,
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(override)
+    }),
+    requestId,
+    {
+      parse: (value) => {
+        const parsed = parseGatewayKeyRegistryRecordResponse(value);
 
-  try {
-    response = await stub.fetch(
-      buildRegistryRequest(requestId, REGISTRY_KIND_OVERRIDE, {
-        method: "PUT",
-        keyId: gatewayApiKey.id,
-        headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify(override)
-      })
-    );
-  } catch (cause) {
-    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-  }
+        if (!parsed.override) {
+          throw new Error("Registry override write response was empty");
+        }
 
-  if (!response.ok) {
-    throw createGatewayKeyRegistryUnavailableError(requestId);
-  }
-
-  const parsed = parseGatewayKeyRegistryRecordResponse(await response.json());
-
-  if (!parsed.override) {
-    throw createGatewayKeyRegistryInvalidResponseError(requestId);
-  }
-
-  return parsed.override;
+        return parsed.override;
+      }
+    }
+  );
 }
 
 export async function clearGatewayKeyRegistryOverride(
