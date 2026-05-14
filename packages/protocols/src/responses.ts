@@ -142,6 +142,7 @@ export const openAIResponsesRequestSchema = z
   .object({
   model: z.string().min(1),
   stream: z.boolean().default(false),
+  safety_identifier: z.string().min(1).optional(),
   prompt: openAIResponsesPromptSchema.optional(),
   prompt_id: z.string().min(1).optional(),
   previous_response_id: z.string().min(1).optional(),

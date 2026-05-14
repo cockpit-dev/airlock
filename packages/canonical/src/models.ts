@@ -40,6 +40,7 @@ export interface CanonicalRequest {
   model: string;
   messages: CanonicalMessage[];
   stream: boolean;
+  endUserId?: string;
   outputFormat?:
     | {
         type: "text";
@@ -87,6 +88,7 @@ export interface CanonicalRequestCapabilityRequirements {
   requiresStreamingTools: boolean;
   requiresMultimodalInput: boolean;
   requiresSystemMessages: boolean;
+  requiresEndUserId: boolean;
   requiresPreviousResponseId: boolean;
   requiresConversationId: boolean;
   requiresPrompt: boolean;

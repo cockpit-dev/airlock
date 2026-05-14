@@ -96,6 +96,20 @@ function mapCanonicalParallelToolCallsToOpenAI(
   return allowParallelToolCalls;
 }
 
+function mapCanonicalEndUserIdToOpenAIChat(
+  endUserId: CanonicalRequest["endUserId"]
+) {
+  return endUserId !== undefined ? { user: endUserId } : undefined;
+}
+
+function mapCanonicalEndUserIdToOpenAIResponses(
+  endUserId: CanonicalRequest["endUserId"]
+) {
+  return endUserId !== undefined
+    ? { safety_identifier: endUserId }
+    : undefined;
+}
+
 function mapCanonicalOutputFormatToOpenAIChat(
   outputFormat: CanonicalRequest["outputFormat"]
 ) {
@@ -480,6 +494,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.reasoningEffort !== undefined
                     ? { reasoning_effort: request.reasoningEffort }
                     : {}),
+                  ...(mapCanonicalEndUserIdToOpenAIChat(request.endUserId) ?? {}),
                   ...(request.temperature !== undefined
                     ? { temperature: request.temperature }
                     : {}),
@@ -555,6 +570,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(request.reasoningEffort !== undefined
                   ? { reasoning_effort: request.reasoningEffort }
                   : {}),
+                ...(mapCanonicalEndUserIdToOpenAIChat(request.endUserId) ?? {}),
                 ...(request.temperature !== undefined
                   ? { temperature: request.temperature }
                   : {}),
@@ -751,6 +767,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.reasoningEffort !== undefined
                     ? { reasoning_effort: request.reasoningEffort }
                     : {}),
+                  ...(mapCanonicalEndUserIdToOpenAIChat(request.endUserId) ?? {}),
                   ...(request.temperature !== undefined
                     ? { temperature: request.temperature }
                     : {}),
@@ -829,6 +846,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(request.reasoningEffort !== undefined
                   ? { reasoning_effort: request.reasoningEffort }
                   : {}),
+                ...(mapCanonicalEndUserIdToOpenAIChat(request.endUserId) ?? {}),
                 ...(request.temperature !== undefined
                   ? { temperature: request.temperature }
                   : {}),
@@ -1180,6 +1198,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.conversationId !== undefined
                     ? { conversation: request.conversationId }
                     : {}),
+                  ...(mapCanonicalEndUserIdToOpenAIResponses(request.endUserId) ??
+                    {}),
                   ...(request.reasoningEffort !== undefined ||
                   request.reasoningSummary !== undefined
                     ? {
@@ -1284,6 +1304,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(request.conversationId !== undefined
                   ? { conversation: request.conversationId }
                   : {}),
+                ...(mapCanonicalEndUserIdToOpenAIResponses(request.endUserId) ??
+                  {}),
                 ...(request.reasoningEffort !== undefined ||
                 request.reasoningSummary !== undefined
                   ? {
@@ -1553,6 +1575,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.conversationId !== undefined
                     ? { conversation: request.conversationId }
                     : {}),
+                  ...(mapCanonicalEndUserIdToOpenAIResponses(request.endUserId) ??
+                    {}),
                   ...(request.reasoningEffort !== undefined
                     || request.reasoningSummary !== undefined
                     ? {
@@ -1654,6 +1678,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(request.conversationId !== undefined
                   ? { conversation: request.conversationId }
                   : {}),
+                ...(mapCanonicalEndUserIdToOpenAIResponses(request.endUserId) ??
+                  {}),
                 ...(request.reasoningEffort !== undefined
                   || request.reasoningSummary !== undefined
                   ? {

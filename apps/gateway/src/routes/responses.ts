@@ -54,6 +54,7 @@ import {
 const allowedOpenAIResponsesTopLevelFields = [
   "model",
   "stream",
+  "safety_identifier",
   "prompt",
   "prompt_id",
   "previous_response_id",

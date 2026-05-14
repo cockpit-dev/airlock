@@ -163,6 +163,61 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(parsed.reasoning_effort).toBe("high");
   });
 
+  it("accepts chat user as an end-user identifier", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      user: "user_123",
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.user).toBe("user_123");
+  });
+
+  it("accepts chat safety_identifier as an end-user identifier", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      safety_identifier: "user_123",
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.safety_identifier).toBe("user_123");
+  });
+
+  it("rejects conflicting chat user and safety_identifier values", () => {
+    const result = openAIChatCompletionRequestSchema.safeParse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      user: "user_a",
+      safety_identifier: "user_b",
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(result.success).toBe(false);
+    if (result.success) {
+      throw new Error("Expected user/safety_identifier conflict to fail");
+    }
+    expect(result.error.issues[0]?.message).toBe(
+      "user must match safety_identifier when both are provided"
+    );
+  });
+
   it("accepts chat completion sampling fields", () => {
     const parsed = openAIChatCompletionRequestSchema.parse({
       model: "gpt-4.1-mini",
@@ -1209,6 +1264,16 @@ describe("openAIResponsesRequestSchema", () => {
     });
 
     expect(parsed.prompt_id).toBe("pmpt_legacy_123");
+  });
+
+  it("accepts responses safety_identifier as an end-user identifier", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      prompt_id: "pmpt_legacy_123",
+      safety_identifier: "user_123"
+    });
+
+    expect(parsed.safety_identifier).toBe("user_123");
   });
 
   it("rejects responses prompt_id when it conflicts with prompt.id", () => {

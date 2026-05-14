@@ -188,10 +188,10 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                   model: request.model,
                   max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
                   ...(systemMessage ? { system: systemMessage.content } : {}),
-                  ...(request.providerMetadata?.anthropic
+                  ...(request.endUserId !== undefined
                     ? {
                         metadata: {
-                          user_id: request.providerMetadata.anthropic.user_id
+                          user_id: request.endUserId
                         }
                       }
                     : {}),
@@ -247,10 +247,10 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                 model: request.model,
                 max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
                 ...(systemMessage ? { system: systemMessage.content } : {}),
-                ...(request.providerMetadata?.anthropic
+                ...(request.endUserId !== undefined
                   ? {
                       metadata: {
-                        user_id: request.providerMetadata.anthropic.user_id
+                        user_id: request.endUserId
                       }
                     }
                   : {}),
@@ -427,10 +427,10 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                   max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
                   stream: true,
                   ...(systemMessage ? { system: systemMessage.content } : {}),
-                  ...(request.providerMetadata?.anthropic
+                  ...(request.endUserId !== undefined
                     ? {
                         metadata: {
-                          user_id: request.providerMetadata.anthropic.user_id
+                          user_id: request.endUserId
                         }
                       }
                     : {}),
@@ -469,10 +469,10 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                 max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
                 stream: true,
                 ...(systemMessage ? { system: systemMessage.content } : {}),
-                ...(request.providerMetadata?.anthropic
+                ...(request.endUserId !== undefined
                   ? {
                       metadata: {
-                        user_id: request.providerMetadata.anthropic.user_id
+                        user_id: request.endUserId
                       }
                     }
                   : {}),

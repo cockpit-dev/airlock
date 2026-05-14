@@ -478,6 +478,13 @@ export function normalizeOpenAIChatRequest(
   return {
     model: request.model,
     stream: request.stream,
+    ...(request.user !== undefined || request.safety_identifier !== undefined
+      ? {
+          endUserId:
+            request.safety_identifier ??
+            request.user
+        }
+      : {}),
     ...(outputFormat ? { outputFormat } : {}),
     ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
     ...(request.reasoning_effort !== undefined
@@ -568,6 +575,9 @@ export function normalizeOpenAIResponsesRequest(
   return {
     model: request.model,
     stream: request.stream,
+    ...(request.safety_identifier !== undefined
+      ? { endUserId: request.safety_identifier }
+      : {}),
     ...(outputFormat ? { outputFormat } : {}),
     ...(request.previous_response_id !== undefined
       ? { previousResponseId: request.previous_response_id }
@@ -681,13 +691,7 @@ export function normalizeAnthropicMessagesRequest(
     model: request.model,
     stream: request.stream,
     ...(request.metadata !== undefined
-      ? {
-          providerMetadata: {
-            anthropic: {
-              user_id: request.metadata.user_id
-            }
-          }
-        }
+      ? { endUserId: request.metadata.user_id }
       : {}),
     maxOutputTokens: request.max_tokens,
     ...(request.temperature !== undefined

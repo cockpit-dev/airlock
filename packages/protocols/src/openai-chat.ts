@@ -102,6 +102,8 @@ export const openAIChatCompletionRequestSchema = z
   .object({
   model: z.string().min(1),
   stream: z.boolean().default(false),
+  user: z.string().min(1).optional(),
+  safety_identifier: z.string().min(1).optional(),
   max_tokens: z.number().int().positive().optional(),
   max_completion_tokens: z.number().int().positive().optional(),
   reasoning_effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]).optional(),
@@ -123,6 +125,18 @@ export const openAIChatCompletionRequestSchema = z
   airlock: airlockRequestExtensionsSchema.optional()
   })
   .superRefine((value, context) => {
+    if (
+      value.user !== undefined &&
+      value.safety_identifier !== undefined &&
+      value.user !== value.safety_identifier
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "user must match safety_identifier when both are provided",
+        path: ["user"]
+      });
+    }
+
     if (!value.stream && value.stream_options !== undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

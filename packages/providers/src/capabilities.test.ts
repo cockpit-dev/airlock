@@ -17,6 +17,7 @@ describe("provider capability descriptors", () => {
         supportsStreamingTools: true,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
+        supportsEndUserId: true,
         supportsPreviousResponseId: true,
         supportsConversationId: true,
         supportsPrompt: true,
@@ -35,6 +36,7 @@ describe("provider capability descriptors", () => {
         supportsStreamingTools: true,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
+        supportsEndUserId: true,
         supportsPreviousResponseId: false,
         supportsConversationId: false,
         supportsPrompt: false,
@@ -53,6 +55,7 @@ describe("provider capability descriptors", () => {
         supportsStreamingTools: true,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
+        supportsEndUserId: false,
         supportsPreviousResponseId: false,
         supportsConversationId: false,
         supportsPrompt: false,
@@ -75,6 +78,7 @@ describe("provider capability descriptors", () => {
       supportsStreamingTools: true,
       supportsMultimodalInput: false,
       supportsSystemMessages: true,
+      supportsEndUserId: false,
       supportsPreviousResponseId: false,
       supportsConversationId: false,
       supportsPrompt: false,
@@ -92,6 +96,7 @@ describe("provider capability descriptors", () => {
       supportsTools: true,
       supportsToolReplay: true,
       supportsStreamingTools: true,
+      supportsEndUserId: true,
       supportsPreviousResponseId: true,
       supportsConversationId: true,
       supportsPrompt: true,
@@ -113,7 +118,8 @@ describe("provider capability descriptors", () => {
       provider: "anthropic",
       supportsTools: true,
       supportsToolReplay: true,
-      supportsStreamingTools: true
+      supportsStreamingTools: true,
+      supportsEndUserId: true
     });
   });
 

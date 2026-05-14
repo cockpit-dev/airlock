@@ -28,6 +28,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: true,
+      requiresEndUserId: false,
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: false,
@@ -56,6 +57,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
+      requiresEndUserId: false,
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: false,
@@ -92,6 +94,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
+      requiresEndUserId: false,
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: false,
@@ -131,6 +134,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
+      requiresEndUserId: false,
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: false,
@@ -160,6 +164,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
+      requiresEndUserId: false,
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: false,
@@ -190,6 +195,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
+      requiresEndUserId: false,
       requiresPreviousResponseId: true,
       requiresConversationId: true,
       requiresPrompt: false,
@@ -217,6 +223,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
+      requiresEndUserId: false,
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: true,
@@ -241,6 +248,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
+      requiresEndUserId: false,
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: false,
@@ -277,6 +285,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
+      requiresEndUserId: false,
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: false,
@@ -308,6 +317,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
+      requiresEndUserId: false,
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: false,
@@ -345,6 +355,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
+      requiresEndUserId: false,
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: false,
@@ -382,6 +393,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingTools: false,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
+      requiresEndUserId: false,
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: false,
@@ -418,6 +430,37 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingTools: true,
       requiresMultimodalInput: false,
       requiresSystemMessages: false,
+      requiresEndUserId: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false,
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: false
+    });
+  });
+
+  it("marks end-user requirements when canonical requests include an end-user id", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      endUserId: "user_123",
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: false,
+      requiresTools: false,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresEndUserId: true,
       requiresPreviousResponseId: false,
       requiresConversationId: false,
       requiresPrompt: false,

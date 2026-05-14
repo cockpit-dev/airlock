@@ -55,6 +55,8 @@ import {
 const allowedOpenAIChatTopLevelFields = [
   "model",
   "stream",
+  "user",
+  "safety_identifier",
   "max_tokens",
   "max_completion_tokens",
   "reasoning_effort",

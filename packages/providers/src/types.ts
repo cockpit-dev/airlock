@@ -17,6 +17,7 @@ export interface ProviderCapabilityDescriptor {
   supportsStreamingTools: boolean;
   supportsMultimodalInput: boolean;
   supportsSystemMessages: boolean;
+  supportsEndUserId: boolean;
   supportsPreviousResponseId: boolean;
   supportsConversationId: boolean;
   supportsPrompt: boolean;

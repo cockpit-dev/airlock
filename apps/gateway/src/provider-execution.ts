@@ -166,6 +166,14 @@ export function assertProviderSupportsCanonicalRequest(
     );
   }
 
+  if (requirements.requiresEndUserId && !descriptor.supportsEndUserId) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "end_user_id",
+      requestId
+    );
+  }
+
   if (
     requirements.requiresPreviousResponseId &&
     !descriptor.supportsPreviousResponseId

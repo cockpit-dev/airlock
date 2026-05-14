@@ -25,6 +25,7 @@ export function getCanonicalRequestCapabilityRequirements(
     requiresSystemMessages: request.messages.some((message) => {
       return message.role === "system";
     }),
+    requiresEndUserId: request.endUserId !== undefined,
     requiresPreviousResponseId: request.previousResponseId !== undefined,
     requiresConversationId: request.conversationId !== undefined,
     requiresPrompt: request.prompt !== undefined,

@@ -120,6 +120,38 @@ describe("normalizeOpenAIChatRequest", () => {
     expect(canonical.reasoningEffort).toBe("high");
   });
 
+  it("normalizes chat user into canonical endUserId", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      user: "user_123",
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.endUserId).toBe("user_123");
+  });
+
+  it("normalizes chat safety_identifier into canonical endUserId", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      safety_identifier: "user_123",
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.endUserId).toBe("user_123");
+  });
+
   it("normalizes chat sampling fields into canonical request fields", () => {
     const canonical = normalizeOpenAIChatRequest({
       model: "gpt-4.1-mini",
@@ -990,6 +1022,17 @@ describe("normalizeOpenAIResponsesRequest", () => {
       id: "pmpt_legacy_123"
     });
     expect(canonical.messages).toEqual([]);
+  });
+
+  it("normalizes responses safety_identifier into canonical endUserId", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      prompt_id: "pmpt_legacy_123",
+      stream: false,
+      safety_identifier: "user_123"
+    });
+
+    expect(canonical.endUserId).toBe("user_123");
   });
 
   it("normalizes responses reasoning summary controls into canonical request fields", () => {
@@ -2626,11 +2669,7 @@ describe("normalizeAnthropicMessagesRequest", () => {
       ]
     });
 
-    expect(canonical.providerMetadata).toEqual({
-      anthropic: {
-        user_id: "user_123"
-      }
-    });
+    expect(canonical.endUserId).toBe("user_123");
   });
 
   it("normalizes anthropic tools and tool_choice into canonical request fields", () => {

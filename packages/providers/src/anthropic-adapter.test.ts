@@ -1035,7 +1035,7 @@ describe("AnthropicProviderAdapter", () => {
     });
   });
 
-  it("forwards canonical anthropic metadata.user_id to Anthropic", async () => {
+  it("forwards canonical endUserId to Anthropic metadata.user_id", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -1070,11 +1070,7 @@ describe("AnthropicProviderAdapter", () => {
     await adapter.complete(
       {
         ...createCanonicalRequest(),
-        providerMetadata: {
-          anthropic: {
-            user_id: "user_123"
-          }
-        }
+        endUserId: "user_123"
       },
       {
         requestId: "req_123"
