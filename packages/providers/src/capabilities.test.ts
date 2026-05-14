@@ -12,7 +12,7 @@ describe("provider capability descriptors", () => {
         provider: "openai",
         displayName: "OpenAI",
         supportsStreaming: true,
-        supportsTools: false,
+        supportsTools: true,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
         supportsRouteScopedShaping: true,
@@ -51,6 +51,13 @@ describe("provider capability descriptors", () => {
       supportsSystemMessages: true,
       supportsRouteScopedShaping: true,
       supportsStaticFallbackSameProvider: true
+    });
+  });
+
+  it("returns OpenAI as tool-capable", () => {
+    expect(getProviderCapabilityDescriptor("openai")).toMatchObject({
+      provider: "openai",
+      supportsTools: true
     });
   });
 

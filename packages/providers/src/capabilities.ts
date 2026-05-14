@@ -9,7 +9,7 @@ const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
     provider: "openai",
     displayName: "OpenAI",
     supportsStreaming: true,
-    supportsTools: false,
+    supportsTools: true,
     supportsMultimodalInput: false,
     supportsSystemMessages: true,
     supportsRouteScopedShaping: true,

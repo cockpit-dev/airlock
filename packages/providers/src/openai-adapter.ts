@@ -24,6 +24,12 @@ function normalizeOpenAIFinishReason(
   return finishReason === "length" ? "max_tokens" : "stop";
 }
 
+function normalizeOpenAIMessageContent(
+  content: string | null | undefined
+) {
+  return content ?? "";
+}
+
 export interface OpenAIProviderAdapterOptions {
   apiKey: string;
   baseUrl: string;
@@ -85,6 +91,23 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.topP !== undefined ? { top_p: request.topP } : {}),
                   ...(request.stopSequences !== undefined
                     ? { stop: request.stopSequences }
+                    : {}),
+                  ...(request.tools !== undefined
+                    ? {
+                        tools: request.tools.map((tool) => ({
+                          type: "function" as const,
+                          function: {
+                            name: tool.name,
+                            ...(tool.description
+                              ? { description: tool.description }
+                              : {}),
+                            parameters: tool.inputSchema
+                          }
+                        }))
+                      }
+                    : {}),
+                  ...(request.toolChoice !== undefined
+                    ? { tool_choice: request.toolChoice }
                     : {})
                 }
               },
@@ -120,6 +143,21 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(request.topP !== undefined ? { top_p: request.topP } : {}),
                 ...(request.stopSequences !== undefined
                   ? { stop: request.stopSequences }
+                  : {}),
+                ...(request.tools !== undefined
+                  ? {
+                      tools: request.tools.map((tool) => ({
+                        type: "function" as const,
+                        function: {
+                          name: tool.name,
+                          ...(tool.description ? { description: tool.description } : {}),
+                          parameters: tool.inputSchema
+                        }
+                      }))
+                    }
+                  : {}),
+                ...(request.toolChoice !== undefined
+                  ? { tool_choice: request.toolChoice }
                   : {})
               }
             },
@@ -188,7 +226,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       choices: Array<{
         finish_reason: "stop" | "length";
         message: {
-          content: string;
+          content: string | null;
+          tool_calls?: Array<{
+            id: string;
+            type: "function";
+            function: {
+              name: string;
+              arguments: string;
+            };
+          }>;
         };
       }>;
       usage?: {
@@ -201,7 +247,16 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     return {
       id: payload.id,
       model: payload.model,
-      outputText: payload.choices[0]?.message.content ?? "",
+      outputText: normalizeOpenAIMessageContent(payload.choices[0]?.message.content),
+      ...(payload.choices[0]?.message.tool_calls
+        ? {
+            toolCalls: payload.choices[0].message.tool_calls.map((toolCall) => ({
+              id: toolCall.id,
+              name: toolCall.function.name,
+              arguments: toolCall.function.arguments
+            }))
+          }
+        : {}),
       finishReason: normalizeOpenAIFinishReason(
         payload.choices[0]?.finish_reason
       ),

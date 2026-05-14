@@ -3137,6 +3137,130 @@ describe("gateway app", () => {
     });
   });
 
+  it("routes chat function tools through openai and preserves OpenAI tool_calls", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "call_123",
+                    type: "function",
+                    function: {
+                      name: "lookup_weather",
+                      arguments: "{\"city\":\"Shanghai\"}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          tool_choice: "auto",
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "lookup_weather",
+                description: "Lookup weather by city",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    city: {
+                      type: "string"
+                    }
+                  },
+                  required: ["city"]
+                }
+              }
+            }
+          ],
+          messages: [{ role: "user", content: "Weather in Shanghai?" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      model: "gpt-4.1-mini",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "lookup_weather",
+            description: "Lookup weather by city",
+            parameters: {
+              type: "object",
+              properties: {
+                city: {
+                  type: "string"
+                }
+              },
+              required: ["city"]
+            }
+          }
+        }
+      ],
+      tool_choice: "auto",
+      messages: [{ role: "user", content: "Weather in Shanghai?" }]
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "chat.completion",
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call_123",
+                type: "function",
+                function: {
+                  name: "lookup_weather",
+                  arguments: "{\"city\":\"Shanghai\"}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    });
+  });
+
   it("rejects unsupported chat semantics like response_format", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
