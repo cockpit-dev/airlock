@@ -204,6 +204,18 @@ export interface GatewayKeyRevocationByIdPort {
   ): Promise<GatewayKeyRevocationState>;
 }
 
+export interface GatewayKeyRevocationRuntimeWritePort {
+  writeKeyRevocationState(
+    gatewayApiKey: GatewayApiKeyRecord,
+    revoked: boolean,
+    request: GatewayKeyRevocationWriteRequest
+  ): Promise<GatewayKeyRevocationState>;
+  appendOperationEvent(event: GatewayKeyAuditEvent): Promise<void>;
+  resolveOwnership(
+    gatewayApiKey: GatewayApiKeyRecord
+  ): Promise<GatewayApiKeyOwnership>;
+}
+
 function buildGatewayKeyRevocationWriteRequestFromPayload(
   keyId: string,
   ownership: GatewayApiKeyOwnership,
@@ -249,6 +261,56 @@ async function writeGatewayKeyRevocationById(
   };
 }
 
+async function writeGatewayKeyRevocationRuntime(
+  gatewayApiKey: GatewayApiKeyRecord,
+  revoked: boolean,
+  requestId: string,
+  request: GatewayKeyRevocationWriteRequest | undefined,
+  port: GatewayKeyRevocationRuntimeWritePort
+): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
+  const recordEvent = request?.recordEvent ?? true;
+  const ownership = recordEvent
+    ? request?.ownership ?? (await port.resolveOwnership(gatewayApiKey))
+    : undefined;
+  const operationId = recordEvent ? request?.operationId ?? requestId : undefined;
+  const nextRequest: GatewayKeyRevocationWriteRequest = {
+    keyId: gatewayApiKey.id,
+    ...(request?.recordEvent === false ? { recordEvent: false } : {}),
+    ...(ownership ? { ownership } : {}),
+    ...(operationId ? { operationId } : {}),
+    ...(request?.reason ? { reason: request.reason } : {}),
+    ...(request?.actor ? { actor: request.actor } : {}),
+    ...(request?.actorSource ? { actorSource: request.actorSource } : {})
+  };
+
+  const state = await port.writeKeyRevocationState(
+    gatewayApiKey,
+    revoked,
+    nextRequest
+  );
+
+  if (recordEvent && ownership && operationId) {
+    await port.appendOperationEvent(
+      createGatewayKeyAuditEvent({
+        keyId: gatewayApiKey.id,
+        kind: revoked ? "revoked" : "unrevoked",
+        ownership,
+        occurredAt: state.updatedAt,
+        operationId,
+        ...(request?.reason ? { reason: request.reason } : {}),
+        ...(request?.actor ? { actor: request.actor } : {}),
+        ...(request?.actorSource ? { actorSource: request.actorSource } : {})
+      })
+    );
+  }
+
+  return {
+    keyId: gatewayApiKey.id,
+    revoked: state.revoked,
+    updatedAt: state.updatedAt
+  };
+}
+
 export async function revokeGatewayKeyById(
   keyId: string,
   payload: unknown,
@@ -279,6 +341,53 @@ export async function clearGatewayKeyRevocationById(
     payload,
     message,
     actorContext,
+    port
+  );
+}
+
+export async function revokeGatewayKeyRuntime(
+  gatewayApiKey: GatewayApiKeyRecord,
+  requestId: string,
+  request: GatewayKeyRevocationWriteRequest | undefined,
+  port: GatewayKeyRevocationRuntimeWritePort
+): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
+  return writeGatewayKeyRevocationRuntime(
+    gatewayApiKey,
+    true,
+    requestId,
+    request,
+    port
+  );
+}
+
+export async function clearGatewayKeyRevocationRuntime(
+  gatewayApiKey: GatewayApiKeyRecord,
+  requestId: string,
+  request: GatewayKeyRevocationWriteRequest | undefined,
+  port: GatewayKeyRevocationRuntimeWritePort
+): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
+  return writeGatewayKeyRevocationRuntime(
+    gatewayApiKey,
+    false,
+    requestId,
+    request,
+    port
+  );
+}
+
+export async function clearGatewayKeyRevocationOverlayState(
+  gatewayApiKey: GatewayApiKeyRecord,
+  requestId: string,
+  port: GatewayKeyRevocationRuntimeWritePort
+): Promise<void> {
+  await writeGatewayKeyRevocationRuntime(
+    gatewayApiKey,
+    false,
+    requestId,
+    {
+      keyId: gatewayApiKey.id,
+      recordEvent: false
+    },
     port
   );
 }

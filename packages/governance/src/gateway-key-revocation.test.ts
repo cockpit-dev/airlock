@@ -2,11 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   buildGatewayKeyRevocationStateTransition,
+  clearGatewayKeyRevocationOverlayState,
   DEFAULT_GATEWAY_KEY_REVOCATION_STATE,
   clearGatewayKeyRevocationById,
+  clearGatewayKeyRevocationRuntime,
   parseExplicitGatewayKeyRevocationMetadataPayload,
   parseGatewayKeyRevocationState,
   parseGatewayKeyRevocationWriteRequest,
+  revokeGatewayKeyRuntime,
   revokeGatewayKeyById,
   requestKeyIdFromGatewayKeyRevocationWriteRequest,
   toGatewayKeyRevocationActorContextRecord
@@ -276,5 +279,216 @@ describe("clearGatewayKeyRevocationById", () => {
         ownership: "configured"
       }
     );
+  });
+});
+
+describe("revokeGatewayKeyRuntime", () => {
+  it("writes revoked=true, falls back to requestId as operationId, and appends an operation event", async () => {
+    const writeKeyRevocationState = vi.fn().mockResolvedValue({
+      revoked: true,
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+    const appendOperationEvent = vi.fn().mockResolvedValue(undefined);
+    const resolveOwnership = vi.fn().mockResolvedValue("registry");
+
+    await expect(
+      revokeGatewayKeyRuntime(
+        {
+          id: "key_dynamic",
+          label: "Dynamic Key",
+          valueHash: "hash",
+          status: "active"
+        },
+        "req_123",
+        {
+          reason: "incident containment",
+          actor: "ops@example.com",
+          actorSource: "credential"
+        },
+        {
+          writeKeyRevocationState,
+          appendOperationEvent,
+          resolveOwnership
+        }
+      )
+    ).resolves.toEqual({
+      keyId: "key_dynamic",
+      revoked: true,
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+
+    expect(resolveOwnership).toHaveBeenCalledWith({
+      id: "key_dynamic",
+      label: "Dynamic Key",
+      valueHash: "hash",
+      status: "active"
+    });
+    expect(writeKeyRevocationState).toHaveBeenCalledWith(
+      {
+        id: "key_dynamic",
+        label: "Dynamic Key",
+        valueHash: "hash",
+        status: "active"
+      },
+      true,
+      {
+        keyId: "key_dynamic",
+        ownership: "registry",
+        operationId: "req_123",
+        reason: "incident containment",
+        actor: "ops@example.com",
+        actorSource: "credential"
+      }
+    );
+    expect(appendOperationEvent).toHaveBeenCalledWith({
+      keyId: "key_dynamic",
+      kind: "revoked",
+      ownership: "registry",
+      occurredAt: "2026-05-14T00:00:00.000Z",
+      operationId: "req_123",
+      reason: "incident containment",
+      actor: "ops@example.com",
+      actorSource: "credential"
+    });
+  });
+
+  it("uses explicit ownership without resolving it again", async () => {
+    const writeKeyRevocationState = vi.fn().mockResolvedValue({
+      revoked: true,
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+    const appendOperationEvent = vi.fn().mockResolvedValue(undefined);
+    const resolveOwnership = vi.fn();
+
+    await revokeGatewayKeyRuntime(
+      {
+        id: "key_configured",
+        label: "Configured Key",
+        valueHash: "hash",
+        status: "active"
+      },
+      "req_123",
+      {
+        ownership: "configured"
+      },
+      {
+        writeKeyRevocationState,
+        appendOperationEvent,
+        resolveOwnership
+      }
+    );
+
+    expect(resolveOwnership).not.toHaveBeenCalled();
+    expect(writeKeyRevocationState).toHaveBeenCalledWith(
+      {
+        id: "key_configured",
+        label: "Configured Key",
+        valueHash: "hash",
+        status: "active"
+      },
+      true,
+      {
+        keyId: "key_configured",
+        ownership: "configured",
+        operationId: "req_123"
+      }
+    );
+  });
+});
+
+describe("clearGatewayKeyRevocationRuntime", () => {
+  it("writes revoked=false and appends an unrevoked operation event", async () => {
+    const writeKeyRevocationState = vi.fn().mockResolvedValue({
+      revoked: false,
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+    const appendOperationEvent = vi.fn().mockResolvedValue(undefined);
+    const resolveOwnership = vi.fn().mockResolvedValue("configured");
+
+    await expect(
+      clearGatewayKeyRevocationRuntime(
+        {
+          id: "key_configured",
+          label: "Configured Key",
+          valueHash: "hash",
+          status: "active"
+        },
+        "req_123",
+        undefined,
+        {
+          writeKeyRevocationState,
+          appendOperationEvent,
+          resolveOwnership
+        }
+      )
+    ).resolves.toEqual({
+      keyId: "key_configured",
+      revoked: false,
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+
+    expect(writeKeyRevocationState).toHaveBeenCalledWith(
+      {
+        id: "key_configured",
+        label: "Configured Key",
+        valueHash: "hash",
+        status: "active"
+      },
+      false,
+      {
+        keyId: "key_configured",
+        ownership: "configured",
+        operationId: "req_123"
+      }
+    );
+    expect(appendOperationEvent).toHaveBeenCalledWith({
+      keyId: "key_configured",
+      kind: "unrevoked",
+      ownership: "configured",
+      occurredAt: "2026-05-14T00:00:00.000Z",
+      operationId: "req_123"
+    });
+  });
+});
+
+describe("clearGatewayKeyRevocationOverlayState", () => {
+  it("disables audit recording and operation-event append", async () => {
+    const writeKeyRevocationState = vi.fn().mockResolvedValue({
+      revoked: false,
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+    const appendOperationEvent = vi.fn().mockResolvedValue(undefined);
+    const resolveOwnership = vi.fn();
+
+    await clearGatewayKeyRevocationOverlayState(
+      {
+        id: "key_dynamic",
+        label: "Dynamic Key",
+        valueHash: "hash",
+        status: "active"
+      },
+      "req_123",
+      {
+        writeKeyRevocationState,
+        appendOperationEvent,
+        resolveOwnership
+      }
+    );
+
+    expect(resolveOwnership).not.toHaveBeenCalled();
+    expect(writeKeyRevocationState).toHaveBeenCalledWith(
+      {
+        id: "key_dynamic",
+        label: "Dynamic Key",
+        valueHash: "hash",
+        status: "active"
+      },
+      false,
+      {
+        keyId: "key_dynamic",
+        recordEvent: false
+      }
+    );
+    expect(appendOperationEvent).not.toHaveBeenCalled();
   });
 });
