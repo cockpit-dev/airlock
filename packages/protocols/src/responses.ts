@@ -24,6 +24,18 @@ const openAIResponsesForcedFunctionToolChoiceSchema = z.object({
   name: z.string().min(1)
 });
 
+const openAIResponsesTextFormatSchema = z.object({
+  type: z.literal("text")
+});
+
+const openAIResponsesTextConfigSchema = z.object({
+  format: openAIResponsesTextFormatSchema
+});
+
+const openAIResponsesStreamOptionsSchema = z.object({
+  include_obfuscation: z.literal(false)
+});
+
 const openAIResponsesOutputTextContentBlockSchema = z.object({
   type: z.literal("output_text"),
   text: z.string().min(1)
@@ -74,6 +86,8 @@ export const openAIResponsesRequestSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   top_p: z.number().min(0).max(1).optional(),
   instructions: z.string().min(1).optional(),
+  text: openAIResponsesTextConfigSchema.optional(),
+  stream_options: openAIResponsesStreamOptionsSchema.optional(),
   parallel_tool_calls: z.boolean().optional(),
   tools: z.array(openAIResponsesFunctionToolSchema).min(1).optional(),
   tool_choice: z.union([

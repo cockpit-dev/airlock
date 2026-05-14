@@ -135,6 +135,74 @@ export function assertSupportedOpenAIResponsesToolsSemantics(
   }
 }
 
+export function assertSupportedOpenAIResponsesSemantics(
+  payload: unknown,
+  requestId: string
+) {
+  if (typeof payload !== "object" || payload === null) {
+    return;
+  }
+
+  if (!("text" in payload) || payload.text === undefined) {
+    return;
+  }
+
+  if (
+    typeof payload.text !== "object" ||
+    payload.text === null ||
+    !("format" in payload.text) ||
+    typeof payload.text.format !== "object" ||
+    payload.text.format === null ||
+    !("type" in payload.text.format) ||
+    payload.text.format.type !== "text"
+  ) {
+    throw new GatewayError(
+      "Unsupported OpenAI Responses text config: only text.format.type=text is supported",
+      {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
+  }
+}
+
+export function assertSupportedOpenAIResponsesStreamOptions(
+  payload: unknown,
+  requestId: string
+) {
+  if (typeof payload !== "object" || payload === null) {
+    return;
+  }
+
+  if (!("stream_options" in payload) || payload.stream_options === undefined) {
+    return;
+  }
+
+  const streamOptions = payload.stream_options;
+
+  if (
+    typeof streamOptions !== "object" ||
+    streamOptions === null ||
+    !("include_obfuscation" in streamOptions) ||
+    Object.keys(streamOptions).length !== 1 ||
+    streamOptions.include_obfuscation !== false
+  ) {
+    throw new GatewayError(
+      "Unsupported OpenAI Responses stream_options: only include_obfuscation=false is supported",
+      {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
+  }
+}
+
 function getOpenAIDeclaredToolNames(payload: Record<string, unknown>) {
   if (!Array.isArray(payload.tools)) {
     return [];

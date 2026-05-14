@@ -746,6 +746,40 @@ describe("openAIResponsesRequestSchema", () => {
     expect(parsed.parallel_tool_calls).toBe(true);
   });
 
+  it("accepts responses text config when format type is text", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      text: {
+        format: {
+          type: "text"
+        }
+      }
+    });
+
+    expect(parsed.text).toEqual({
+      format: {
+        type: "text"
+      }
+    });
+  });
+
+  it("accepts responses stream_options when include_obfuscation is false", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      stream_options: {
+        include_obfuscation: false
+      }
+    });
+
+    expect(parsed.stream_options).toEqual({
+      include_obfuscation: false
+    });
+  });
+
   it("accepts responses function_call replay items and function_call_output items", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",
