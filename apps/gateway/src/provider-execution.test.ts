@@ -3238,6 +3238,117 @@ describe("executeRoutedRequest", () => {
     ]);
   });
 
+  it("passes only the remaining timeout budget to a streaming attempt", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ],
+      targetSelection: {
+        strategy: "weighted",
+        weights: {
+          "openai:gpt-4.1-mini": 1,
+          "anthropic:claude-haiku-4-5": 10000
+        }
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: true,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'event: message_start\ndata: {"message":{"id":"msg_timeout_budget","model":"claude-haiku-4-5"}}\n\n',
+                  "event: message_stop\ndata: {}\n\n",
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const abortTimeouts: number[] = [];
+    const originalSetTimeout = globalThis.setTimeout;
+    const timeoutSpy = vi
+      .spyOn(globalThis, "setTimeout")
+      .mockImplementation(((handler: (...args: unknown[]) => void, timeout?: number, ...args: unknown[]) => {
+        abortTimeouts.push(Number(timeout));
+        return originalSetTimeout(handler, 0, ...args);
+      }) as typeof setTimeout);
+    const now = vi
+      .fn<() => number>()
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(850)
+      .mockReturnValueOnce(850)
+      .mockReturnValueOnce(900)
+      .mockReturnValueOnce(900);
+    try {
+      for await (const event of executeRoutedStreamRequest(route, request, {
+        config: {
+          mode: "free",
+          providerTimeoutMs: 1000,
+          providerMaxRetries: 0,
+          providerRetryBackoffMs: 0,
+          modelGroups: {},
+          gatewayApiKeys: [],
+          modelAliases: [],
+          anthropic: {
+            apiKey: "anthropic-secret",
+            baseUrl: "https://api.anthropic.com/v1",
+            defaultMaxTokens: 256
+          },
+          openAI: {
+            apiKey: "openai-secret",
+            baseUrl: "https://api.openai.com/v1",
+            defaultModel: "gpt-4.1-mini"
+          }
+        },
+        requestId: "req_stream_timeout_budget",
+        gatewayApiKey: {
+          id: "key_any",
+          label: "Any Provider",
+          value: "gateway-secret",
+          status: "active"
+        },
+        fetcher,
+        now
+      })) {
+        void event;
+      }
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+
+    expect(abortTimeouts[0]).toBe(150);
+  });
+
   it("retries a retryable provider failure on the same target before falling through to fallback", async () => {
     const route: ModelRoute = {
       externalModel: "gpt-4.1-mini",

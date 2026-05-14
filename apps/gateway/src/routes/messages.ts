@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 
 import {
+  type CanonicalStreamEvent,
   encodeCanonicalToAnthropicMessagesStreamEvents,
   encodeCanonicalToAnthropicMessagesResponse,
   normalizeAnthropicMessagesRequest
@@ -116,56 +117,125 @@ export async function handleMessages(
           totalTokens: number;
         }
       | undefined;
+    const streamExecution = executeRoutedStreamRequest(route, canonicalRequest, {
+      config,
+      gatewayApiKey,
+      requestId,
+      ...(circuitBreakerBackend ? { circuitBreakerBackend } : {}),
+      onAttemptTarget(target) {
+        attemptedTarget = target;
+      },
+      ...(now ? { now } : {}),
+      ...(requestShaping ? { requestShaping } : {}),
+      ...(fetcher ? { fetcher } : {})
+    });
+    const streamIterator = streamExecution[Symbol.asyncIterator]();
+    const didUseFallback = () => {
+      return (
+        attemptedTarget !== undefined &&
+        (attemptedTarget.provider !== route.target.provider ||
+          attemptedTarget.providerModel !== route.target.providerModel)
+      );
+    };
+    const handleStreamingError = async (error: unknown) => {
+      await releaseGatewayKeyTokenQuotaReservation(
+        context.env,
+        gatewayApiKey,
+        requestId,
+        tokenReservation
+      );
+      if (error instanceof GatewayError) {
+        context.set("telemetryErrorEmitted", true);
+        await emitGatewayRequestErrorTelemetry(
+          {
+            telemetrySink,
+            requestId,
+            routePath: "/v1/messages",
+            mode: config.mode,
+            startedAt: requestStartedAt,
+            stream: true,
+            statusCode: error.httpStatus,
+            gatewayApiKey,
+            externalModel: route.externalModel,
+            providerTarget: attemptedTarget,
+            fallbackUsed: didUseFallback()
+          },
+          error
+        );
+      }
+    };
+    const writeStreamEvent = async (
+      event: CanonicalStreamEvent,
+      controller: ReadableStreamDefaultController<Uint8Array>
+    ) => {
+      if (event.type === "response_completed") {
+        assertGatewayKeyTokenUsageAvailable(
+          gatewayApiKey,
+          event.usage,
+          requestId
+        );
+
+        if (event.usage) {
+          await reconcileGatewayKeyTokenQuotaReservation(
+            context.env,
+            gatewayApiKey,
+            requestId,
+            tokenReservation,
+            event.usage.totalTokens
+          );
+          streamUsage = event.usage;
+        }
+      }
+
+      for (const anthropicEvent of encodeCanonicalToAnthropicMessagesStreamEvents(
+        event
+      )) {
+        controller.enqueue(
+          encoder.encode(
+            `event: ${anthropicEvent.type}\ndata: ${JSON.stringify(
+              anthropicEvent
+            )}\n\n`
+          )
+        );
+      }
+    };
+    let firstEvent: CanonicalStreamEvent | undefined;
+
+    try {
+      const firstChunk = await streamIterator.next();
+
+      if (!firstChunk.done) {
+        firstEvent = firstChunk.value;
+      }
+    } catch (error) {
+      try {
+        await handleStreamingError(error);
+      } finally {
+        await releaseGatewayKeyConcurrencyLease(
+          context.env,
+          gatewayApiKey,
+          concurrencyLeaseId,
+          requestId
+        );
+      }
+      throw error;
+    }
+
     const responseStream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          for await (const event of executeRoutedStreamRequest(
-            route,
-            canonicalRequest,
-            {
-              config,
-              gatewayApiKey,
-              requestId,
-              ...(circuitBreakerBackend ? { circuitBreakerBackend } : {}),
-              onAttemptTarget(target) {
-                attemptedTarget = target;
-              },
-              ...(now ? { now } : {}),
-              ...(requestShaping ? { requestShaping } : {}),
-              ...(fetcher ? { fetcher } : {})
-            }
-          )) {
-            if (event.type === "response_completed") {
-              assertGatewayKeyTokenUsageAvailable(
-                gatewayApiKey,
-                event.usage,
-                requestId
-              );
+          if (firstEvent) {
+            await writeStreamEvent(firstEvent, controller);
+          }
 
-              if (event.usage) {
-                await reconcileGatewayKeyTokenQuotaReservation(
-                  context.env,
-                  gatewayApiKey,
-                  requestId,
-                  tokenReservation,
-                  event.usage.totalTokens
-                );
-                streamUsage = event.usage;
-              }
+          while (true) {
+            const nextChunk = await streamIterator.next();
+
+            if (nextChunk.done) {
+              break;
             }
 
-            for (const anthropicEvent of encodeCanonicalToAnthropicMessagesStreamEvents(
-              event
-            )) {
-              controller.enqueue(
-                encoder.encode(
-                  `event: ${anthropicEvent.type}\ndata: ${JSON.stringify(
-                    anthropicEvent
-                  )}\n\n`
-                )
-              );
-            }
-
+            await writeStreamEvent(nextChunk.value, controller);
           }
 
           await emitGatewayRequestSuccessTelemetry({
@@ -179,41 +249,12 @@ export async function handleMessages(
             gatewayApiKey,
             externalModel: route.externalModel,
             providerTarget: attemptedTarget,
-            fallbackUsed:
-              attemptedTarget !== undefined &&
-              (attemptedTarget.provider !== route.target.provider ||
-                attemptedTarget.providerModel !== route.target.providerModel),
+            fallbackUsed: didUseFallback(),
             ...(streamUsage ? { usage: streamUsage } : {})
           });
+          controller.close();
         } catch (error) {
-          await releaseGatewayKeyTokenQuotaReservation(
-            context.env,
-            gatewayApiKey,
-            requestId,
-            tokenReservation
-          );
-          if (error instanceof GatewayError) {
-            await emitGatewayRequestErrorTelemetry(
-              {
-                telemetrySink,
-                requestId,
-                routePath: "/v1/messages",
-                mode: config.mode,
-                startedAt: requestStartedAt,
-                stream: true,
-                statusCode: error.httpStatus,
-                gatewayApiKey,
-                externalModel: route.externalModel,
-                providerTarget: attemptedTarget,
-                fallbackUsed:
-                  attemptedTarget !== undefined &&
-                  (attemptedTarget.provider !== route.target.provider ||
-                    attemptedTarget.providerModel !== route.target.providerModel)
-              },
-              error
-            );
-          }
-
+          await handleStreamingError(error);
           throw error;
         } finally {
           await releaseGatewayKeyConcurrencyLease(
@@ -222,7 +263,6 @@ export async function handleMessages(
             concurrencyLeaseId,
             requestId
           );
-          controller.close();
         }
       }
     });

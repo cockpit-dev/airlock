@@ -11399,6 +11399,209 @@ describe("gateway app", () => {
     }
   });
 
+  it("returns timeout before starting a streaming attempt when the shared budget is already exhausted", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"id":"chatcmpl_stream_timeout","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(5)
+      .mockReturnValueOnce(5);
+
+    try {
+      const response = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer gateway-secret"
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            stream: true,
+            messages: [{ role: "user", content: "hi" }]
+          })
+        },
+        {
+          ...createBindings(),
+          AIRLOCK_PROVIDER_TIMEOUT_MS: "1"
+        }
+      );
+
+      expect(response.status).toBe(504);
+      expect(fetcher).toHaveBeenCalledTimes(0);
+      await expect(readJson(response)).resolves.toMatchObject({
+        error: {
+          code: "provider_timeout",
+          type: "provider"
+        }
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("releases a streaming concurrency lease even when preflight cleanup fails", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_after_cleanup_failure",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "recovered"
+              }
+            }
+          ],
+          usage: {
+            prompt_tokens: 8,
+            completion_tokens: 4,
+            total_tokens: 12
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const baseTokenQuotaNamespace = createTokenQuotaNamespace();
+    const failingReleaseTokenQuotaNamespace: DurableObjectNamespaceLike = {
+      idFromName(name: string) {
+        return baseTokenQuotaNamespace.idFromName(name);
+      },
+      get(id: { name: string }) {
+        const stub = baseTokenQuotaNamespace.get(id);
+
+        return {
+          async fetch(request: Request) {
+            if (request.method === "POST") {
+              const body = (await request.clone().json()) as { kind?: string };
+
+              if (body.kind === "release") {
+                return new Response("token release failed", { status: 500 });
+              }
+            }
+
+            return stub.fetch(request);
+          }
+        };
+      }
+    };
+    const app = createApp({
+      fetcher,
+      now: vi
+        .fn<() => number>()
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(5)
+        .mockReturnValueOnce(5)
+        .mockReturnValue(5)
+    });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_PROVIDER_TIMEOUT_MS: "1",
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_stream_cleanup_failure",
+          label: "Stream Cleanup Failure Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            concurrencyQuota: {
+              limit: 1
+            },
+            tokenQuota: {
+              limit: 1000,
+              windowSeconds: 60
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_CONCURRENCY: createConcurrencyNamespace(),
+      AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA: failingReleaseTokenQuotaNamespace
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          max_tokens: 16,
+          messages: [{ role: "user", content: "first stream" }]
+        })
+      },
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(503);
+    await expect(readJson(firstResponse)).resolves.toMatchObject({
+      error: {
+        code: "gateway_key_token_quota_unavailable"
+      }
+    });
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          max_tokens: 16,
+          messages: [{ role: "user", content: "second request" }]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("fails over across providers when an unshaped route has a retryable primary failure", async () => {
     const fetcher = vi
       .fn()

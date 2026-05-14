@@ -866,7 +866,14 @@ export async function* executeRoutedStreamRequest(
     throw createUnsupportedCapabilityError(route.target.provider, "streaming", requestId);
   }
 
+  const deadline = now() + config.providerTimeoutMs;
   const currentAttemptStartedAt = now();
+  const currentRemainingTimeoutMs = deadline - currentAttemptStartedAt;
+
+  if (currentRemainingTimeoutMs <= 0) {
+    throw createProviderTimeoutError(requestId);
+  }
+
   const currentAttemptRequest = createAttemptRequest(request, target);
   onAttemptTarget?.(target);
   const adapter = createProviderAdapter(
@@ -886,7 +893,7 @@ export async function* executeRoutedStreamRequest(
   try {
     for await (const event of adapter.stream(currentAttemptRequest, {
       requestId,
-      timeoutMs: config.providerTimeoutMs,
+      timeoutMs: currentRemainingTimeoutMs,
       ...(requestShaping ? { requestShaping } : {})
     })) {
       yield event;
