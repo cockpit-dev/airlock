@@ -354,6 +354,43 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     });
   });
 
+  it("marks parallel tool call control requirements when explicitly enabled", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      allowParallelToolCalls: true,
+      tools: [
+        {
+          name: "lookup_weather",
+          inputSchema: {
+            type: "object"
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: false,
+      requiresTools: true,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false,
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: true
+    });
+  });
+
   it("marks streaming tool requirements when canonical requests stream declared tools", () => {
     const request: CanonicalRequest = {
       model: "gpt-4.1-mini",

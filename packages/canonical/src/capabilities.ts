@@ -35,7 +35,6 @@ export function getCanonicalRequestCapabilityRequirements(
       request.outputFormat !== undefined &&
       request.outputFormat.type !== "text",
     requiresParallelToolCallControl:
-      request.allowParallelToolCalls !== undefined &&
-      request.allowParallelToolCalls === false
+      request.allowParallelToolCalls !== undefined
   };
 }
