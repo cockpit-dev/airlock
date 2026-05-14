@@ -43,7 +43,11 @@ import {
   emitGatewayRequestErrorTelemetry
 } from "../telemetry.js";
 import type { CreateAppOptions } from "../app.js";
-import { assertAllowedOpenAITopLevelFields } from "../openai-request-validation.js";
+import {
+  assertAllowedOpenAITopLevelFields,
+  assertSupportedOpenAIChatStreamOptions,
+  parseOpenAIRequestSchema
+} from "../openai-request-validation.js";
 
 const allowedOpenAIChatTopLevelFields = [
   "model",
@@ -53,6 +57,7 @@ const allowedOpenAIChatTopLevelFields = [
   "temperature",
   "top_p",
   "stop",
+  "stream_options",
   "messages",
   "airlock"
 ] as const;
@@ -87,7 +92,13 @@ export async function handleChatCompletions(
     "OpenAI Chat",
     allowedOpenAIChatTopLevelFields
   );
-  const parsed = openAIChatCompletionRequestSchema.parse(json);
+  assertSupportedOpenAIChatStreamOptions(json, requestId);
+  const parsed = parseOpenAIRequestSchema(
+    openAIChatCompletionRequestSchema,
+    json,
+    requestId,
+    "OpenAI Chat"
+  );
   const route = resolveModelRoute(parsed.model, config.modelAliases, requestId);
   assertGatewayKeyAllowsRoute(gatewayApiKey, route, requestId);
   assertGatewayKeyAllowsModel(

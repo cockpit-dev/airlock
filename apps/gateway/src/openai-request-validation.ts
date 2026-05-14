@@ -1,4 +1,5 @@
 import { GatewayError } from "@airlock/shared";
+import { ZodError, type ZodType } from "zod";
 
 export function assertAllowedOpenAITopLevelFields(
   payload: unknown,
@@ -25,5 +26,62 @@ export function assertAllowedOpenAITopLevelFields(
         }
       );
     }
+  }
+}
+
+export function assertSupportedOpenAIChatStreamOptions(
+  payload: unknown,
+  requestId: string
+) {
+  if (typeof payload !== "object" || payload === null) {
+    return;
+  }
+
+  if (!("stream_options" in payload) || payload.stream_options === undefined) {
+    return;
+  }
+
+  const streamOptions = payload.stream_options;
+
+  if (
+    typeof streamOptions !== "object" ||
+    streamOptions === null ||
+    !("include_usage" in streamOptions) ||
+    Object.keys(streamOptions).length !== 1 ||
+    streamOptions.include_usage !== true
+  ) {
+    throw new GatewayError(
+      "Unsupported OpenAI Chat stream_options: only include_usage=true is supported",
+      {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
+  }
+}
+
+export function parseOpenAIRequestSchema<T>(
+  schema: ZodType<T>,
+  payload: unknown,
+  requestId: string,
+  routeLabel: "OpenAI Chat" | "OpenAI Responses"
+) {
+  try {
+    return schema.parse(payload);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      throw new GatewayError(`Invalid ${routeLabel} request payload`, {
+        code: "request_invalid_openai_payload",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      });
+    }
+
+    throw error;
   }
 }

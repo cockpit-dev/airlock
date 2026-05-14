@@ -7,6 +7,10 @@ const openAIChatTextContentPartSchema = z.object({
   text: z.string().min(1)
 });
 
+const openAIChatStreamOptionsSchema = z.object({
+  include_usage: z.boolean()
+});
+
 export const openAIChatMessageSchema = z.object({
   role: z.enum(["system", "developer", "user", "assistant"]),
   content: z.union([
@@ -23,6 +27,7 @@ export const openAIChatCompletionRequestSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   top_p: z.number().min(0).max(1).optional(),
   stop: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
+  stream_options: openAIChatStreamOptionsSchema.optional(),
   messages: z.array(openAIChatMessageSchema).min(1),
   airlock: airlockRequestExtensionsSchema.optional()
 });

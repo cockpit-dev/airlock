@@ -1,4 +1,5 @@
 import { GatewayError } from "@airlock/shared";
+import { ZodError, type ZodType } from "zod";
 
 export function assertAllowedAnthropicTopLevelFields(
   payload: unknown,
@@ -24,5 +25,27 @@ export function assertAllowedAnthropicTopLevelFields(
         }
       );
     }
+  }
+}
+
+export function parseAnthropicRequestSchema<T>(
+  schema: ZodType<T>,
+  payload: unknown,
+  requestId: string
+) {
+  try {
+    return schema.parse(payload);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      throw new GatewayError("Invalid Anthropic request payload", {
+        code: "request_invalid_anthropic_payload",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      });
+    }
+
+    throw error;
   }
 }

@@ -192,6 +192,26 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(single.stop).toBe("\n\n");
     expect(multiple.stop).toEqual(["END", "STOP"]);
   });
+
+  it("accepts chat stream_options.include_usage when true", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: true,
+      stream_options: {
+        include_usage: true
+      },
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.stream_options).toEqual({
+      include_usage: true
+    });
+  });
 });
 
 describe("openAIResponsesRequestSchema", () => {

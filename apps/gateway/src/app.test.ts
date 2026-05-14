@@ -2167,7 +2167,7 @@ describe("gateway app", () => {
       bindings
     );
 
-    expect(invalidResponse.status).toBe(500);
+    expect(invalidResponse.status).toBe(400);
 
     const validResponse = await app.request(
       "http://localhost/v1/chat/completions",
@@ -2757,7 +2757,7 @@ describe("gateway app", () => {
       bindings
     );
 
-    expect(invalidResponse.status).toBe(500);
+    expect(invalidResponse.status).toBe(400);
 
     const validResponse = await app.request(
       "http://localhost/v1/chat/completions",
@@ -3132,6 +3132,105 @@ describe("gateway app", () => {
     await expect(readJson(response)).resolves.toEqual({
       error: {
         message: "Unsupported OpenAI Chat semantic field: modalities",
+        type: "request",
+        code: "request_unsupported_openai_semantics"
+      }
+    });
+  });
+
+  it("accepts supported chat stream_options include_usage semantics and streams successfully", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"hel"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"lo"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          stream_options: {
+            include_usage: true
+          },
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const body = await readText(response);
+    expect(body).toContain('"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}');
+    expect(body).toContain("data: [DONE]");
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stream: true,
+      stream_options: {
+        include_usage: true
+      }
+    });
+  });
+
+  it("rejects unsupported chat stream_options variants", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          stream_options: {
+            include_usage: false
+          },
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Unsupported OpenAI Chat stream_options: only include_usage=true is supported",
         type: "request",
         code: "request_unsupported_openai_semantics"
       }
@@ -14881,6 +14980,73 @@ describe("gateway app", () => {
         code: "request_unsupported_openai_semantics"
       }
     });
+  });
+
+  it("returns an OpenAI-compatible request error for invalid chat schema payloads", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          max_tokens: 0,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message: "Invalid OpenAI Chat request payload",
+        type: "request",
+        code: "request_invalid_openai_payload"
+      }
+    });
+  });
+
+  it("returns an Anthropic-compatible request error for invalid messages schema payloads", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 0,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    const body = await readJson(response);
+
+    expect(body).toMatchObject({
+      type: "error",
+      error: {
+        type: "request",
+        message: "Invalid Anthropic request payload"
+      }
+    });
+    if (!isRecord(body)) {
+      throw new Error("Expected an Anthropic error payload");
+    }
+    expect(typeof body.request_id).toBe("string");
   });
 
   it("returns an OpenAI responses payload as incomplete when the upstream truncates at max tokens", async () => {

@@ -42,7 +42,10 @@ import {
   emitGatewayRequestSuccessTelemetry
 } from "../telemetry.js";
 import type { CreateAppOptions } from "../app.js";
-import { assertAllowedOpenAITopLevelFields } from "../openai-request-validation.js";
+import {
+  assertAllowedOpenAITopLevelFields,
+  parseOpenAIRequestSchema
+} from "../openai-request-validation.js";
 
 const allowedOpenAIResponsesTopLevelFields = [
   "model",
@@ -85,7 +88,12 @@ export async function handleResponses(
     "OpenAI Responses",
     allowedOpenAIResponsesTopLevelFields
   );
-  const parsed = openAIResponsesRequestSchema.parse(json);
+  const parsed = parseOpenAIRequestSchema(
+    openAIResponsesRequestSchema,
+    json,
+    requestId,
+    "OpenAI Responses"
+  );
   const route = resolveModelRoute(parsed.model, config.modelAliases, requestId);
   assertGatewayKeyAllowsRoute(gatewayApiKey, route, requestId);
   assertGatewayKeyAllowsModel(
