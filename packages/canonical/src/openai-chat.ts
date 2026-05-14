@@ -643,7 +643,8 @@ export function encodeCanonicalToOpenAIChatResponse(
           role: "assistant",
           ...(response.toolCalls && response.toolCalls.length > 0
             ? {
-                content: null,
+                content:
+                  response.outputText.length > 0 ? response.outputText : null,
                 tool_calls: response.toolCalls.map((toolCall) => ({
                   id: toolCall.id,
                   type: "function" as const,
@@ -665,23 +666,25 @@ export function encodeCanonicalToOpenAIChatResponse(
 export function encodeCanonicalToOpenAIResponsesResponse(
   response: CanonicalResponse
 ) {
-  const output =
-    response.toolCalls && response.toolCalls.length > 0
-      ? response.toolCalls.map((toolCall) => ({
-          type: "function_call" as const,
-          call_id: toolCall.id,
-          name: toolCall.name,
-          arguments: toolCall.arguments,
-          status: "completed" as const
-        }))
-      : [
+  const output = [
+    ...(response.outputText.length > 0
+      ? [
           createOpenAIResponsesOutputMessage(
             response.id,
             response.outputText,
             "completed",
             true
           )
-        ];
+        ]
+      : []),
+    ...(response.toolCalls?.map((toolCall) => ({
+      type: "function_call" as const,
+      call_id: toolCall.id,
+      name: toolCall.name,
+      arguments: toolCall.arguments,
+      status: "completed" as const
+    })) ?? [])
+  ];
 
   return {
     id: response.id,
@@ -981,20 +984,25 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
 export function encodeCanonicalToAnthropicMessagesResponse(
   response: CanonicalResponse
 ) {
-  const content =
-    response.toolCalls && response.toolCalls.length > 0
-      ? response.toolCalls.map((toolCall) => ({
-          type: "tool_use" as const,
-          id: toolCall.id,
-          name: toolCall.name,
-          input: JSON.parse(toolCall.arguments) as Record<string, unknown>
-        }))
-      : [
+  const toolUseContent =
+    response.toolCalls?.map((toolCall) => ({
+      type: "tool_use" as const,
+      id: toolCall.id,
+      name: toolCall.name,
+      input: JSON.parse(toolCall.arguments) as Record<string, unknown>
+    })) ?? [];
+
+  const textContent =
+    response.outputText.length > 0
+      ? [
           {
             type: "text" as const,
             text: response.outputText
           }
-        ];
+        ]
+      : [];
+
+  const content = [...textContent, ...toolUseContent];
 
   return {
     id: response.id,
@@ -1069,7 +1077,7 @@ export function encodeCanonicalToAnthropicMessagesStreamEvents(
 
   if (event.type === "tool_call_delta") {
     const toolIndex = event.toolIndex;
-    const toolBlockIndex = toolIndex;
+    const toolBlockIndex = state.startedTextBlock ? toolIndex + 1 : toolIndex;
     const encodedToolStartNeeded = !state.startedToolBlocks.includes(toolBlockIndex);
 
     if (encodedToolStartNeeded) {

@@ -353,6 +353,38 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
       ]
     });
   });
+
+  it("preserves openai chat text when canonical response contains both text and tool calls", () => {
+    const encoded = encodeCanonicalToOpenAIChatResponse({
+      id: "resp_123",
+      model: "claude-sonnet-4-5",
+      outputText: "Let me check that.",
+      finishReason: "tool_calls",
+      toolCalls: [
+        {
+          id: "toolu_123",
+          name: "lookup_weather",
+          arguments: "{\"city\":\"Shanghai\"}"
+        }
+      ]
+    });
+
+    expect(encoded.choices[0]?.finish_reason).toBe("tool_calls");
+    expect(encoded.choices[0]?.message).toEqual({
+      role: "assistant",
+      content: "Let me check that.",
+      tool_calls: [
+        {
+          id: "toolu_123",
+          type: "function",
+          function: {
+            name: "lookup_weather",
+            arguments: "{\"city\":\"Shanghai\"}"
+          }
+        }
+      ]
+    });
+  });
 });
 
 describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
@@ -928,6 +960,46 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
     expect(encoded.incomplete_details).toEqual({
       reason: "max_output_tokens"
     });
+  });
+
+  it("preserves responses text output item when canonical response contains both text and tool calls", () => {
+    const encoded = encodeCanonicalToOpenAIResponsesResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      outputText: "Let me check that.",
+      finishReason: "tool_calls",
+      toolCalls: [
+        {
+          id: "call_123",
+          name: "lookup_weather",
+          arguments: "{\"city\":\"Shanghai\"}"
+        }
+      ]
+    });
+
+    expect(encoded.output_text).toBe("Let me check that.");
+    expect(encoded.output).toEqual([
+      {
+        id: "resp_123_output_0",
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [
+          {
+            type: "output_text",
+            text: "Let me check that.",
+            annotations: []
+          }
+        ]
+      },
+      {
+        type: "function_call",
+        call_id: "call_123",
+        name: "lookup_weather",
+        arguments: "{\"city\":\"Shanghai\"}",
+        status: "completed"
+      }
+    ]);
   });
 });
 
@@ -1717,6 +1789,38 @@ describe("encodeCanonicalToAnthropicMessagesResponse", () => {
     expect(encoded.stop_reason).toBe("tool_use");
   });
 
+  it("preserves anthropic text blocks when canonical response contains both text and tool calls", () => {
+    const encoded = encodeCanonicalToAnthropicMessagesResponse({
+      id: "msg_123",
+      model: "claude-sonnet-4-5",
+      outputText: "Let me check that.",
+      finishReason: "tool_calls",
+      toolCalls: [
+        {
+          id: "call_123",
+          name: "lookup_weather",
+          arguments: "{\"city\":\"Shanghai\"}"
+        }
+      ]
+    });
+
+    expect(encoded.content).toEqual([
+      {
+        type: "text",
+        text: "Let me check that."
+      },
+      {
+        type: "tool_use",
+        id: "call_123",
+        name: "lookup_weather",
+        input: {
+          city: "Shanghai"
+        }
+      }
+    ]);
+    expect(encoded.stop_reason).toBe("tool_use");
+  });
+
   it("encodes a max_tokens canonical response into an Anthropic max_tokens stop reason", () => {
     const encoded = encodeCanonicalToAnthropicMessagesResponse({
       id: "msg_123",
@@ -1825,6 +1929,48 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
       {
         type: "content_block_delta",
         index: 0,
+        delta: {
+          type: "input_json_delta",
+          partial_json: "{\"city\":\"Shang"
+        }
+      }
+    ]);
+  });
+
+  it("shifts anthropic tool block indexes after a started text block", async () => {
+    const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
+      "./openai-chat.js"
+    );
+    const state = {
+      startedTextBlock: true,
+      startedToolBlocks: [],
+      pendingToolStops: []
+    };
+
+    expect(
+      encodeCanonicalToAnthropicMessagesStreamEvents({
+        type: "tool_call_delta",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        toolCallId: "call_123",
+        toolIndex: 0,
+        toolName: "lookup_weather",
+        argumentsDelta: "{\"city\":\"Shang"
+      }, state)
+    ).toEqual([
+      {
+        type: "content_block_start",
+        index: 1,
+        content_block: {
+          type: "tool_use",
+          id: "call_123",
+          name: "lookup_weather",
+          input: {}
+        }
+      },
+      {
+        type: "content_block_delta",
+        index: 1,
         delta: {
           type: "input_json_delta",
           partial_json: "{\"city\":\"Shang"
