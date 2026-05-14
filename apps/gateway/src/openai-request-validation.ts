@@ -341,9 +341,11 @@ export function assertOpenAIForcedToolChoiceMatchesDeclaredTools(
       isRecord(payload.tool_choice.function) &&
       getRecordString(payload.tool_choice.function, "name") !== undefined) ||
       getRecordString(payload.tool_choice, "name") !== undefined);
+  const requiresDeclaredTools =
+    payload.tool_choice === "required" || hasForcedNamedToolChoice;
 
   if (!("tools" in payload) || payload.tools === undefined) {
-    if (hasForcedNamedToolChoice) {
+    if (requiresDeclaredTools) {
       throw new GatewayError(
         `Unsupported ${routeLabel} tools semantics: tool_choice requires declared tools`,
         {

@@ -121,15 +121,14 @@ export function assertAnthropicForcedToolChoiceMatchesDeclaredTools(
     return;
   }
 
+  const requiresDeclaredTools =
+    typeof payload.tool_choice === "object" &&
+    payload.tool_choice !== null &&
+    "type" in payload.tool_choice &&
+    (payload.tool_choice.type === "tool" || payload.tool_choice.type === "any");
+
   if (!("tools" in payload) || !Array.isArray(payload.tools)) {
-    if (
-      typeof payload.tool_choice === "object" &&
-      payload.tool_choice !== null &&
-      "type" in payload.tool_choice &&
-      payload.tool_choice.type === "tool" &&
-      "name" in payload.tool_choice &&
-      typeof payload.tool_choice.name === "string"
-    ) {
+    if (requiresDeclaredTools) {
       throw new GatewayError(
         "Unsupported Anthropic tools semantics: tool_choice requires declared tools",
         {
