@@ -156,6 +156,11 @@ export interface GatewayKeyRegistryBulkRotateRequest {
   auditMetadata: GatewayKeyRegistryUpdateAuditMetadata;
 }
 
+export interface GatewayKeyRegistryStoredDynamicKeyUpdateOptions {
+  clearPreviousValueHash?: boolean;
+  clearArchivedAt?: boolean;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -345,6 +350,164 @@ export function createGatewayKeyRegistryDynamicKeyView(
     createdAt: key.createdAt,
     updatedAt: key.updatedAt
   };
+}
+
+function toComparableStoredGatewayRegistryPolicyValue(
+  value: GatewayKeyRegistryStoredDynamicKey["policy"]
+): Record<string, unknown> | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized: unknown = JSON.parse(JSON.stringify(value));
+
+  if (!isRecord(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+export function createStoredGatewayRegistryFieldDiffs(
+  before: GatewayKeyRegistryStoredDynamicKey,
+  after: GatewayKeyRegistryStoredDynamicKey
+) {
+  const diffs: Array<{
+    field:
+      | "label"
+      | "status"
+      | "notBefore"
+      | "expiresAt"
+      | "policy"
+      | "valueHash"
+      | "previousValueHash"
+      | "previousValueHashExpiresAt"
+      | "archivedAt";
+    before?: string | number | boolean | null | Record<string, unknown>;
+    after?: string | number | boolean | null | Record<string, unknown>;
+  }> = [];
+
+  const pushScalarDiff = (
+    field:
+      | "label"
+      | "status"
+      | "notBefore"
+      | "expiresAt"
+      | "valueHash"
+      | "previousValueHash"
+      | "previousValueHashExpiresAt"
+      | "archivedAt",
+    beforeValue: string | undefined,
+    afterValue: string | undefined
+  ) => {
+    if (beforeValue === afterValue) {
+      return;
+    }
+
+    diffs.push({
+      field,
+      before: beforeValue ?? null,
+      after: afterValue ?? null
+    });
+  };
+
+  pushScalarDiff("label", before.label, after.label);
+  pushScalarDiff("status", before.status, after.status);
+  pushScalarDiff("notBefore", before.notBefore, after.notBefore);
+  pushScalarDiff("expiresAt", before.expiresAt, after.expiresAt);
+
+  const beforePolicy = toComparableStoredGatewayRegistryPolicyValue(before.policy);
+  const afterPolicy = toComparableStoredGatewayRegistryPolicyValue(after.policy);
+
+  if (JSON.stringify(beforePolicy) !== JSON.stringify(afterPolicy)) {
+    diffs.push({
+      field: "policy",
+      before: beforePolicy,
+      after: afterPolicy
+    });
+  }
+
+  pushScalarDiff("valueHash", before.valueHash, after.valueHash);
+  pushScalarDiff(
+    "previousValueHash",
+    before.previousValueHash,
+    after.previousValueHash
+  );
+  pushScalarDiff(
+    "previousValueHashExpiresAt",
+    before.previousValueHashExpiresAt,
+    after.previousValueHashExpiresAt
+  );
+  pushScalarDiff("archivedAt", before.archivedAt, after.archivedAt);
+
+  return diffs;
+}
+
+export function createStoredGatewayRegistryDynamicKey(
+  gatewayApiKey: GatewayApiKeyRecord,
+  now = new Date().toISOString()
+): GatewayKeyRegistryStoredDynamicKey {
+  return {
+    ...gatewayApiKey,
+    valueHash: gatewayApiKey.valueHash!,
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+export function updateStoredGatewayRegistryDynamicKey(
+  existing: GatewayKeyRegistryStoredDynamicKey,
+  gatewayApiKey: GatewayApiKeyRecord & {
+    previousValueHash?: string;
+    previousValueHashExpiresAt?: string;
+  },
+  existingGatewayApiKeys: readonly GatewayKeyRegistryStoredDynamicKey[],
+  options?: GatewayKeyRegistryStoredDynamicKeyUpdateOptions,
+  now = new Date().toISOString()
+): GatewayKeyRegistryStoredDynamicKey {
+  parseGatewayDynamicApiKeyRecord(
+    gatewayApiKey,
+    existingGatewayApiKeys.filter((entry) => {
+      return entry.id !== gatewayApiKey.id;
+    })
+  );
+
+  const next: GatewayKeyRegistryStoredDynamicKey = {
+    ...existing,
+    ...gatewayApiKey,
+    valueHash: gatewayApiKey.valueHash!,
+    updatedAt: now
+  };
+
+  if (
+    options?.clearPreviousValueHash !== true &&
+    gatewayApiKey.valueHash === existing.valueHash &&
+    existing.previousValueHash &&
+    existing.previousValueHashExpiresAt
+  ) {
+    next.previousValueHash = existing.previousValueHash;
+    next.previousValueHashExpiresAt = existing.previousValueHashExpiresAt;
+  }
+
+  if (
+    options?.clearPreviousValueHash === true ||
+    gatewayApiKey.previousValueHash === undefined
+  ) {
+    delete next.previousValueHash;
+  }
+
+  if (
+    options?.clearPreviousValueHash === true ||
+    gatewayApiKey.previousValueHashExpiresAt === undefined
+  ) {
+    delete next.previousValueHashExpiresAt;
+  }
+
+  if (options?.clearArchivedAt === true) {
+    delete next.archivedAt;
+  }
+
+  return next;
 }
 
 export function parseGatewayKeyRegistryDynamicKeyView(

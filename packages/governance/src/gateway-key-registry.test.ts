@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createStoredGatewayRegistryDynamicKey,
+  createStoredGatewayRegistryFieldDiffs,
   parseGatewayKeyRegistryBulkArchiveRequest,
   parseGatewayKeyRegistryBulkRotationActionRequest,
   createGatewayKeyRegistryDynamicKeyView,
+  updateStoredGatewayRegistryDynamicKey,
   parseGatewayKeyRegistryBulkCreateResponse,
   parseGatewayKeyRegistryBulkCreateRequest,
   parseGatewayKeyRegistryBulkDeleteRequest,
@@ -156,6 +159,131 @@ describe("createGatewayKeyRegistryDynamicKeyView", () => {
       createdAt: "2026-05-13T00:00:00.000Z",
       updatedAt: "2026-05-13T01:00:00.000Z"
     });
+  });
+});
+
+describe("stored registry key transitions", () => {
+  it("creates a stored dynamic key with stamped timestamps", () => {
+    expect(
+      createStoredGatewayRegistryDynamicKey(
+        {
+          id: "key_dynamic",
+          label: "Dynamic Key",
+          valueHash:
+            "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+          status: "active"
+        },
+        "2026-05-14T00:00:00.000Z"
+      )
+    ).toEqual({
+      id: "key_dynamic",
+      label: "Dynamic Key",
+      valueHash:
+        "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+      status: "active",
+      createdAt: "2026-05-14T00:00:00.000Z",
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+  });
+
+  it("updates a stored dynamic key while preserving prior staged metadata when the value hash is unchanged", () => {
+    const existing = parseGatewayKeyRegistryStoredDynamicKey({
+      id: "key_dynamic",
+      label: "Dynamic Key",
+      valueHash:
+        "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+      previousValueHash:
+        "2e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+      previousValueHashExpiresAt: "2026-05-15T00:00:00.000Z",
+      status: "active",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: "2026-05-13T01:00:00.000Z"
+    });
+
+    expect(
+      updateStoredGatewayRegistryDynamicKey(
+        existing,
+        {
+          ...existing,
+          label: "Renamed Key"
+        },
+        [],
+        undefined,
+        "2026-05-14T00:00:00.000Z"
+      )
+    ).toMatchObject({
+      label: "Renamed Key",
+      previousValueHash:
+        "2e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+      previousValueHashExpiresAt: "2026-05-15T00:00:00.000Z",
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+  });
+
+  it("can clear staged rotation fields and archive markers during an update transition", () => {
+    const existing = parseGatewayKeyRegistryStoredDynamicKey({
+      id: "key_dynamic",
+      label: "Archived Key",
+      valueHash:
+        "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+      previousValueHash:
+        "2e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+      previousValueHashExpiresAt: "2026-05-15T00:00:00.000Z",
+      archivedAt: "2026-05-14T01:00:00.000Z",
+      status: "active",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: "2026-05-13T01:00:00.000Z"
+    });
+
+    const next = updateStoredGatewayRegistryDynamicKey(
+      existing,
+      {
+        ...existing,
+        valueHash:
+          "3e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6"
+      },
+      [],
+      {
+        clearPreviousValueHash: true,
+        clearArchivedAt: true
+      },
+      "2026-05-14T02:00:00.000Z"
+    );
+
+    expect(next.previousValueHash).toBeUndefined();
+    expect(next.previousValueHashExpiresAt).toBeUndefined();
+    expect(next.archivedAt).toBeUndefined();
+    expect(next.updatedAt).toBe("2026-05-14T02:00:00.000Z");
+  });
+
+  it("projects stable field-level diffs from stored state transitions", () => {
+    const before = parseGatewayKeyRegistryStoredDynamicKey({
+      id: "key_dynamic",
+      label: "Dynamic Key",
+      valueHash:
+        "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+      status: "active",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: "2026-05-13T00:00:00.000Z"
+    });
+    const after = parseGatewayKeyRegistryStoredDynamicKey({
+      id: "key_dynamic",
+      label: "Dynamic Key",
+      valueHash:
+        "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+      status: "active",
+      archivedAt: "2026-05-14T00:00:00.000Z",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
+
+    expect(createStoredGatewayRegistryFieldDiffs(before, after)).toEqual([
+      {
+        field: "archivedAt",
+        before: null,
+        after: "2026-05-14T00:00:00.000Z"
+      }
+    ]);
   });
 });
 
