@@ -262,13 +262,37 @@ export function normalizeOpenAIChatRequest(
     ...(request.tool_choice !== undefined
       ? { toolChoice: request.tool_choice }
       : {}),
-    messages: request.messages.map((message) => ({
-      role: message.role === "developer" ? "system" : message.role,
-      content:
+    messages: request.messages.map((message) => {
+      if (message.role === "tool") {
+        return {
+          role: "tool" as const,
+          content: message.content,
+          toolCallId: message.tool_call_id
+        };
+      }
+
+      const content =
         typeof message.content === "string"
           ? message.content
-          : message.content.map((part) => part.text).join("\n")
-    }))
+          : message.content.map((part) => part.text).join("\n");
+
+      if ("tool_calls" in message && message.tool_calls) {
+        return {
+          role: "assistant" as const,
+          content,
+          toolCalls: message.tool_calls.map((toolCall) => ({
+            id: toolCall.id,
+            name: toolCall.function.name,
+            arguments: toolCall.function.arguments
+          }))
+        };
+      }
+
+      return {
+        role: message.role === "developer" ? "system" : message.role,
+        content
+      };
+    })
   };
 }
 

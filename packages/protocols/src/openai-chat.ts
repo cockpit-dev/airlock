@@ -20,13 +20,53 @@ const openAIChatFunctionToolSchema = z.object({
   })
 });
 
-export const openAIChatMessageSchema = z.object({
-  role: z.enum(["system", "developer", "user", "assistant"]),
+const openAIChatAssistantToolCallSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("function"),
+  function: z.object({
+    name: z.string().min(1),
+    arguments: z.string()
+  })
+});
+
+const openAIChatSystemUserDeveloperMessageSchema = z.object({
+  role: z.enum(["system", "developer", "user"]),
   content: z.union([
-    z.string().min(1),
+    z.string(),
     z.array(openAIChatTextContentPartSchema).min(1)
   ])
 });
+
+const openAIChatAssistantPlainMessageSchema = z.object({
+  role: z.literal("assistant"),
+  content: z.union([
+    z.string(),
+    z.array(openAIChatTextContentPartSchema).min(1)
+  ])
+});
+
+const openAIChatBaseMessageSchema = z.union([
+  openAIChatSystemUserDeveloperMessageSchema,
+  openAIChatAssistantPlainMessageSchema
+]);
+
+const openAIChatAssistantToolCallMessageSchema = z.object({
+  role: z.literal("assistant"),
+  content: z.string(),
+  tool_calls: z.array(openAIChatAssistantToolCallSchema).min(1)
+});
+
+const openAIChatToolMessageSchema = z.object({
+  role: z.literal("tool"),
+  tool_call_id: z.string().min(1),
+  content: z.string()
+});
+
+export const openAIChatMessageSchema = z.union([
+  openAIChatAssistantToolCallMessageSchema,
+  openAIChatToolMessageSchema,
+  openAIChatBaseMessageSchema
+]);
 
 export const openAIChatCompletionRequestSchema = z.object({
   model: z.string().min(1),

@@ -63,6 +63,32 @@ export function assertSupportedOpenAIChatStreamOptions(
   }
 }
 
+export function assertSupportedOpenAIChatToolsSemantics(
+  payload: unknown,
+  requestId: string
+) {
+  if (typeof payload !== "object" || payload === null) {
+    return;
+  }
+
+  if (!("tools" in payload) || payload.tools === undefined) {
+    return;
+  }
+
+  if ("stream" in payload && payload.stream === true) {
+    throw new GatewayError(
+      "Unsupported OpenAI Chat tools semantics: streaming tool calls are not yet supported",
+      {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
+  }
+}
+
 export function parseOpenAIRequestSchema<T>(
   schema: ZodType<T>,
   payload: unknown,

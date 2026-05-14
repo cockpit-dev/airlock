@@ -252,6 +252,53 @@ describe("openAIChatCompletionRequestSchema", () => {
       }
     });
   });
+
+  it("accepts assistant tool_calls and tool result messages for replay", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            {
+              id: "call_123",
+              type: "function",
+              function: {
+                name: "lookup_weather",
+                arguments: "{\"city\":\"Shanghai\"}"
+              }
+            }
+          ]
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_123",
+          content: "{\"temperature_c\":26}"
+        }
+      ]
+    });
+
+    expect(parsed.messages[1]).toMatchObject({
+      role: "assistant",
+      tool_calls: [
+        {
+          id: "call_123",
+          type: "function"
+        }
+      ]
+    });
+    expect(parsed.messages[2]).toMatchObject({
+      role: "tool",
+      tool_call_id: "call_123",
+      content: "{\"temperature_c\":26}"
+    });
+  });
 });
 
 describe("openAIResponsesRequestSchema", () => {

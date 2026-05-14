@@ -1,7 +1,34 @@
-export interface OpenAIChatMessageFixture {
-  role: "system" | "user" | "assistant";
-  content: string;
+export interface OpenAIChatTextContentPartFixture {
+  type: "text";
+  text: string;
 }
+
+export type OpenAIChatMessageFixture =
+  | {
+      role: "system" | "user" | "developer";
+      content: string | OpenAIChatTextContentPartFixture[];
+    }
+  | {
+      role: "assistant";
+      content: string | OpenAIChatTextContentPartFixture[];
+    }
+  | {
+      role: "assistant";
+      content: string;
+      tool_calls: Array<{
+        id: string;
+        type: "function";
+        function: {
+          name: string;
+          arguments: string;
+        };
+      }>;
+    }
+  | {
+      role: "tool";
+      tool_call_id: string;
+      content: string;
+    };
 
 export interface OpenAIChatRequestFixture {
   model: string;

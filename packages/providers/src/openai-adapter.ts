@@ -30,6 +30,40 @@ function normalizeOpenAIMessageContent(
   return content ?? "";
 }
 
+function buildOpenAIChatMessages(
+  request: CanonicalRequest
+) {
+  return request.messages.map((message) => {
+    if (message.role === "tool") {
+      return {
+        role: "tool" as const,
+        tool_call_id: message.toolCallId,
+        content: message.content
+      };
+    }
+
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      return {
+        role: "assistant" as const,
+        content: message.content,
+        tool_calls: message.toolCalls.map((toolCall) => ({
+          id: toolCall.id,
+          type: "function" as const,
+          function: {
+            name: toolCall.name,
+            arguments: toolCall.arguments
+          }
+        }))
+      };
+    }
+
+    return {
+      role: message.role,
+      content: message.content
+    };
+  });
+}
+
 export interface OpenAIProviderAdapterOptions {
   apiKey: string;
   baseUrl: string;
@@ -81,7 +115,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 jsonBody: {
                   model: request.model,
                   stream: false,
-                  messages: request.messages,
+                  messages: buildOpenAIChatMessages(request),
                   ...(request.maxOutputTokens !== undefined
                     ? { max_tokens: request.maxOutputTokens }
                     : {}),
@@ -133,7 +167,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               jsonBody: {
                 model: request.model,
                 stream: false,
-                messages: request.messages,
+                messages: buildOpenAIChatMessages(request),
                 ...(request.maxOutputTokens !== undefined
                   ? { max_tokens: request.maxOutputTokens }
                   : {}),
@@ -300,7 +334,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 jsonBody: {
                   model: request.model,
                   stream: true,
-                  messages: request.messages,
+                  messages: buildOpenAIChatMessages(request),
                   ...(request.maxOutputTokens !== undefined
                     ? { max_tokens: request.maxOutputTokens }
                     : {}),
@@ -335,10 +369,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 "content-type": "application/json"
               },
               query: {},
-              jsonBody: {
-                model: request.model,
-                stream: true,
-                messages: request.messages,
+                jsonBody: {
+                  model: request.model,
+                  stream: true,
+                  messages: buildOpenAIChatMessages(request),
                 ...(request.maxOutputTokens !== undefined
                   ? { max_tokens: request.maxOutputTokens }
                   : {}),

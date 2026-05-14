@@ -18,6 +18,14 @@ import { GatewayError } from "@airlock/shared";
 
 import type { ProviderAdapter, ProviderRequestContext } from "./types.js";
 
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
 function normalizeAnthropicFinishReason(
   stopReason: string | undefined
 ): "stop" | "max_tokens" {
@@ -34,6 +42,66 @@ function mapCanonicalToolChoiceToAnthropic(
   return {
     type: toolChoice
   };
+}
+
+function parseAnthropicToolInput(
+  argumentsJson: string,
+  requestId: string
+): JsonValue {
+  try {
+    return JSON.parse(argumentsJson) as JsonValue;
+  } catch (error) {
+    throw new GatewayError(
+      "Invalid tool call arguments for Anthropic: function arguments must be valid JSON",
+      {
+        code: "request_invalid_tool_arguments",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId,
+        cause: error
+      }
+    );
+  }
+}
+
+function buildAnthropicMessages(
+  request: CanonicalRequest,
+  requestId: string
+) {
+  return request.messages
+    .filter((message) => message.role !== "system")
+    .map((message) => {
+      if (message.role === "tool") {
+        return {
+          role: "user" as const,
+          content: [
+            {
+              type: "tool_result" as const,
+              tool_use_id: message.toolCallId,
+              content: message.content
+            }
+          ]
+        };
+      }
+
+      if (message.role === "assistant" && message.toolCalls?.length) {
+        return {
+          role: "assistant" as const,
+          content: message.toolCalls.map((toolCall) => ({
+            type: "tool_use" as const,
+            id: toolCall.id,
+            name: toolCall.name,
+            input: parseAnthropicToolInput(toolCall.arguments, requestId)
+          }))
+        };
+      }
+
+      return {
+        role: message.role === "assistant" ? "assistant" : "user",
+        content: message.content
+      };
+    });
 }
 
 export interface AnthropicProviderAdapterOptions {
@@ -72,12 +140,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     const systemMessage = request.messages.find((message) => {
       return message.role === "system";
     });
-    const messages = request.messages
-      .filter((message) => message.role !== "system")
-      .map((message) => ({
-        role: message.role === "assistant" ? "assistant" : "user",
-        content: message.content
-      }));
+    const messages = buildAnthropicMessages(request, context.requestId);
 
     const authStrategy: OutboundAuthStrategy = {
       type: "header_value",
@@ -301,12 +364,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     const systemMessage = request.messages.find((message) => {
       return message.role === "system";
     });
-    const messages = request.messages
-      .filter((message) => message.role !== "system")
-      .map((message) => ({
-        role: message.role === "assistant" ? "assistant" : "user",
-        content: message.content
-      }));
+    const messages = buildAnthropicMessages(request, context.requestId);
 
     const authStrategy: OutboundAuthStrategy = {
       type: "header_value",

@@ -198,6 +198,58 @@ describe("normalizeOpenAIChatRequest", () => {
       }
     ]);
   });
+
+  it("normalizes assistant tool_calls and tool results into canonical message history", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            {
+              id: "call_123",
+              type: "function",
+              function: {
+                name: "lookup_weather",
+                arguments: "{\"city\":\"Shanghai\"}"
+              }
+            }
+          ]
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_123",
+          content: "{\"temperature_c\":26}"
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      { role: "user", content: "Weather in Shanghai?" },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "call_123",
+            name: "lookup_weather",
+            arguments: "{\"city\":\"Shanghai\"}"
+          }
+        ]
+      },
+      {
+        role: "tool",
+        content: "{\"temperature_c\":26}",
+        toolCallId: "call_123"
+      }
+    ]);
+  });
 });
 
 describe("encodeCanonicalToOpenAIChatResponse", () => {

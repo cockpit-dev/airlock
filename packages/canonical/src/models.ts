@@ -1,8 +1,3 @@
-export interface CanonicalMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
-
 export interface CanonicalToolDefinition {
   name: string;
   description?: string;
@@ -14,6 +9,22 @@ export interface CanonicalToolCall {
   name: string;
   arguments: string;
 }
+
+export type CanonicalMessage =
+  | {
+      role: "system" | "user";
+      content: string;
+    }
+  | {
+      role: "assistant";
+      content: string;
+      toolCalls?: CanonicalToolCall[];
+    }
+  | {
+      role: "tool";
+      content: string;
+      toolCallId: string;
+    };
 
 export interface CanonicalRequest {
   model: string;
