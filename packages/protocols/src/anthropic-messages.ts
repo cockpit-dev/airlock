@@ -26,6 +26,16 @@ const anthropicToolSchema = z.object({
   input_schema: z.record(z.string(), z.unknown())
 });
 
+const anthropicToolChoiceSchema = z.union([
+  z.object({
+    type: z.literal("auto")
+  }),
+  z.object({
+    type: z.literal("tool"),
+    name: z.string().min(1)
+  })
+]);
+
 const anthropicMessageInputSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.union([
@@ -49,11 +59,7 @@ export const anthropicMessagesRequestSchema = z.object({
   top_p: z.number().min(0).max(1).optional(),
   stop_sequences: z.array(z.string().min(1)).min(1).optional(),
   tools: z.array(anthropicToolSchema).min(1).optional(),
-  tool_choice: z
-    .object({
-      type: z.literal("auto")
-    })
-    .optional(),
+  tool_choice: anthropicToolChoiceSchema.optional(),
   messages: z.array(anthropicMessageInputSchema).min(1),
   airlock: airlockRequestExtensionsSchema.optional()
 });

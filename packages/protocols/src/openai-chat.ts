@@ -62,6 +62,13 @@ const openAIChatToolMessageSchema = z.object({
   content: z.string()
 });
 
+const openAIChatForcedFunctionToolChoiceSchema = z.object({
+  type: z.literal("function"),
+  function: z.object({
+    name: z.string().min(1)
+  })
+});
+
 export const openAIChatMessageSchema = z.union([
   openAIChatAssistantToolCallMessageSchema,
   openAIChatToolMessageSchema,
@@ -78,7 +85,10 @@ export const openAIChatCompletionRequestSchema = z.object({
   stop: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
   stream_options: openAIChatStreamOptionsSchema.optional(),
   tools: z.array(openAIChatFunctionToolSchema).min(1).optional(),
-  tool_choice: z.literal("auto").optional(),
+  tool_choice: z.union([
+    z.literal("auto"),
+    openAIChatForcedFunctionToolChoiceSchema
+  ]).optional(),
   messages: z.array(openAIChatMessageSchema).min(1),
   airlock: airlockRequestExtensionsSchema.optional()
 });

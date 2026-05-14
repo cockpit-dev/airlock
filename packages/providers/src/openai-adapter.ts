@@ -30,6 +30,25 @@ function normalizeOpenAIMessageContent(
   return content ?? "";
 }
 
+function mapCanonicalToolChoiceToOpenAI(
+  toolChoice: CanonicalRequest["toolChoice"]
+) {
+  if (toolChoice === undefined) {
+    return undefined;
+  }
+
+  if (toolChoice === "auto") {
+    return "auto" as const;
+  }
+
+  return {
+    type: "function" as const,
+    function: {
+      name: toolChoice.name
+    }
+  };
+}
+
 function buildOpenAIChatMessages(
   request: CanonicalRequest
 ) {
@@ -140,8 +159,12 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                         }))
                       }
                     : {}),
-                  ...(request.toolChoice !== undefined
-                    ? { tool_choice: request.toolChoice }
+                  ...(mapCanonicalToolChoiceToOpenAI(request.toolChoice)
+                    ? {
+                        tool_choice: mapCanonicalToolChoiceToOpenAI(
+                          request.toolChoice
+                        )
+                      }
                     : {})
                 }
               },
@@ -190,8 +213,12 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                       }))
                     }
                   : {}),
-                ...(request.toolChoice !== undefined
-                  ? { tool_choice: request.toolChoice }
+                ...(mapCanonicalToolChoiceToOpenAI(request.toolChoice)
+                  ? {
+                      tool_choice: mapCanonicalToolChoiceToOpenAI(
+                        request.toolChoice
+                      )
+                    }
                   : {})
               }
             },

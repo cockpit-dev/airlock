@@ -19,6 +19,11 @@ const openAIResponsesFunctionToolSchema = z.object({
   parameters: z.record(z.string(), z.unknown())
 });
 
+const openAIResponsesForcedFunctionToolChoiceSchema = z.object({
+  type: z.literal("function"),
+  name: z.string().min(1)
+});
+
 const openAIResponsesOutputTextContentBlockSchema = z.object({
   type: z.literal("output_text"),
   text: z.string().min(1)
@@ -70,7 +75,10 @@ export const openAIResponsesRequestSchema = z.object({
   top_p: z.number().min(0).max(1).optional(),
   instructions: z.string().min(1).optional(),
   tools: z.array(openAIResponsesFunctionToolSchema).min(1).optional(),
-  tool_choice: z.literal("auto").optional(),
+  tool_choice: z.union([
+    z.literal("auto"),
+    openAIResponsesForcedFunctionToolChoiceSchema
+  ]).optional(),
   input: z.union([
     z.string().min(1),
     z.array(openAIResponsesInputMessageSchema).min(1),

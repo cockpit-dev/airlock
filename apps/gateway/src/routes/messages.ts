@@ -44,6 +44,7 @@ import {
 import type { CreateAppOptions } from "../app.js";
 import {
   assertAllowedAnthropicTopLevelFields,
+  assertAnthropicForcedToolChoiceMatchesDeclaredTools,
   assertSupportedAnthropicToolsSemantics,
   parseAnthropicRequestSchema
 } from "../anthropic-request-validation.js";
@@ -92,6 +93,7 @@ export async function handleMessages(
     allowedAnthropicTopLevelFields
   );
   assertSupportedAnthropicToolsSemantics(json, requestId);
+  assertAnthropicForcedToolChoiceMatchesDeclaredTools(json, requestId);
   const parsed = parseAnthropicRequestSchema(
     anthropicMessagesRequestSchema,
     json,

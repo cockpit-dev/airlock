@@ -1,6 +1,18 @@
 import { GatewayError } from "@airlock/shared";
 import { ZodError, type ZodType } from "zod";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getRecordString(
+  record: Record<string, unknown>,
+  key: string
+): string | undefined {
+  const value = record[key];
+  return typeof value === "string" ? value : undefined;
+}
+
 export function assertAllowedOpenAITopLevelFields(
   payload: unknown,
   requestId: string,
@@ -104,6 +116,84 @@ export function assertSupportedOpenAIResponsesToolsSemantics(
   if ("stream" in payload && payload.stream === true) {
     throw new GatewayError(
       "Unsupported OpenAI Responses tools semantics: streaming tool calls are not yet supported",
+      {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
+  }
+}
+
+function getOpenAIDeclaredToolNames(payload: Record<string, unknown>) {
+  if (!Array.isArray(payload.tools)) {
+    return [];
+  }
+
+  return payload.tools
+    .map((tool) => {
+      if (isRecord(tool) && isRecord(tool.function)) {
+        const nestedName = getRecordString(tool.function, "name");
+        if (nestedName) {
+          return nestedName;
+        }
+      }
+
+      if (isRecord(tool)) {
+        return getRecordString(tool, "name");
+      }
+
+      return undefined;
+    })
+    .filter((name): name is string => name !== undefined);
+}
+
+export function assertOpenAIForcedToolChoiceMatchesDeclaredTools(
+  payload: unknown,
+  requestId: string,
+  routeLabel: "OpenAI Chat" | "OpenAI Responses"
+) {
+  if (typeof payload !== "object" || payload === null) {
+    return;
+  }
+
+  if (!("tool_choice" in payload) || payload.tool_choice === undefined) {
+    return;
+  }
+
+  if (!("tools" in payload) || payload.tools === undefined) {
+    return;
+  }
+
+  if (payload.tool_choice === "auto") {
+    return;
+  }
+
+  if (typeof payload.tool_choice !== "object" || payload.tool_choice === null) {
+    return;
+  }
+
+  let forcedName: string | undefined;
+
+  if (isRecord(payload.tool_choice)) {
+    if (isRecord(payload.tool_choice.function)) {
+      forcedName = getRecordString(payload.tool_choice.function, "name");
+    } else {
+      forcedName = getRecordString(payload.tool_choice, "name");
+    }
+  }
+
+  if (!forcedName) {
+    return;
+  }
+
+  const declaredToolNames = getOpenAIDeclaredToolNames(payload);
+
+  if (!declaredToolNames.includes(forcedName)) {
+    throw new GatewayError(
+      `Unsupported ${routeLabel} tools semantics: tool_choice must reference a declared tool`,
       {
         code: "request_unsupported_openai_semantics",
         category: "request",

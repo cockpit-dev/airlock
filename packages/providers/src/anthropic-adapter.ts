@@ -39,6 +39,13 @@ function mapCanonicalToolChoiceToAnthropic(
     return undefined;
   }
 
+  if (toolChoice !== "auto") {
+    return {
+      type: "tool" as const,
+      name: toolChoice.name
+    };
+  }
+
   return {
     type: toolChoice
   };

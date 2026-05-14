@@ -217,6 +217,32 @@ function encodeOpenAIResponsesMessageContent(
   return content.map((block) => block.text).join("\n");
 }
 
+function normalizeOpenAIToolChoice(
+  toolChoice:
+    | OpenAIChatCompletionRequest["tool_choice"]
+    | OpenAIResponsesRequest["tool_choice"]
+) {
+  if (toolChoice === undefined) {
+    return undefined;
+  }
+
+  if (toolChoice === "auto") {
+    return "auto" as const;
+  }
+
+  if ("function" in toolChoice) {
+    return {
+      type: "tool" as const,
+      name: toolChoice.function.name
+    };
+  }
+
+  return {
+    type: "tool" as const,
+    name: toolChoice.name
+  };
+}
+
 function normalizeOpenAIResponsesTypedInputItems(
   input: OpenAIResponsesTypedInputItemValue[]
 ) {
@@ -289,6 +315,7 @@ export function normalizeOpenAIChatRequest(
       : typeof request.stop === "string"
         ? [request.stop]
         : request.stop;
+  const toolChoice = normalizeOpenAIToolChoice(request.tool_choice);
 
   return {
     model: request.model,
@@ -310,9 +337,7 @@ export function normalizeOpenAIChatRequest(
           }))
         }
       : {}),
-    ...(request.tool_choice !== undefined
-      ? { toolChoice: request.tool_choice }
-      : {}),
+    ...(toolChoice !== undefined ? { toolChoice } : {}),
     messages: request.messages.map((message) => {
       if (message.role === "tool") {
         return {
@@ -362,6 +387,7 @@ export function normalizeOpenAIResponsesRequest(
   const instructionMessages = request.instructions
     ? [{ role: "system" as const, content: request.instructions }]
     : [];
+  const toolChoice = normalizeOpenAIToolChoice(request.tool_choice);
 
   return {
     model: request.model,
@@ -382,9 +408,7 @@ export function normalizeOpenAIResponsesRequest(
           }))
         }
       : {}),
-    ...(request.tool_choice !== undefined
-      ? { toolChoice: request.tool_choice }
-      : {}),
+    ...(toolChoice !== undefined ? { toolChoice } : {}),
     messages: [...instructionMessages, ...inputMessages]
   };
 }
@@ -464,7 +488,15 @@ export function normalizeAnthropicMessagesRequest(
         }
       : {}),
     ...(request.tool_choice !== undefined
-      ? { toolChoice: request.tool_choice.type }
+      ? {
+          toolChoice:
+            request.tool_choice.type === "auto"
+              ? "auto"
+              : {
+                  type: "tool" as const,
+                  name: request.tool_choice.name
+                }
+        }
       : {}),
     messages: [...systemMessages, ...messages]
   };

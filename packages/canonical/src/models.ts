@@ -10,6 +10,13 @@ export interface CanonicalToolCall {
   arguments: string;
 }
 
+export type CanonicalToolChoice =
+  | "auto"
+  | {
+      type: "tool";
+      name: string;
+    };
+
 export type CanonicalMessage =
   | {
       role: "system" | "user";
@@ -35,7 +42,7 @@ export interface CanonicalRequest {
   topP?: number;
   stopSequences?: string[];
   tools?: CanonicalToolDefinition[];
-  toolChoice?: "auto";
+  toolChoice?: CanonicalToolChoice;
 }
 
 export interface CanonicalRequestCapabilityRequirements {

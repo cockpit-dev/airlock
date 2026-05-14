@@ -44,6 +44,7 @@ import {
 import type { CreateAppOptions } from "../app.js";
 import {
   assertAllowedOpenAITopLevelFields,
+  assertOpenAIForcedToolChoiceMatchesDeclaredTools,
   assertSupportedOpenAIResponsesToolsSemantics,
   parseOpenAIRequestSchema
 } from "../openai-request-validation.js";
@@ -92,6 +93,11 @@ export async function handleResponses(
     allowedOpenAIResponsesTopLevelFields
   );
   assertSupportedOpenAIResponsesToolsSemantics(json, requestId);
+  assertOpenAIForcedToolChoiceMatchesDeclaredTools(
+    json,
+    requestId,
+    "OpenAI Responses"
+  );
   const parsed = parseOpenAIRequestSchema(
     openAIResponsesRequestSchema,
     json,

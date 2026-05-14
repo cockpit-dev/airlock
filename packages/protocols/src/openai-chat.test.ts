@@ -253,6 +253,43 @@ describe("openAIChatCompletionRequestSchema", () => {
     });
   });
 
+  it("accepts chat function tools with a forced function tool_choice", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      tool_choice: {
+        type: "function",
+        function: {
+          name: "lookup_weather"
+        }
+      },
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "lookup_weather",
+            parameters: {
+              type: "object"
+            }
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    });
+
+    expect(parsed.tool_choice).toMatchObject({
+      type: "function",
+      function: {
+        name: "lookup_weather"
+      }
+    });
+  });
+
   it("accepts assistant tool_calls and tool result messages for replay", () => {
     const parsed = openAIChatCompletionRequestSchema.parse({
       model: "gpt-4.1-mini",
@@ -542,6 +579,32 @@ describe("openAIResponsesRequestSchema", () => {
     });
   });
 
+  it("accepts responses function tools with a forced function tool_choice", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      tool_choice: {
+        type: "function",
+        name: "lookup_weather"
+      },
+      tools: [
+        {
+          type: "function",
+          name: "lookup_weather",
+          parameters: {
+            type: "object"
+          }
+        }
+      ]
+    });
+
+    expect(parsed.tool_choice).toMatchObject({
+      type: "function",
+      name: "lookup_weather"
+    });
+  });
+
   it("accepts responses function_call replay items and function_call_output items", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",
@@ -715,6 +778,37 @@ describe("anthropicMessagesRequestSchema", () => {
       type: "auto"
     });
     expect(parsed.tools?.[0]).toMatchObject({
+      name: "lookup_weather"
+    });
+  });
+
+  it("accepts anthropic function tools with a forced named tool_choice", () => {
+    const parsed = anthropicMessagesRequestSchema.parse({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: false,
+      tool_choice: {
+        type: "tool",
+        name: "lookup_weather"
+      },
+      tools: [
+        {
+          name: "lookup_weather",
+          input_schema: {
+            type: "object"
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    });
+
+    expect(parsed.tool_choice).toEqual({
+      type: "tool",
       name: "lookup_weather"
     });
   });

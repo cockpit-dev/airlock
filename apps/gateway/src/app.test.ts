@@ -3137,6 +3137,129 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts forced chat function tool_choice and forwards it to anthropic", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_123",
+              name: "lookup_weather",
+              input: {
+                city: "Shanghai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          stream: false,
+          tool_choice: {
+            type: "function",
+            function: {
+              name: "lookup_weather"
+            }
+          },
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "lookup_weather",
+                parameters: {
+                  type: "object"
+                }
+              }
+            }
+          ],
+          messages: [{ role: "user", content: "Weather in Shanghai?" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      tool_choice: {
+        type: "tool",
+        name: "lookup_weather"
+      }
+    });
+  });
+
+  it("rejects forced chat tool_choice when the named tool is not defined", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          tool_choice: {
+            type: "function",
+            function: {
+              name: "lookup_weather"
+            }
+          },
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "lookup_calendar",
+                parameters: {
+                  type: "object"
+                }
+              }
+            }
+          ],
+          messages: [{ role: "user", content: "Weather in Shanghai?" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Unsupported OpenAI Chat tools semantics: tool_choice must reference a declared tool",
+        type: "request",
+        code: "request_unsupported_openai_semantics"
+      }
+    });
+  });
+
   it("routes chat function tools through openai and preserves OpenAI tool_calls", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -15311,6 +15434,121 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts forced responses function tool_choice and forwards it to anthropic", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              id: "call_123",
+              name: "lookup_weather",
+              input: {
+                city: "Shanghai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          input: "Weather in Shanghai?",
+          stream: false,
+          tool_choice: {
+            type: "function",
+            name: "lookup_weather"
+          },
+          tools: [
+            {
+              type: "function",
+              name: "lookup_weather",
+              parameters: {
+                type: "object"
+              }
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      tool_choice: {
+        type: "tool",
+        name: "lookup_weather"
+      }
+    });
+  });
+
+  it("rejects forced responses tool_choice when the named tool is not defined", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "Weather in Shanghai?",
+          stream: false,
+          tool_choice: {
+            type: "function",
+            name: "lookup_weather"
+          },
+          tools: [
+            {
+              type: "function",
+              name: "lookup_calendar",
+              parameters: {
+                type: "object"
+              }
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Unsupported OpenAI Responses tools semantics: tool_choice must reference a declared tool",
+        type: "request",
+        code: "request_unsupported_openai_semantics"
+      }
+    });
+  });
+
   it("replays responses function_call and function_call_output items through anthropic", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -16357,6 +16595,132 @@ describe("gateway app", () => {
           }
         }
       ]
+    });
+  });
+
+  it("accepts forced anthropic named tool_choice and forwards it upstream", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              id: "call_123",
+              name: "lookup_weather",
+              input: {
+                city: "Shanghai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          tool_choice: {
+            type: "tool",
+            name: "lookup_weather"
+          },
+          tools: [
+            {
+              name: "lookup_weather",
+              input_schema: {
+                type: "object"
+              }
+            }
+          ],
+          messages: [
+            {
+              role: "user",
+              content: "Weather in Shanghai?"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      tool_choice: {
+        type: "tool",
+        name: "lookup_weather"
+      }
+    });
+  });
+
+  it("rejects forced anthropic tool_choice when the named tool is not defined", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          tool_choice: {
+            type: "tool",
+            name: "lookup_weather"
+          },
+          tools: [
+            {
+              name: "lookup_calendar",
+              input_schema: {
+                type: "object"
+              }
+            }
+          ],
+          messages: [
+            {
+              role: "user",
+              content: "Weather in Shanghai?"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    const body = await readJson(response);
+
+    expect(body).toMatchObject({
+      type: "error",
+      error: {
+        type: "request",
+        message:
+          "Unsupported Anthropic tools semantics: tool_choice must reference a declared tool"
+      }
     });
   });
 
