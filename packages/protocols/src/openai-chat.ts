@@ -11,6 +11,10 @@ const openAIChatStreamOptionsSchema = z.object({
   include_usage: z.boolean()
 });
 
+const openAIChatResponseFormatSchema = z.object({
+  type: z.literal("text")
+});
+
 const openAIChatFunctionToolSchema = z.object({
   type: z.literal("function"),
   function: z.object({
@@ -82,6 +86,7 @@ export const openAIChatCompletionRequestSchema = z.object({
   max_completion_tokens: z.number().int().positive().optional(),
   temperature: z.number().min(0).max(2).optional(),
   top_p: z.number().min(0).max(1).optional(),
+  response_format: openAIChatResponseFormatSchema.optional(),
   modalities: z.array(z.literal("text")).length(1).optional(),
   stop: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
   stream_options: openAIChatStreamOptionsSchema.optional(),

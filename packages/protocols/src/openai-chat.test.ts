@@ -387,6 +387,26 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(parsed.modalities).toEqual(["text"]);
   });
 
+  it("accepts chat response_format when type is text", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      response_format: {
+        type: "text"
+      },
+      messages: [
+        {
+          role: "user",
+          content: "Hello!"
+        }
+      ]
+    });
+
+    expect(parsed.response_format).toEqual({
+      type: "text"
+    });
+  });
+
   it("accepts assistant tool_calls and tool result messages for replay", () => {
     const parsed = openAIChatCompletionRequestSchema.parse({
       model: "gpt-4.1-mini",

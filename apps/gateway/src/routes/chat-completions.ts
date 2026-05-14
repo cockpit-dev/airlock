@@ -58,6 +58,7 @@ const allowedOpenAIChatTopLevelFields = [
   "max_completion_tokens",
   "temperature",
   "top_p",
+  "response_format",
   "modalities",
   "stop",
   "stream_options",
