@@ -247,6 +247,67 @@ describe("applySigningStrategy", () => {
       )
     ).rejects.toThrow(GatewayError);
   });
+
+  it("rejects reserved signing output headers", async () => {
+    await expect(
+      applySigningStrategy(
+        createOutboundRequestShape(),
+        {
+          type: "hmac_sha256_header",
+          headerName: "authorization",
+          secret: {
+            secretRef: "shared-signing-secret"
+          },
+          components: ["method", "path"]
+        },
+        {
+          "shared-signing-secret": "signing-secret"
+        }
+      )
+    ).rejects.toThrow(GatewayError);
+  });
+
+  it("rejects self-referential signing header components", async () => {
+    await expect(
+      applySigningStrategy(
+        createOutboundRequestShape(),
+        {
+          type: "hmac_sha256_header",
+          headerName: "x-airlock-signature",
+          secret: {
+            secretRef: "shared-signing-secret"
+          },
+          components: ["method", "header:x-airlock-signature"]
+        },
+        {
+          "shared-signing-secret": "signing-secret"
+        }
+      )
+    ).rejects.toThrow(GatewayError);
+  });
+
+  it("rejects shaping headers that collide with the signing output header", async () => {
+    await expect(
+      applySigningStrategy(
+        applyRequestShaping(createOutboundRequestShape(), {
+          headers: {
+            "x-airlock-signature": "override"
+          }
+        }),
+        {
+          type: "hmac_sha256_header",
+          headerName: "x-airlock-signature",
+          secret: {
+            secretRef: "shared-signing-secret"
+          },
+          components: ["method", "path"]
+        },
+        {
+          "shared-signing-secret": "signing-secret"
+        }
+      )
+    ).rejects.toThrow(GatewayError);
+  });
 });
 
 describe("buildRequestUrl", () => {

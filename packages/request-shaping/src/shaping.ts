@@ -124,6 +124,26 @@ function assertNoReservedHeaders(
   }
 }
 
+function assertNoSigningHeaderCollision(
+  headers: Record<string, string> | undefined,
+  signing: OutboundSigningStrategy | undefined,
+  createError: (message: string) => GatewayError
+) {
+  if (!headers || !signing) {
+    return;
+  }
+
+  const normalizedSigningHeader = signing.headerName.toLowerCase();
+
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === normalizedSigningHeader) {
+      throw createError(
+        `Request shaping cannot override signing output header: ${key}`
+      );
+    }
+  }
+}
+
 function parseStringMap(
   value: unknown,
   fieldName: "headers" | "query",
@@ -215,6 +235,12 @@ function validateSigningStrategy(value: unknown): OutboundSigningStrategy {
     );
   }
 
+  if (RESERVED_HEADER_NAMES.has(value.headerName.trim().toLowerCase())) {
+    throw createInvalidSigningStrategyError(
+      `Signing strategy cannot target reserved header: ${value.headerName.trim()}`
+    );
+  }
+
   if (!Array.isArray(value.components) || value.components.length === 0) {
     throw createInvalidSigningStrategyError(
       "Signing strategy must define at least one component"
@@ -227,16 +253,31 @@ function validateSigningStrategy(value: unknown): OutboundSigningStrategy {
     );
   }
 
+  const headerName = value.headerName.trim();
+  const components = value.components.map((component) => {
+    return validateSigningComponent(
+      component,
+      createInvalidSigningStrategyError
+    );
+  });
+
+  for (const component of components) {
+    if (
+      component.startsWith("header:") &&
+      component.slice("header:".length).trim().toLowerCase() ===
+        headerName.toLowerCase()
+    ) {
+      throw createInvalidSigningStrategyError(
+        `Signing strategy cannot reference its own output header: ${headerName}`
+      );
+    }
+  }
+
   return {
     type: "hmac_sha256_header",
-    headerName: value.headerName.trim(),
+    headerName,
     secret: validateSecretRef(value.secret, createInvalidSigningStrategyError),
-    components: value.components.map((component) => {
-      return validateSigningComponent(
-        component,
-        createInvalidSigningStrategyError
-      );
-    }),
+    components,
     ...(value.prefix !== undefined ? { prefix: value.prefix } : {})
   };
 }
@@ -287,6 +328,8 @@ function validateRequestShapingProfileWithErrorFactory(
   if (allowSigning && value.signing !== undefined) {
     profile.signing = validateSigningStrategy(value.signing);
   }
+
+  assertNoSigningHeaderCollision(profile.headers, profile.signing, createError);
 
   return profile;
 }
@@ -623,6 +666,18 @@ export async function applySigningStrategy(
   strategy: OutboundSigningStrategy,
   secrets: Record<string, string>
 ): Promise<OutboundRequestShape> {
+  if (RESERVED_HEADER_NAMES.has(strategy.headerName.trim().toLowerCase())) {
+    throw createInvalidSigningStrategyError(
+      `Signing strategy cannot target reserved header: ${strategy.headerName.trim()}`
+    );
+  }
+
+  assertNoSigningHeaderCollision(
+    request.headers,
+    strategy,
+    createInvalidSigningStrategyError
+  );
+
   const secretValue = secrets[strategy.secret.secretRef];
 
   if (!secretValue) {

@@ -283,6 +283,39 @@ describe("AnthropicProviderAdapter", () => {
     });
   });
 
+  it("rejects shaping/signing collisions before the outbound fetch", async () => {
+    const fetcher = vi.fn();
+    const adapter = new AnthropicProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultMaxTokens: 256,
+      shaping: {
+        headers: {
+          "x-airlock-signature": "override"
+        }
+      },
+      signing: {
+        type: "hmac_sha256_header",
+        headerName: "x-airlock-signature",
+        secret: {
+          secretRef: "anthropic-signing-secret"
+        },
+        components: ["method", "path"]
+      },
+      signingSecrets: {
+        "anthropic-signing-secret": "signing-secret"
+      },
+      fetcher
+    });
+
+    await expect(
+      adapter.complete(createCanonicalRequest(), {
+        requestId: "req_signing_collision"
+      })
+    ).rejects.toBeInstanceOf(GatewayError);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("maps upstream failures into a gateway error", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

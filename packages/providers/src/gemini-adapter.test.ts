@@ -300,6 +300,38 @@ describe("GeminiProviderAdapter", () => {
     });
   });
 
+  it("rejects shaping/signing collisions before the outbound fetch", async () => {
+    const fetcher = vi.fn();
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      shaping: {
+        headers: {
+          "x-airlock-signature": "override"
+        }
+      },
+      signing: {
+        type: "hmac_sha256_header",
+        headerName: "x-airlock-signature",
+        secret: {
+          secretRef: "gemini-signing-secret"
+        },
+        components: ["method", "path"]
+      },
+      signingSecrets: {
+        "gemini-signing-secret": "signing-secret"
+      },
+      fetcher
+    });
+
+    await expect(
+      adapter.complete(createCanonicalRequest(), {
+        requestId: "req_signing_collision"
+      })
+    ).rejects.toBeInstanceOf(GatewayError);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("applies request-scoped shaping on top of route-level shaping", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

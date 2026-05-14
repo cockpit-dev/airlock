@@ -282,6 +282,38 @@ describe("OpenAIProviderAdapter", () => {
     });
   });
 
+  it("rejects shaping/signing collisions before the outbound fetch", async () => {
+    const fetcher = vi.fn();
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      shaping: {
+        headers: {
+          "x-airlock-signature": "override"
+        }
+      },
+      signing: {
+        type: "hmac_sha256_header",
+        headerName: "x-airlock-signature",
+        secret: {
+          secretRef: "openai-signing-secret"
+        },
+        components: ["method", "path"]
+      },
+      signingSecrets: {
+        "openai-signing-secret": "signing-secret"
+      },
+      fetcher
+    });
+
+    await expect(
+      adapter.complete(createCanonicalRequest(), {
+        requestId: "req_signing_collision"
+      })
+    ).rejects.toBeInstanceOf(GatewayError);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("maps upstream failures into a gateway error", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
