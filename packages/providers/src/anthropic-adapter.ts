@@ -669,6 +669,16 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                 id: contentBlock.id,
                 name: contentBlock.name
               });
+
+              yield {
+                type: "tool_call_delta",
+                responseId: activeResponseId,
+                model: activeModel,
+                toolCallId: contentBlock.id,
+                toolIndex: index,
+                toolName: contentBlock.name,
+                argumentsDelta: ""
+              };
             }
             continue;
           }

@@ -1065,6 +1065,15 @@ describe("AnthropicProviderAdapter", () => {
         toolCallId: "call_123",
         toolIndex: 0,
         toolName: "lookup_weather",
+        argumentsDelta: ""
+      },
+      {
+        type: "tool_call_delta",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        toolCallId: "call_123",
+        toolIndex: 0,
+        toolName: "lookup_weather",
         argumentsDelta: "{\"city\":\"Shang"
       },
       {
@@ -1075,6 +1084,89 @@ describe("AnthropicProviderAdapter", () => {
         toolIndex: 0,
         toolName: "lookup_weather",
         argumentsDelta: "hai\"}"
+      },
+      {
+        type: "response_completed",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        finishReason: "tool_calls",
+        usage: {
+          inputTokens: 14,
+          outputTokens: 9,
+          totalTokens: 23
+        }
+      }
+    ]);
+  });
+
+  it("parses upstream streamed anthropic tool_use starts without input_json_delta", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-sonnet-4-5"}}\n\n',
+              'event: content_block_start\ndata: {"index":0,"content_block":{"type":"tool_use","id":"call_123","name":"lookup_weather","input":{}}}\n\n',
+              'event: message_delta\ndata: {"delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":14,"output_tokens":9}}\n\n',
+              "event: message_stop\ndata: {}\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new AnthropicProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultMaxTokens: 256,
+      fetcher
+    });
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true,
+        tools: [
+          {
+            name: "lookup_weather",
+            inputSchema: {
+              type: "object"
+            }
+          }
+        ],
+        toolChoice: "auto"
+      },
+      {
+        requestId: "req_stream_tool_empty_args_123"
+      }
+    )) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5"
+      },
+      {
+        type: "tool_call_delta",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        toolCallId: "call_123",
+        toolIndex: 0,
+        toolName: "lookup_weather",
+        argumentsDelta: ""
       },
       {
         type: "response_completed",

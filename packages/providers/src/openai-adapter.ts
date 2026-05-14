@@ -650,7 +650,11 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
 
               streamedToolCalls.set(toolIndex, currentTool);
 
-              if (toolCallDelta.function?.arguments !== undefined) {
+              if (
+                toolCallDelta.function?.arguments !== undefined ||
+                toolCallDelta.id !== undefined ||
+                toolCallDelta.function?.name !== undefined
+              ) {
                 yield {
                   type: "tool_call_delta",
                   responseId,
@@ -658,7 +662,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   toolCallId: currentTool.id,
                   toolIndex,
                   ...(currentTool.name ? { toolName: currentTool.name } : {}),
-                  argumentsDelta: toolCallDelta.function.arguments
+                  argumentsDelta: toolCallDelta.function?.arguments ?? ""
                 };
               }
             }

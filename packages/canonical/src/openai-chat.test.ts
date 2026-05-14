@@ -1331,6 +1331,125 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
     });
   });
 
+  it("preserves zero-argument responses tool starts as empty streamed arguments", async () => {
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIResponsesStreamEvent(
+        {
+          type: "tool_call_delta",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          toolCallId: "call_123",
+          toolIndex: 0,
+          toolName: "lookup_weather",
+          argumentsDelta: ""
+        },
+        {
+          sequenceNumber: 5,
+          outputIndex: 0,
+          contentIndex: 0
+        }
+      )
+    ).toEqual({
+      events: [
+        {
+          type: "response.output_item.added",
+          sequence_number: 5,
+          output_index: 0,
+          item: {
+            type: "function_call",
+            call_id: "call_123",
+            name: "lookup_weather",
+            arguments: "",
+            status: "completed"
+          }
+        },
+        {
+          type: "response.function_call_arguments.delta",
+          sequence_number: 6,
+          item_id: "call_123",
+          output_index: 0,
+          delta: ""
+        }
+      ],
+      nextSequenceNumber: 7
+    });
+
+    expect(
+      encodeCanonicalToOpenAIResponsesStreamEvent(
+        {
+          type: "response_completed",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          finishReason: "tool_calls"
+        },
+        {
+          sequenceNumber: 7,
+          outputIndex: 0,
+          contentIndex: 0,
+          outputText: "",
+          toolCalls: [
+            {
+              toolCallId: "call_123",
+              toolCallName: "lookup_weather",
+              toolCallArguments: "",
+              outputIndex: 0
+            }
+          ]
+        }
+      )
+    ).toEqual({
+      events: [
+        {
+          type: "response.function_call_arguments.done",
+          sequence_number: 7,
+          item_id: "call_123",
+          output_index: 0,
+          arguments: ""
+        },
+        {
+          type: "response.output_item.done",
+          sequence_number: 8,
+          output_index: 0,
+          item: {
+            type: "function_call",
+            call_id: "call_123",
+            name: "lookup_weather",
+            arguments: "",
+            status: "completed"
+          }
+        },
+        {
+          type: "response.completed",
+          sequence_number: 9,
+          response: {
+            id: "resp_123",
+            object: "response",
+            created_at: 0,
+            model: "gpt-4.1-mini",
+            status: "completed",
+            output: [
+              {
+                type: "function_call",
+                call_id: "call_123",
+                name: "lookup_weather",
+                arguments: "",
+                status: "completed"
+              }
+            ],
+            output_text: "",
+            parallel_tool_calls: true,
+            tools: []
+          }
+        }
+      ],
+      nextSequenceNumber: 10
+    });
+  });
+
   it("encodes multiple responses tool calls as separate output items and completion records", async () => {
     const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
       "./openai-chat.js"
