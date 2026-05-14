@@ -6,9 +6,18 @@ import type {
 export function getCanonicalRequestCapabilityRequirements(
   request: CanonicalRequest
 ): CanonicalRequestCapabilityRequirements {
+  const requiresTools =
+    (request.tools?.length ?? 0) > 0 ||
+    request.messages.some((message) => {
+      return (
+        message.role === "tool" ||
+        (message.role === "assistant" && (message.toolCalls?.length ?? 0) > 0)
+      );
+    });
+
   return {
     requiresStreaming: request.stream,
-    requiresTools: (request.tools?.length ?? 0) > 0,
+    requiresTools,
     requiresMultimodalInput: false,
     requiresSystemMessages: request.messages.some((message) => {
       return message.role === "system";

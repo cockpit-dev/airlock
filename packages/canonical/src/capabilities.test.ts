@@ -95,6 +95,70 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     });
   });
 
+  it("marks tool requirements when canonical requests replay assistant tool calls", () => {
+    const request: CanonicalRequest = {
+      model: "claude-sonnet-4-5",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        },
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [
+            {
+              id: "call_123",
+              name: "lookup_weather",
+              arguments: "{\"city\":\"Shanghai\"}"
+            }
+          ]
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: false,
+      requiresTools: true,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false,
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: false
+    });
+  });
+
+  it("marks tool requirements when canonical requests replay tool result messages", () => {
+    const request: CanonicalRequest = {
+      model: "claude-sonnet-4-5",
+      stream: false,
+      messages: [
+        {
+          role: "tool",
+          content: "{\"temperature_c\":26}",
+          toolCallId: "call_123"
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: false,
+      requiresTools: true,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false,
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: false
+    });
+  });
+
   it("marks streaming and previous-response requirements when present", () => {
     const request: CanonicalRequest = {
       model: "gpt-4.1-mini",
