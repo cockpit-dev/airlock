@@ -15973,6 +15973,82 @@ describe("gateway app", () => {
     expect(body).toContain("data: [DONE]");
   });
 
+  it("streams multiple responses tool calls through openai as separate function_call items", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}"}}]},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_456","type":"function","function":{"name":"lookup_calendar","arguments":"{\\"date\\":\\"2026-05-14\\"}"}}]},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "Schedule weather and calendar tools",
+          stream: true,
+          tool_choice: "auto",
+          tools: [
+            {
+              type: "function",
+              name: "lookup_weather",
+              parameters: {
+                type: "object"
+              }
+            },
+            {
+              type: "function",
+              name: "lookup_calendar",
+              parameters: {
+                type: "object"
+              }
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const body = await readText(response);
+
+    expect(body).toContain('"output_index":0');
+    expect(body).toContain('"item_id":"call_123"');
+    expect(body).toContain('"arguments":"{\\"city\\":\\"Shanghai\\"}"');
+    expect(body).toContain('"output_index":1');
+    expect(body).toContain('"item_id":"call_456"');
+    expect(body).toContain('"arguments":"{\\"date\\":\\"2026-05-14\\"}"');
+    expect(body).toContain('"output":[{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"},{"type":"function_call","call_id":"call_456","name":"lookup_calendar","arguments":"{\\"date\\":\\"2026-05-14\\"}","status":"completed"}]');
+    expect(body).toContain("data: [DONE]");
+  });
+
   it("rejects unsupported responses semantics like text config", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

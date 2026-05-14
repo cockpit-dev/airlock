@@ -148,9 +148,17 @@ export async function handleResponses(
     const encoder = new TextEncoder();
     let responsesSequenceNumber = 0;
     let accumulatedOutputText = "";
-    let streamedToolCallId: string | undefined;
-    let streamedToolCallName: string | undefined;
-    let accumulatedToolArguments = "";
+    let startedTextOutput = false;
+    const startedToolCallIds = new Set<string>();
+    const streamedToolCalls = new Map<
+      string,
+      {
+        toolCallId: string;
+        toolCallName?: string;
+        toolCallArguments: string;
+        outputIndex: number;
+      }
+    >();
     let streamUsage:
       | {
           inputTokens: number;
@@ -233,24 +241,52 @@ export async function handleResponses(
       }
 
       if (event.type === "tool_call_delta") {
-        streamedToolCallId = event.toolCallId;
-        streamedToolCallName = event.toolName ?? streamedToolCallName;
-        accumulatedToolArguments += event.argumentsDelta;
+        const currentToolCall = streamedToolCalls.get(event.toolCallId) ?? {
+          toolCallId: event.toolCallId,
+          toolCallArguments: "",
+          outputIndex: event.toolIndex
+        };
+        currentToolCall.toolCallName = event.toolName ?? currentToolCall.toolCallName;
+        currentToolCall.toolCallArguments += event.argumentsDelta;
+        currentToolCall.outputIndex = event.toolIndex;
+        streamedToolCalls.set(event.toolCallId, currentToolCall);
       }
 
       const encodedBatch = encodeCanonicalToOpenAIResponsesStreamEvent(event, {
         sequenceNumber: responsesSequenceNumber,
-        outputIndex: 0,
+        outputIndex: event.type === "tool_call_delta" ? event.toolIndex : 0,
         contentIndex: 0,
-        ...(streamedToolCallId ? { toolCallId: streamedToolCallId } : {}),
-        ...(streamedToolCallName ? { toolCallName: streamedToolCallName } : {}),
-        ...(streamedToolCallId
-          ? { toolCallArguments: accumulatedToolArguments }
+        ...(startedTextOutput ? { startedTextOutput } : {}),
+        ...(startedToolCallIds.size > 0
+          ? { startedToolCallIds: Array.from(startedToolCallIds) }
+          : {}),
+        ...(event.type === "tool_call_delta"
+          ? {
+              toolCallId: event.toolCallId,
+              toolCallName: event.toolName,
+              toolCallArguments:
+                streamedToolCalls.get(event.toolCallId)?.toolCallArguments
+            }
+          : {}),
+        ...(streamedToolCalls.size > 0
+          ? {
+              toolCalls: Array.from(streamedToolCalls.values()).sort((left, right) => {
+                return left.outputIndex - right.outputIndex;
+              })
+            }
           : {}),
         ...(event.type === "response_completed"
           ? { outputText: accumulatedOutputText }
           : {})
       });
+
+      if (event.type === "output_text_delta") {
+        startedTextOutput = true;
+      }
+
+      if (event.type === "tool_call_delta") {
+        startedToolCallIds.add(event.toolCallId);
+      }
 
       responsesSequenceNumber = encodedBatch.nextSequenceNumber;
 
