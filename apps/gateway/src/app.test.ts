@@ -12371,6 +12371,7 @@ describe("gateway app", () => {
   });
 
   it("routes to a healthy in-slo target when priority target selection is configured", async () => {
+    const currentTime = Date.now();
     const routeFetcher = vi.fn().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -12398,8 +12399,12 @@ describe("gateway app", () => {
       )
     );
     const breakerNamespace = createPersistentBreakerNamespace();
-    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, 1000);
-    breakerNamespace.seedSuccess("anthropic:claude-haiku-4-5", 5, 1000);
+    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, currentTime - 1_000);
+    breakerNamespace.seedSuccess(
+      "anthropic:claude-haiku-4-5",
+      5,
+      currentTime - 1_000
+    );
 
     const bindings = {
       ...createBindings(),
@@ -12457,6 +12462,7 @@ describe("gateway app", () => {
   });
 
   it("keeps a recently failed recovering target behind a stable peer for priority routing", async () => {
+    const currentTime = Date.now();
     const routeFetcher = vi.fn().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -12481,10 +12487,14 @@ describe("gateway app", () => {
       )
     );
     const breakerNamespace = createPersistentBreakerNamespace();
-    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, 1000);
-    breakerNamespace.seedFailure("openai:gpt-4.1-mini", 1500);
-    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 220, 2000);
-    breakerNamespace.seedSuccess("anthropic:claude-haiku-4-5", 220, 1000);
+    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, currentTime - 2_000);
+    breakerNamespace.seedFailure("openai:gpt-4.1-mini", currentTime - 1_500);
+    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 220, currentTime - 1_000);
+    breakerNamespace.seedSuccess(
+      "anthropic:claude-haiku-4-5",
+      220,
+      currentTime - 1_000
+    );
 
     const app = createApp({ fetcher: routeFetcher });
 
@@ -12521,6 +12531,96 @@ describe("gateway app", () => {
             latencySloMs: {
               "openai:gpt-4.1-mini": 600,
               "anthropic:claude-haiku-4-5": 600
+            },
+            costs: {
+              "openai:gpt-4.1-mini": 1,
+              "anthropic:claude-haiku-4-5": 10
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(routeFetcher).toHaveBeenCalledTimes(1);
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "claude-haiku-4-5"
+    });
+  });
+
+  it("treats stale latency memory as neutral when applying priority routing in the app", async () => {
+    const currentTime = Date.now();
+    const routeFetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "msg_priority_freshness",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello from anthropic"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const breakerNamespace = createPersistentBreakerNamespace();
+    breakerNamespace.seedSuccess(
+      "openai:gpt-4.1-mini",
+      120,
+      currentTime - 60_000
+    );
+    breakerNamespace.seedSuccess(
+      "anthropic:claude-haiku-4-5",
+      200,
+      currentTime - 1_000
+    );
+
+    const app = createApp({ fetcher: routeFetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "prefer fresh latency" }]
+        })
+      },
+      {
+        ...createBindings(),
+        ANTHROPIC_API_KEY: "anthropic-secret",
+        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER: breakerNamespace,
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "priority",
+            latencySloMs: {
+              "openai:gpt-4.1-mini": 300,
+              "anthropic:claude-haiku-4-5": 300
             },
             costs: {
               "openai:gpt-4.1-mini": 1,

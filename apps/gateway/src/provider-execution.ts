@@ -271,6 +271,7 @@ function reorderTargetsForRoute(
   route: ModelRoute,
   targets: ProviderTarget[],
   requestId: string,
+  now: () => number,
   healthByTarget?: Map<
     string,
     {
@@ -338,6 +339,7 @@ function reorderTargetsForRoute(
     return reorderTargetsForPrioritySelection(
       targets,
       targetSelection,
+      now,
       healthByTarget
     );
   }
@@ -363,6 +365,7 @@ function reorderTargetsForRoute(
 function getPriorityLatencyStatus(
   targetKey: string,
   selection: PriorityRouteTargetSelection,
+  now: () => number,
   healthByTarget?: Map<
     string,
     {
@@ -370,19 +373,25 @@ function getPriorityLatencyStatus(
       consecutiveRetryableFailures: number;
       lastSuccessLatencyMs?: number;
       smoothedSuccessLatencyMs?: number;
+      lastSuccessAt?: number;
     }
   >
 ): number {
+  const PRIORITY_LATENCY_FRESHNESS_WINDOW_MS = 30_000;
   const latencySlo = selection.latencySloMs?.[targetKey];
+  const health = healthByTarget?.get(targetKey);
   const observedLatency =
-    healthByTarget?.get(targetKey)?.smoothedSuccessLatencyMs ??
-    healthByTarget?.get(targetKey)?.lastSuccessLatencyMs;
+    health?.smoothedSuccessLatencyMs ?? health?.lastSuccessLatencyMs;
 
   if (latencySlo === undefined) {
     return 1;
   }
 
-  if (observedLatency === undefined) {
+  if (
+    observedLatency === undefined ||
+    health?.lastSuccessAt === undefined ||
+    now() - health.lastSuccessAt > PRIORITY_LATENCY_FRESHNESS_WINDOW_MS
+  ) {
     return 1;
   }
 
@@ -392,6 +401,7 @@ function getPriorityLatencyStatus(
 function reorderTargetsForPrioritySelection(
   targets: ProviderTarget[],
   selection: PriorityRouteTargetSelection,
+  now: () => number,
   healthByTarget?: Map<
     string,
     {
@@ -468,11 +478,13 @@ function reorderTargetsForPrioritySelection(
     const leftLatencyStatus = getPriorityLatencyStatus(
       leftKey,
       selection,
+      now,
       healthByTarget
     );
     const rightLatencyStatus = getPriorityLatencyStatus(
       rightKey,
       selection,
+      now,
       healthByTarget
     );
 
@@ -589,6 +601,7 @@ function selectEligibleTargets(
         route,
         eligibleTargets,
         requestId,
+        now,
         healthByTarget
       );
     }
