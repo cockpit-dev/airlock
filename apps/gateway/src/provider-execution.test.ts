@@ -31,6 +31,14 @@ function computeSmoothedLatency(
   return Math.round(previous * 0.7 + current * 0.3);
 }
 
+function computeEffectiveTestCooldownMs(
+  cooldownMs: number,
+  halfOpenRetryableFailureCount: number | undefined
+): number {
+  const halfOpenFailures = Math.max(0, halfOpenRetryableFailureCount ?? 0);
+  return cooldownMs * Math.min(4, 2 ** halfOpenFailures);
+}
+
 function createPersistentBreakerNamespace() {
   const state = new Map<
     string,
@@ -38,6 +46,7 @@ function createPersistentBreakerNamespace() {
       consecutiveRetryableFailures: number;
       openedAt?: number;
       probeStartedAt?: number;
+      halfOpenRetryableFailureCount?: number;
       lastSuccessLatencyMs?: number;
       smoothedSuccessLatencyMs?: number;
       lastSuccessAt?: number;
@@ -80,6 +89,7 @@ function createPersistentBreakerNamespace() {
                   : body.smoothedLatencyMs;
               const next = {
                 consecutiveRetryableFailures: 0,
+                halfOpenRetryableFailureCount: 0,
                 ...(body.latencyMs !== undefined
                   ? { lastSuccessLatencyMs: body.latencyMs }
                   : {}),
@@ -97,18 +107,22 @@ function createPersistentBreakerNamespace() {
 
             if (body.kind === "claim_half_open_probe") {
               const cooldownMs = body.cooldownMs ?? 0;
+              const effectiveCooldownMs = computeEffectiveTestCooldownMs(
+                cooldownMs,
+                current.halfOpenRetryableFailureCount
+              );
 
               if (!current.openedAt || body.now === undefined) {
                 return Response.json({ claimed: false });
               }
 
-              if (body.now - current.openedAt < cooldownMs) {
+              if (body.now - current.openedAt < effectiveCooldownMs) {
                 return Response.json({ claimed: false });
               }
 
               if (
                 current.probeStartedAt !== undefined &&
-                body.now - current.probeStartedAt < cooldownMs
+                body.now - current.probeStartedAt < effectiveCooldownMs
               ) {
                 return Response.json({ claimed: false });
               }
@@ -122,16 +136,21 @@ function createPersistentBreakerNamespace() {
             }
 
             const nextFailures = current.consecutiveRetryableFailures + 1;
+            const halfOpenProbeFailed = current.probeStartedAt !== undefined;
             const next: {
               consecutiveRetryableFailures: number;
               openedAt?: number;
               probeStartedAt?: number;
+              halfOpenRetryableFailureCount?: number;
               lastSuccessLatencyMs?: number;
               smoothedSuccessLatencyMs?: number;
               lastSuccessAt?: number;
               lastFailureAt?: number;
             } = {
               consecutiveRetryableFailures: nextFailures,
+              halfOpenRetryableFailureCount: halfOpenProbeFailed
+                ? (current.halfOpenRetryableFailureCount ?? 0) + 1
+                : 0,
               ...(current.lastSuccessLatencyMs !== undefined
                 ? { lastSuccessLatencyMs: current.lastSuccessLatencyMs }
                 : {}),
@@ -141,7 +160,7 @@ function createPersistentBreakerNamespace() {
               ...(current.lastSuccessAt !== undefined
                 ? { lastSuccessAt: current.lastSuccessAt }
                 : {}),
-              ...((current.probeStartedAt !== undefined ||
+              ...((halfOpenProbeFailed ||
                 nextFailures >= (body.threshold ?? 1))
                 ? { openedAt: body.now ?? 0 }
                 : {}),
@@ -835,6 +854,157 @@ describe("executeRoutedRequest", () => {
     expect(fetcher).toHaveBeenCalledTimes(5);
     expect(openAIAttempts).toBe(2);
     expect(anthropicAttempts).toBe(3);
+  });
+
+  it("backs off the next half-open probe after repeated failed recovery probes", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    let openAIAttempts = 0;
+    let anthropicAttempts = 0;
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/chat/completions")) {
+        openAIAttempts += 1;
+
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: `rate limited ${openAIAttempts}`
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        );
+      }
+
+      anthropicAttempts += 1;
+
+      return new Response(
+        JSON.stringify({
+          id: `msg_backoff_${anthropicAttempts}`,
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: `fallback ${anthropicAttempts}`
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      );
+    });
+    const baseConfig = {
+      mode: "free" as const,
+      providerTimeoutMs: 1000,
+      providerMaxRetries: 0,
+      providerRetryBackoffMs: 0,
+      providerCircuitBreakerThreshold: 1,
+      providerCircuitBreakerCooldownMs: 100,
+      modelGroups: {},
+      gatewayApiKeys: [],
+      modelAliases: [],
+      anthropic: {
+        apiKey: "anthropic-secret",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultMaxTokens: 256
+      },
+      openAI: {
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    };
+
+    await executeRoutedRequest(route, request, {
+      config: baseConfig,
+      requestId: "req_backoff_first_open",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1000
+    });
+
+    await executeRoutedRequest(route, request, {
+      config: baseConfig,
+      requestId: "req_backoff_first_probe_fail",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1200
+    });
+
+    const beforeExtendedBackoff = await executeRoutedRequest(route, request, {
+      config: baseConfig,
+      requestId: "req_backoff_before_extended_probe",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1350
+    });
+
+    expect(beforeExtendedBackoff.model).toBe("claude-haiku-4-5");
+    expect(openAIAttempts).toBe(2);
+
+    const afterExtendedBackoff = await executeRoutedRequest(route, request, {
+      config: baseConfig,
+      requestId: "req_backoff_after_extended_probe",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1450
+    });
+
+    expect(afterExtendedBackoff.model).toBe("claude-haiku-4-5");
+    expect(openAIAttempts).toBe(3);
+    expect(anthropicAttempts).toBe(4);
   });
 
   it("still probes a half-open target before a closed peer in the execution chain", async () => {
