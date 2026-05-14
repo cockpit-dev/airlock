@@ -982,14 +982,28 @@ describe("normalizeOpenAIResponsesRequest", () => {
       input: "hello",
       stream: false,
       reasoning: {
-        effort: "low",
-        summary: "auto"
+        effort: "none",
+        summary: "detailed"
       }
     });
 
-    expect(canonical.reasoningEffort).toBe("low");
-    expect(canonical.reasoningSummary).toBe("auto");
+    expect(canonical.reasoningEffort).toBe("none");
+    expect(canonical.reasoningSummary).toBe("detailed");
     expect(canonical.messages).toEqual([{ role: "user", content: "hello" }]);
+  });
+
+  it("rejects conflicting responses reasoning summary controls", () => {
+    expect(() => {
+      normalizeOpenAIResponsesRequest({
+        model: "gpt-4.1-mini",
+        input: "hello",
+        stream: false,
+        reasoning: {
+          summary: "auto",
+          generate_summary: "concise"
+        }
+      });
+    }).toThrow("reasoning.summary must match reasoning.generate_summary");
   });
 
   it("normalizes deprecated responses reasoning.generate_summary into canonical reasoningSummary", () => {
@@ -998,12 +1012,12 @@ describe("normalizeOpenAIResponsesRequest", () => {
       input: "hello",
       stream: false,
       reasoning: {
-        effort: "low",
+        effort: "xhigh",
         generate_summary: "concise"
       }
     });
 
-    expect(canonical.reasoningEffort).toBe("low");
+    expect(canonical.reasoningEffort).toBe("xhigh");
     expect(canonical.reasoningSummary).toBe("concise");
     expect(canonical.messages).toEqual([{ role: "user", content: "hello" }]);
   });

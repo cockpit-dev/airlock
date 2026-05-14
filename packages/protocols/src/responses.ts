@@ -61,9 +61,21 @@ const openAIResponsesPromptSchema = z
   });
 
 const openAIResponsesReasoningSchema = z.object({
-  effort: z.enum(["minimal", "low", "medium", "high"]).optional(),
-  summary: z.unknown().optional(),
-  generate_summary: z.unknown().optional()
+  effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]).optional(),
+  summary: z.enum(["auto", "concise", "detailed"]).optional(),
+  generate_summary: z.enum(["auto", "concise", "detailed"]).optional()
+}).superRefine((value, context) => {
+  if (
+    value.summary !== undefined &&
+    value.generate_summary !== undefined &&
+    value.summary !== value.generate_summary
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "reasoning.summary must match reasoning.generate_summary",
+      path: ["summary"]
+    });
+  }
 });
 
 const openAIResponsesStreamOptionsSchema = z.object({

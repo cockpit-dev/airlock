@@ -65,7 +65,7 @@ export interface CanonicalRequest {
   };
   previousResponseId?: string;
   conversationId?: string;
-  reasoningEffort?: "minimal" | "low" | "medium" | "high";
+  reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
   reasoningSummary?:
     | "auto"
     | "concise"

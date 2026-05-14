@@ -770,7 +770,7 @@ describe("openAIResponsesRequestSchema", () => {
       },
       stream: false,
       reasoning: {
-        effort: "medium"
+        effort: "none"
       }
     });
 
@@ -782,7 +782,7 @@ describe("openAIResponsesRequestSchema", () => {
       version: "7"
     });
     expect(parsed.reasoning).toEqual({
-      effort: "medium"
+      effort: "none"
     });
   });
 
@@ -804,6 +804,22 @@ describe("openAIResponsesRequestSchema", () => {
         generate_summary: "concise"
       }
     });
+    const detailedSummaryParsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      reasoning: {
+        summary: "detailed"
+      }
+    });
+    const xhighEffortParsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      reasoning: {
+        effort: "xhigh"
+      }
+    });
 
     expect(summaryParsed.reasoning).toEqual({
       effort: "low",
@@ -812,6 +828,39 @@ describe("openAIResponsesRequestSchema", () => {
     expect(generateSummaryParsed.reasoning).toEqual({
       generate_summary: "concise"
     });
+    expect(detailedSummaryParsed.reasoning).toEqual({
+      summary: "detailed"
+    });
+    expect(xhighEffortParsed.reasoning).toEqual({
+      effort: "xhigh"
+    });
+  });
+
+  it("rejects responses reasoning.summary when it conflicts with deprecated generate_summary", () => {
+    const result = openAIResponsesRequestSchema.safeParse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      reasoning: {
+        summary: "auto",
+        generate_summary: "concise"
+      }
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects unsupported responses reasoning summary values", () => {
+    const result = openAIResponsesRequestSchema.safeParse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      reasoning: {
+        summary: "verbose"
+      }
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it("accepts responses text.format when type is json_schema", () => {

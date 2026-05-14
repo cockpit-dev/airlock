@@ -20867,6 +20867,90 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts wider supported responses reasoning values and forwards them upstream for OpenAI", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: []
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          reasoning: {
+            effort: "xhigh",
+            summary: "detailed"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      reasoning: {
+        effort: "xhigh",
+        summary: "detailed"
+      }
+    });
+  });
+
+  it("rejects conflicting responses reasoning summary controls", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          reasoning: {
+            summary: "auto",
+            generate_summary: "concise"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message: "Invalid OpenAI Responses request payload",
+        type: "request",
+        code: "request_invalid_openai_payload"
+      }
+    });
+  });
+
   it("accepts responses text.format.type=text and forwards it upstream", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
