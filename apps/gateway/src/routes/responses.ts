@@ -92,7 +92,7 @@ export async function handleResponses(
     "OpenAI Responses",
     allowedOpenAIResponsesTopLevelFields
   );
-  assertSupportedOpenAIResponsesToolsSemantics(json, requestId);
+  assertSupportedOpenAIResponsesToolsSemantics(json);
   assertOpenAIForcedToolChoiceMatchesDeclaredTools(
     json,
     requestId,

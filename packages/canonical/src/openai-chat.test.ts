@@ -1096,6 +1096,80 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
     });
   });
 
+  it("encodes a tool_calls completion event into a minimal responses function_call terminal event sequence", async () => {
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIResponsesStreamEvent(
+        {
+          type: "response_completed",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          finishReason: "tool_calls"
+        },
+        {
+          sequenceNumber: 5,
+          outputIndex: 0,
+          contentIndex: 0,
+          outputText: ""
+        }
+      )
+    ).toEqual({
+      events: [
+        {
+          type: "response.output_item.added",
+          sequence_number: 5,
+          output_index: 0,
+          item: {
+            type: "function_call",
+            call_id: "resp_123_tool_call_0",
+            name: "tool_call",
+            arguments: "{}",
+            status: "completed"
+          }
+        },
+        {
+          type: "response.output_item.done",
+          sequence_number: 6,
+          output_index: 0,
+          item: {
+            type: "function_call",
+            call_id: "resp_123_tool_call_0",
+            name: "tool_call",
+            arguments: "{}",
+            status: "completed"
+          }
+        },
+        {
+          type: "response.completed",
+          sequence_number: 7,
+          response: {
+            id: "resp_123",
+            object: "response",
+            created_at: 0,
+            model: "gpt-4.1-mini",
+            status: "completed",
+            output: [
+              {
+                type: "function_call",
+                call_id: "resp_123_tool_call_0",
+                name: "tool_call",
+                arguments: "{}",
+                status: "completed"
+              }
+            ],
+            output_text: "",
+            parallel_tool_calls: true,
+            tools: []
+          }
+        }
+      ],
+      nextSequenceNumber: 8
+    });
+  });
+
   it("encodes a max_tokens completion event into an incomplete terminal responses event sequence", async () => {
     const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
       "./openai-chat.js"

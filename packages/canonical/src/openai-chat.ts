@@ -180,6 +180,18 @@ function createOpenAIResponsesOutputMessage(
   };
 }
 
+function createOpenAIResponsesFunctionCallItem(
+  responseId: string
+) {
+  return {
+    type: "function_call" as const,
+    call_id: `${responseId}_tool_call_0`,
+    name: "tool_call",
+    arguments: "{}",
+    status: "completed" as const
+  };
+}
+
 function createOpenAIResponsesBaseResponse(
   responseId: string,
   model: string,
@@ -714,6 +726,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
 
   const outputText = state.outputText ?? "";
   const responseStatus = encodeCanonicalResponsesStatus(event.finishReason);
+  const isToolCallCompletion = event.finishReason === "tool_calls";
   const completedResponse = {
     ...createOpenAIResponsesBaseResponse(
       event.responseId,
@@ -728,19 +741,50 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
           )
         }
       : {}),
-    output: [
-      createOpenAIResponsesOutputMessage(
-        event.responseId,
-        outputText,
-        "completed",
-        true
-      )
-    ],
+    output: isToolCallCompletion
+      ? [createOpenAIResponsesFunctionCallItem(event.responseId)]
+      : [
+          createOpenAIResponsesOutputMessage(
+            event.responseId,
+            outputText,
+            "completed",
+            true
+          )
+        ],
     output_text: outputText,
     ...(event.usage
       ? { usage: encodeCanonicalResponsesUsage(event.usage) }
       : {})
   };
+
+  if (isToolCallCompletion) {
+    const functionCallItem = createOpenAIResponsesFunctionCallItem(
+      event.responseId
+    );
+
+    return {
+      events: [
+        {
+          type: "response.output_item.added" as const,
+          sequence_number: state.sequenceNumber,
+          output_index: state.outputIndex,
+          item: functionCallItem
+        },
+        {
+          type: "response.output_item.done" as const,
+          sequence_number: state.sequenceNumber + 1,
+          output_index: state.outputIndex,
+          item: functionCallItem
+        },
+        {
+          type: "response.completed" as const,
+          sequence_number: state.sequenceNumber + 2,
+          response: completedResponse
+        }
+      ],
+      nextSequenceNumber: state.sequenceNumber + 3
+    };
+  }
 
   return {
     events: [

@@ -88,8 +88,7 @@ export function assertSupportedOpenAIChatToolsSemantics(
 }
 
 export function assertSupportedOpenAIResponsesToolsSemantics(
-  payload: unknown,
-  requestId: string
+  payload: unknown
 ) {
   if (typeof payload !== "object" || payload === null) {
     return;
@@ -97,19 +96,6 @@ export function assertSupportedOpenAIResponsesToolsSemantics(
 
   if (!("tools" in payload) || payload.tools === undefined) {
     return;
-  }
-
-  if ("stream" in payload && payload.stream === true) {
-    throw new GatewayError(
-      "Unsupported OpenAI Responses tools semantics: streaming tool calls are not yet supported",
-      {
-        code: "request_unsupported_openai_semantics",
-        category: "request",
-        httpStatus: 400,
-        retryable: false,
-        requestId
-      }
-    );
   }
 }
 
