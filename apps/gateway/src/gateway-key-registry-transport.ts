@@ -1,6 +1,7 @@
 import { GatewayError } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
+import { dispatchGovernanceTransport } from "./governance-transport-core.js";
 
 export const REGISTRY_OBJECT_NAME = "gateway-key-registry";
 
@@ -102,29 +103,12 @@ export async function fetchParsedRegistryResponse<T>(
     handleStatus?: (response: Response) => Promise<T | undefined> | T | undefined;
   }
 ): Promise<T> {
-  let response: Response;
-
-  try {
-    response = await (await getStub()).fetch(request);
-  } catch (cause) {
-    throw createGatewayKeyRegistryUnavailableError(requestId, cause);
-  }
-
-  if (!response.ok) {
-    const handled = options.handleStatus
-      ? await options.handleStatus(response)
-      : undefined;
-
-    if (handled !== undefined) {
-      return handled;
-    }
-
-    throw createGatewayKeyRegistryUnavailableError(requestId);
-  }
-
-  try {
-    return options.parse(await response.json());
-  } catch (cause) {
-    throw createGatewayKeyRegistryInvalidResponseError(requestId, cause);
-  }
+  return dispatchGovernanceTransport(getStub, request, requestId, {
+    parse: async (response) => {
+      return options.parse(await response.json());
+    },
+    ...(options.handleStatus ? { handleStatus: options.handleStatus } : {}),
+    createUnavailableError: createGatewayKeyRegistryUnavailableError,
+    createInvalidResponseError: createGatewayKeyRegistryInvalidResponseError
+  });
 }

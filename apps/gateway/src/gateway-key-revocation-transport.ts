@@ -1,6 +1,7 @@
 import { GatewayError } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
+import { dispatchGovernanceTransport } from "./governance-transport-core.js";
 
 export const REVOCATION_OPERATION_LOG_OBJECT_NAME =
   "gateway-key-revocation-operations";
@@ -128,29 +129,12 @@ export async function fetchParsedRevocationResponse<T>(
     handleStatus?: (response: Response) => Promise<T | undefined> | T | undefined;
   }
 ): Promise<T> {
-  let response: Response;
-
-  try {
-    response = await (await getStub()).fetch(request);
-  } catch (cause) {
-    throw createGatewayKeyRevocationUnavailableError(requestId, cause);
-  }
-
-  if (!response.ok) {
-    const handled = options.handleStatus
-      ? await options.handleStatus(response)
-      : undefined;
-
-    if (handled !== undefined) {
-      return handled;
-    }
-
-    throw createGatewayKeyRevocationUnavailableError(requestId);
-  }
-
-  try {
-    return await options.parse(response);
-  } catch (cause) {
-    throw createGatewayKeyRevocationInvalidResponseError(requestId, cause);
-  }
+  return dispatchGovernanceTransport(getStub, request, requestId, {
+    parse: (response) => {
+      return options.parse(response);
+    },
+    ...(options.handleStatus ? { handleStatus: options.handleStatus } : {}),
+    createUnavailableError: createGatewayKeyRevocationUnavailableError,
+    createInvalidResponseError: createGatewayKeyRevocationInvalidResponseError
+  });
 }
