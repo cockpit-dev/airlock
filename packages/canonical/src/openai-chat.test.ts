@@ -174,6 +174,22 @@ describe("normalizeOpenAIChatRequest", () => {
     expect(canonical.promptCacheRetention).toBe("24h");
   });
 
+  it("normalizes chat service_tier=scale into canonical request fields", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      service_tier: "scale",
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.serviceTier).toBe("scale");
+  });
+
   it("normalizes chat sampling fields into canonical request fields", () => {
     const canonical = normalizeOpenAIChatRequest({
       model: "gpt-4.1-mini",
@@ -460,6 +476,18 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
       completion_tokens: 8,
       total_tokens: 20
     });
+  });
+
+  it("encodes canonical serviceTier=scale into an OpenAI chat response", () => {
+    const encoded = encodeCanonicalToOpenAIChatResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      outputText: "hello there",
+      finishReason: "stop",
+      serviceTier: "scale"
+    });
+
+    expect(encoded.service_tier).toBe("scale");
   });
 
   it("encodes a max_tokens canonical response into an OpenAI length finish reason", () => {
@@ -1074,6 +1102,17 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.promptCacheRetention).toBe("in_memory");
   });
 
+  it("normalizes responses service_tier=scale into canonical request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      prompt_id: "pmpt_legacy_123",
+      stream: false,
+      service_tier: "scale"
+    });
+
+    expect(canonical.serviceTier).toBe("scale");
+  });
+
   it("normalizes responses reasoning summary controls into canonical request fields", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",
@@ -1444,6 +1483,18 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
       output_tokens: 8,
       total_tokens: 20
     });
+  });
+
+  it("encodes canonical serviceTier=scale into an OpenAI responses payload", () => {
+    const encoded = encodeCanonicalToOpenAIResponsesResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      outputText: "hello there",
+      finishReason: "stop",
+      serviceTier: "scale"
+    });
+
+    expect(encoded.service_tier).toBe("scale");
   });
 
   it("encodes a max_tokens canonical response into an incomplete OpenAI responses payload", () => {

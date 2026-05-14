@@ -144,7 +144,7 @@ export const openAIResponsesRequestSchema = z
   stream: z.boolean().default(false),
   safety_identifier: z.string().min(1).optional(),
   service_tier: z.enum(["auto", "default", "flex", "priority", "scale"]).optional(),
-  store: z.boolean().nullable().optional(),
+  store: z.boolean().optional(),
   prompt_cache_key: z.string().min(1).optional(),
   prompt_cache_retention: z.enum(["in_memory", "24h"]).optional(),
   prompt: openAIResponsesPromptSchema.optional(),

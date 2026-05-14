@@ -217,6 +217,38 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(parsed.prompt_cache_retention).toBe("24h");
   });
 
+  it("accepts chat service_tier=scale for OpenAI compatibility", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      service_tier: "scale",
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.service_tier).toBe("scale");
+  });
+
+  it("accepts chat store=null for OpenAI compatibility", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      store: null,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.store).toBeNull();
+  });
+
   it("rejects conflicting chat user and safety_identifier values", () => {
     const result = openAIChatCompletionRequestSchema.safeParse({
       model: "gpt-4.1-mini",
@@ -1303,11 +1335,41 @@ describe("openAIResponsesRequestSchema", () => {
       model: "gpt-4.1-mini",
       prompt_id: "pmpt_legacy_123",
       service_tier: "priority",
-      store: false
+      store: false,
+      prompt_cache_key: "cache-key-123",
+      prompt_cache_retention: "in_memory"
     });
 
     expect(parsed.service_tier).toBe("priority");
     expect(parsed.store).toBe(false);
+    expect(parsed.prompt_cache_key).toBe("cache-key-123");
+    expect(parsed.prompt_cache_retention).toBe("in_memory");
+  });
+
+  it("accepts responses service_tier=scale for OpenAI compatibility", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      prompt_id: "pmpt_legacy_123",
+      service_tier: "scale"
+    });
+
+    expect(parsed.service_tier).toBe("scale");
+  });
+
+  it("rejects unsupported OpenAI-native metadata variants", () => {
+    const invalidServiceTier = openAIResponsesRequestSchema.safeParse({
+      model: "gpt-4.1-mini",
+      prompt_id: "pmpt_legacy_123",
+      service_tier: "bogus"
+    });
+    const invalidStore = openAIResponsesRequestSchema.safeParse({
+      model: "gpt-4.1-mini",
+      prompt_id: "pmpt_legacy_123",
+      store: null
+    });
+
+    expect(invalidServiceTier.success).toBe(false);
+    expect(invalidStore.success).toBe(false);
   });
 
   it("rejects responses prompt_id when it conflicts with prompt.id", () => {

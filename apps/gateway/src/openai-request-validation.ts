@@ -356,7 +356,7 @@ export function assertOpenAIForcedToolChoiceMatchesDeclaredTools(
   requestId: string,
   routeLabel: "OpenAI Chat" | "OpenAI Responses"
 ) {
-  if (typeof payload !== "object" || payload === null) {
+  if (!isRecord(payload)) {
     return;
   }
 
@@ -365,8 +365,7 @@ export function assertOpenAIForcedToolChoiceMatchesDeclaredTools(
   }
 
   const hasForcedNamedToolChoice =
-    typeof payload.tool_choice === "object" &&
-    payload.tool_choice !== null &&
+    isRecord(payload.tool_choice) &&
     (("function" in payload.tool_choice &&
       isRecord(payload.tool_choice.function) &&
       getRecordString(payload.tool_choice.function, "name") !== undefined) ||

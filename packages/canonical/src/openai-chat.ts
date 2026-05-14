@@ -465,6 +465,7 @@ function normalizeOpenAIResponsesTypedInputItems(
 export function normalizeOpenAIChatRequest(
   request: OpenAIChatCompletionRequest
 ): CanonicalRequest {
+  const endUserId = request.safety_identifier ?? request.user;
   const maxOutputTokens = request.max_completion_tokens ?? request.max_tokens;
   const stopSequences =
     request.stop === undefined
@@ -478,13 +479,7 @@ export function normalizeOpenAIChatRequest(
   return {
     model: request.model,
     stream: request.stream,
-    ...(request.user !== undefined || request.safety_identifier !== undefined
-      ? {
-          endUserId:
-            request.safety_identifier ??
-            request.user
-        }
-      : {}),
+    ...(endUserId !== undefined ? { endUserId } : {}),
     ...(request.service_tier !== undefined
       ? { serviceTier: request.service_tier }
       : {}),
