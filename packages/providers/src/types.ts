@@ -15,6 +15,7 @@ export interface ProviderCapabilityDescriptor {
   supportsTools: boolean;
   supportsMultimodalInput: boolean;
   supportsSystemMessages: boolean;
+  supportsPreviousResponseId: boolean;
   supportsRouteScopedShaping: boolean;
   supportsStaticFallbackSameProvider: boolean;
 }
@@ -23,6 +24,7 @@ export interface ProviderRequestContext {
   requestId: string;
   timeoutMs?: number;
   requestShaping?: RequestShapingProfile;
+  requestMode?: "default" | "openai_responses";
 }
 
 export interface ProviderAdapter {

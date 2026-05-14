@@ -54,6 +54,7 @@ import {
 const allowedOpenAIResponsesTopLevelFields = [
   "model",
   "stream",
+  "previous_response_id",
   "max_output_tokens",
   "temperature",
   "top_p",
@@ -177,6 +178,7 @@ export async function handleResponses(
       config,
       gatewayApiKey,
       requestId,
+      requestMode: "openai_responses",
       ...(circuitBreakerBackend ? { circuitBreakerBackend } : {}),
       onAttemptTarget(target) {
         attemptedTarget = target;
@@ -404,6 +406,7 @@ export async function handleResponses(
       config,
       gatewayApiKey,
       requestId,
+      requestMode: "openai_responses",
       ...(circuitBreakerBackend ? { circuitBreakerBackend } : {}),
       onAttemptTarget(target) {
         attemptedTarget = target;

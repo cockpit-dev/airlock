@@ -7,11 +7,12 @@ export function getCanonicalRequestCapabilityRequirements(
   request: CanonicalRequest
 ): CanonicalRequestCapabilityRequirements {
   return {
-    requiresStreaming: false,
+    requiresStreaming: request.stream,
     requiresTools: (request.tools?.length ?? 0) > 0,
     requiresMultimodalInput: false,
     requiresSystemMessages: request.messages.some((message) => {
       return message.role === "system";
-    })
+    }),
+    requiresPreviousResponseId: request.previousResponseId !== undefined
   };
 }

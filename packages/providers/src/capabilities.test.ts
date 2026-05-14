@@ -15,6 +15,7 @@ describe("provider capability descriptors", () => {
         supportsTools: true,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
+        supportsPreviousResponseId: true,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       },
@@ -25,6 +26,7 @@ describe("provider capability descriptors", () => {
         supportsTools: true,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
+        supportsPreviousResponseId: false,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       },
@@ -35,6 +37,7 @@ describe("provider capability descriptors", () => {
         supportsTools: false,
         supportsMultimodalInput: false,
         supportsSystemMessages: true,
+        supportsPreviousResponseId: false,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       }
@@ -49,6 +52,7 @@ describe("provider capability descriptors", () => {
       supportsTools: false,
       supportsMultimodalInput: false,
       supportsSystemMessages: true,
+      supportsPreviousResponseId: false,
       supportsRouteScopedShaping: true,
       supportsStaticFallbackSameProvider: true
     });
@@ -57,7 +61,8 @@ describe("provider capability descriptors", () => {
   it("returns OpenAI as tool-capable", () => {
     expect(getProviderCapabilityDescriptor("openai")).toMatchObject({
       provider: "openai",
-      supportsTools: true
+      supportsTools: true,
+      supportsPreviousResponseId: true
     });
   });
 

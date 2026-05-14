@@ -82,6 +82,7 @@ const openAIResponsesTypedInputItemSchema = z.union([
 export const openAIResponsesRequestSchema = z.object({
   model: z.string().min(1),
   stream: z.boolean().default(false),
+  previous_response_id: z.string().min(1).optional(),
   max_output_tokens: z.number().int().positive().optional(),
   temperature: z.number().min(0).max(2).optional(),
   top_p: z.number().min(0).max(1).optional(),

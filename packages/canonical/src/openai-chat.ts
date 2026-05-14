@@ -440,6 +440,9 @@ export function normalizeOpenAIResponsesRequest(
   return {
     model: request.model,
     stream: request.stream,
+    ...(request.previous_response_id !== undefined
+      ? { previousResponseId: request.previous_response_id }
+      : {}),
     ...(request.max_output_tokens !== undefined
       ? { maxOutputTokens: request.max_output_tokens }
       : {}),

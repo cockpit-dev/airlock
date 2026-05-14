@@ -149,6 +149,17 @@ export function assertProviderSupportsCanonicalRequest(
       requestId
     );
   }
+
+  if (
+    requirements.requiresPreviousResponseId &&
+    !descriptor.supportsPreviousResponseId
+  ) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "previous_response_id",
+      requestId
+    );
+  }
 }
 
 function createProviderAdapter(
@@ -683,6 +694,7 @@ export async function executeRoutedRequest(
     config: GatewayConfig;
     gatewayApiKey: GatewayApiKeyRecord;
     requestId: string;
+    requestMode?: "default" | "openai_responses";
     requestShaping?: RequestShapingProfile;
     fetcher?: typeof fetch;
     now?: () => number;
@@ -695,6 +707,7 @@ export async function executeRoutedRequest(
     config,
     gatewayApiKey,
     requestId,
+    requestMode = "default",
     requestShaping,
     fetcher,
     now = Date.now,
@@ -749,6 +762,7 @@ export async function executeRoutedRequest(
         const response = await adapter.complete(currentAttemptRequest, {
           requestId,
           timeoutMs: currentRemainingTimeoutMs,
+          requestMode,
           ...(requestShaping ? { requestShaping } : {})
         });
         await circuitBreakerBackend.recordSuccess(
@@ -825,6 +839,7 @@ export async function* executeRoutedStreamRequest(
     config: GatewayConfig;
     gatewayApiKey: GatewayApiKeyRecord;
     requestId: string;
+    requestMode?: "default" | "openai_responses";
     requestShaping?: RequestShapingProfile;
     fetcher?: typeof fetch;
     now?: () => number;
@@ -837,6 +852,7 @@ export async function* executeRoutedStreamRequest(
     config,
     gatewayApiKey,
     requestId,
+    requestMode = "default",
     requestShaping,
     fetcher,
     now = Date.now,
@@ -894,6 +910,7 @@ export async function* executeRoutedStreamRequest(
     for await (const event of adapter.stream(currentAttemptRequest, {
       requestId,
       timeoutMs: currentRemainingTimeoutMs,
+      requestMode,
       ...(requestShaping ? { requestShaping } : {})
     })) {
       yield event;

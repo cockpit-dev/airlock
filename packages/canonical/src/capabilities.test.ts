@@ -25,7 +25,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreaming: false,
       requiresTools: false,
       requiresMultimodalInput: false,
-      requiresSystemMessages: true
+      requiresSystemMessages: true,
+      requiresPreviousResponseId: false
     });
   });
 
@@ -45,7 +46,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreaming: false,
       requiresTools: false,
       requiresMultimodalInput: false,
-      requiresSystemMessages: false
+      requiresSystemMessages: false,
+      requiresPreviousResponseId: false
     });
   });
 
@@ -73,7 +75,30 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreaming: false,
       requiresTools: true,
       requiresMultimodalInput: false,
-      requiresSystemMessages: false
+      requiresSystemMessages: false,
+      requiresPreviousResponseId: false
+    });
+  });
+
+  it("marks streaming and previous-response requirements when present", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: true,
+      previousResponseId: "resp_123",
+      messages: [
+        {
+          role: "user",
+          content: "continue"
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: true,
+      requiresTools: false,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresPreviousResponseId: true
     });
   });
 });

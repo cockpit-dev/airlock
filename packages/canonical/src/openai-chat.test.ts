@@ -835,6 +835,17 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.maxOutputTokens).toBe(96);
   });
 
+  it("normalizes previous_response_id into canonical request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      previous_response_id: "resp_123"
+    });
+
+    expect(canonical.previousResponseId).toBe("resp_123");
+  });
+
   it("normalizes responses sampling fields into canonical request fields", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",

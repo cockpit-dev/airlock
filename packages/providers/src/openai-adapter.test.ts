@@ -104,6 +104,182 @@ describe("OpenAIProviderAdapter", () => {
     });
   });
 
+  it("uses the native OpenAI responses endpoint when requestMode=openai_responses", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ],
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8,
+            total_tokens: 20
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const response = await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        previousResponseId: "resp_prev_123"
+      },
+      {
+        requestId: "req_123",
+        requestMode: "openai_responses"
+      }
+    );
+
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe("https://api.openai.com/v1/responses");
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          type: "message",
+          role: "system",
+          content: "You are precise."
+        },
+        {
+          type: "message",
+          role: "user",
+          content: "Say hi."
+        }
+      ],
+      previous_response_id: "resp_prev_123"
+    });
+    expect(response).toMatchObject({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      outputText: "hello there",
+      finishReason: "stop",
+      usage: {
+        inputTokens: 12,
+        outputTokens: 8,
+        totalTokens: 20
+      }
+    });
+  });
+
+  it("parses upstream responses SSE into canonical stream events when requestMode=openai_responses", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
+              'data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"id":"msg_123","type":"message","role":"assistant","status":"in_progress","content":[]}}\n\n',
+              'data: {"type":"response.content_part.added","sequence_number":2,"item_id":"msg_123","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}\n\n',
+              'data: {"type":"response.output_text.delta","sequence_number":3,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"hel","logprobs":[]}\n\n',
+              'data: {"type":"response.output_text.delta","sequence_number":4,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"lo","logprobs":[]}\n\n',
+              'data: {"type":"response.completed","sequence_number":5,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[],"parallel_tool_calls":true,"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
+              "data: [DONE]\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true
+      },
+      {
+        requestId: "req_stream_123",
+        requestMode: "openai_responses"
+      }
+    )) {
+      events.push(event);
+    }
+
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe("https://api.openai.com/v1/responses");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stream: true
+    });
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        delta: "hel"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        delta: "lo"
+      },
+      {
+        type: "response_completed",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        finishReason: "stop",
+        usage: {
+          inputTokens: 12,
+          outputTokens: 8,
+          totalTokens: 20
+        }
+      }
+    ]);
+  });
+
   it("maps OpenAI length finishes into canonical max_tokens", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

@@ -15409,7 +15409,7 @@ describe("gateway app", () => {
     });
   });
 
-  it("accepts openai responses text-block input and flattens it for upstream chat execution", async () => {
+  it("accepts openai responses text-block input and forwards it as responses message input", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -15473,11 +15473,11 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toMatchObject({
-      messages: [{ role: "user", content: "hello\nthere" }]
+      input: [{ type: "message", role: "user", content: "hello\nthere" }]
     });
   });
 
-  it("normalizes responses instructions and developer role for upstream chat execution", async () => {
+  it("normalizes responses instructions and developer role for upstream responses execution", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -15537,15 +15537,15 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toMatchObject({
-      messages: [
-        { role: "system", content: "Be concise." },
-        { role: "system", content: "You are precise." },
-        { role: "user", content: "hello" }
+      input: [
+        { type: "message", role: "system", content: "Be concise." },
+        { type: "message", role: "system", content: "You are precise." },
+        { type: "message", role: "user", content: "hello" }
       ]
     });
   });
 
-  it("accepts top-level responses input items and flattens them for upstream chat execution", async () => {
+  it("accepts top-level responses input items and flattens them for upstream responses execution", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -15604,11 +15604,11 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toMatchObject({
-      messages: [{ role: "user", content: "hello\nthere" }]
+      input: [{ type: "message", role: "user", content: "hello\nthere" }]
     });
   });
 
-  it("accepts top-level responses message items and normalizes them for upstream chat execution", async () => {
+  it("accepts top-level responses message items and normalizes them for upstream responses execution", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -15674,14 +15674,14 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toMatchObject({
-      messages: [
-        { role: "system", content: "You are precise." },
-        { role: "user", content: "hello" }
+      input: [
+        { type: "message", role: "system", content: "You are precise." },
+        { type: "message", role: "user", content: "hello" }
       ]
     });
   });
 
-  it("accepts mixed typed responses items and preserves text turn order for upstream chat execution", async () => {
+  it("accepts mixed typed responses items and preserves turn order for upstream responses execution", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -15764,11 +15764,15 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toMatchObject({
-      messages: [
-        { role: "system", content: "You are precise." },
-        { role: "user", content: "hello\nagain" },
-        { role: "assistant", content: "hello there" },
-        { role: "user", content: "continue" }
+      input: [
+        { type: "message", role: "system", content: "You are precise." },
+        { type: "message", role: "user", content: "hello\nagain" },
+        {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "hello there" }]
+        },
+        { type: "message", role: "user", content: "continue" }
       ]
     });
   });
@@ -16013,32 +16017,38 @@ describe("gateway app", () => {
     const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
 
     expect(url).toBe(
-      "https://api.openai.com/v1/chat/completions?api-version=2025-01-01"
+      "https://api.openai.com/v1/responses?api-version=2025-01-01"
     );
     expect(JSON.parse(init.body as string)).toEqual({
       model: "gpt-4.1-mini",
       stream: false,
-      messages: [{ role: "user", content: "hi" }],
+      input: [{ type: "message", role: "user", content: "hi" }],
       temperature: 0.2
     });
   });
 
-  it("rejects unsupported responses semantics like previous_response_id", async () => {
+  it("accepts responses previous_response_id and forwards it through the native openai responses path", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          id: "chatcmpl_123",
-          object: "chat.completion",
-          created: 1,
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
           model: "gpt-4.1-mini",
-          choices: [
+          status: "completed",
+          output: [
             {
-              index: 0,
-              finish_reason: "stop",
-              message: {
-                role: "assistant",
-                content: "hello there"
-              }
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
             }
           ]
         }),
@@ -16069,14 +16079,17 @@ describe("gateway app", () => {
       createBindings()
     );
 
-    expect(response.status).toBe(400);
-    await expect(readJson(response)).resolves.toEqual({
-      error: {
-        message:
-          "Unsupported OpenAI Responses semantic field: previous_response_id",
-        type: "request",
-        code: "request_unsupported_openai_semantics"
-      }
+    expect(response.status).toBe(200);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.openai.com/v1/responses");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      previous_response_id: "resp_prev_123"
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      id: "resp_123",
+      object: "response",
+      model: "gpt-4.1-mini",
+      output_text: "hello there"
     });
   });
 
@@ -17316,9 +17329,7 @@ describe("gateway app", () => {
       tools: [
         {
           type: "function",
-          function: {
-            name: "lookup_weather"
-          }
+          name: "lookup_weather"
         }
       ]
     });

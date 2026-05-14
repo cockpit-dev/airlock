@@ -652,6 +652,17 @@ describe("openAIResponsesRequestSchema", () => {
     expect(parsed.max_output_tokens).toBe(96);
   });
 
+  it("accepts previous_response_id for responses requests", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      previous_response_id: "resp_123"
+    });
+
+    expect(parsed.previous_response_id).toBe("resp_123");
+  });
+
   it("accepts responses sampling fields", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",
