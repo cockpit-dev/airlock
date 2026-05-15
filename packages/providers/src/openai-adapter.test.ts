@@ -1136,6 +1136,12 @@ describe("OpenAIProviderAdapter", () => {
         delta: "The model checked"
       },
       {
+        type: "reasoning_summary_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        delta: " the answer."
+      },
+      {
         type: "response_completed",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
@@ -1298,6 +1304,12 @@ describe("OpenAIProviderAdapter", () => {
         argumentsDelta: "{\"city\":\"Shanghai\"}"
       },
       {
+        type: "reasoning_summary_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        delta: " the answer."
+      },
+      {
         type: "response_completed",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
@@ -1389,6 +1401,97 @@ describe("OpenAIProviderAdapter", () => {
           inputTokens: 11,
           outputTokens: 5,
           totalTokens: 16
+        }
+      }
+    ]);
+  });
+
+  it("backfills sparse native responses completed output into canonical stream deltas", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
+              'data: {"type":"response.completed","sequence_number":1,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"id":"msg_123","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Let me check that.","annotations":[]}]},{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"}],"parallel_tool_calls":true,"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
+              "data: [DONE]\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true,
+        messages: [],
+        tools: [
+          {
+            name: "lookup_weather",
+            inputSchema: {
+              type: "object"
+            }
+          }
+        ],
+        toolChoice: "auto"
+      },
+      {
+        requestId: "req_stream_sparse_responses_123",
+        requestMode: "openai_responses"
+      }
+    )) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        delta: "Let me check that."
+      },
+      {
+        type: "tool_call_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        toolCallId: "call_123",
+        toolIndex: 0,
+        toolName: "lookup_weather",
+        argumentsDelta: "{\"city\":\"Shanghai\"}"
+      },
+      {
+        type: "response_completed",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        finishReason: "tool_calls",
+        parallelToolCalls: true,
+        usage: {
+          inputTokens: 12,
+          outputTokens: 8,
+          totalTokens: 20
         }
       }
     ]);

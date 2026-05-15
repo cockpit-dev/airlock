@@ -1822,6 +1822,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         name?: string;
       }
     >();
+    let streamedOutputText = "";
     let streamedReasoningSummary = "";
 
     try {
@@ -2073,6 +2074,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   request.model
                 ];
 
+              streamedOutputText += payload.delta;
+
               if (!hasStarted) {
                 hasStarted = true;
                 yield {
@@ -2285,10 +2288,137 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 payload.response.model ??
                 responseIdToModel.get(responseId) ??
                 request.model;
+              const completedOutputText = extractOutputTextFromOpenAIResponsesOutput(
+                payload.response.output
+              );
+              const completedToolCalls =
+                extractToolCallsFromOpenAIResponsesOutput(payload.response.output) ?? [];
               const reasoningSummary =
                 extractReasoningSummaryFromOpenAIResponsesOutput(
                   payload.response.output
                 ) || streamedReasoningSummary;
+
+              if (!hasStarted) {
+                hasStarted = true;
+                yield {
+                  type: "response_started",
+                  responseId,
+                  model,
+                  ...(payload.response.metadata !== undefined
+                    ? { metadata: payload.response.metadata }
+                    : {}),
+                  ...(payload.response.service_tier !== undefined
+                    ? { serviceTier: payload.response.service_tier }
+                    : {}),
+                  ...(payload.response.prompt_cache_key !== undefined
+                    ? { promptCacheKey: payload.response.prompt_cache_key }
+                    : {}),
+                  ...(payload.response.prompt_cache_retention !== undefined
+                    ? {
+                        promptCacheRetention:
+                          payload.response.prompt_cache_retention
+                      }
+                    : {}),
+                  ...(payload.response.truncation !== undefined
+                    ? { responseTruncation: payload.response.truncation }
+                    : {}),
+                  ...(payload.response.text?.verbosity !== undefined
+                    ? {
+                        responseTextVerbosity: payload.response.text.verbosity
+                      }
+                    : {}),
+                  ...(payload.response.conversation !== undefined
+                    ? {
+                        conversationId:
+                          typeof payload.response.conversation === "string"
+                            ? payload.response.conversation
+                            : payload.response.conversation.id
+                      }
+                    : {})
+                };
+              }
+
+              if (
+                completedOutputText.length > streamedOutputText.length &&
+                completedOutputText.startsWith(streamedOutputText)
+              ) {
+                const missingOutputText = completedOutputText.slice(
+                  streamedOutputText.length
+                );
+
+                streamedOutputText = completedOutputText;
+
+                if (missingOutputText.length > 0) {
+                  yield {
+                    type: "output_text_delta",
+                    responseId,
+                    model,
+                    delta: missingOutputText
+                  };
+                }
+              }
+
+              if (
+                reasoningSummary.length > streamedReasoningSummary.length &&
+                reasoningSummary.startsWith(streamedReasoningSummary)
+              ) {
+                const missingReasoningSummary = reasoningSummary.slice(
+                  streamedReasoningSummary.length
+                );
+
+                streamedReasoningSummary = reasoningSummary;
+
+                if (missingReasoningSummary.length > 0) {
+                  yield {
+                    type: "reasoning_summary_delta",
+                    responseId,
+                    model,
+                    delta: missingReasoningSummary
+                  };
+                }
+              }
+
+              for (const [toolIndex, completedToolCall] of completedToolCalls.entries()) {
+                const currentTool =
+                  streamedToolCalls.get(completedToolCall.id) ?? {
+                    toolIndex,
+                    outputIndex: toolIndex,
+                    arguments: "",
+                    started: false
+                  };
+                const hadStarted = currentTool.started;
+                let missingArgumentsDelta = "";
+
+                currentTool.name ??= completedToolCall.name;
+
+                if (!hadStarted) {
+                  missingArgumentsDelta = completedToolCall.arguments;
+                } else if (
+                  completedToolCall.arguments.length > currentTool.arguments.length &&
+                  completedToolCall.arguments.startsWith(currentTool.arguments)
+                ) {
+                  missingArgumentsDelta = completedToolCall.arguments.slice(
+                    currentTool.arguments.length
+                  );
+                }
+
+                currentTool.name = completedToolCall.name;
+                currentTool.arguments = completedToolCall.arguments;
+                currentTool.started = true;
+                streamedToolCalls.set(completedToolCall.id, currentTool);
+
+                if (!hadStarted || missingArgumentsDelta.length > 0) {
+                  yield {
+                    type: "tool_call_delta",
+                    responseId,
+                    model,
+                    toolCallId: completedToolCall.id,
+                    toolIndex: currentTool.toolIndex,
+                    toolName: completedToolCall.name,
+                    argumentsDelta: missingArgumentsDelta
+                  };
+                }
+              }
 
               yield {
                 type: "response_completed",
