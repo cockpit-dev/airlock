@@ -88,11 +88,10 @@ function parseAnthropicToolInput(
   }
 }
 
-function buildAnthropicMessages(
-  request: CanonicalRequest,
-  requestId: string
-) {
-  const sourceMessages = request.messages.filter((message) => message.role !== "system");
+function buildAnthropicMessages(request: CanonicalRequest, requestId: string) {
+  const sourceMessages = request.messages.filter(
+    (message) => message.role !== "system"
+  );
   const outboundMessages: Array<
     | {
         role: "user";
@@ -366,12 +365,15 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     let response: Response;
 
     try {
-      response = await this.#fetcher(buildRequestUrl(this.#baseUrl, outboundRequest), {
-        method: outboundRequest.method,
-        headers: outboundRequest.headers,
-        body: JSON.stringify(outboundRequest.jsonBody),
-        signal: abortController.signal
-      });
+      response = await this.#fetcher(
+        buildRequestUrl(this.#baseUrl, outboundRequest),
+        {
+          method: outboundRequest.method,
+          headers: outboundRequest.headers,
+          body: JSON.stringify(outboundRequest.jsonBody),
+          signal: abortController.signal
+        }
+      );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         throw new GatewayError("Upstream provider timed out", {
@@ -397,14 +399,17 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
         error?: { message?: string };
       };
 
-      throw new GatewayError(payload.error?.message ?? "Upstream provider error", {
-        code: "provider_upstream_error",
-        category: "provider",
-        httpStatus: response.status,
-        retryable: response.status >= 500 || response.status === 429,
-        provider: "anthropic",
-        requestId: context.requestId
-      });
+      throw new GatewayError(
+        payload.error?.message ?? "Upstream provider error",
+        {
+          code: "provider_upstream_error",
+          category: "provider",
+          httpStatus: response.status,
+          retryable: response.status >= 500 || response.status === 429,
+          provider: "anthropic",
+          requestId: context.requestId
+        }
+      );
     }
 
     const payload = (await response.json()) as {
@@ -429,16 +434,18 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
       };
     };
 
+    const content = payload.content ?? [];
+
     return {
       id: payload.id,
       model: payload.model,
-      outputText: payload.content
+      outputText: content
         .filter((block) => block.type === "text")
         .map((block) => block.text)
         .join("\n"),
-      ...(payload.content.some((block) => block.type === "tool_use")
+      ...(content.some((block) => block.type === "tool_use")
         ? {
-            toolCalls: payload.content
+            toolCalls: content
               .filter((block) => block.type === "tool_use")
               .map((block) => ({
                 id: block.id,
@@ -447,7 +454,9 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
               }))
           }
         : {}),
-      finishReason: normalizeAnthropicFinishReason(payload.stop_reason ?? undefined),
+      finishReason: normalizeAnthropicFinishReason(
+        payload.stop_reason ?? undefined
+      ),
       ...(payload.usage
         ? {
             usage: {
@@ -534,12 +543,15 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     let response: Response;
 
     try {
-      response = await this.#fetcher(buildRequestUrl(this.#baseUrl, outboundRequest), {
-        method: outboundRequest.method,
-        headers: outboundRequest.headers,
-        body: JSON.stringify(outboundRequest.jsonBody),
-        signal: abortController.signal
-      });
+      response = await this.#fetcher(
+        buildRequestUrl(this.#baseUrl, outboundRequest),
+        {
+          method: outboundRequest.method,
+          headers: outboundRequest.headers,
+          body: JSON.stringify(outboundRequest.jsonBody),
+          signal: abortController.signal
+        }
+      );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         throw new GatewayError("Upstream provider timed out", {
@@ -565,14 +577,17 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
         clearTimeout(timeoutHandle);
       }
 
-      throw new GatewayError(payload.error?.message ?? "Upstream provider error", {
-        code: "provider_upstream_error",
-        category: "provider",
-        httpStatus: response.status,
-        retryable: response.status >= 500 || response.status === 429,
-        provider: "anthropic",
-        requestId: context.requestId
-      });
+      throw new GatewayError(
+        payload.error?.message ?? "Upstream provider error",
+        {
+          code: "provider_upstream_error",
+          category: "provider",
+          httpStatus: response.status,
+          retryable: response.status >= 500 || response.status === 429,
+          provider: "anthropic",
+          requestId: context.requestId
+        }
+      );
     }
 
     if (!response.body) {
@@ -580,14 +595,17 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
         clearTimeout(timeoutHandle);
       }
 
-      throw new GatewayError("Upstream provider returned an empty stream body", {
-        code: "provider_upstream_error",
-        category: "provider",
-        httpStatus: 502,
-        retryable: true,
-        provider: "anthropic",
-        requestId: context.requestId
-      });
+      throw new GatewayError(
+        "Upstream provider returned an empty stream body",
+        {
+          code: "provider_upstream_error",
+          category: "provider",
+          httpStatus: 502,
+          retryable: true,
+          provider: "anthropic",
+          requestId: context.requestId
+        }
+      );
     }
 
     const responseBody = response.body as ReadableStream<Uint8Array>;
@@ -658,7 +676,9 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
           }
 
           const payload =
-            currentData.length > 0 ? (JSON.parse(currentData) as Record<string, unknown>) : {};
+            currentData.length > 0
+              ? (JSON.parse(currentData) as Record<string, unknown>)
+              : {};
 
           if (currentEventType === "message_start") {
             const message = payload.message as
@@ -787,9 +807,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
               type: "response_completed",
               responseId: activeResponseId,
               model: activeModel,
-              finishReason: normalizeAnthropicFinishReason(
-                streamStopReason
-              ),
+              finishReason: normalizeAnthropicFinishReason(streamStopReason),
               ...(usage ? { usage } : {})
             };
           }
