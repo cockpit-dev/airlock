@@ -27425,6 +27425,161 @@ describe("gateway app", () => {
     expect(body).toContain("event: message_stop");
   });
 
+  it("streams tool_use argument deltas when messages ingress routes to openai responses", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
+                  'data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"","status":"in_progress"}}\n\n',
+                  'data: {"type":"response.function_call_arguments.delta","sequence_number":2,"item_id":"call_123","output_index":0,"delta":"{\\"city\\":\\"Shanghai\\"}"}\n\n',
+                  'data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"}],"parallel_tool_calls":true,"tools":[],"usage":{"input_tokens":11,"output_tokens":5,"total_tokens":16}}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          max_tokens: 256,
+          stream: true,
+          tool_choice: {
+            type: "auto"
+          },
+          tools: [
+            {
+              name: "lookup_weather",
+              input_schema: {
+                type: "object"
+              }
+            }
+          ],
+          messages: [
+            {
+              role: "user",
+              content: "Weather in Shanghai?"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    const body = await readText(response);
+
+    expect(body).toContain("event: content_block_start");
+    expect(body).toContain('"type":"tool_use"');
+    expect(body).toContain('"partial_json":""');
+    expect(body).toContain('"partial_json":"{\\"city\\":\\"Shanghai\\"}"');
+    expect(body).toContain('"stop_reason":"tool_use"');
+  });
+
+  it("preserves text and tool block ordering when messages ingress routes to openai responses streaming", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
+                  'data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"id":"msg_123","type":"message","role":"assistant","status":"in_progress","content":[]}}\n\n',
+                  'data: {"type":"response.content_part.added","sequence_number":2,"item_id":"msg_123","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}\n\n',
+                  'data: {"type":"response.output_text.delta","sequence_number":3,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"Let me check that.","logprobs":[]}\n\n',
+                  'data: {"type":"response.output_item.added","sequence_number":4,"output_index":1,"item":{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"","status":"in_progress"}}\n\n',
+                  'data: {"type":"response.function_call_arguments.delta","sequence_number":5,"item_id":"call_123","output_index":1,"delta":"{\\"city\\":\\"Shanghai\\"}"}\n\n',
+                  'data: {"type":"response.completed","sequence_number":6,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"id":"msg_123","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Let me check that.","annotations":[]}]},{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"}],"parallel_tool_calls":true,"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          max_tokens: 256,
+          stream: true,
+          tool_choice: {
+            type: "auto"
+          },
+          tools: [
+            {
+              name: "lookup_weather",
+              input_schema: {
+                type: "object"
+              }
+            }
+          ],
+          messages: [
+            {
+              role: "user",
+              content: "Weather in Shanghai?"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const body = await readText(response);
+
+    expect(body).toContain('"index":0,"content_block":{"type":"text","text":""}');
+    expect(body).toContain('"index":0,"delta":{"type":"text_delta","text":"Let me check that."}');
+    expect(body).toContain('"index":1,"content_block":{"type":"tool_use","id":"call_123","name":"lookup_weather","input":{}}');
+    expect(body).toContain('"index":1,"delta":{"type":"input_json_delta","partial_json":""}');
+    expect(body).toContain('"index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Shanghai\\"}"}');
+    expect(body).toContain('"stop_reason":"tool_use"');
+  });
+
   it("allowlist anthropic semantics rejects unsupported metadata variants", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
