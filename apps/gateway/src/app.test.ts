@@ -1928,6 +1928,27 @@ describe("gateway app", () => {
     });
   });
 
+  it("returns not ready from /readyz when model shaping uses a reserved transport header", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_MODEL_SHAPING: JSON.stringify({
+        "gpt-4.1-mini": {
+          headers: {
+            authorization: "Bearer override"
+          }
+        }
+      })
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
   it("returns not ready from /readyz when model shaping uses a reserved signing output header", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
