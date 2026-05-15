@@ -3,6 +3,9 @@ import { isRecord } from "./gateway-key-quota-shared.js";
 export interface ProviderCircuitBreakerPolicy {
   threshold: number;
   cooldownMs: number;
+  errorRateWindowMs?: number;
+  errorRateThreshold?: number;
+  minAttemptsInWindow?: number;
 }
 
 export interface ProviderCircuitState {
@@ -18,11 +21,94 @@ export interface ProviderCircuitState {
   lastSuccessAt?: number;
   lastUsageObservedAt?: number;
   lastFailureAt?: number;
+  windowedTotalAttempts?: number;
+  windowedFailures?: number;
+  windowStartAt?: number;
 }
 
 const LATENCY_SMOOTHING_PREVIOUS_WEIGHT = 0.7;
 const LATENCY_SMOOTHING_CURRENT_WEIGHT = 0.3;
 const MAX_HALF_OPEN_REOPEN_BACKOFF_MULTIPLIER = 4;
+
+/**
+ * Resets the sliding window if it has expired, then applies a delta.
+ * Returns updated window fields ready to spread into the next state.
+ */
+function advanceSlidingWindow(
+  current: Pick<
+    ProviderCircuitState,
+    "windowedTotalAttempts" | "windowedFailures" | "windowStartAt"
+  >,
+  policy: Pick<
+    ProviderCircuitBreakerPolicy,
+    "errorRateWindowMs" | "errorRateThreshold" | "minAttemptsInWindow"
+  >,
+  now: number,
+  isFailure: boolean
+): {
+  windowedTotalAttempts: number;
+  windowedFailures: number;
+  windowStartAt: number;
+} {
+  const windowMs = policy.errorRateWindowMs;
+  const shouldTrack = windowMs !== undefined && windowMs > 0;
+
+  if (!shouldTrack) {
+    return {
+      windowedTotalAttempts: current.windowedTotalAttempts ?? 0,
+      windowedFailures: current.windowedFailures ?? 0,
+      windowStartAt: current.windowStartAt ?? now
+    };
+  }
+
+  const windowStart = current.windowStartAt ?? now;
+  const expired = now - windowStart >= windowMs;
+
+  if (expired) {
+    return {
+      windowedTotalAttempts: 1,
+      windowedFailures: isFailure ? 1 : 0,
+      windowStartAt: now
+    };
+  }
+
+  return {
+    windowedTotalAttempts: (current.windowedTotalAttempts ?? 0) + 1,
+    windowedFailures: (current.windowedFailures ?? 0) + (isFailure ? 1 : 0),
+    windowStartAt: windowStart
+  };
+}
+
+/**
+ * Checks whether the sliding window error rate exceeds the policy threshold.
+ */
+function shouldOpenForErrorRate(
+  window: {
+    windowedTotalAttempts: number;
+    windowedFailures: number;
+  },
+  policy: Pick<
+    ProviderCircuitBreakerPolicy,
+    "errorRateThreshold" | "minAttemptsInWindow"
+  >
+): boolean {
+  const threshold = policy.errorRateThreshold;
+  const minAttempts = policy.minAttemptsInWindow;
+
+  if (threshold === undefined || threshold <= 0 || threshold >= 1) {
+    return false;
+  }
+
+  if (minAttempts !== undefined && window.windowedTotalAttempts < minAttempts) {
+    return false;
+  }
+
+  if (window.windowedTotalAttempts <= 0) {
+    return false;
+  }
+
+  return window.windowedFailures / window.windowedTotalAttempts >= threshold;
+}
 
 /**
  * Exponential moving average for latency smoothing.
@@ -111,7 +197,11 @@ export function applyCircuitBreakerSuccess(
   current: ProviderCircuitState,
   latencyMs: number | undefined,
   totalTokens: number | undefined,
-  now: number | undefined
+  now: number | undefined,
+  policy?: Pick<
+    ProviderCircuitBreakerPolicy,
+    "errorRateWindowMs" | "errorRateThreshold" | "minAttemptsInWindow"
+  >
 ): ProviderCircuitState {
   const nextSmoothedLatencyMs =
     latencyMs !== undefined
@@ -126,6 +216,11 @@ export function applyCircuitBreakerSuccess(
           current.smoothedSuccessTotalTokens,
           totalTokens
         )
+      : undefined;
+
+  const window =
+    policy && now !== undefined
+      ? advanceSlidingWindow(current, policy, now, false)
       : undefined;
 
   return {
@@ -155,21 +250,56 @@ export function applyCircuitBreakerSuccess(
         : {}),
     ...(current.lastFailureAt !== undefined
       ? { lastFailureAt: current.lastFailureAt }
-      : {})
+      : {}),
+    ...(window !== undefined
+      ? {
+          windowedTotalAttempts: window.windowedTotalAttempts,
+          windowedFailures: window.windowedFailures,
+          windowStartAt: window.windowStartAt
+        }
+      : current.windowedTotalAttempts !== undefined ||
+        current.windowedFailures !== undefined ||
+        current.windowStartAt !== undefined
+        ? {
+            windowedTotalAttempts: current.windowedTotalAttempts,
+            windowedFailures: current.windowedFailures,
+            windowStartAt: current.windowStartAt
+          }
+        : {})
   };
 }
 
 /**
  * Pure state transition: applies a retryable failure to the circuit state.
  * Returns the next state without performing any IO.
+ *
+ * When a full policy with error-rate fields is provided, the sliding window
+ * error rate is evaluated alongside the consecutive-failure threshold.
+ * The circuit opens when **either** condition is met.
  */
 export function applyCircuitBreakerRetryableFailure(
   current: ProviderCircuitState,
   threshold: number,
-  now: number
+  now: number,
+  policy?: Pick<
+    ProviderCircuitBreakerPolicy,
+    "errorRateWindowMs" | "errorRateThreshold" | "minAttemptsInWindow"
+  >
 ): ProviderCircuitState {
   const nextFailures = current.consecutiveRetryableFailures + 1;
   const halfOpenProbeFailed = current.probeStartedAt !== undefined;
+
+  const window = policy
+    ? advanceSlidingWindow(current, policy, now, true)
+    : undefined;
+
+  const shouldOpenForWindow =
+    window !== undefined
+      ? shouldOpenForErrorRate(window, policy ?? {})
+      : false;
+
+  const shouldOpen =
+    halfOpenProbeFailed || nextFailures >= threshold || shouldOpenForWindow;
 
   const next: ProviderCircuitState = {
     consecutiveRetryableFailures: nextFailures,
@@ -194,10 +324,23 @@ export function applyCircuitBreakerRetryableFailure(
     ...(current.lastUsageObservedAt !== undefined
       ? { lastUsageObservedAt: current.lastUsageObservedAt }
       : {}),
-    ...(halfOpenProbeFailed || nextFailures >= threshold
-      ? { openedAt: now }
-      : {}),
-    lastFailureAt: now
+    ...(shouldOpen ? { openedAt: now } : {}),
+    lastFailureAt: now,
+    ...(window !== undefined
+      ? {
+          windowedTotalAttempts: window.windowedTotalAttempts,
+          windowedFailures: window.windowedFailures,
+          windowStartAt: window.windowStartAt
+        }
+      : current.windowedTotalAttempts !== undefined ||
+        current.windowedFailures !== undefined ||
+        current.windowStartAt !== undefined
+        ? {
+            windowedTotalAttempts: current.windowedTotalAttempts,
+            windowedFailures: current.windowedFailures,
+            windowStartAt: current.windowStartAt
+          }
+        : {})
   };
 
   return next;
@@ -308,7 +451,10 @@ export function parseProviderCircuitState(
     smoothedSuccessTotalTokens,
     lastSuccessAt,
     lastUsageObservedAt,
-    lastFailureAt
+    lastFailureAt,
+    windowedTotalAttempts,
+    windowedFailures,
+    windowStartAt
   } = value;
 
   if (
@@ -373,6 +519,33 @@ export function parseProviderCircuitState(
     throw new Error("Provider circuit state lastFailureAt is invalid");
   }
 
+  if (
+    windowedTotalAttempts !== undefined &&
+    (typeof windowedTotalAttempts !== "number" ||
+      !Number.isInteger(windowedTotalAttempts) ||
+      windowedTotalAttempts < 0)
+  ) {
+    throw new Error(
+      "Provider circuit state windowedTotalAttempts is invalid"
+    );
+  }
+
+  if (
+    windowedFailures !== undefined &&
+    (typeof windowedFailures !== "number" ||
+      !Number.isInteger(windowedFailures) ||
+      windowedFailures < 0)
+  ) {
+    throw new Error("Provider circuit state windowedFailures is invalid");
+  }
+
+  if (
+    windowStartAt !== undefined &&
+    (typeof windowStartAt !== "number" || !Number.isInteger(windowStartAt))
+  ) {
+    throw new Error("Provider circuit state windowStartAt is invalid");
+  }
+
   return {
     consecutiveRetryableFailures,
     ...(openedAt !== undefined ? { openedAt } : {}),
@@ -390,6 +563,11 @@ export function parseProviderCircuitState(
       : {}),
     ...(lastSuccessAt !== undefined ? { lastSuccessAt } : {}),
     ...(lastUsageObservedAt !== undefined ? { lastUsageObservedAt } : {}),
-    ...(lastFailureAt !== undefined ? { lastFailureAt } : {})
+    ...(lastFailureAt !== undefined ? { lastFailureAt } : {}),
+    ...(windowedTotalAttempts !== undefined
+      ? { windowedTotalAttempts }
+      : {}),
+    ...(windowedFailures !== undefined ? { windowedFailures } : {}),
+    ...(windowStartAt !== undefined ? { windowStartAt } : {})
   };
 }

@@ -90,7 +90,8 @@ export function createInMemoryCircuitBreakerBackend(): ProviderCircuitBreakerBac
       const next = applyCircuitBreakerRetryableFailure(
         state,
         policy.threshold,
-        now
+        now,
+        policy
       );
       Object.assign(state, next);
       delete state.probeStartedAt;
@@ -127,6 +128,9 @@ export class ProviderCircuitBreakerDurableObject {
         latencyMs?: number;
         totalTokens?: number;
         now?: number;
+        errorRateWindowMs?: number;
+        errorRateThreshold?: number;
+        minAttemptsInWindow?: number;
       };
       const current = (await this.state.storage.get<ProviderCircuitState>(
         "state"
@@ -135,11 +139,24 @@ export class ProviderCircuitBreakerDurableObject {
       };
 
       if (body.kind === "success") {
+        const successPolicy =
+          body.errorRateWindowMs !== undefined
+            ? {
+                errorRateWindowMs: body.errorRateWindowMs,
+                ...(body.errorRateThreshold !== undefined
+                  ? { errorRateThreshold: body.errorRateThreshold }
+                  : {}),
+                ...(body.minAttemptsInWindow !== undefined
+                  ? { minAttemptsInWindow: body.minAttemptsInWindow }
+                  : {})
+              }
+            : undefined;
         const next = applyCircuitBreakerSuccess(
           current,
           body.latencyMs,
           body.totalTokens,
-          body.now
+          body.now,
+          successPolicy
         );
         await this.state.storage.put("state", next);
         return Response.json(next);
@@ -166,10 +183,23 @@ export class ProviderCircuitBreakerDurableObject {
         return Response.json({ claimed: true });
       }
 
+      const errorRatePolicy =
+        body.errorRateWindowMs !== undefined
+          ? {
+              errorRateWindowMs: body.errorRateWindowMs,
+              ...(body.errorRateThreshold !== undefined
+                ? { errorRateThreshold: body.errorRateThreshold }
+                : {}),
+              ...(body.minAttemptsInWindow !== undefined
+                ? { minAttemptsInWindow: body.minAttemptsInWindow }
+                : {})
+            }
+          : undefined;
       const raw = applyCircuitBreakerRetryableFailure(
         current,
         body.threshold ?? 1,
-        body.now ?? Date.now()
+        body.now ?? Date.now(),
+        errorRatePolicy
       );
       const { probeStartedAt: _removed, ...next } = raw;
       void _removed;
@@ -247,7 +277,18 @@ export function createPersistentCircuitBreakerBackend(namespace: {
           body: JSON.stringify({
             kind: "retryable_failure",
             threshold: policy.threshold,
-            now
+            now,
+            ...(policy.errorRateWindowMs !== undefined
+              ? {
+                  errorRateWindowMs: policy.errorRateWindowMs,
+                  ...(policy.errorRateThreshold !== undefined
+                    ? { errorRateThreshold: policy.errorRateThreshold }
+                    : {}),
+                  ...(policy.minAttemptsInWindow !== undefined
+                    ? { minAttemptsInWindow: policy.minAttemptsInWindow }
+                    : {})
+                }
+              : {})
           })
         })
       );

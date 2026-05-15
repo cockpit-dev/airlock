@@ -108,7 +108,16 @@ function getProviderCircuitBreakerPolicy(
       DEFAULT_PROVIDER_CIRCUIT_BREAKER_THRESHOLD,
     cooldownMs:
       config.providerCircuitBreakerCooldownMs ??
-      DEFAULT_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS
+      DEFAULT_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS,
+    ...(config.providerCircuitBreakerErrorRateWindowMs !== undefined
+      ? { errorRateWindowMs: config.providerCircuitBreakerErrorRateWindowMs }
+      : {}),
+    ...(config.providerCircuitBreakerErrorRateThreshold !== undefined
+      ? { errorRateThreshold: config.providerCircuitBreakerErrorRateThreshold }
+      : {}),
+    ...(config.providerCircuitBreakerMinAttemptsInWindow !== undefined
+      ? { minAttemptsInWindow: config.providerCircuitBreakerMinAttemptsInWindow }
+      : {})
   };
 }
 

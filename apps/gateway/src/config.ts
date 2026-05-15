@@ -33,6 +33,9 @@ export interface GatewayConfig {
   providerCircuitBreakerThreshold?: number;
   providerCircuitBreakerCooldownMs?: number;
   providerCircuitBreakerPersistent?: boolean;
+  providerCircuitBreakerErrorRateWindowMs?: number;
+  providerCircuitBreakerErrorRateThreshold?: number;
+  providerCircuitBreakerMinAttemptsInWindow?: number;
   gatewayKeyRegistryEnabled?: boolean;
   internalAdminCredentials?: InternalAdminCredential[];
   gatewayApiKeys: GatewayApiKeyRecord[];
@@ -356,6 +359,15 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
     providerCircuitBreakerThreshold: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD,
     providerCircuitBreakerCooldownMs: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS,
     providerCircuitBreakerPersistent: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT,
+    ...(env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_WINDOW_MS !== undefined
+      ? { providerCircuitBreakerErrorRateWindowMs: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_WINDOW_MS }
+      : {}),
+    ...(env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_THRESHOLD !== undefined
+      ? { providerCircuitBreakerErrorRateThreshold: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_THRESHOLD }
+      : {}),
+    ...(env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_MIN_ATTEMPTS_IN_WINDOW !== undefined
+      ? { providerCircuitBreakerMinAttemptsInWindow: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_MIN_ATTEMPTS_IN_WINDOW }
+      : {}),
     gatewayKeyRegistryEnabled: env.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED,
     internalAdminCredentials,
     gatewayApiKeys,
