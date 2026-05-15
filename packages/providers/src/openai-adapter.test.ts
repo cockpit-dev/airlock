@@ -3416,6 +3416,125 @@ describe("OpenAIProviderAdapter", () => {
     ]);
   });
 
+  it("parses upstream chat completion SSE logprobs into canonical stream events", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+              'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"hello"},"logprobs":{"content":[{"token":"hello","logprob":-0.1,"top_logprobs":[{"token":"hello","logprob":-0.1}]}]},"finish_reason":null}]}\n\n',
+              'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"logprobs":{"content":[{"token":"hello","logprob":-0.1,"top_logprobs":[{"token":"hello","logprob":-0.1}]}]},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}\n\n',
+              "data: [DONE]\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true,
+        providerMetadata: {
+          openai: {
+            logprobs: true,
+            topLogprobs: 5,
+            chatIncludeUsage: true
+          }
+        }
+      },
+      {
+        requestId: "req_stream_logprobs_123"
+      }
+    )) {
+      events.push(event);
+    }
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stream: true,
+      logprobs: true,
+      top_logprobs: 5,
+      stream_options: {
+        include_usage: true
+      }
+    });
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini",
+        createdAt: 1
+      },
+      {
+        type: "output_text_delta",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini",
+        createdAt: 1,
+        delta: "hello",
+        outputTextLogprobs: {
+          content: [
+            {
+              token: "hello",
+              logprob: -0.1,
+              topLogprobs: [
+                {
+                  token: "hello",
+                  logprob: -0.1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        type: "response_completed",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini",
+        createdAt: 1,
+        finishReason: "stop",
+        outputTextLogprobs: {
+          content: [
+            {
+              token: "hello",
+              logprob: -0.1,
+              topLogprobs: [
+                {
+                  token: "hello",
+                  logprob: -0.1
+                }
+              ]
+            }
+          ]
+        },
+        usage: {
+          inputTokens: 12,
+          outputTokens: 8,
+          totalTokens: 20
+        }
+      }
+    ]);
+  });
+
   it("always requests upstream chat usage for internal accounting even without explicit client opt-in", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({

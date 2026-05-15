@@ -1099,6 +1099,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     let buffer = "";
     let hasStarted = false;
     let streamSystemFingerprint: string | undefined;
+    let streamedOutputTextLogprobs: CanonicalOutputTextLogprobs | undefined;
     const streamedToolCalls = new Map<
       number,
       {
@@ -1165,6 +1166,28 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                     };
                   }>;
                 };
+                logprobs?: {
+                  content?: Array<{
+                    token?: string;
+                    logprob?: number;
+                    bytes?: number[];
+                    top_logprobs?: Array<{
+                      token?: string;
+                      logprob?: number;
+                      bytes?: number[];
+                    }>;
+                  }>;
+                  refusal?: Array<{
+                    token?: string;
+                    logprob?: number;
+                    bytes?: number[];
+                    top_logprobs?: Array<{
+                      token?: string;
+                      logprob?: number;
+                      bytes?: number[];
+                    }>;
+                  }>;
+                };
                 finish_reason?: "stop" | "length" | "tool_calls" | null;
               }>;
               usage?: {
@@ -1193,6 +1216,31 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
             }
 
             if (choice?.delta?.content) {
+              const deltaLogprobs = normalizeOpenAIOutputTextLogprobs(
+                choice.logprobs
+              );
+
+              if (deltaLogprobs?.content?.length || deltaLogprobs?.refusal?.length) {
+                streamedOutputTextLogprobs = {
+                  ...(deltaLogprobs.content !== undefined
+                    ? {
+                        content: [
+                          ...(streamedOutputTextLogprobs?.content ?? []),
+                          ...deltaLogprobs.content
+                        ]
+                      }
+                    : {}),
+                  ...(deltaLogprobs.refusal !== undefined
+                    ? {
+                        refusal: [
+                          ...(streamedOutputTextLogprobs?.refusal ?? []),
+                          ...deltaLogprobs.refusal
+                        ]
+                      }
+                    : {})
+                };
+              }
+
               yield {
                 type: "output_text_delta",
                 responseId,
@@ -1201,7 +1249,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(streamSystemFingerprint !== undefined
                   ? { systemFingerprint: streamSystemFingerprint }
                   : {}),
-                delta: choice.delta.content
+                delta: choice.delta.content,
+                ...(deltaLogprobs !== undefined
+                  ? { outputTextLogprobs: deltaLogprobs }
+                  : {})
               };
             }
 
@@ -1256,6 +1307,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ? { systemFingerprint: streamSystemFingerprint }
                   : {}),
                 finishReason: normalizeOpenAIFinishReason(choice.finish_reason),
+                ...(streamedOutputTextLogprobs !== undefined
+                  ? { outputTextLogprobs: streamedOutputTextLogprobs }
+                  : {}),
                 ...(payload.usage
                   ? {
                       usage: {

@@ -14957,6 +14957,80 @@ describe("gateway app", () => {
     });
   });
 
+  it("preserves native openai chat logprobs in streaming events when explicitly requested", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"hello"},"logprobs":{"content":[{"token":"hello","logprob":-0.1,"top_logprobs":[{"token":"hello","logprob":-0.1}]}]},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"logprobs":{"content":[{"token":"hello","logprob":-0.1,"top_logprobs":[{"token":"hello","logprob":-0.1}]}]},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          logprobs: true,
+          top_logprobs: 5,
+          messages: [
+            {
+              role: "user",
+              content: "hello"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stream: true,
+      logprobs: true,
+      top_logprobs: 5,
+      stream_options: {
+        include_usage: true
+      }
+    });
+
+    const body = await readText(response);
+
+    expect(body).toContain(
+      '"choices":[{"index":0,"delta":{"content":"hello"},"logprobs":{"content":[{"token":"hello","logprob":-0.1,"top_logprobs":[{"token":"hello","logprob":-0.1}]}]},"finish_reason":null}]'
+    );
+    expect(body).toContain(
+      '"choices":[{"index":0,"delta":{},"logprobs":{"content":[{"token":"hello","logprob":-0.1,"top_logprobs":[{"token":"hello","logprob":-0.1}]}]},"finish_reason":"stop"}]'
+    );
+  });
+
   it("fails closed when chat logprobs controls are sent to Anthropic", async () => {
     const fetcher = vi.fn();
     const app = createApp({ fetcher });

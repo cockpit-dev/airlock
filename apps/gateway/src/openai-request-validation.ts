@@ -89,8 +89,7 @@ export function assertSupportedOpenAIChatStreamOptions(
 }
 
 export function assertSupportedOpenAIChatLogprobsSemantics(
-  payload: unknown,
-  requestId: string
+  payload: unknown
 ) {
   if (!isRecord(payload)) {
     return;
@@ -101,19 +100,6 @@ export function assertSupportedOpenAIChatLogprobsSemantics(
 
   if (!requestedLogprobs) {
     return;
-  }
-
-  if (payload.stream === true) {
-    throw new GatewayError(
-      "Unsupported OpenAI Chat logprobs semantics: buffered requests only",
-      {
-        code: "request_unsupported_openai_semantics",
-        category: "request",
-        httpStatus: 400,
-        retryable: false,
-        requestId
-      }
-    );
   }
 }
 

@@ -115,7 +115,7 @@ export async function handleChatCompletions(
     allowedOpenAIChatTopLevelFields
   );
   assertSupportedOpenAIChatResponseFormat(json, requestId);
-  assertSupportedOpenAIChatLogprobsSemantics(json, requestId);
+  assertSupportedOpenAIChatLogprobsSemantics(json);
   assertSupportedOpenAIChatStreamOptions(json, requestId);
   assertSupportedOpenAIChatToolsSemantics(json, requestId);
   assertOpenAIForcedToolChoiceMatchesDeclaredTools(

@@ -1006,6 +1006,10 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
   }
 
   if (event.type === "output_text_delta") {
+    const outputTextLogprobs = encodeCanonicalOpenAIOutputTextLogprobs(
+      event.outputTextLogprobs
+    );
+
     return {
       id: streamId,
       object: "chat.completion.chunk" as const,
@@ -1020,6 +1024,9 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
           delta: {
             content: event.delta
           },
+          ...(outputTextLogprobs !== undefined
+            ? { logprobs: outputTextLogprobs }
+            : {}),
           finish_reason: null
         }
       ]
@@ -1095,6 +1102,13 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
       {
         index: 0,
         delta: {},
+        ...(event.outputTextLogprobs !== undefined
+          ? {
+              logprobs: encodeCanonicalOpenAIOutputTextLogprobs(
+                event.outputTextLogprobs
+              )
+            }
+          : {}),
         finish_reason: encodeCanonicalOpenAIFinishReason(event.finishReason)
       }
     ]

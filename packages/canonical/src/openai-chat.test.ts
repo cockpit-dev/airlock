@@ -1054,6 +1054,118 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
       ]
     });
   });
+
+  it("encodes output-text logprobs into OpenAI chat streaming chunks", async () => {
+    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIChatStreamChunk(
+        {
+          type: "output_text_delta",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          delta: "hello",
+          outputTextLogprobs: {
+            content: [
+              {
+                token: "hello",
+                logprob: -0.1,
+                topLogprobs: [
+                  {
+                    token: "hello",
+                    logprob: -0.1
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "chatcmpl-stream-123"
+      )
+    ).toEqual({
+      id: "chatcmpl-stream-123",
+      object: "chat.completion.chunk",
+      created: 0,
+      model: "gpt-4.1-mini",
+      choices: [
+        {
+          index: 0,
+          delta: {
+            content: "hello"
+          },
+          logprobs: {
+            content: [
+              {
+                token: "hello",
+                logprob: -0.1,
+                top_logprobs: [
+                  {
+                    token: "hello",
+                    logprob: -0.1
+                  }
+                ]
+              }
+            ]
+          },
+          finish_reason: null
+        }
+      ]
+    });
+
+    expect(
+      encodeCanonicalToOpenAIChatStreamChunk(
+        {
+          type: "response_completed",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          finishReason: "stop",
+          outputTextLogprobs: {
+            content: [
+              {
+                token: "hello",
+                logprob: -0.1,
+                topLogprobs: [
+                  {
+                    token: "hello",
+                    logprob: -0.1
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "chatcmpl-stream-123"
+      )
+    ).toEqual({
+      id: "chatcmpl-stream-123",
+      object: "chat.completion.chunk",
+      created: 0,
+      model: "gpt-4.1-mini",
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          logprobs: {
+            content: [
+              {
+                token: "hello",
+                logprob: -0.1,
+                top_logprobs: [
+                  {
+                    token: "hello",
+                    logprob: -0.1
+                  }
+                ]
+              }
+            ]
+          },
+          finish_reason: "stop"
+        }
+      ]
+    });
+  });
 });
 
 describe("normalizeOpenAIResponsesRequest", () => {
