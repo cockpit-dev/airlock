@@ -594,11 +594,12 @@ function reorderTargetsForPrioritySelection(
       health.lastSuccessAt === undefined ||
       health.lastFailureAt > health.lastSuccessAt
     ) {
-      return 2;
+      return now() - health.lastFailureAt <= PRIORITY_RECOVERY_WINDOW_MS ? 2 : 0;
     }
 
     if (
-      health.lastSuccessAt - health.lastFailureAt <= PRIORITY_RECOVERY_WINDOW_MS
+      health.lastSuccessAt - health.lastFailureAt <= PRIORITY_RECOVERY_WINDOW_MS &&
+      now() - health.lastSuccessAt <= PRIORITY_RECOVERY_WINDOW_MS
     ) {
       return 1;
     }
