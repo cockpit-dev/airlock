@@ -14,6 +14,10 @@ import {
 } from "@airlock/providers";
 import type { GatewayApiKeyRecord } from "@airlock/governance";
 import {
+  type ProviderTargetHealthSnapshot,
+  type RoutingFreshnessWindows
+} from "@airlock/governance";
+import {
   resolveRouteRequestShapingForTarget,
   type RequestShapingProfile
 } from "@airlock/request-shaping";
@@ -40,29 +44,6 @@ const DEFAULT_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS = 30_000;
 type ProviderCapabilityDescriptorResolver = (
   provider: ProviderTarget["provider"]
 ) => ProviderCapabilityDescriptor;
-
-type ProviderTargetHealthSnapshot = {
-  isOpen: boolean;
-  isHalfOpen?: boolean;
-  consecutiveRetryableFailures: number;
-  lastSuccessLatencyMs?: number;
-  smoothedSuccessLatencyMs?: number;
-  lastSuccessTotalTokens?: number;
-  smoothedSuccessTotalTokens?: number;
-  lastSuccessAt?: number;
-  lastUsageObservedAt?: number;
-  lastFailureAt?: number;
-  recoverySuccessCount?: number;
-  windowedTotalAttempts?: number;
-  windowedFailures?: number;
-};
-
-type RoutingFreshnessWindows = {
-  latencyFreshnessMs: number;
-  costFreshnessMs: number;
-  failureFreshnessMs: number;
-  recoveryWindowMs: number;
-};
 
 const DEFAULT_LATENCY_FRESHNESS_MS = 30_000;
 const DEFAULT_COST_FRESHNESS_MS = 30_000;
