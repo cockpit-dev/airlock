@@ -19662,6 +19662,96 @@ describe("gateway app", () => {
     });
   });
 
+  it("applies route-level signing to live Gemini chat completions requests", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "hello from gemini"
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_REQUEST_SIGNING_SECRETS: JSON.stringify({
+          "gemini-signing-secret": "signing-secret"
+        }),
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash",
+        AIRLOCK_MODEL_SHAPING: JSON.stringify({
+          "gemini-2.5-flash": {
+            query: {
+              alt: "json"
+            },
+            signing: {
+              type: "hmac_sha256_header",
+              headerName: "x-airlock-signature",
+              prefix: "sha256=",
+              secret: {
+                secretRef: "gemini-signing-secret"
+              },
+              components: ["method", "path", "query"]
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?alt=json"
+    );
+    expect(init.headers).toMatchObject({
+      "x-goog-api-key": "gemini-secret",
+      "x-airlock-signature":
+        "sha256=f28e88734920bbc564fee90da404eb3e1197cbc13d4f641aa7409b8db133a5f4"
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "chat.completion",
+      model: "gemini-2.5-flash"
+    });
+  });
+
   it("returns an OpenAI-compatible responses payload when authorized", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
