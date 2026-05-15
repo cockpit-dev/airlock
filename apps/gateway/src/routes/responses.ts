@@ -171,6 +171,7 @@ export async function handleResponses(
     let accumulatedReasoningSummary = "";
     let startedTextOutput = false;
     let startedReasoningOutput = false;
+    let parallelToolCallsState: boolean | undefined;
     const startedToolCallIds = new Set<string>();
     const streamedToolCalls = new Map<
       string,
@@ -284,6 +285,14 @@ export async function handleResponses(
         streamedToolCalls.set(event.toolCallId, currentToolCall);
       }
 
+      if (
+        (event.type === "response_started" ||
+          event.type === "response_completed") &&
+        event.parallelToolCalls !== undefined
+      ) {
+        parallelToolCallsState = event.parallelToolCalls;
+      }
+
       const encodedBatch = encodeCanonicalToOpenAIResponsesStreamEvent(event, {
         sequenceNumber: responsesSequenceNumber,
         outputIndex:
@@ -318,8 +327,8 @@ export async function handleResponses(
               })
             }
           : {}),
-        ...(event.type === "response_started" || event.type === "response_completed"
-          ? { parallelToolCalls: event.parallelToolCalls }
+        ...(parallelToolCallsState !== undefined
+          ? { parallelToolCalls: parallelToolCallsState }
           : {}),
         ...(accumulatedReasoningSummary.length > 0
           ? { reasoningSummary: accumulatedReasoningSummary }

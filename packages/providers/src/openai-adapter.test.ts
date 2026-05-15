@@ -816,7 +816,8 @@ describe("OpenAIProviderAdapter", () => {
       {
         type: "response_started",
         responseId: "resp_123",
-        model: "gpt-4.1-mini"
+        model: "gpt-4.1-mini",
+        parallelToolCalls: false
       },
       {
         type: "response_completed",
@@ -1119,6 +1120,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_started",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        parallelToolCalls: true,
         metadata: {
           tenant: "acme"
         },
@@ -1333,7 +1335,8 @@ describe("OpenAIProviderAdapter", () => {
       {
         type: "response_started",
         responseId: "resp_123",
-        model: "gpt-4.1-mini"
+        model: "gpt-4.1-mini",
+        parallelToolCalls: true
       },
       {
         type: "reasoning_summary_delta",
@@ -1436,7 +1439,8 @@ describe("OpenAIProviderAdapter", () => {
       {
         type: "response_started",
         responseId: "resp_123",
-        model: "gpt-4.1-mini"
+        model: "gpt-4.1-mini",
+        parallelToolCalls: true
       },
       {
         type: "tool_call_delta",
@@ -1521,7 +1525,8 @@ describe("OpenAIProviderAdapter", () => {
       {
         type: "response_started",
         responseId: "resp_123",
-        model: "gpt-4.1-mini"
+        model: "gpt-4.1-mini",
+        parallelToolCalls: true
       },
       {
         type: "output_text_delta",
@@ -1613,7 +1618,8 @@ describe("OpenAIProviderAdapter", () => {
       {
         type: "response_started",
         responseId: "resp_123",
-        model: "gpt-4.1-mini"
+        model: "gpt-4.1-mini",
+        parallelToolCalls: true
       },
       {
         type: "reasoning_summary_delta",
@@ -1975,7 +1981,8 @@ describe("OpenAIProviderAdapter", () => {
       {
         type: "response_started",
         responseId: "resp_123",
-        model: "gpt-4.1-mini"
+        model: "gpt-4.1-mini",
+        parallelToolCalls: true
       },
       {
         type: "output_text_delta",

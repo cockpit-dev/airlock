@@ -1708,7 +1708,7 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
     expect(encoded.object).toBe("response");
     expect(encoded.output_text).toBe("hello there");
     expect(encoded.created_at).toBe(0);
-    expect(encoded.parallel_tool_calls).toBe(true);
+    expect(encoded.parallel_tool_calls).toBeUndefined();
     expect(encoded.tools).toEqual([]);
     expect(encoded.conversation).toBeUndefined();
     expect(encoded.output).toEqual([
@@ -1908,7 +1908,6 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
             model: "gpt-4.1-mini",
             status: "in_progress",
             output: [],
-            parallel_tool_calls: true,
             tools: []
           }
         },
@@ -1922,7 +1921,6 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
             model: "gpt-4.1-mini",
             status: "in_progress",
             output: [],
-            parallel_tool_calls: true,
             tools: []
           }
         }
@@ -2098,7 +2096,6 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
               }
             ],
             output_text: "hello",
-            parallel_tool_calls: true,
             tools: [],
             usage: {
               input_tokens: 12,
@@ -2233,7 +2230,6 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
               }
             ],
             output_text: "",
-            parallel_tool_calls: true,
             tools: []
           }
         }
@@ -2436,7 +2432,6 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
               }
             ],
             output_text: "",
-            parallel_tool_calls: true,
             tools: []
           }
         }
@@ -2555,7 +2550,6 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
               }
             ],
             output_text: "",
-            parallel_tool_calls: true,
             tools: []
           }
         }
@@ -2706,7 +2700,6 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
               }
             ],
             output_text: "",
-            parallel_tool_calls: true,
             tools: []
           }
         }
@@ -2836,7 +2829,6 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
               }
             ],
             output_text: "Let me check that.",
-            parallel_tool_calls: true,
             tools: []
           }
         }
@@ -3008,7 +3000,6 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
               }
             ],
             output_text: "Let me check that.",
-            parallel_tool_calls: true,
             tools: []
           }
         }

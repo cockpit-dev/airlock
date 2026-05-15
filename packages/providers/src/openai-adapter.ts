@@ -2035,6 +2035,11 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   type: "response_started",
                   responseId,
                   model,
+                  ...(payload.response.parallel_tool_calls !== undefined
+                    ? {
+                        parallelToolCalls: payload.response.parallel_tool_calls
+                      }
+                    : {}),
                   ...(payload.response.metadata !== undefined
                     ? { metadata: payload.response.metadata }
                     : {}),
@@ -2309,6 +2314,11 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   type: "response_started",
                   responseId,
                   model,
+                  ...(payload.response.parallel_tool_calls !== undefined
+                    ? {
+                        parallelToolCalls: payload.response.parallel_tool_calls
+                      }
+                    : {}),
                   ...(payload.response.metadata !== undefined
                     ? { metadata: payload.response.metadata }
                     : {}),

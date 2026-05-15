@@ -231,7 +231,7 @@ function createOpenAIResponsesBaseResponse(
   responseId: string,
   model: string,
   status: "in_progress" | "completed",
-  parallelToolCalls = true
+  parallelToolCalls?: boolean
 ) {
   return {
     id: responseId,
@@ -240,7 +240,9 @@ function createOpenAIResponsesBaseResponse(
     model,
     status,
     output: [],
-    parallel_tool_calls: parallelToolCalls,
+    ...(parallelToolCalls !== undefined
+      ? { parallel_tool_calls: parallelToolCalls }
+      : {}),
     tools: []
   };
 }
@@ -1142,7 +1144,9 @@ export function encodeCanonicalToOpenAIResponsesResponse(
           )
         }
       : {}),
-    parallel_tool_calls: response.parallelToolCalls ?? true,
+    ...(response.parallelToolCalls !== undefined
+      ? { parallel_tool_calls: response.parallelToolCalls }
+      : {}),
     tools: [],
     output,
     output_text: response.outputText,
@@ -1166,7 +1170,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
       event.responseId,
       event.model,
       "in_progress",
-      event.parallelToolCalls ?? state.parallelToolCalls ?? true
+      event.parallelToolCalls ?? state.parallelToolCalls
     );
     const response = addOpenAIResponsesEnvelopeFields(baseResponse, event);
 
@@ -1342,7 +1346,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
       event.responseId,
       event.model,
       responseStatus === "incomplete" ? "completed" : responseStatus,
-      event.parallelToolCalls ?? state.parallelToolCalls ?? true
+      event.parallelToolCalls ?? state.parallelToolCalls
     ),
     status: responseStatus,
     ...(encodeCanonicalResponsesIncompleteDetails(event.finishReason)

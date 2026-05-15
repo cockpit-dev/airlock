@@ -25487,6 +25487,63 @@ describe("gateway app", () => {
     });
   });
 
+  it("preserves started parallel_tool_calls state across native openai responses streaming when completed omits it", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":false,"tools":[]}}\n\n',
+                  'data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"hello","logprobs":[]}\n\n',
+                  'data: {"type":"response.completed","sequence_number":2,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[],"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          stream: true
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const body = await readText(response);
+
+    expect(body).toContain('"type":"response.created"');
+    expect(body).toContain('"parallel_tool_calls":false');
+    expect(body).toContain(
+      '"type":"response.completed","sequence_number":8,"response":{"id":"resp_123","object":"response","created_at":0,"model":"gpt-4.1-mini","status":"completed","output":[{"id":"resp_123_output_0","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello","annotations":[]}]}],"parallel_tool_calls":false,"tools":[],"output_text":"hello","usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}'
+    );
+    expect(body).toContain("data: [DONE]");
+  });
+
   it("fails closed when responses stream_options include_obfuscation is sent to Anthropic", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
