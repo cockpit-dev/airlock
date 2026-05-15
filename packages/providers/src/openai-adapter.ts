@@ -1811,6 +1811,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         toolIndex: number;
         outputIndex: number;
         name?: string;
+        arguments: string;
+        started: boolean;
       }
     >();
     const chatStreamedToolCalls = new Map<
@@ -1925,6 +1927,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 type?: string;
                 call_id?: string;
                 name?: string;
+                arguments?: string;
               };
               item_id?: string;
               output_index?: number;
@@ -2123,13 +2126,52 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               payload.item?.type === "function_call" &&
               payload.item.call_id
             ) {
-              const toolIndex =
-                Array.from(streamedToolCalls.values()).length;
-              streamedToolCalls.set(payload.item.call_id, {
-                toolIndex,
+              const [responseId, model] =
+                Array.from(responseIdToModel.entries())[0] ?? [
+                  `resp_${context.requestId}`,
+                  request.model
+                ];
+              const currentTool = streamedToolCalls.get(payload.item.call_id) ?? {
+                toolIndex: Array.from(streamedToolCalls.values()).length,
                 outputIndex: payload.output_index ?? 0,
-                ...(payload.item.name ? { name: payload.item.name } : {})
-              });
+                arguments: "",
+                started: false
+              };
+
+              currentTool.outputIndex = payload.output_index ?? currentTool.outputIndex;
+
+              if (payload.item.name) {
+                currentTool.name = payload.item.name;
+              }
+
+              if (payload.item.arguments !== undefined) {
+                currentTool.arguments = payload.item.arguments;
+              }
+
+              streamedToolCalls.set(payload.item.call_id, currentTool);
+
+              if (!currentTool.started) {
+                currentTool.started = true;
+
+                if (!hasStarted) {
+                  hasStarted = true;
+                  yield {
+                    type: "response_started",
+                    responseId,
+                    model
+                  };
+                }
+
+                yield {
+                  type: "tool_call_delta",
+                  responseId,
+                  model,
+                  toolCallId: payload.item.call_id,
+                  toolIndex: currentTool.toolIndex,
+                  ...(currentTool.name ? { toolName: currentTool.name } : {}),
+                  argumentsDelta: currentTool.arguments
+                };
+              }
               continue;
             }
 
@@ -2144,9 +2186,14 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ];
               const currentTool = streamedToolCalls.get(payload.item_id) ?? {
                 toolIndex: Array.from(streamedToolCalls.values()).length,
-                outputIndex: payload.output_index ?? 0
+                outputIndex: payload.output_index ?? 0,
+                arguments: "",
+                started: false
               };
 
+              currentTool.outputIndex = payload.output_index ?? currentTool.outputIndex;
+              currentTool.arguments += payload.delta ?? "";
+              currentTool.started = true;
               streamedToolCalls.set(payload.item_id, currentTool);
 
               if (!hasStarted) {
@@ -2167,6 +2214,68 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(currentTool.name ? { toolName: currentTool.name } : {}),
                 argumentsDelta: payload.delta ?? ""
               };
+              continue;
+            }
+
+            if (
+              payload.type === "response.output_item.done" &&
+              payload.item?.type === "function_call" &&
+              payload.item.call_id
+            ) {
+              const [responseId, model] =
+                Array.from(responseIdToModel.entries())[0] ?? [
+                  `resp_${context.requestId}`,
+                  request.model
+                ];
+              const currentTool = streamedToolCalls.get(payload.item.call_id) ?? {
+                toolIndex: Array.from(streamedToolCalls.values()).length,
+                outputIndex: payload.output_index ?? 0,
+                arguments: "",
+                started: false
+              };
+              const finalArguments = payload.item.arguments ?? currentTool.arguments;
+              let argumentsDelta = "";
+
+              currentTool.outputIndex = payload.output_index ?? currentTool.outputIndex;
+
+              if (payload.item.name) {
+                currentTool.name = payload.item.name;
+              }
+
+              if (!currentTool.started) {
+                argumentsDelta = finalArguments;
+              } else if (
+                finalArguments.length > currentTool.arguments.length &&
+                finalArguments.startsWith(currentTool.arguments)
+              ) {
+                argumentsDelta = finalArguments.slice(currentTool.arguments.length);
+              }
+
+              currentTool.arguments = finalArguments;
+              streamedToolCalls.set(payload.item.call_id, currentTool);
+
+              if (!currentTool.started || argumentsDelta.length > 0) {
+                currentTool.started = true;
+
+                if (!hasStarted) {
+                  hasStarted = true;
+                  yield {
+                    type: "response_started",
+                    responseId,
+                    model
+                  };
+                }
+
+                yield {
+                  type: "tool_call_delta",
+                  responseId,
+                  model,
+                  toolCallId: payload.item.call_id,
+                  toolIndex: currentTool.toolIndex,
+                  ...(currentTool.name ? { toolName: currentTool.name } : {}),
+                  argumentsDelta
+                };
+              }
               continue;
             }
 
