@@ -26149,6 +26149,65 @@ describe("gateway app", () => {
     );
   });
 
+  it("does not fabricate empty responses output-text logprobs in streaming events when upstream omits them", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n',
+                  'data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"hello"}\n\n',
+                  'data: {"type":"response.completed","sequence_number":2,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"id":"msg_123","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello","annotations":[]}]}],"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          stream: true,
+          include: ["message.output_text.logprobs"],
+          top_logprobs: 5
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const body = await readText(response);
+
+    expect(body).toContain('"type":"response.output_text.delta"');
+    expect(body).toContain('"delta":"hello"');
+    expect(body).not.toContain('"logprobs":[]');
+    expect(body).not.toContain('"logprobs":{"content":[]}');
+    expect(body).not.toContain('"type":"response.output_text.delta","sequence_number":4,"item_id":"resp_123_output_0","output_index":0,"content_index":0,"delta":"hello","logprobs":[]');
+    expect(body).toContain("data: [DONE]");
+  });
+
   it("fails closed when responses stream_options include_obfuscation is sent to Anthropic", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
