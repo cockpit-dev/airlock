@@ -20346,6 +20346,37 @@ describe("gateway app", () => {
     });
   });
 
+  it("rejects responses previous_response_id and conversation together", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          previous_response_id: "resp_prev_123",
+          conversation: "conv_123"
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message: "Invalid OpenAI Responses request payload",
+        type: "request",
+        code: "request_invalid_openai_payload"
+      }
+    });
+  });
+
   it("accepts responses text verbosity without format and forwards it upstream for OpenAI", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
