@@ -1367,6 +1367,147 @@ describe("GeminiProviderAdapter", () => {
     ]);
   });
 
+  it("forwards streamed canonical tool replay history into Gemini streaming contents", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"role":"model","parts":[{"text":"The temperature is 26C."}]}}]}\n\n',
+              'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[]}}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":6,"totalTokenCount":18}}\n\n'
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        model: "gemini-2.5-flash",
+        stream: true,
+        tools: [
+          {
+            name: "lookup_weather",
+            inputSchema: {
+              type: "object"
+            }
+          }
+        ],
+        messages: [
+          {
+            role: "user",
+            content: "Weather in Shanghai?"
+          },
+          {
+            role: "assistant",
+            content: "",
+            toolCalls: [
+              {
+                id: "call_123",
+                name: "lookup_weather",
+                arguments: "{\"city\":\"Shanghai\"}"
+              }
+            ]
+          },
+          {
+            role: "tool",
+            toolCallId: "call_123",
+            content: "{\"temperature_c\":26}"
+          }
+        ]
+      },
+      {
+        requestId: "req_stream_replay_123"
+      }
+    )) {
+      events.push(event);
+    }
+
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
+    );
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: "Weather in Shanghai?"
+            }
+          ]
+        },
+        {
+          role: "model",
+          parts: [
+            {
+              functionCall: {
+                name: "lookup_weather",
+                args: {
+                  city: "Shanghai"
+                }
+              }
+            }
+          ]
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: "lookup_weather",
+                response: {
+                  temperature_c: 26
+                }
+              }
+            }
+          ]
+        }
+      ]
+    });
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash",
+        delta: "The temperature is 26C."
+      },
+      {
+        type: "response_completed",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash",
+        finishReason: "stop",
+        usage: {
+          inputTokens: 12,
+          outputTokens: 6,
+          totalTokens: 18
+        }
+      }
+    ]);
+  });
+
   it("preserves zero-argument streamed gemini tool starts as empty argument deltas", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
