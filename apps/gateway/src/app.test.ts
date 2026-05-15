@@ -19990,7 +19990,7 @@ describe("gateway app", () => {
     });
   });
 
-  it("returns not ready when a shaped route configures cross-provider fallback", async () => {
+  it("returns ready when a shaped route configures cross-provider fallback without target-scoped shaping", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
     const response = await app.request("http://localhost/readyz", undefined, {
@@ -20008,10 +20008,10 @@ describe("gateway app", () => {
       })
     });
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
     await expect(readJson(response)).resolves.toMatchObject({
-      ok: false,
-      ready: false
+      ok: true,
+      ready: true
     });
   });
 
@@ -20136,6 +20136,111 @@ describe("gateway app", () => {
     expect(secondInit.headers).toMatchObject({
       "x-airlock-signature":
         "sha256=d3ebed076d6ad0fe8756d9c0f422cc9f34d06532a12f16a19f3681d2559e221b"
+    });
+  });
+
+  it("allows cross-provider fallback for routes with simple shaping without target-scoped entries", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_fallback",
+            model: "claude-haiku-4-5",
+            content: [
+              {
+                type: "text",
+                text: "fallback hello"
+              }
+            ],
+            usage: {
+              input_tokens: 5,
+              output_tokens: 3
+            },
+            stop_reason: "end_turn"
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        ANTHROPIC_API_KEY: "anthropic-secret",
+        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+        AIRLOCK_MODEL_ALIASES: "assistant-default=openai:gpt-4.1-mini",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_SHAPING: JSON.stringify({
+          "assistant-default": {
+            headers: {
+              "openai-beta": "responses=v1"
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+    const [, firstInit] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(firstInit.headers).toMatchObject({
+      "openai-beta": "responses=v1"
+    });
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
+    const [, secondInit] = fetcher.mock.calls[1] as [string, RequestInit];
+    expect(secondInit.headers).not.toHaveProperty("openai-beta");
+    await expect(readJson(response)).resolves.toMatchObject({
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: "fallback hello"
+          },
+          finish_reason: "stop"
+        }
+      ]
     });
   });
 
@@ -24484,10 +24589,14 @@ describe("gateway app", () => {
     const geminiCalls = calledUrls.filter((u) =>
       u.includes("generativelanguage.googleapis.com")
     );
-    expect(anthropicCalls.length + geminiCalls.length).toBeGreaterThanOrEqual(1);
+    expect(anthropicCalls.length + geminiCalls.length).toBeGreaterThanOrEqual(
+      1
+    );
     expect(geminiCalls.length).toBeGreaterThanOrEqual(1);
     if (anthropicCalls.length > 0) {
-      expect(fetcher).toHaveBeenCalledTimes(anthropicCalls.length + geminiCalls.length);
+      expect(fetcher).toHaveBeenCalledTimes(
+        anthropicCalls.length + geminiCalls.length
+      );
     }
     await expect(readJson(response)).resolves.toMatchObject({
       object: "response",
@@ -24690,10 +24799,14 @@ describe("gateway app", () => {
     const geminiCalls = calledUrls.filter((u) =>
       u.includes("generativelanguage.googleapis.com")
     );
-    expect(anthropicCalls.length + geminiCalls.length).toBeGreaterThanOrEqual(1);
+    expect(anthropicCalls.length + geminiCalls.length).toBeGreaterThanOrEqual(
+      1
+    );
     expect(geminiCalls.length).toBeGreaterThanOrEqual(1);
     if (anthropicCalls.length > 0) {
-      expect(fetcher).toHaveBeenCalledTimes(anthropicCalls.length + geminiCalls.length);
+      expect(fetcher).toHaveBeenCalledTimes(
+        anthropicCalls.length + geminiCalls.length
+      );
     }
     await expect(readJson(response)).resolves.toMatchObject({
       type: "message",

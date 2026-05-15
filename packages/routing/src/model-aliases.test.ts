@@ -528,8 +528,8 @@ describe("attachRouteFallbacks", () => {
     ]);
   });
 
-  it("rejects cross-provider fallback targets for shaped routes", () => {
-    expect(() =>
+  it("allows cross-provider fallback targets for shaped routes without target-scoped shaping", () => {
+    expect(
       attachRouteFallbacks(
         attachRouteRequestShaping(
           parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini", "gpt-4.1-mini"),
@@ -545,7 +545,26 @@ describe("attachRouteFallbacks", () => {
           "gpt-4.1-mini": ["anthropic:claude-haiku-4-5"]
         }
       )
-    ).toThrow(GatewayError);
+    ).toEqual([
+      {
+        externalModel: "gpt-4.1-mini",
+        target: {
+          provider: "openai",
+          providerModel: "gpt-4.1-mini"
+        },
+        shaping: {
+          headers: {
+            "openai-beta": "responses=v1"
+          }
+        },
+        fallbacks: [
+          {
+            provider: "anthropic",
+            providerModel: "claude-haiku-4-5"
+          }
+        ]
+      }
+    ]);
   });
 
   it("rejects duplicate fallback targets", () => {

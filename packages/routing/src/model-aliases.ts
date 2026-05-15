@@ -159,11 +159,7 @@ function parsePositiveTargetNumberMap(
   value: unknown,
   fieldName: string
 ): Record<string, number> {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value)
-  ) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw createInvalidRouteTargetSelectionError(
       `${fieldName} must define an object`
     );
@@ -255,7 +251,9 @@ export function parseModelAliases(
   return routes;
 }
 
-export function parseRouteFallbacks(value: string | undefined): RouteFallbackMap {
+export function parseRouteFallbacks(
+  value: string | undefined
+): RouteFallbackMap {
   if (!value) {
     return {};
   }
@@ -508,7 +506,11 @@ export function parseRouteKeyAccessPolicy(
   const routeKeyAccessPolicyByRoute: RouteKeyAccessPolicyMap = {};
 
   for (const [externalModel, policy] of Object.entries(parsed)) {
-    if (typeof policy !== "object" || policy === null || Array.isArray(policy)) {
+    if (
+      typeof policy !== "object" ||
+      policy === null ||
+      Array.isArray(policy)
+    ) {
       throw createInvalidRouteKeyAccessPolicyError(
         "Route key access policy entries must be objects"
       );
@@ -562,7 +564,9 @@ export function parseRouteKeyAccessPolicy(
   return routeKeyAccessPolicyByRoute;
 }
 
-function listTargetSelectionKeys(targetSelection: RouteTargetSelection): string[] {
+function listTargetSelectionKeys(
+  targetSelection: RouteTargetSelection
+): string[] {
   if (targetSelection.strategy === "weighted") {
     return Object.keys(targetSelection.weights);
   }
@@ -639,22 +643,23 @@ export function attachRouteFallbacks(
       const isCrossProvider = parsedTarget.provider !== route.target.provider;
 
       if (isCrossProvider && route.shaping) {
-        if (!isTargetScopedRouteShapingProfile(route.shaping)) {
-          throw createInvalidRouteFallbackError(
-            "Cross-provider fallback requires routes without shaping"
-          );
-        }
+        if (isTargetScopedRouteShapingProfile(route.shaping)) {
+          const primaryTargetKey = serializeProviderTarget(route.target);
+          const fallbackTargetKey = serializeProviderTarget(parsedTarget);
 
-        const primaryTargetKey = serializeProviderTarget(route.target);
-        const fallbackTargetKey = serializeProviderTarget(parsedTarget);
+          if (!route.shaping.targets[primaryTargetKey]) {
+            throw createInvalidRouteFallbackError(
+              "Cross-provider fallback requires explicit target-scoped shaping for the primary target"
+            );
+          }
 
-        if (
-          !route.shaping.targets[primaryTargetKey] ||
-          !route.shaping.targets[fallbackTargetKey]
-        ) {
-          throw createInvalidRouteFallbackError(
-            "Cross-provider fallback requires explicit target-scoped shaping for every target"
-          );
+          if (!route.shaping.targets[fallbackTargetKey]) {
+            throw createInvalidRouteFallbackError(
+              "Cross-provider fallback with target-scoped shaping requires explicit shaping for every fallback target; add a target entry for " +
+                fallbackTargetKey +
+                " or remove target-scoped shaping defaults"
+            );
+          }
         }
       }
 
