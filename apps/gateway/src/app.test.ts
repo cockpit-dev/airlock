@@ -27391,6 +27391,60 @@ describe("gateway app", () => {
     });
   });
 
+  it("does not inject responses stream_options include_obfuscation=false unless explicitly requested", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n',
+                  'data: {"type":"response.completed","sequence_number":1,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[],"tools":[]}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          stream: true
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      model: "gpt-4.1-mini",
+      stream: true
+    });
+    expect(JSON.parse(init.body as string)).not.toHaveProperty("stream_options");
+  });
+
   it("preserves started parallel_tool_calls state across native openai responses streaming when completed omits it", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi.fn().mockResolvedValueOnce(
