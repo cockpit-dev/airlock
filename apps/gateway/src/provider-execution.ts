@@ -56,6 +56,7 @@ type ProviderTargetHealthSnapshot = {
 
 const PRIORITY_LATENCY_FRESHNESS_WINDOW_MS = 30_000;
 const OBSERVED_TOKEN_COST_FRESHNESS_WINDOW_MS = 30_000;
+const RETRYABLE_FAILURE_FRESHNESS_WINDOW_MS = 30_000;
 
 function createUnsupportedCapabilityError(
   provider: string,
@@ -145,6 +146,28 @@ function compareByOriginalRouteOrder(
   }
 
   return leftKey.localeCompare(rightKey);
+}
+
+function getFreshRetryableFailureCount(
+  health: ProviderTargetHealthSnapshot,
+  now: () => number
+): number {
+  if (health.consecutiveRetryableFailures <= 0) {
+    return 0;
+  }
+
+  if (health.isOpen || health.isHalfOpen) {
+    return health.consecutiveRetryableFailures;
+  }
+
+  if (
+    health.lastFailureAt === undefined ||
+    now() - health.lastFailureAt > RETRYABLE_FAILURE_FRESHNESS_WINDOW_MS
+  ) {
+    return 0;
+  }
+
+  return health.consecutiveRetryableFailures;
 }
 
 export function assertProviderSupportsCanonicalRequest(
@@ -434,12 +457,12 @@ function reorderTargetsForRoute(
       }
 
       if (
-        leftHealth.consecutiveRetryableFailures !==
-        rightHealth.consecutiveRetryableFailures
+        getFreshRetryableFailureCount(leftHealth, now) !==
+        getFreshRetryableFailureCount(rightHealth, now)
       ) {
         return (
-          leftHealth.consecutiveRetryableFailures -
-          rightHealth.consecutiveRetryableFailures
+          getFreshRetryableFailureCount(leftHealth, now) -
+          getFreshRetryableFailureCount(rightHealth, now)
         );
       }
 
@@ -657,12 +680,12 @@ function reorderTargetsForPrioritySelection(
     }
 
     if (
-      leftHealth.consecutiveRetryableFailures !==
-      rightHealth.consecutiveRetryableFailures
+      getFreshRetryableFailureCount(leftHealth, now) !==
+      getFreshRetryableFailureCount(rightHealth, now)
     ) {
       return (
-        leftHealth.consecutiveRetryableFailures -
-        rightHealth.consecutiveRetryableFailures
+        getFreshRetryableFailureCount(leftHealth, now) -
+        getFreshRetryableFailureCount(rightHealth, now)
       );
     }
 
