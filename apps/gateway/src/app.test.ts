@@ -14862,6 +14862,139 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts chat logprobs controls and preserves upstream chat logprobs for OpenAI", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              },
+              logprobs: {
+                content: [
+                  {
+                    token: "hello",
+                    logprob: -0.1,
+                    top_logprobs: [
+                      {
+                        token: "hello",
+                        logprob: -0.1
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          logprobs: true,
+          top_logprobs: 5,
+          messages: [
+            {
+              role: "user",
+              content: "hello"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      logprobs: true,
+      top_logprobs: 5
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      choices: [
+        {
+          logprobs: {
+            content: [
+              {
+                token: "hello",
+                logprob: -0.1,
+                top_logprobs: [
+                  {
+                    token: "hello",
+                    logprob: -0.1
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    });
+  });
+
+  it("fails closed when chat logprobs controls are sent to Anthropic", async () => {
+    const fetcher = vi.fn();
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          logprobs: true,
+          top_logprobs: 5,
+          messages: [
+            {
+              role: "user",
+              content: "hello"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "provider_capability_not_supported",
+        message:
+          "Provider anthropic does not support required capability: openai_request_metadata"
+      }
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("accepts chat metadata and forwards it upstream for OpenAI", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

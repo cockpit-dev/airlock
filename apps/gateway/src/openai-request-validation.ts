@@ -88,6 +88,35 @@ export function assertSupportedOpenAIChatStreamOptions(
   }
 }
 
+export function assertSupportedOpenAIChatLogprobsSemantics(
+  payload: unknown,
+  requestId: string
+) {
+  if (!isRecord(payload)) {
+    return;
+  }
+
+  const requestedLogprobs =
+    payload.logprobs === true || payload.top_logprobs !== undefined;
+
+  if (!requestedLogprobs) {
+    return;
+  }
+
+  if (payload.stream === true) {
+    throw new GatewayError(
+      "Unsupported OpenAI Chat logprobs semantics: buffered requests only",
+      {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
+  }
+}
+
 export function assertSupportedOpenAIChatToolsSemantics(
   payload: unknown,
   requestId: string

@@ -363,6 +363,24 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(parsed.top_p).toBe(0.9);
   });
 
+  it("accepts chat logprobs controls", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      logprobs: true,
+      top_logprobs: 5,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.logprobs).toBe(true);
+    expect(parsed.top_logprobs).toBe(5);
+  });
+
   it("accepts chat completion stop sequences as a string or array", () => {
     const single = openAIChatCompletionRequestSchema.parse({
       model: "gpt-4.1-mini",

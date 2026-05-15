@@ -46,6 +46,7 @@ import type { CreateAppOptions } from "../app.js";
 import {
   assertAllowedOpenAITopLevelFields,
   assertOpenAIForcedToolChoiceMatchesDeclaredTools,
+  assertSupportedOpenAIChatLogprobsSemantics,
   assertSupportedOpenAIChatResponseFormat,
   assertSupportedOpenAIChatStreamOptions,
   assertSupportedOpenAIChatToolsSemantics,
@@ -67,6 +68,8 @@ const allowedOpenAIChatTopLevelFields = [
   "reasoning_effort",
   "temperature",
   "top_p",
+  "logprobs",
+  "top_logprobs",
   "frequency_penalty",
   "presence_penalty",
   "seed",
@@ -112,6 +115,7 @@ export async function handleChatCompletions(
     allowedOpenAIChatTopLevelFields
   );
   assertSupportedOpenAIChatResponseFormat(json, requestId);
+  assertSupportedOpenAIChatLogprobsSemantics(json, requestId);
   assertSupportedOpenAIChatStreamOptions(json, requestId);
   assertSupportedOpenAIChatToolsSemantics(json, requestId);
   assertOpenAIForcedToolChoiceMatchesDeclaredTools(

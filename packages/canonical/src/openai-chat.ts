@@ -170,6 +170,55 @@ function encodeCanonicalAnthropicUsage(
   };
 }
 
+type CanonicalOutputTextLogprobEntry = NonNullable<
+  NonNullable<CanonicalResponse["outputTextLogprobs"]>["content"]
+>[number];
+
+function encodeCanonicalOpenAIOutputTextLogprobs(
+  logprobs: CanonicalResponse["outputTextLogprobs"]
+) {
+  if (logprobs === undefined) {
+    return undefined;
+  }
+
+  const encodeEntries = (
+    entries: CanonicalOutputTextLogprobEntry[] | undefined
+  ) => {
+    if (!entries || entries.length === 0) {
+      return undefined;
+    }
+
+    return entries.map((entry) => ({
+      token: entry.token,
+      logprob: entry.logprob,
+      ...(entry.bytes !== undefined ? { bytes: entry.bytes } : {}),
+      ...(entry.topLogprobs !== undefined
+        ? {
+            top_logprobs: entry.topLogprobs.map((candidate) => ({
+              token: candidate.token,
+              logprob: candidate.logprob,
+              ...(candidate.bytes !== undefined
+                ? { bytes: candidate.bytes }
+                : {})
+            }))
+          }
+        : {})
+    }));
+  };
+
+  const content = encodeEntries(logprobs.content);
+  const refusal = encodeEntries(logprobs.refusal);
+
+  if (content === undefined && refusal === undefined) {
+    return undefined;
+  }
+
+  return {
+    ...(content !== undefined ? { content } : {}),
+    ...(refusal !== undefined ? { refusal } : {})
+  };
+}
+
 function createOpenAIResponsesOutputTextPart(
   text: string
 ) {
@@ -535,13 +584,18 @@ export function normalizeOpenAIChatRequest(
     stream: request.stream,
     ...(endUserId !== undefined ? { endUserId } : {}),
     ...((request.frequency_penalty !== undefined ||
+      request.logprobs === true ||
       request.metadata !== undefined ||
       request.presence_penalty !== undefined ||
       request.seed !== undefined ||
+      request.top_logprobs !== undefined ||
       request.stream_options?.include_usage === true)
       ? {
           providerMetadata: {
             openai: {
+              ...(request.logprobs === true
+                ? { logprobs: true }
+                : {}),
               ...(request.metadata !== undefined
                 ? { metadata: request.metadata }
                 : {}),
@@ -552,6 +606,9 @@ export function normalizeOpenAIChatRequest(
                 ? { presencePenalty: request.presence_penalty }
                 : {}),
               ...(request.seed !== undefined ? { seed: request.seed } : {}),
+              ...(request.top_logprobs !== undefined
+                ? { topLogprobs: request.top_logprobs }
+                : {}),
               ...(request.stream_options?.include_usage === true
                 ? { chatIncludeUsage: true }
                 : {})
@@ -1034,6 +1091,10 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
 export function encodeCanonicalToOpenAIChatResponse(
   response: CanonicalResponse
 ) {
+  const outputTextLogprobs = encodeCanonicalOpenAIOutputTextLogprobs(
+    response.outputTextLogprobs
+  );
+
   return {
     id: response.id,
     object: "chat.completion",
@@ -1052,6 +1113,9 @@ export function encodeCanonicalToOpenAIChatResponse(
     choices: [
       {
         index: 0,
+        ...(outputTextLogprobs !== undefined
+          ? { logprobs: outputTextLogprobs }
+          : {}),
         finish_reason: encodeCanonicalOpenAIFinishReason(response.finishReason),
         message: {
           role: "assistant",

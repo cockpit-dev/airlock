@@ -48,8 +48,10 @@ export function getCanonicalRequestCapabilityRequirements(
       request.promptCacheRetention !== undefined ||
       request.providerMetadata?.openai?.metadata !== undefined ||
       request.providerMetadata?.openai?.frequencyPenalty !== undefined ||
+      request.providerMetadata?.openai?.logprobs === true ||
       request.providerMetadata?.openai?.presencePenalty !== undefined ||
       request.providerMetadata?.openai?.seed !== undefined ||
+      request.providerMetadata?.openai?.topLogprobs !== undefined ||
       request.providerMetadata?.openai?.responsesIncludeObfuscation === false,
     requiresOpenAIResponsesTextControls:
       request.responseTruncation !== undefined ||

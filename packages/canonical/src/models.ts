@@ -65,8 +65,10 @@ export interface CanonicalRequest {
     openai?: {
       metadata?: Record<string, string>;
       frequencyPenalty?: number;
+      logprobs?: boolean;
       presencePenalty?: number;
       seed?: number;
+      topLogprobs?: number;
       chatIncludeUsage?: true;
       responsesIncludeObfuscation?: false;
     };
@@ -120,6 +122,18 @@ export interface CanonicalUsage {
   totalTokens: number;
 }
 
+export interface CanonicalTokenLogprob {
+  token: string;
+  logprob: number;
+  bytes?: number[];
+  topLogprobs?: CanonicalTokenLogprob[];
+}
+
+export interface CanonicalOutputTextLogprobs {
+  content?: CanonicalTokenLogprob[];
+  refusal?: CanonicalTokenLogprob[];
+}
+
 export interface CanonicalResponse {
   id: string;
   model: string;
@@ -134,6 +148,7 @@ export interface CanonicalResponse {
   responseTruncation?: "auto" | "disabled";
   responseTextVerbosity?: "low" | "medium" | "high";
   conversationId?: string;
+  outputTextLogprobs?: CanonicalOutputTextLogprobs;
   usage?: CanonicalUsage;
   toolCalls?: CanonicalToolCall[];
   parallelToolCalls?: boolean;

@@ -120,6 +120,8 @@ export const openAIChatCompletionRequestSchema = z
   reasoning_effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]).optional(),
   temperature: z.number().min(0).max(2).optional(),
   top_p: z.number().min(0).max(1).optional(),
+  logprobs: z.boolean().optional(),
+  top_logprobs: z.number().int().min(0).max(20).optional(),
   frequency_penalty: z.number().min(-2).max(2).optional(),
   presence_penalty: z.number().min(-2).max(2).optional(),
   seed: z.number().int().optional(),
@@ -156,6 +158,14 @@ export const openAIChatCompletionRequestSchema = z
         code: z.ZodIssueCode.custom,
         message: "OpenAI Chat stream_options requires stream=true",
         path: ["stream_options"]
+      });
+    }
+
+    if (value.top_logprobs !== undefined && value.logprobs !== true) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "top_logprobs requires logprobs=true",
+        path: ["top_logprobs"]
       });
     }
   });

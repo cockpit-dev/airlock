@@ -1,5 +1,6 @@
 import type {
   CanonicalRequest,
+  CanonicalOutputTextLogprobs,
   CanonicalResponse,
   CanonicalStreamEvent
 } from "@airlock/canonical";
@@ -32,6 +33,101 @@ function normalizeOpenAIMessageContent(
   content: string | null | undefined
 ) {
   return content ?? "";
+}
+
+function normalizeOpenAIOutputTextLogprobs(
+  logprobs:
+    | {
+        content?: Array<{
+          token?: string;
+          logprob?: number;
+          bytes?: number[];
+          top_logprobs?: Array<{
+            token?: string;
+            logprob?: number;
+            bytes?: number[];
+          }>;
+        }>;
+        refusal?: Array<{
+          token?: string;
+          logprob?: number;
+          bytes?: number[];
+          top_logprobs?: Array<{
+            token?: string;
+            logprob?: number;
+            bytes?: number[];
+          }>;
+        }>;
+      }
+    | undefined
+): CanonicalOutputTextLogprobs | undefined {
+  if (logprobs === undefined) {
+    return undefined;
+  }
+
+  const normalizeEntries = (
+    entries:
+      | Array<{
+          token?: string;
+          logprob?: number;
+          bytes?: number[];
+          top_logprobs?: Array<{
+            token?: string;
+            logprob?: number;
+            bytes?: number[];
+          }>;
+        }>
+      | undefined
+  ) => {
+    if (entries === undefined) {
+      return undefined;
+    }
+
+    const normalized = entries
+      .filter((entry) => {
+        return (
+          typeof entry.token === "string" &&
+          typeof entry.logprob === "number"
+        );
+      })
+      .map((entry) => ({
+        token: entry.token as string,
+        logprob: entry.logprob as number,
+        ...(entry.bytes !== undefined ? { bytes: entry.bytes } : {}),
+        ...(entry.top_logprobs !== undefined
+          ? {
+              topLogprobs: entry.top_logprobs
+                .filter((candidate) => {
+                  return (
+                    typeof candidate.token === "string" &&
+                    typeof candidate.logprob === "number"
+                  );
+                })
+                .map((candidate) => ({
+                  token: candidate.token as string,
+                  logprob: candidate.logprob as number,
+                  ...(candidate.bytes !== undefined
+                    ? { bytes: candidate.bytes }
+                    : {})
+                }))
+            }
+          : {})
+      }));
+
+    return normalized.length > 0 ? normalized : undefined;
+  };
+
+  const content = normalizeEntries(logprobs.content);
+  const refusal = normalizeEntries(logprobs.refusal);
+
+  if (content === undefined && refusal === undefined) {
+    return undefined;
+  }
+
+  return {
+    ...(content !== undefined ? { content } : {}),
+    ...(refusal !== undefined ? { refusal } : {})
+  };
 }
 
 function mapCanonicalToolChoiceToOpenAI(
@@ -122,11 +218,17 @@ function mapCanonicalOpenAIRequestMetadata(
     ...(request.providerMetadata?.openai?.frequencyPenalty !== undefined
       ? { frequency_penalty: request.providerMetadata.openai.frequencyPenalty }
       : {}),
+    ...(request.providerMetadata?.openai?.logprobs === true
+      ? { logprobs: true }
+      : {}),
     ...(request.providerMetadata?.openai?.presencePenalty !== undefined
       ? { presence_penalty: request.providerMetadata.openai.presencePenalty }
       : {}),
     ...(request.providerMetadata?.openai?.seed !== undefined
       ? { seed: request.providerMetadata.openai.seed }
+      : {}),
+    ...(request.providerMetadata?.openai?.topLogprobs !== undefined
+      ? { top_logprobs: request.providerMetadata.openai.topLogprobs }
       : {}),
     ...(request.serviceTier !== undefined
       ? { service_tier: request.serviceTier }
@@ -709,6 +811,28 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
             };
           }>;
         };
+        logprobs?: {
+          content?: Array<{
+            token?: string;
+            logprob?: number;
+            bytes?: number[];
+            top_logprobs?: Array<{
+              token?: string;
+              logprob?: number;
+              bytes?: number[];
+            }>;
+          }>;
+          refusal?: Array<{
+            token?: string;
+            logprob?: number;
+            bytes?: number[];
+            top_logprobs?: Array<{
+              token?: string;
+              logprob?: number;
+              bytes?: number[];
+            }>;
+          }>;
+        };
       }>;
       usage?: {
         prompt_tokens?: number;
@@ -716,6 +840,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         total_tokens?: number;
       };
     };
+
+    const outputTextLogprobs = normalizeOpenAIOutputTextLogprobs(
+      payload.choices[0]?.logprobs
+    );
 
     return {
       id: payload.id,
@@ -729,6 +857,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         : {}),
       ...(payload.metadata !== undefined
         ? { metadata: payload.metadata }
+        : {}),
+      ...(outputTextLogprobs !== undefined
+        ? { outputTextLogprobs }
         : {}),
       ...(payload.choices[0]?.message.tool_calls
         ? {

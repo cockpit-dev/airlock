@@ -348,6 +348,91 @@ describe("OpenAIProviderAdapter", () => {
     });
   });
 
+  it("forwards canonical OpenAI chat logprobs controls", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              },
+              logprobs: {
+                content: [
+                  {
+                    token: "hello",
+                    logprob: -0.1,
+                    top_logprobs: [
+                      {
+                        token: "hello",
+                        logprob: -0.1
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const response = await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        providerMetadata: {
+          openai: {
+            logprobs: true,
+            topLogprobs: 5
+          }
+        }
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      logprobs: true,
+      top_logprobs: 5
+    });
+    expect(response.outputTextLogprobs).toEqual({
+      content: [
+        {
+          token: "hello",
+          logprob: -0.1,
+          topLogprobs: [
+            {
+              token: "hello",
+              logprob: -0.1
+            }
+          ]
+        }
+      ]
+    });
+  });
+
   it("forwards canonical OpenAI chat metadata and preserves it in the response", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

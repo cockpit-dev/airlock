@@ -280,6 +280,28 @@ describe("normalizeOpenAIChatRequest", () => {
     });
   });
 
+  it("normalizes chat logprobs controls into canonical OpenAI-native request fields", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      logprobs: true,
+      top_logprobs: 5,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.providerMetadata).toEqual({
+      openai: {
+        logprobs: true,
+        topLogprobs: 5
+      }
+    });
+  });
+
   it("normalizes chat stop sequences into canonical request fields", () => {
     const canonicalSingle = normalizeOpenAIChatRequest({
       model: "gpt-4.1-mini",
@@ -589,6 +611,44 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
     expect(encoded.metadata).toEqual({
       tenant: "acme",
       request_class: "interactive"
+    });
+  });
+
+  it("encodes canonical chat outputTextLogprobs into OpenAI chat logprobs fields", () => {
+    const encoded = encodeCanonicalToOpenAIChatResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      outputText: "hello",
+      finishReason: "stop",
+      outputTextLogprobs: {
+        content: [
+          {
+            token: "hello",
+            logprob: -0.1,
+            topLogprobs: [
+              {
+                token: "hello",
+                logprob: -0.1
+              }
+            ]
+          }
+        ]
+      }
+    });
+
+    expect(encoded.choices[0]?.logprobs).toEqual({
+      content: [
+        {
+          token: "hello",
+          logprob: -0.1,
+          top_logprobs: [
+            {
+              token: "hello",
+              logprob: -0.1
+            }
+          ]
+        }
+      ]
     });
   });
 
