@@ -12,18 +12,18 @@ import {
   OpenAIProviderAdapter,
   type ProviderAdapter
 } from "@airlock/providers";
-import type { GatewayApiKeyRecord } from "@airlock/governance";
 import {
   deriveProviderTargetHealthSnapshot,
-  getFreshRetryableFailureCount,
-  getFreshSmoothedLatency,
-  getSlidingWindowErrorRate,
-  getRecoveryScore,
-  getFreshObservedTokenCostMultiplier,
-  adjustWeightForFailures,
+  compareTargetsByHealthPriority,
+  compareTargetsByLowestCost,
+  compareTargetsByPriority,
+  computeAdjustedWeight,
+  compareByOriginalRouteOrder,
   type ProviderTargetHealthSnapshot,
-  type RoutingFreshnessWindows
+  type RoutingFreshnessWindows,
+  type RoutingScoringContext
 } from "@airlock/governance";
+import type { GatewayApiKeyRecord } from "@airlock/governance";
 import {
   resolveRouteRequestShapingForTarget,
   type RequestShapingProfile
@@ -31,7 +31,6 @@ import {
 import {
   serializeProviderTarget,
   type ModelRoute,
-  type PriorityRouteTargetSelection,
   type ProviderTarget
 } from "@airlock/routing";
 import { GatewayError } from "@airlock/shared";
@@ -144,25 +143,6 @@ function getOriginalTargetOrder(
   return new Map(
     targets.map((target, index) => [serializeProviderTarget(target), index])
   );
-}
-
-function compareByOriginalRouteOrder(
-  leftKey: string,
-  rightKey: string,
-  originalOrder: Map<string, number>
-): number {
-  const leftIndex = originalOrder.get(leftKey);
-  const rightIndex = originalOrder.get(rightKey);
-
-  if (
-    leftIndex !== undefined &&
-    rightIndex !== undefined &&
-    leftIndex !== rightIndex
-  ) {
-    return leftIndex - rightIndex;
-  }
-
-  return leftKey.localeCompare(rightKey);
 }
 
 export function assertProviderSupportsCanonicalRequest(
@@ -483,163 +463,59 @@ function reorderTargetsForRoute(
   // Evaluate time once for consistent routing comparisons.
   const currentTime = now();
   const originalOrder = getOriginalTargetOrder(targets);
+  const ctx: RoutingScoringContext = {
+    now: currentTime,
+    healthByTarget,
+    windows,
+    originalOrder
+  };
 
   if (targetSelection.strategy === "health_priority") {
-    return [...targets].sort((left, right) => {
-      const leftKey = serializeProviderTarget(left);
-      const rightKey = serializeProviderTarget(right);
-      const leftHealth = healthByTarget.get(leftKey) ?? {
-        isOpen: false,
-        consecutiveRetryableFailures: 0
-      };
-      const rightHealth = healthByTarget.get(rightKey) ?? {
-        isOpen: false,
-        consecutiveRetryableFailures: 0
-      };
-
-      if (leftHealth.isOpen !== rightHealth.isOpen) {
-        return leftHealth.isOpen ? 1 : -1;
-      }
-
-      if (
-        (leftHealth.isHalfOpen ?? false) !== (rightHealth.isHalfOpen ?? false)
-      ) {
-        return leftHealth.isHalfOpen ? 1 : -1;
-      }
-
-      const leftFailures = getFreshRetryableFailureCount(
-        leftHealth,
-        currentTime,
-        windows.failureFreshnessMs
-      );
-      const rightFailures = getFreshRetryableFailureCount(
-        rightHealth,
-        currentTime,
-        windows.failureFreshnessMs
-      );
-
-      if (leftFailures !== rightFailures) {
-        return leftFailures - rightFailures;
-      }
-
-      const leftLatency = getFreshSmoothedLatency(
-        leftHealth,
-        currentTime,
-        windows.latencyFreshnessMs
-      );
-      const rightLatency = getFreshSmoothedLatency(
-        rightHealth,
-        currentTime,
-        windows.latencyFreshnessMs
-      );
-
-      if (leftLatency !== rightLatency) {
-        return leftLatency - rightLatency;
-      }
-
-      return compareByOriginalRouteOrder(leftKey, rightKey, originalOrder);
-    });
+    return [...targets].sort((left, right) =>
+      compareTargetsByHealthPriority(
+        serializeProviderTarget(left),
+        serializeProviderTarget(right),
+        ctx
+      )
+    );
   }
 
   if (targetSelection.strategy === "lowest_cost") {
-    return [...targets].sort((left, right) => {
-      const leftKey = serializeProviderTarget(left);
-      const rightKey = serializeProviderTarget(right);
-      const leftHealth = healthByTarget.get(leftKey) ?? {
-        isOpen: false,
-        consecutiveRetryableFailures: 0
-      };
-      const rightHealth = healthByTarget.get(rightKey) ?? {
-        isOpen: false,
-        consecutiveRetryableFailures: 0
-      };
-
-      if (
-        (leftHealth.isHalfOpen ?? false) !== (rightHealth.isHalfOpen ?? false)
-      ) {
-        return leftHealth.isHalfOpen ? 1 : -1;
-      }
-
-      const leftFailures = getFreshRetryableFailureCount(
-        leftHealth,
-        currentTime,
-        windows.failureFreshnessMs
-      );
-      const rightFailures = getFreshRetryableFailureCount(
-        rightHealth,
-        currentTime,
-        windows.failureFreshnessMs
-      );
-
-      if (leftFailures !== rightFailures) {
-        return leftFailures - rightFailures;
-      }
-
-      const leftConfiguredCost = targetSelection.costs[leftKey] ?? 1;
-      const rightConfiguredCost = targetSelection.costs[rightKey] ?? 1;
-      const leftObservedMultiplier = getFreshObservedTokenCostMultiplier(
-        leftKey,
-        currentTime,
-        healthByTarget,
-        windows.costFreshnessMs
-      );
-      const rightObservedMultiplier = getFreshObservedTokenCostMultiplier(
-        rightKey,
-        currentTime,
-        healthByTarget,
-        windows.costFreshnessMs
-      );
-      const leftCost =
-        leftObservedMultiplier !== undefined
-          ? leftConfiguredCost * leftObservedMultiplier
-          : leftConfiguredCost;
-      const rightCost =
-        rightObservedMultiplier !== undefined
-          ? rightConfiguredCost * rightObservedMultiplier
-          : rightConfiguredCost;
-
-      if (leftCost !== rightCost) {
-        return leftCost - rightCost;
-      }
-
-      return compareByOriginalRouteOrder(leftKey, rightKey, originalOrder);
-    });
+    return [...targets].sort((left, right) =>
+      compareTargetsByLowestCost(
+        serializeProviderTarget(left),
+        serializeProviderTarget(right),
+        ctx,
+        targetSelection.costs
+      )
+    );
   }
 
   if (targetSelection.strategy === "priority") {
-    return reorderTargetsForPrioritySelection(
-      targets,
-      targetSelection,
-      currentTime,
-      healthByTarget,
-      windows
+    return [...targets].sort((left, right) =>
+      compareTargetsByPriority(
+        serializeProviderTarget(left),
+        serializeProviderTarget(right),
+        ctx,
+        targetSelection
+      )
     );
   }
 
+  // weighted strategy — uses gateway-local hash scoring, with governance
+  // health-adjusted weights.
   return [...targets].sort((left, right) => {
     const leftKey = serializeProviderTarget(left);
     const rightKey = serializeProviderTarget(right);
-    const leftRawWeight = targetSelection.weights[leftKey] ?? 1;
-    const rightRawWeight = targetSelection.weights[rightKey] ?? 1;
-    const leftHealth = healthByTarget.get(leftKey) ?? {
-      isOpen: false,
-      consecutiveRetryableFailures: 0
-    };
-    const rightHealth = healthByTarget.get(rightKey) ?? {
-      isOpen: false,
-      consecutiveRetryableFailures: 0
-    };
-    const leftWeight = adjustWeightForFailures(
-      leftRawWeight,
-      leftHealth,
-      currentTime,
-      windows.failureFreshnessMs
+    const leftWeight = computeAdjustedWeight(
+      targetSelection.weights[leftKey] ?? 1,
+      leftKey,
+      ctx
     );
-    const rightWeight = adjustWeightForFailures(
-      rightRawWeight,
-      rightHealth,
-      currentTime,
-      windows.failureFreshnessMs
+    const rightWeight = computeAdjustedWeight(
+      targetSelection.weights[rightKey] ?? 1,
+      rightKey,
+      ctx
     );
     const rightScore = scoreWeightedTarget(
       route,
@@ -651,256 +527,6 @@ function reorderTargetsForRoute(
 
     if (rightScore !== leftScore) {
       return rightScore - leftScore;
-    }
-
-    return compareByOriginalRouteOrder(leftKey, rightKey, originalOrder);
-  });
-}
-
-function getPriorityLatencyStatus(
-  targetKey: string,
-  selection: PriorityRouteTargetSelection,
-  now: number,
-  healthByTarget: Map<string, ProviderTargetHealthSnapshot>,
-  latencyFreshnessMs: number
-): number {
-  const latencySlo = selection.latencySloMs?.[targetKey];
-  const health = healthByTarget.get(targetKey);
-  const observedLatency =
-    health?.smoothedSuccessLatencyMs ?? health?.lastSuccessLatencyMs;
-
-  if (latencySlo === undefined) {
-    return 1;
-  }
-
-  if (
-    observedLatency === undefined ||
-    health?.lastSuccessAt === undefined ||
-    now - health.lastSuccessAt > latencyFreshnessMs
-  ) {
-    return 1;
-  }
-
-  return observedLatency <= latencySlo ? 0 : 2;
-}
-
-function getPriorityLatencyDeltaRatio(
-  targetKey: string,
-  selection: PriorityRouteTargetSelection,
-  now: number,
-  healthByTarget: Map<string, ProviderTargetHealthSnapshot>,
-  latencyFreshnessMs: number
-): number | undefined {
-  const latencySlo = selection.latencySloMs?.[targetKey];
-  const health = healthByTarget.get(targetKey);
-  const observedLatency =
-    health?.smoothedSuccessLatencyMs ?? health?.lastSuccessLatencyMs;
-
-  if (
-    latencySlo === undefined ||
-    observedLatency === undefined ||
-    health?.lastSuccessAt === undefined ||
-    now - health.lastSuccessAt > latencyFreshnessMs
-  ) {
-    return undefined;
-  }
-
-  return (observedLatency - latencySlo) / latencySlo;
-}
-
-function getPriorityEffectiveCost(
-  targetKey: string,
-  selection: PriorityRouteTargetSelection,
-  now: number,
-  healthByTarget: Map<string, ProviderTargetHealthSnapshot>,
-  costFreshnessMs: number
-): number | undefined {
-  const configuredCost = selection.costs?.[targetKey];
-
-  if (configuredCost === undefined) {
-    return undefined;
-  }
-
-  const observedMultiplier = getFreshObservedTokenCostMultiplier(
-    targetKey,
-    now,
-    healthByTarget,
-    costFreshnessMs
-  );
-
-  if (observedMultiplier === undefined) {
-    return configuredCost;
-  }
-
-  return configuredCost * observedMultiplier;
-}
-
-function reorderTargetsForPrioritySelection(
-  targets: ProviderTarget[],
-  selection: PriorityRouteTargetSelection,
-  now: number,
-  healthByTarget: Map<string, ProviderTargetHealthSnapshot>,
-  windows: RoutingFreshnessWindows
-): ProviderTarget[] {
-  const originalOrder = getOriginalTargetOrder(targets);
-
-  function getPriorityRecoveryPenalty(health: {
-    lastSuccessAt?: number;
-    lastFailureAt?: number;
-  }): number {
-    if (health.lastFailureAt === undefined) {
-      return 0;
-    }
-
-    if (
-      health.lastSuccessAt === undefined ||
-      health.lastFailureAt > health.lastSuccessAt
-    ) {
-      return now - health.lastFailureAt <= windows.recoveryWindowMs ? 2 : 0;
-    }
-
-    if (
-      health.lastSuccessAt - health.lastFailureAt <= windows.recoveryWindowMs &&
-      now - health.lastSuccessAt <= windows.recoveryWindowMs
-    ) {
-      return 1;
-    }
-
-    return 0;
-  }
-
-  return [...targets].sort((left, right) => {
-    const leftKey = serializeProviderTarget(left);
-    const rightKey = serializeProviderTarget(right);
-    const leftHealth = healthByTarget.get(leftKey) ?? {
-      isOpen: false,
-      consecutiveRetryableFailures: 0
-    };
-    const rightHealth = healthByTarget.get(rightKey) ?? {
-      isOpen: false,
-      consecutiveRetryableFailures: 0
-    };
-
-    if (leftHealth.isOpen !== rightHealth.isOpen) {
-      return leftHealth.isOpen ? 1 : -1;
-    }
-
-    if (
-      (leftHealth.isHalfOpen ?? false) !== (rightHealth.isHalfOpen ?? false)
-    ) {
-      return leftHealth.isHalfOpen ? 1 : -1;
-    }
-
-    if (
-      getFreshRetryableFailureCount(
-        leftHealth,
-        now,
-        windows.failureFreshnessMs
-      ) !==
-      getFreshRetryableFailureCount(
-        rightHealth,
-        now,
-        windows.failureFreshnessMs
-      )
-    ) {
-      return (
-        getFreshRetryableFailureCount(
-          leftHealth,
-          now,
-          windows.failureFreshnessMs
-        ) -
-        getFreshRetryableFailureCount(
-          rightHealth,
-          now,
-          windows.failureFreshnessMs
-        )
-      );
-    }
-
-    const leftRecoveryPenalty = getPriorityRecoveryPenalty(leftHealth);
-    const rightRecoveryPenalty = getPriorityRecoveryPenalty(rightHealth);
-
-    if (leftRecoveryPenalty !== rightRecoveryPenalty) {
-      return leftRecoveryPenalty - rightRecoveryPenalty;
-    }
-
-    const leftRecoveryScore = getRecoveryScore(leftHealth);
-    const rightRecoveryScore = getRecoveryScore(rightHealth);
-
-    if (leftRecoveryScore !== rightRecoveryScore) {
-      return rightRecoveryScore - leftRecoveryScore;
-    }
-
-    const leftErrorRate = getSlidingWindowErrorRate(leftHealth);
-    const rightErrorRate = getSlidingWindowErrorRate(rightHealth);
-
-    if (leftErrorRate !== rightErrorRate) {
-      return leftErrorRate - rightErrorRate;
-    }
-
-    const leftLatencyStatus = getPriorityLatencyStatus(
-      leftKey,
-      selection,
-      now,
-      healthByTarget,
-      windows.latencyFreshnessMs
-    );
-    const rightLatencyStatus = getPriorityLatencyStatus(
-      rightKey,
-      selection,
-      now,
-      healthByTarget,
-      windows.latencyFreshnessMs
-    );
-
-    if (leftLatencyStatus !== rightLatencyStatus) {
-      return leftLatencyStatus - rightLatencyStatus;
-    }
-
-    const leftLatencyDeltaRatio = getPriorityLatencyDeltaRatio(
-      leftKey,
-      selection,
-      now,
-      healthByTarget,
-      windows.latencyFreshnessMs
-    );
-    const rightLatencyDeltaRatio = getPriorityLatencyDeltaRatio(
-      rightKey,
-      selection,
-      now,
-      healthByTarget,
-      windows.latencyFreshnessMs
-    );
-
-    if (
-      leftLatencyDeltaRatio !== undefined &&
-      rightLatencyDeltaRatio !== undefined &&
-      leftLatencyDeltaRatio !== rightLatencyDeltaRatio
-    ) {
-      return leftLatencyDeltaRatio - rightLatencyDeltaRatio;
-    }
-
-    const leftCost = getPriorityEffectiveCost(
-      leftKey,
-      selection,
-      now,
-      healthByTarget,
-      windows.costFreshnessMs
-    );
-    const rightCost = getPriorityEffectiveCost(
-      rightKey,
-      selection,
-      now,
-      healthByTarget,
-      windows.costFreshnessMs
-    );
-
-    if (
-      leftCost !== undefined &&
-      rightCost !== undefined &&
-      leftCost !== rightCost
-    ) {
-      return leftCost - rightCost;
     }
 
     return compareByOriginalRouteOrder(leftKey, rightKey, originalOrder);

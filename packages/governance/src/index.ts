@@ -22,3 +22,4 @@ export * from "./gateway-key-status.js";
 export * from "./gateway-key-token-quota.js";
 export * from "./provider-target-health.js";
 export * from "./provider-circuit-breaker.js";
+export * from "./routing-strategy-comparators.js";
