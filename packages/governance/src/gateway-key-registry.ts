@@ -522,6 +522,48 @@ export function updateStoredGatewayRegistryDynamicKey(
   return next;
 }
 
+/**
+ * Pure predicate: checks whether a stored dynamic key matches the given
+ * valueHash, considering both the current hash and a rotation-overlap
+ * previous hash that may still be valid.
+ *
+ * Returns `true` when:
+ * - The key is not archived, AND
+ * - The key's current `valueHash` matches, OR
+ * - The key's `previousValueHash` matches and its overlap window has not expired.
+ */
+export function doesDynamicKeyMatchValueHash(
+  key: GatewayKeyRegistryStoredDynamicKey,
+  valueHash: string,
+  now: number
+): boolean {
+  if (key.archivedAt) {
+    return false;
+  }
+
+  if (key.valueHash === valueHash) {
+    return true;
+  }
+
+  return (
+    key.previousValueHash === valueHash &&
+    key.previousValueHashExpiresAt !== undefined &&
+    now < Date.parse(key.previousValueHashExpiresAt)
+  );
+}
+
+/**
+ * Pure lookup: finds the first active (non-archived) dynamic key matching
+ * the given valueHash, considering rotation-overlap windows.
+ */
+export function findDynamicKeyByValueHash(
+  keys: readonly GatewayKeyRegistryStoredDynamicKey[],
+  valueHash: string,
+  now: number
+): GatewayKeyRegistryStoredDynamicKey | undefined {
+  return keys.find((key) => doesDynamicKeyMatchValueHash(key, valueHash, now));
+}
+
 export function parseGatewayKeyRegistryDynamicKeyView(
   value: unknown
 ): GatewayKeyRegistryDynamicKeyView {

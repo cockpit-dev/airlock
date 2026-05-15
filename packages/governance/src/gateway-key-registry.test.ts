@@ -27,7 +27,9 @@ import {
   parseGatewayKeyRegistryStoredDynamicKey,
   parseGatewayKeyRegistryStoredOverride,
   stripGatewayKeyAuditActorMetadata,
-  toGatewayKeyAuditActorContextRecord
+  toGatewayKeyAuditActorContextRecord,
+  doesDynamicKeyMatchValueHash,
+  findDynamicKeyByValueHash
 } from "./gateway-key-registry.js";
 
 describe("parseGatewayKeyRegistryStoredOverride", () => {
@@ -960,5 +962,108 @@ describe("registry actor metadata helpers", () => {
     ).toEqual({
       label: "Dynamic Key"
     });
+  });
+});
+
+describe("doesDynamicKeyMatchValueHash", () => {
+  const baseKey = {
+    keyId: "key-1",
+    name: "Test Key",
+    valueHash: "hash-abc",
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z"
+  };
+
+  it("matches current valueHash for active key", () => {
+    expect(doesDynamicKeyMatchValueHash(baseKey, "hash-abc", Date.now())).toBe(true);
+  });
+
+  it("does not match different valueHash", () => {
+    expect(doesDynamicKeyMatchValueHash(baseKey, "hash-other", Date.now())).toBe(false);
+  });
+
+  it("does not match archived key", () => {
+    const archived = { ...baseKey, archivedAt: "2026-01-02T00:00:00Z" };
+    expect(doesDynamicKeyMatchValueHash(archived, "hash-abc", Date.now())).toBe(false);
+  });
+
+  it("matches previousValueHash within overlap window", () => {
+    const now = 100_000;
+    const rotated = {
+      ...baseKey,
+      valueHash: "hash-new",
+      previousValueHash: "hash-abc",
+      previousValueHashExpiresAt: new Date(200_000).toISOString()
+    };
+    expect(doesDynamicKeyMatchValueHash(rotated, "hash-abc", now)).toBe(true);
+  });
+
+  it("does not match previousValueHash after overlap expires", () => {
+    const now = 300_000;
+    const rotated = {
+      ...baseKey,
+      valueHash: "hash-new",
+      previousValueHash: "hash-abc",
+      previousValueHashExpiresAt: new Date(200_000).toISOString()
+    };
+    expect(doesDynamicKeyMatchValueHash(rotated, "hash-abc", now)).toBe(false);
+  });
+
+  it("does not match previousValueHash without expiry", () => {
+    const rotated = {
+      ...baseKey,
+      valueHash: "hash-new",
+      previousValueHash: "hash-abc"
+    };
+    expect(doesDynamicKeyMatchValueHash(rotated, "hash-abc", Date.now())).toBe(false);
+  });
+});
+
+describe("findDynamicKeyByValueHash", () => {
+  const keys = [
+    {
+      keyId: "key-1",
+      name: "Active Key",
+      valueHash: "hash-a",
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z"
+    },
+    {
+      keyId: "key-2",
+      name: "Archived Key",
+      valueHash: "hash-b",
+      archivedAt: "2026-01-02T00:00:00Z",
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-02T00:00:00Z"
+    },
+    {
+      keyId: "key-3",
+      name: "Rotated Key",
+      valueHash: "hash-c-new",
+      previousValueHash: "hash-c-old",
+      previousValueHashExpiresAt: new Date(200_000).toISOString(),
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-03T00:00:00Z"
+    }
+  ];
+
+  it("finds key by current valueHash", () => {
+    const found = findDynamicKeyByValueHash(keys, "hash-a", Date.now());
+    expect(found?.keyId).toBe("key-1");
+  });
+
+  it("skips archived key even if hash matches", () => {
+    const found = findDynamicKeyByValueHash(keys, "hash-b", Date.now());
+    expect(found).toBeUndefined();
+  });
+
+  it("finds key by previousValueHash within overlap", () => {
+    const found = findDynamicKeyByValueHash(keys, "hash-c-old", 100_000);
+    expect(found?.keyId).toBe("key-3");
+  });
+
+  it("returns undefined when no key matches", () => {
+    const found = findDynamicKeyByValueHash(keys, "hash-nonexistent", Date.now());
+    expect(found).toBeUndefined();
   });
 });

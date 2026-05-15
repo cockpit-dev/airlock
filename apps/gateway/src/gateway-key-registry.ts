@@ -62,6 +62,7 @@ import {
   parseGatewayKeyRegistryRotationActionRequest,
   parseGatewayKeyRegistryUpdateRequest,
   parseGatewayKeyRegistryStoredDynamicKey,
+  findDynamicKeyByValueHash,
   restoreGatewayRegistryKey as restoreGatewayRegistryKeyUseCase,
   toGatewayKeyAuditActorContextRecord,
   rotateGatewayRegistryKey as rotateGatewayRegistryKeyUseCase,
@@ -3106,25 +3107,7 @@ async function findStoredDynamicKeyByValueHash(
   valueHash: string
 ): Promise<GatewayKeyRegistryStoredDynamicKey | null> {
   const keys = await listStoredDynamicKeys(storage);
-  const now = Date.now();
-
-  return (
-    keys.find((key) => {
-      if (key.archivedAt) {
-        return false;
-      }
-
-      if (key.valueHash === valueHash) {
-        return true;
-      }
-
-      return (
-        key.previousValueHash === valueHash &&
-        key.previousValueHashExpiresAt !== undefined &&
-        now < Date.parse(key.previousValueHashExpiresAt)
-      );
-    }) ?? null
-  );
+  return findDynamicKeyByValueHash(keys, valueHash, Date.now()) ?? null;
 }
 
 async function createStoredDynamicKey(
