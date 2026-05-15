@@ -38,6 +38,9 @@ export function getCanonicalRequestCapabilityRequirements(
     requiresParallelToolCallControl:
       request.allowParallelToolCalls !== undefined,
     requiresOpenAIRequestMetadata:
-      request.providerMetadata?.openai?.metadata !== undefined
+      request.providerMetadata?.openai?.metadata !== undefined ||
+      request.providerMetadata?.openai?.frequencyPenalty !== undefined ||
+      request.providerMetadata?.openai?.presencePenalty !== undefined ||
+      request.providerMetadata?.openai?.seed !== undefined
   };
 }

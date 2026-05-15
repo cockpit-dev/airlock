@@ -64,6 +64,9 @@ export interface CanonicalRequest {
   providerMetadata?: {
     openai?: {
       metadata?: Record<string, string>;
+      frequencyPenalty?: number;
+      presencePenalty?: number;
+      seed?: number;
     };
     anthropic?: {
       user_id: string;
@@ -119,6 +122,7 @@ export interface CanonicalResponse {
   outputText: string;
   finishReason: "stop" | "max_tokens" | "tool_calls";
   metadata?: Record<string, string>;
+  systemFingerprint?: string;
   serviceTier?: "auto" | "default" | "flex" | "priority" | "scale";
   promptCacheKey?: string;
   promptCacheRetention?: "in_memory" | "24h";
@@ -138,6 +142,7 @@ export type CanonicalStreamEvent =
       model: string;
       parallelToolCalls?: boolean;
       metadata?: Record<string, string>;
+      systemFingerprint?: string;
       serviceTier?: "auto" | "default" | "flex" | "priority" | "scale";
       promptCacheKey?: string;
       promptCacheRetention?: "in_memory" | "24h";
@@ -149,6 +154,7 @@ export type CanonicalStreamEvent =
       type: "tool_call_delta";
       responseId: string;
       model: string;
+      systemFingerprint?: string;
       toolCallId: string;
       toolIndex: number;
       toolName?: string;
@@ -158,12 +164,14 @@ export type CanonicalStreamEvent =
       type: "output_text_delta";
       responseId: string;
       model: string;
+      systemFingerprint?: string;
       delta: string;
     }
   | {
       type: "reasoning_summary_delta";
       responseId: string;
       model: string;
+      systemFingerprint?: string;
       delta: string;
     }
   | {
@@ -175,6 +183,7 @@ export type CanonicalStreamEvent =
       parallelToolCalls?: boolean;
       reasoningSummary?: string;
       metadata?: Record<string, string>;
+      systemFingerprint?: string;
       serviceTier?: "auto" | "default" | "flex" | "priority" | "scale";
       promptCacheKey?: string;
       promptCacheRetention?: "in_memory" | "24h";

@@ -531,11 +531,23 @@ export function normalizeOpenAIChatRequest(
     model: request.model,
     stream: request.stream,
     ...(endUserId !== undefined ? { endUserId } : {}),
-    ...(request.metadata !== undefined
+    ...((request.frequency_penalty !== undefined ||
+      request.metadata !== undefined ||
+      request.presence_penalty !== undefined ||
+      request.seed !== undefined)
       ? {
           providerMetadata: {
             openai: {
-              metadata: request.metadata
+              ...(request.metadata !== undefined
+                ? { metadata: request.metadata }
+                : {}),
+              ...(request.frequency_penalty !== undefined
+                ? { frequencyPenalty: request.frequency_penalty }
+                : {}),
+              ...(request.presence_penalty !== undefined
+                ? { presencePenalty: request.presence_penalty }
+                : {}),
+              ...(request.seed !== undefined ? { seed: request.seed } : {})
             }
           }
         }
@@ -828,6 +840,9 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
       object: "chat.completion.chunk" as const,
       created: 0,
       model: event.model,
+      ...(event.systemFingerprint !== undefined
+        ? { system_fingerprint: event.systemFingerprint }
+        : {}),
       choices: [
         {
           index: 0,
@@ -846,6 +861,9 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
       object: "chat.completion.chunk" as const,
       created: 0,
       model: event.model,
+      ...(event.systemFingerprint !== undefined
+        ? { system_fingerprint: event.systemFingerprint }
+        : {}),
       choices: [
         {
           index: 0,
@@ -864,6 +882,9 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
       object: "chat.completion.chunk" as const,
       created: 0,
       model: event.model,
+      ...(event.systemFingerprint !== undefined
+        ? { system_fingerprint: event.systemFingerprint }
+        : {}),
       choices: [
         {
           index: 0,
@@ -880,6 +901,9 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
       object: "chat.completion.chunk" as const,
       created: 0,
       model: event.model,
+      ...(event.systemFingerprint !== undefined
+        ? { system_fingerprint: event.systemFingerprint }
+        : {}),
       choices: [
         {
           index: 0,
@@ -911,6 +935,9 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
     object: "chat.completion.chunk" as const,
     created: 0,
     model: event.model,
+    ...(event.systemFingerprint !== undefined
+      ? { system_fingerprint: event.systemFingerprint }
+      : {}),
     ...(event.usage ? { usage: encodeCanonicalUsage(event.usage) } : {}),
     choices: [
       {
@@ -930,6 +957,9 @@ export function encodeCanonicalToOpenAIChatResponse(
     object: "chat.completion",
     created: 0,
     model: response.model,
+    ...(response.systemFingerprint !== undefined
+      ? { system_fingerprint: response.systemFingerprint }
+      : {}),
     ...(response.metadata !== undefined
       ? { metadata: response.metadata }
       : {}),

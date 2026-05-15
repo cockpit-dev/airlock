@@ -163,6 +163,25 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(parsed.reasoning_effort).toBe("high");
   });
 
+  it("accepts chat frequency_penalty, presence_penalty, and seed", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      frequency_penalty: 0.5,
+      presence_penalty: -0.25,
+      seed: 1234,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.frequency_penalty).toBe(0.5);
+    expect(parsed.presence_penalty).toBe(-0.25);
+    expect(parsed.seed).toBe(1234);
+  });
+
   it("accepts chat user as an end-user identifier", () => {
     const parsed = openAIChatCompletionRequestSchema.parse({
       model: "gpt-4.1-mini",

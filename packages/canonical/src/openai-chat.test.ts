@@ -234,6 +234,30 @@ describe("normalizeOpenAIChatRequest", () => {
     expect(canonical.topP).toBe(0.9);
   });
 
+  it("normalizes chat OpenAI-native frequency_penalty, presence_penalty, and seed", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      frequency_penalty: 0.5,
+      presence_penalty: -0.25,
+      seed: 1234,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.providerMetadata).toEqual({
+      openai: {
+        frequencyPenalty: 0.5,
+        presencePenalty: -0.25,
+        seed: 1234
+      }
+    });
+  });
+
   it("normalizes chat stop sequences into canonical request fields", () => {
     const canonicalSingle = normalizeOpenAIChatRequest({
       model: "gpt-4.1-mini",
@@ -534,6 +558,18 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
     });
   });
 
+  it("encodes canonical OpenAI chat systemFingerprint into an OpenAI chat response", () => {
+    const encoded = encodeCanonicalToOpenAIChatResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      outputText: "hello there",
+      finishReason: "stop",
+      systemFingerprint: "fp_123"
+    });
+
+    expect(encoded.system_fingerprint).toBe("fp_123");
+  });
+
   it("encodes a max_tokens canonical response into an OpenAI length finish reason", () => {
     const encoded = encodeCanonicalToOpenAIChatResponse({
       id: "resp_123",
@@ -639,6 +675,41 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
           finish_reason: null
         }
       ]
+    });
+  });
+
+  it("encodes system_fingerprint into response_started and response_completed chat chunks", async () => {
+    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIChatStreamChunk(
+        {
+          type: "response_started",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          systemFingerprint: "fp_123"
+        },
+        "chatcmpl-stream-123"
+      )
+    ).toMatchObject({
+      system_fingerprint: "fp_123"
+    });
+
+    expect(
+      encodeCanonicalToOpenAIChatStreamChunk(
+        {
+          type: "response_completed",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          finishReason: "stop",
+          systemFingerprint: "fp_123"
+        },
+        "chatcmpl-stream-123"
+      )
+    ).toMatchObject({
+      system_fingerprint: "fp_123"
     });
   });
 

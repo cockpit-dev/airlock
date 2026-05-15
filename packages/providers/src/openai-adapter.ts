@@ -119,6 +119,15 @@ function mapCanonicalOpenAIRequestMetadata(
     ...(request.providerMetadata?.openai?.metadata !== undefined
       ? { metadata: request.providerMetadata.openai.metadata }
       : {}),
+    ...(request.providerMetadata?.openai?.frequencyPenalty !== undefined
+      ? { frequency_penalty: request.providerMetadata.openai.frequencyPenalty }
+      : {}),
+    ...(request.providerMetadata?.openai?.presencePenalty !== undefined
+      ? { presence_penalty: request.providerMetadata.openai.presencePenalty }
+      : {}),
+    ...(request.providerMetadata?.openai?.seed !== undefined
+      ? { seed: request.providerMetadata.openai.seed }
+      : {}),
     ...(request.serviceTier !== undefined
       ? { service_tier: request.serviceTier }
       : {}),
@@ -261,6 +270,74 @@ function buildOpenAIChatMessages(
       content: message.content
     };
   });
+}
+
+function buildOpenAIChatRequestBody(
+  request: CanonicalRequest,
+  stream: boolean
+) {
+  return {
+    model: request.model,
+    stream,
+    messages: buildOpenAIChatMessages(request),
+    ...(mapCanonicalOutputFormatToOpenAIChat(request.outputFormat)
+      ? {
+          response_format: mapCanonicalOutputFormatToOpenAIChat(
+            request.outputFormat
+          )
+        }
+      : {}),
+    ...(request.maxOutputTokens !== undefined
+      ? { max_tokens: request.maxOutputTokens }
+      : {}),
+    ...mapCanonicalOpenAIRequestMetadata(request),
+    ...(request.reasoningEffort !== undefined
+      ? { reasoning_effort: request.reasoningEffort }
+      : {}),
+    ...(mapCanonicalEndUserIdToOpenAIChat(request.endUserId) ?? {}),
+    ...(request.temperature !== undefined
+      ? { temperature: request.temperature }
+      : {}),
+    ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+    ...(request.stopSequences !== undefined
+      ? { stop: request.stopSequences }
+      : {}),
+    ...(request.tools !== undefined
+      ? {
+          tools: request.tools.map((tool) => ({
+            type: "function" as const,
+            function: {
+              name: tool.name,
+              ...(tool.description ? { description: tool.description } : {}),
+              parameters: tool.inputSchema
+            }
+          }))
+        }
+      : {}),
+    ...(mapCanonicalToolChoiceToOpenAI(request.toolChoice)
+      ? {
+          tool_choice: mapCanonicalToolChoiceToOpenAI(
+            request.toolChoice
+          )
+        }
+      : {}),
+    ...(mapCanonicalParallelToolCallsToOpenAI(
+      request.allowParallelToolCalls
+    ) !== undefined
+      ? {
+          parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
+            request.allowParallelToolCalls
+          )
+        }
+      : {}),
+    ...(stream
+      ? {
+          stream_options: {
+            include_usage: true
+          }
+        }
+      : {})
+  };
 }
 
 function buildOpenAIResponsesInput(
@@ -530,63 +607,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   "content-type": "application/json"
                 },
                 query: {},
-                jsonBody: {
-                  model: request.model,
-                  stream: false,
-                  messages: buildOpenAIChatMessages(request),
-                  ...(mapCanonicalOutputFormatToOpenAIChat(request.outputFormat)
-                    ? {
-                        response_format: mapCanonicalOutputFormatToOpenAIChat(
-                          request.outputFormat
-                        )
-                      }
-                    : {}),
-                  ...(request.maxOutputTokens !== undefined
-                    ? { max_tokens: request.maxOutputTokens }
-                    : {}),
-                  ...mapCanonicalOpenAIRequestMetadata(request),
-                  ...(request.reasoningEffort !== undefined
-                    ? { reasoning_effort: request.reasoningEffort }
-                    : {}),
-                  ...(mapCanonicalEndUserIdToOpenAIChat(request.endUserId) ?? {}),
-                  ...(request.temperature !== undefined
-                    ? { temperature: request.temperature }
-                    : {}),
-                  ...(request.topP !== undefined ? { top_p: request.topP } : {}),
-                  ...(request.stopSequences !== undefined
-                    ? { stop: request.stopSequences }
-                    : {}),
-                  ...(request.tools !== undefined
-                    ? {
-                        tools: request.tools.map((tool) => ({
-                          type: "function" as const,
-                          function: {
-                            name: tool.name,
-                            ...(tool.description
-                              ? { description: tool.description }
-                              : {}),
-                            parameters: tool.inputSchema
-                          }
-                        }))
-                      }
-                    : {}),
-                  ...(mapCanonicalToolChoiceToOpenAI(request.toolChoice)
-                    ? {
-                        tool_choice: mapCanonicalToolChoiceToOpenAI(
-                          request.toolChoice
-                        )
-                      }
-                    : {}),
-                  ...(mapCanonicalParallelToolCallsToOpenAI(
-                    request.allowParallelToolCalls
-                  ) !== undefined
-                    ? {
-                        parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
-                          request.allowParallelToolCalls
-                        )
-                      }
-                    : {})
-                }
+                jsonBody: buildOpenAIChatRequestBody(request, false)
               },
               authStrategy,
               {
@@ -607,61 +628,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 "content-type": "application/json"
               },
               query: {},
-              jsonBody: {
-                model: request.model,
-                stream: false,
-                messages: buildOpenAIChatMessages(request),
-                ...(mapCanonicalOutputFormatToOpenAIChat(request.outputFormat)
-                  ? {
-                      response_format: mapCanonicalOutputFormatToOpenAIChat(
-                        request.outputFormat
-                      )
-                    }
-                  : {}),
-                ...(request.maxOutputTokens !== undefined
-                  ? { max_tokens: request.maxOutputTokens }
-                  : {}),
-                ...mapCanonicalOpenAIRequestMetadata(request),
-                ...(request.reasoningEffort !== undefined
-                  ? { reasoning_effort: request.reasoningEffort }
-                  : {}),
-                ...(mapCanonicalEndUserIdToOpenAIChat(request.endUserId) ?? {}),
-                ...(request.temperature !== undefined
-                  ? { temperature: request.temperature }
-                  : {}),
-                ...(request.topP !== undefined ? { top_p: request.topP } : {}),
-                ...(request.stopSequences !== undefined
-                  ? { stop: request.stopSequences }
-                  : {}),
-                ...(request.tools !== undefined
-                  ? {
-                      tools: request.tools.map((tool) => ({
-                        type: "function" as const,
-                        function: {
-                          name: tool.name,
-                          ...(tool.description ? { description: tool.description } : {}),
-                          parameters: tool.inputSchema
-                        }
-                      }))
-                    }
-                  : {}),
-                ...(mapCanonicalToolChoiceToOpenAI(request.toolChoice)
-                  ? {
-                      tool_choice: mapCanonicalToolChoiceToOpenAI(
-                        request.toolChoice
-                      )
-                    }
-                  : {}),
-                ...(mapCanonicalParallelToolCallsToOpenAI(
-                  request.allowParallelToolCalls
-                ) !== undefined
-                  ? {
-                      parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
-                        request.allowParallelToolCalls
-                      )
-                    }
-                  : {})
-              }
+              jsonBody: buildOpenAIChatRequestBody(request, false)
             },
             authStrategy,
             {
@@ -725,6 +692,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     const payload = (await response.json()) as {
       id: string;
       model: string;
+      system_fingerprint?: string;
       metadata?: Record<string, string>;
       parallel_tool_calls?: boolean;
       choices: Array<{
@@ -751,7 +719,12 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     return {
       id: payload.id,
       model: payload.model,
-      outputText: normalizeOpenAIMessageContent(payload.choices[0]?.message.content),
+      outputText: normalizeOpenAIMessageContent(
+        payload.choices[0]?.message.content
+      ),
+      ...(payload.system_fingerprint !== undefined
+        ? { systemFingerprint: payload.system_fingerprint }
+        : {}),
       ...(payload.metadata !== undefined
         ? { metadata: payload.metadata }
         : {}),
@@ -809,66 +782,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   "content-type": "application/json"
                 },
                 query: {},
-                jsonBody: {
-                  model: request.model,
-                  stream: true,
-                  messages: buildOpenAIChatMessages(request),
-                  ...(mapCanonicalOutputFormatToOpenAIChat(request.outputFormat)
-                    ? {
-                        response_format: mapCanonicalOutputFormatToOpenAIChat(
-                          request.outputFormat
-                        )
-                      }
-                    : {}),
-                  ...(request.maxOutputTokens !== undefined
-                    ? { max_tokens: request.maxOutputTokens }
-                    : {}),
-                  ...mapCanonicalOpenAIRequestMetadata(request),
-                  ...(request.reasoningEffort !== undefined
-                    ? { reasoning_effort: request.reasoningEffort }
-                    : {}),
-                  ...(mapCanonicalEndUserIdToOpenAIChat(request.endUserId) ?? {}),
-                  ...(request.temperature !== undefined
-                    ? { temperature: request.temperature }
-                    : {}),
-                  ...(request.topP !== undefined ? { top_p: request.topP } : {}),
-                  ...(request.stopSequences !== undefined
-                    ? { stop: request.stopSequences }
-                    : {}),
-                  ...(request.tools !== undefined
-                    ? {
-                        tools: request.tools.map((tool) => ({
-                          type: "function" as const,
-                          function: {
-                            name: tool.name,
-                            ...(tool.description
-                              ? { description: tool.description }
-                              : {}),
-                            parameters: tool.inputSchema
-                          }
-                        }))
-                      }
-                    : {}),
-                  ...(mapCanonicalToolChoiceToOpenAI(request.toolChoice)
-                    ? {
-                        tool_choice: mapCanonicalToolChoiceToOpenAI(
-                          request.toolChoice
-                        )
-                      }
-                    : {}),
-                  ...(mapCanonicalParallelToolCallsToOpenAI(
-                    request.allowParallelToolCalls
-                  ) !== undefined
-                    ? {
-                        parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
-                          request.allowParallelToolCalls
-                        )
-                      }
-                    : {}),
-                  stream_options: {
-                    include_usage: true
-                  }
-                }
+                jsonBody: buildOpenAIChatRequestBody(request, true)
               },
               authStrategy,
               {
@@ -889,66 +803,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 "content-type": "application/json"
               },
               query: {},
-                jsonBody: {
-                  model: request.model,
-                  stream: true,
-                  messages: buildOpenAIChatMessages(request),
-                ...(mapCanonicalOutputFormatToOpenAIChat(request.outputFormat)
-                  ? {
-                      response_format: mapCanonicalOutputFormatToOpenAIChat(
-                        request.outputFormat
-                      )
-                    }
-                  : {}),
-                ...(request.maxOutputTokens !== undefined
-                  ? { max_tokens: request.maxOutputTokens }
-                  : {}),
-                ...mapCanonicalOpenAIRequestMetadata(request),
-                ...(request.reasoningEffort !== undefined
-                  ? { reasoning_effort: request.reasoningEffort }
-                  : {}),
-                ...(mapCanonicalEndUserIdToOpenAIChat(request.endUserId) ?? {}),
-                ...(request.temperature !== undefined
-                  ? { temperature: request.temperature }
-                  : {}),
-                ...(request.topP !== undefined ? { top_p: request.topP } : {}),
-                ...(request.stopSequences !== undefined
-                  ? { stop: request.stopSequences }
-                  : {}),
-                ...(request.tools !== undefined
-                  ? {
-                      tools: request.tools.map((tool) => ({
-                        type: "function" as const,
-                        function: {
-                          name: tool.name,
-                          ...(tool.description
-                            ? { description: tool.description }
-                            : {}),
-                          parameters: tool.inputSchema
-                        }
-                      }))
-                    }
-                  : {}),
-                ...(mapCanonicalToolChoiceToOpenAI(request.toolChoice)
-                  ? {
-                      tool_choice: mapCanonicalToolChoiceToOpenAI(
-                        request.toolChoice
-                      )
-                    }
-                  : {}),
-                ...(mapCanonicalParallelToolCallsToOpenAI(
-                  request.allowParallelToolCalls
-                ) !== undefined
-                  ? {
-                      parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
-                        request.allowParallelToolCalls
-                      )
-                    }
-                  : {}),
-                stream_options: {
-                  include_usage: true
-                }
-              }
+              jsonBody: buildOpenAIChatRequestBody(request, true)
             },
             authStrategy,
             {
@@ -1029,6 +884,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     const decoder = new TextDecoder();
     let buffer = "";
     let hasStarted = false;
+    let streamSystemFingerprint: string | undefined;
     const streamedToolCalls = new Map<
       number,
       {
@@ -1079,6 +935,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
             const payload = JSON.parse(data) as {
               id?: string;
               model?: string;
+              system_fingerprint?: string;
               choices?: Array<{
                 delta?: {
                   role?: "assistant";
@@ -1104,13 +961,17 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
             const choice = payload.choices?.[0];
             const responseId = payload.id ?? `chatcmpl_${context.requestId}`;
             const model = payload.model ?? request.model;
+            streamSystemFingerprint ??= payload.system_fingerprint;
 
             if (!hasStarted) {
               hasStarted = true;
               yield {
                 type: "response_started",
                 responseId,
-                model
+                model,
+                ...(streamSystemFingerprint !== undefined
+                  ? { systemFingerprint: streamSystemFingerprint }
+                  : {})
               };
             }
 
@@ -1119,6 +980,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 type: "output_text_delta",
                 responseId,
                 model,
+                ...(streamSystemFingerprint !== undefined
+                  ? { systemFingerprint: streamSystemFingerprint }
+                  : {}),
                 delta: choice.delta.content
               };
             }
@@ -1148,6 +1012,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   type: "tool_call_delta",
                   responseId,
                   model,
+                  ...(streamSystemFingerprint !== undefined
+                    ? { systemFingerprint: streamSystemFingerprint }
+                    : {}),
                   toolCallId: currentTool.id,
                   toolIndex,
                   ...(currentTool.name ? { toolName: currentTool.name } : {}),
@@ -1165,6 +1032,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 type: "response_completed",
                 responseId,
                 model,
+                ...(streamSystemFingerprint !== undefined
+                  ? { systemFingerprint: streamSystemFingerprint }
+                  : {}),
                 finishReason: normalizeOpenAIFinishReason(choice.finish_reason),
                 ...(payload.usage
                   ? {

@@ -14519,6 +14519,73 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts chat frequency_penalty, presence_penalty, and seed and forwards them upstream for OpenAI", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          system_fingerprint: "fp_123",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          frequency_penalty: 0.5,
+          presence_penalty: -0.25,
+          seed: 1234,
+          messages: [
+            {
+              role: "user",
+              content: "hello"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      frequency_penalty: 0.5,
+      presence_penalty: -0.25,
+      seed: 1234
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      system_fingerprint: "fp_123"
+    });
+  });
+
   it("accepts chat metadata and forwards it upstream for OpenAI", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -14628,6 +14695,86 @@ describe("gateway app", () => {
         code: "provider_capability_not_supported",
         message:
           "Provider anthropic does not support required capability: openai_request_metadata"
+      }
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when chat frequency_penalty is sent to Anthropic", async () => {
+    const fetcher = vi.fn();
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          frequency_penalty: 0.5,
+          messages: [
+            {
+              role: "user",
+              content: "hello"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "provider_capability_not_supported",
+        message:
+          "Provider anthropic does not support required capability: openai_request_metadata"
+      }
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when chat seed is sent to Gemini", async () => {
+    const fetcher = vi.fn();
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          seed: 1234,
+          messages: [
+            {
+              role: "user",
+              content: "hello"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "provider_capability_not_supported",
+        message:
+          "Provider gemini does not support required capability: openai_request_metadata"
       }
     });
     expect(fetcher).not.toHaveBeenCalled();
@@ -16682,6 +16829,71 @@ describe("gateway app", () => {
     expect(fetcher.mock.calls[0]?.[0]).toBe(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
     );
+  });
+
+  it("preserves OpenAI chat system_fingerprint in streamed gateway chunks", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","system_fingerprint":"fp_123","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","system_fingerprint":"fp_123","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","system_fingerprint":"fp_123","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const events = parseSseDataEvents(await readText(response));
+
+    expect(events[0]).toMatchObject({
+      system_fingerprint: "fp_123",
+      choices: [{ delta: { role: "assistant" } }]
+    });
+    expect(events[1]).toMatchObject({
+      system_fingerprint: "fp_123",
+      choices: [{ delta: { content: "hello" } }]
+    });
+    expect(events[2]).toMatchObject({
+      system_fingerprint: "fp_123",
+      choices: [{ finish_reason: "stop" }]
+    });
   });
 
   it("returns not ready when a shaped route configures cross-provider fallback", async () => {

@@ -531,6 +531,43 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     });
   });
 
+  it("marks OpenAI-native metadata requirements when penalties or seed are present", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      providerMetadata: {
+        openai: {
+          frequencyPenalty: 0.5,
+          presencePenalty: -0.25,
+          seed: 1234
+        }
+      },
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: false,
+      requiresTools: false,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresEndUserId: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false,
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: false,
+      requiresOpenAIRequestMetadata: true
+    });
+  });
+
   it("marks end-user requirements when canonical requests include an end-user id", () => {
     const request: CanonicalRequest = {
       model: "gpt-4.1-mini",

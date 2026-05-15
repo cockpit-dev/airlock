@@ -104,6 +104,48 @@ describe("OpenAIProviderAdapter", () => {
     });
   });
 
+  it("preserves OpenAI chat system_fingerprint on buffered responses", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          system_fingerprint: "fp_123",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const response = await adapter.complete(createCanonicalRequest(), {
+      requestId: "req_123"
+    });
+
+    expect(response.systemFingerprint).toBe("fp_123");
+  });
+
   it("uses the native OpenAI responses endpoint when requestMode=openai_responses", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -1609,6 +1651,77 @@ describe("OpenAIProviderAdapter", () => {
     ]);
   });
 
+  it("preserves OpenAI chat system_fingerprint on streamed events", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","system_fingerprint":"fp_123","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+              'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","system_fingerprint":"fp_123","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}\n\n',
+              'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","system_fingerprint":"fp_123","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+              "data: [DONE]\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true
+      },
+      {
+        requestId: "req_123"
+      }
+    )) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini",
+        systemFingerprint: "fp_123"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini",
+        systemFingerprint: "fp_123",
+        delta: "hello"
+      },
+      {
+        type: "response_completed",
+        responseId: "chatcmpl_123",
+        model: "gpt-4.1-mini",
+        systemFingerprint: "fp_123",
+        finishReason: "stop"
+      }
+    ]);
+  });
+
   it("maps OpenAI length finishes into canonical max_tokens", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -1796,6 +1909,65 @@ describe("OpenAIProviderAdapter", () => {
     expect(JSON.parse(init.body as string)).toMatchObject({
       temperature: 0.8,
       top_p: 0.9
+    });
+  });
+
+  it("forwards OpenAI-native chat frequency_penalty, presence_penalty, and seed", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        providerMetadata: {
+          openai: {
+            frequencyPenalty: 0.5,
+            presencePenalty: -0.25,
+            seed: 1234
+          }
+        }
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      frequency_penalty: 0.5,
+      presence_penalty: -0.25,
+      seed: 1234
     });
   });
 
