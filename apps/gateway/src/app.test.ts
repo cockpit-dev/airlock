@@ -27645,6 +27645,85 @@ describe("gateway app", () => {
     });
   });
 
+  it("forwards responses reasoning replay to native OpenAI without duplicating assistant output_text input items", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: []
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: [
+            {
+              type: "reasoning",
+              summary: [
+                {
+                  type: "summary_text",
+                  text: "The model checked the answer."
+                }
+              ]
+            },
+            {
+              type: "message",
+              role: "user",
+              content: "Continue."
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as {
+      input: unknown[];
+    };
+    expect(url).toBe("https://api.openai.com/v1/responses");
+    expect(body).toMatchObject({
+      input: [
+        {
+          type: "reasoning",
+          summary: [
+            {
+              type: "summary_text",
+              text: "The model checked the answer."
+            }
+          ]
+        },
+        {
+          type: "message",
+          role: "user",
+          content: "Continue."
+        }
+      ]
+    });
+    expect(body.input).toHaveLength(2);
+  });
+
   it("fails closed when responses reasoning.effort is sent to a non-openai provider", async () => {
     const app = createApp({ fetcher: vi.fn() });
 

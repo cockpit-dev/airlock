@@ -533,21 +533,28 @@ function buildOpenAIResponsesInput(
     }
 
     if (message.role === "assistant") {
-      return [
-        ...(message.reasoningSummary
-          ? [
-              {
-                type: "reasoning" as const,
-                summary: [
-                  {
-                    type: "summary_text" as const,
-                    text: message.reasoningSummary
-                  }
-                ]
-              }
-            ]
-          : []),
-        {
+      const reasoningSummary = message.reasoningSummary;
+      const emittedReasoningItem = typeof reasoningSummary === "string";
+      const shouldEmitAssistantOutputText =
+        message.content.length > 0 &&
+        (!emittedReasoningItem || message.content !== reasoningSummary);
+
+      const assistantItems: OpenAIResponsesInputItem[] = [];
+
+      if (emittedReasoningItem) {
+        assistantItems.push({
+          type: "reasoning" as const,
+          summary: [
+            {
+              type: "summary_text" as const,
+              text: reasoningSummary
+            }
+          ]
+        });
+      }
+
+      if (shouldEmitAssistantOutputText) {
+        assistantItems.push({
           type: "message" as const,
           role: "assistant" as const,
           content: [
@@ -556,8 +563,10 @@ function buildOpenAIResponsesInput(
               text: message.content
             }
           ]
-        }
-      ];
+        });
+      }
+
+      return assistantItems;
     }
 
     return [

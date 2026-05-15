@@ -1243,6 +1243,78 @@ describe("OpenAIProviderAdapter", () => {
     expect(response.outputText).toBe("hello there");
   });
 
+  it("encodes pure reasoning replay into a native openai responses reasoning item without duplicating assistant output text", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: []
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        messages: [
+          {
+            role: "assistant",
+            content: "The model checked the answer.",
+            reasoningSummary: "The model checked the answer."
+          },
+          {
+            role: "user",
+            content: "Continue."
+          }
+        ]
+      },
+      {
+        requestId: "req_reasoning_replay_123",
+        requestMode: "openai_responses"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as {
+      input: unknown[];
+    };
+    expect(body).toMatchObject({
+      input: [
+        {
+          type: "reasoning",
+          summary: [
+            {
+              type: "summary_text",
+              text: "The model checked the answer."
+            }
+          ]
+        },
+        {
+          type: "message",
+          role: "user",
+          content: "Continue."
+        }
+      ]
+    });
+    expect(body.input).toHaveLength(2);
+  });
+
   it("streams reasoning summary events through the native openai responses endpoint", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
