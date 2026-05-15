@@ -71,9 +71,11 @@ describe("resolveConfiguredGatewayApiKeyRuntime", () => {
 describe("updateConfiguredGatewayKeyRegistryOverride", () => {
   it("requires a configured key and persists the parsed override", async () => {
     const writeRegistryOverride = vi.fn().mockResolvedValue({
-      label: "Runtime Key",
-      status: "revoked",
-      updatedAt: "2026-05-14T01:00:00.000Z"
+      override: {
+        label: "Runtime Key",
+        status: "revoked",
+        updatedAt: "2026-05-14T01:00:00.000Z"
+      }
     });
 
     await expect(
@@ -95,6 +97,22 @@ describe("updateConfiguredGatewayKeyRegistryOverride", () => {
         label: "Runtime Key",
         status: "revoked",
         updatedAt: "2026-05-14T01:00:00.000Z"
+      },
+      auditEvent: {
+        keyId: "key_configured",
+        kind: "override_updated",
+        ownership: "configured",
+        occurredAt: "2026-05-14T01:00:00.000Z",
+        changes: [
+          {
+            field: "registryOverride",
+            after: {
+              label: "Runtime Key",
+              status: "revoked",
+              updatedAt: "2026-05-14T01:00:00.000Z"
+            }
+          }
+        ]
       }
     });
 
@@ -105,7 +123,8 @@ describe("updateConfiguredGatewayKeyRegistryOverride", () => {
       {
         label: "Runtime Key",
         status: "revoked"
-      }
+      },
+      {}
     );
   });
 
@@ -130,12 +149,20 @@ describe("updateConfiguredGatewayKeyRegistryOverride", () => {
 
 describe("clearConfiguredGatewayKeyRegistryOverride", () => {
   it("requires a configured key and clears the stored override", async () => {
-    const clearRegistryOverride = vi.fn().mockResolvedValue(undefined);
+    const clearRegistryOverride = vi.fn().mockResolvedValue({
+      auditEvent: {
+        keyId: "key_configured",
+        kind: "override_cleared",
+        ownership: "configured",
+        occurredAt: "2026-05-14T02:00:00.000Z"
+      }
+    });
 
     await expect(
       clearConfiguredGatewayKeyRegistryOverride(
         [createConfiguredKey()],
         "key_configured",
+        undefined,
         "req_123",
         {
           clearRegistryOverride
@@ -143,13 +170,20 @@ describe("clearConfiguredGatewayKeyRegistryOverride", () => {
       )
     ).resolves.toEqual({
       keyId: "key_configured",
-      override: null
+      override: null,
+      auditEvent: {
+        keyId: "key_configured",
+        kind: "override_cleared",
+        ownership: "configured",
+        occurredAt: "2026-05-14T02:00:00.000Z"
+      }
     });
 
     expect(clearRegistryOverride).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "key_configured"
-      })
+      }),
+      {}
     );
   });
 });

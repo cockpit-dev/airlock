@@ -9073,6 +9073,161 @@ describe("gateway app", () => {
     });
   });
 
+  it("applies admin actor-required enforcement to configured-key registry override mutations", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active"
+        }
+      ])
+    };
+
+    const writeResponse = await app.request(
+      "http://localhost/_airlock/keys/key_1/registry",
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          status: "revoked"
+        })
+      },
+      bindings
+    );
+
+    expect(writeResponse.status).toBe(400);
+    await expect(readJson(writeResponse)).resolves.toMatchObject({
+      error: {
+        code: "auth_admin_actor_required"
+      }
+    });
+  });
+
+  it("records configured-key registry override mutations in key events and operation events", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_INTERNAL_ADMIN_ACTOR_HEADER: "cf-access-authenticated-user-email",
+      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active"
+        }
+      ])
+    };
+
+    const writeResponse = await app.request(
+      "http://localhost/_airlock/keys/key_1/registry",
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret",
+          "cf-access-authenticated-user-email": "trusted@example.com"
+        },
+        body: JSON.stringify({
+          label: "Runtime Key 1",
+          actor: "spoofed@example.com"
+        })
+      },
+      bindings
+    );
+
+    expect(writeResponse.status).toBe(200);
+    const writePayload = await readJson(writeResponse);
+    expect(isRecord(writePayload)).toBe(true);
+
+    if (!isRecord(writePayload)) {
+      throw new Error("override write response shape was invalid");
+    }
+
+    const operationId =
+      typeof writePayload.auditEvent === "object" &&
+      writePayload.auditEvent !== null &&
+      "operationId" in writePayload.auditEvent &&
+      typeof writePayload.auditEvent.operationId === "string"
+        ? writePayload.auditEvent.operationId
+        : undefined;
+
+    expect(operationId).toBeTruthy();
+
+    const keyEventsResponse = await app.request(
+      "http://localhost/_airlock/keys/key_1/events",
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret",
+          "cf-access-authenticated-user-email": "trusted@example.com"
+        }
+      },
+      bindings
+    );
+
+    expect(keyEventsResponse.status).toBe(200);
+    const keyEventsPayload = await readJson(keyEventsResponse);
+    expect(isGatewayKeyEventsPayload(keyEventsPayload)).toBe(true);
+
+    if (!isGatewayKeyEventsPayload(keyEventsPayload)) {
+      throw new Error("configured key events response shape was invalid");
+    }
+
+    expect(keyEventsPayload.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          keyId: "key_1",
+          kind: "override_updated"
+        })
+      ])
+    );
+
+    const operationEventsResponse = await app.request(
+      `http://localhost/_airlock/keys/operations/${operationId}/events`,
+      {
+        method: "GET",
+        headers: {
+          authorization: "Bearer admin-secret"
+        }
+      },
+      bindings
+    );
+
+    expect(operationEventsResponse.status).toBe(200);
+    const operationEventsPayload = await readJson(operationEventsResponse);
+    expect(isGatewayKeyOperationEventsPayload(operationEventsPayload)).toBe(true);
+
+    if (!isGatewayKeyOperationEventsPayload(operationEventsPayload)) {
+      throw new Error("configured override operation events response shape was invalid");
+    }
+
+    expect(operationEventsPayload.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          keyId: "key_1",
+          kind: "override_updated",
+          operationId
+        })
+      ])
+    );
+  });
+
   it("surfaces registry-aware runtime metadata from internal key status and inventory routes", async () => {
     const app = createApp({ fetcher: vi.fn() });
     const bindings = {

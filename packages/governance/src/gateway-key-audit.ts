@@ -7,6 +7,8 @@ export type GatewayKeyAuditActorSource =
 export type GatewayKeyAuditEventKind =
   | "created"
   | "updated"
+  | "override_updated"
+  | "override_cleared"
   | "archived"
   | "restored"
   | "rotated"
@@ -22,6 +24,7 @@ export type GatewayKeyAuditDiffField =
   | "notBefore"
   | "expiresAt"
   | "policy"
+  | "registryOverride"
   | "valueHash"
   | "previousValueHash"
   | "previousValueHashExpiresAt"
@@ -88,6 +91,8 @@ function isGatewayKeyAuditEventKind(
   return (
     value === "created" ||
     value === "updated" ||
+    value === "override_updated" ||
+    value === "override_cleared" ||
     value === "archived" ||
     value === "restored" ||
     value === "rotated" ||
@@ -152,6 +157,7 @@ function isGatewayKeyAuditDiffField(value: unknown): value is GatewayKeyAuditDif
     value === "notBefore" ||
     value === "expiresAt" ||
     value === "policy" ||
+    value === "registryOverride" ||
     value === "valueHash" ||
     value === "previousValueHash" ||
     value === "previousValueHashExpiresAt" ||
@@ -226,6 +232,8 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
   if (
     kind !== "created" &&
     kind !== "updated" &&
+    kind !== "override_updated" &&
+    kind !== "override_cleared" &&
     kind !== "archived" &&
     kind !== "restored" &&
     kind !== "rotated" &&

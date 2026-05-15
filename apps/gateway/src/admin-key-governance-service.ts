@@ -491,23 +491,44 @@ export async function getAdminGatewayKeyRegistryView(
 
 export async function updateAdminGatewayKeyRegistryOverride(
   env: GatewayBindings,
+  request: Request,
   keyId: string,
   requestId: string,
   payload: unknown
 ) {
-  return createAdminKeyGovernanceWorkflow(env, requestId).withRead((runtime) => {
-    return writeGatewayAdminKeyRegistryOverrideUpdate(keyId, payload, runtime.write);
-  });
+  return createAdminKeyGovernanceWorkflow(env, requestId).withMutation(
+    request,
+    payload,
+    "Gateway key registry override payload is invalid",
+    ({ mutation, runtime }) => {
+      return writeGatewayAdminKeyRegistryOverrideUpdate(
+        keyId,
+        mutation.payload,
+        runtime.write
+      );
+    }
+  );
 }
 
 export async function clearAdminGatewayKeyRegistryOverride(
   env: GatewayBindings,
+  request: Request,
   keyId: string,
-  requestId: string
+  requestId: string,
+  payload: unknown
 ) {
-  return createAdminKeyGovernanceWorkflow(env, requestId).withRead((runtime) => {
-    return writeGatewayAdminKeyRegistryOverrideClear(keyId, runtime.write);
-  });
+  return createAdminKeyGovernanceWorkflow(env, requestId).withMutation(
+    request,
+    payload,
+    "Gateway key registry override payload is invalid",
+    ({ mutation, runtime }) => {
+      return writeGatewayAdminKeyRegistryOverrideClear(
+        keyId,
+        mutation.payload,
+        runtime.write
+      );
+    }
+  );
 }
 
 export async function revokeAdminGatewayKey(

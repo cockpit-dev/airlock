@@ -7,9 +7,11 @@ import {
   type GatewayApiKeyRecord
 } from "./gateway-auth.js";
 import {
+  parseGatewayKeyAuditEventsResponse,
   parseOptionalGatewayKeyAuditActor,
   parseOptionalGatewayKeyAuditActorSource,
   parseOptionalGatewayKeyAuditReason,
+  type GatewayKeyAuditEvent,
   type GatewayKeyAuditActorContext,
   type GatewayKeyAuditActorSource
 } from "./gateway-key-audit.js";
@@ -42,6 +44,7 @@ export interface GatewayKeyRegistryStoredDynamicKey extends GatewayApiKeyRecord 
 export interface GatewayKeyRegistryRecordResponse {
   keyId: string;
   override: GatewayKeyRegistryStoredOverride | null;
+  events?: GatewayKeyAuditEvent[];
 }
 
 export interface GatewayKeyRegistryDynamicKeyResponse {
@@ -557,16 +560,26 @@ export function parseGatewayKeyRegistryRecordResponse(
     throw new Error("Registry response must include a key id");
   }
 
+  const events =
+    value.events === undefined
+      ? undefined
+      : parseGatewayKeyAuditEventsResponse({
+          keyId: value.keyId,
+          events: value.events
+        }).events;
+
   if (value.override !== null && value.override !== undefined) {
     return {
       keyId: value.keyId,
-      override: parseGatewayKeyRegistryStoredOverride(value.override)
+      override: parseGatewayKeyRegistryStoredOverride(value.override),
+      ...(events ? { events } : {})
     };
   }
 
   return {
     keyId: value.keyId,
-    override: null
+    override: null,
+    ...(events ? { events } : {})
   };
 }
 

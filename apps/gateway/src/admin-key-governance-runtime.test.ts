@@ -229,6 +229,10 @@ describe("createAdminKeyGovernanceRuntime", () => {
 
   it("forwards ownership-resolution and override ports through existing runtime modules", async () => {
     const env = createEnv();
+    const actorContext = {
+      actor: "ops@example.com",
+      actorSource: "credential" as const
+    };
     runtimeMocks.resolveGatewayApiKeyByIdWithRegistry.mockResolvedValue({
       gatewayApiKey: {
         id: "key_registry",
@@ -257,8 +261,26 @@ describe("createAdminKeyGovernanceRuntime", () => {
       registryOverride: null
     });
     runtimeMocks.upsertGatewayKeyRegistryOverride.mockResolvedValue({
-      label: "Updated",
-      updatedAt: "2026-05-14T00:00:00.000Z"
+      override: {
+        label: "Updated",
+        updatedAt: "2026-05-14T00:00:00.000Z"
+      },
+      auditEvent: {
+        keyId: "key_configured",
+        kind: "override_updated",
+        ownership: "configured",
+        occurredAt: "2026-05-14T00:00:00.000Z",
+        operationId: "req_123"
+      }
+    });
+    runtimeMocks.clearGatewayKeyRegistryOverride.mockResolvedValue({
+      auditEvent: {
+        keyId: "key_configured",
+        kind: "override_cleared",
+        ownership: "configured",
+        occurredAt: "2026-05-14T00:05:00.000Z",
+        operationId: "req_123"
+      }
     });
     runtimeMocks.revokeGatewayKeyById.mockResolvedValue({
       keyId: "key_registry",
@@ -268,7 +290,8 @@ describe("createAdminKeyGovernanceRuntime", () => {
 
     const runtime = createAdminKeyGovernanceRuntime(
       env,
-      "req_123"
+      "req_123",
+      actorContext
     );
 
     await runtime.read.getKeyStatusSnapshot("key_registry");
@@ -289,13 +312,30 @@ describe("createAdminKeyGovernanceRuntime", () => {
       "req_123"
     );
 
-    await runtime.write.updateRegistryOverride("key_configured", {
+    await expect(runtime.write.updateRegistryOverride("key_configured", {
       label: "Updated"
+    })).resolves.toMatchObject({
+      keyId: "key_configured",
+      override: {
+        label: "Updated",
+        updatedAt: "2026-05-14T00:00:00.000Z"
+      },
+      auditEvent: {
+        kind: "override_updated",
+        operationId: "req_123"
+      }
     });
     expect(runtimeMocks.upsertGatewayKeyRegistryOverride).toHaveBeenCalled();
     expect(runtimeMocks.resolveGatewayApiKeyById).not.toHaveBeenCalled();
 
-    await runtime.write.clearRegistryOverride("key_configured");
+    await expect(runtime.write.clearRegistryOverride("key_configured", undefined)).resolves.toMatchObject({
+      keyId: "key_configured",
+      override: null,
+      auditEvent: {
+        kind: "override_cleared",
+        operationId: "req_123"
+      }
+    });
     expect(runtimeMocks.clearGatewayKeyRegistryOverride).toHaveBeenCalled();
     expect(runtimeMocks.resolveGatewayApiKeyById).not.toHaveBeenCalled();
 
@@ -310,7 +350,7 @@ describe("createAdminKeyGovernanceRuntime", () => {
         reason: "incident"
       },
       "req_123",
-      undefined
+      actorContext
     );
   });
 

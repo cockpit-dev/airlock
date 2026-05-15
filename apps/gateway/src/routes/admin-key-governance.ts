@@ -405,13 +405,15 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
   app.put("/_airlock/keys/:keyId/registry", async (context) => {
     const requestId = context.get("requestId");
     await requireAdminScope(context, "keys.write");
+    const payload: unknown = await context.req.json();
 
     return context.json(
       await updateAdminGatewayKeyRegistryOverride(
         context.env,
+        context.req.raw,
         context.req.param("keyId"),
         requestId,
-        await context.req.json()
+        payload
       )
     );
   });
@@ -419,12 +421,15 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
   app.delete("/_airlock/keys/:keyId/registry", async (context) => {
     const requestId = context.get("requestId");
     await requireAdminScope(context, "keys.write");
+    const payload = await readOptionalJsonBody(context.req.raw);
 
     return context.json(
       await clearAdminGatewayKeyRegistryOverride(
         context.env,
+        context.req.raw,
         context.req.param("keyId"),
-        requestId
+        requestId,
+        payload
       )
     );
   });

@@ -50,6 +50,8 @@ import {
   parseGatewayKeyRegistryDeleteResponse,
   parseGatewayKeyRegistryDynamicKeyListResponse,
   parseGatewayKeyRegistryDynamicKeyResponse,
+  parseConfiguredGatewayKeyRegistryOverrideClearPayload,
+  parseConfiguredGatewayKeyRegistryOverrideUpdatePayload,
   parseGatewayKeyRegistryLifecycleActionRequest,
   parseGatewayKeyRegistryRecordResponse,
   parseGatewayKeyRegistryRotateRequest,
@@ -64,7 +66,6 @@ import {
   validateGatewayRegistryRotatedKeyCandidate,
   MAX_GATEWAY_KEY_AUDIT_EVENTS,
   parseGatewayKeyAuditEventsResponse,
-  parseGatewayApiKeyMetadataOverride,
   resolveConfiguredGatewayApiKeyRuntime,
   type GatewayApiKeyMetadataOverride,
   type GatewayKeyAuditActorContext,
@@ -122,6 +123,8 @@ const REGISTRY_KIND_OPERATION_EVENTS = "operation_events";
 const DYNAMIC_KEY_INDEX = "dynamic:index";
 const DYNAMIC_KEY_AUDIT_EVENTS_PREFIX = "dynamic_events:";
 const DYNAMIC_KEY_OPERATION_INDEX_PREFIX = "dynamic_operation:";
+const CONFIGURED_KEY_AUDIT_EVENTS_PREFIX = "configured_events:";
+const CONFIGURED_KEY_OPERATION_INDEX_PREFIX = "configured_operation:";
 
 interface DurableObjectStateLike {
   storage: {
@@ -135,12 +138,29 @@ interface GatewayKeyRegistryLookupRequest {
   bearerToken: string;
 }
 
+interface GatewayKeyRegistryOverrideMutationResult {
+  override: GatewayKeyRegistryStoredOverride;
+  auditEvent: GatewayKeyAuditEvent;
+}
+
+interface GatewayKeyRegistryOverrideClearMutationResult {
+  auditEvent: GatewayKeyAuditEvent;
+}
+
 function isStringArray(value: unknown): value is string[] {
   return (
     Array.isArray(value) &&
     value.every((entry) => {
       return typeof entry === "string" && entry.trim().length > 0;
     })
+  );
+}
+
+function toGatewayAuditRecord(
+  value: GatewayKeyRegistryStoredOverride
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined)
   );
 }
 
@@ -294,9 +314,18 @@ export class GatewayKeyRegistryDurableObject {
         return new Response("Method not allowed", { status: keyId ? 405 : 400 });
       }
 
+      const dynamicEvents = await readStoredDynamicKeyAuditEvents(
+        this.state.storage,
+        keyId
+      );
+      const configuredEvents = await readStoredConfiguredKeyAuditEvents(
+        this.state.storage,
+        keyId
+      );
+
       return Response.json({
         keyId,
-        events: await readStoredDynamicKeyAuditEvents(this.state.storage, keyId)
+        events: [...dynamicEvents, ...configuredEvents]
       } satisfies GatewayKeyAuditEventsResponse);
     }
 
@@ -311,14 +340,19 @@ export class GatewayKeyRegistryDurableObject {
         this.state.storage,
         operationId
       );
+      const configuredEvents = await readStoredConfiguredKeyOperationEvents(
+        this.state.storage,
+        operationId
+      );
+      const allEvents = [...events, ...configuredEvents];
 
-      if (events.length === 0) {
+      if (allEvents.length === 0) {
         return new Response("Not found", { status: 404 });
       }
 
       return Response.json({
         operationId,
-        events
+        events: allEvents
       } satisfies GatewayKeyOperationEventsResponse);
     }
 
@@ -1355,20 +1389,72 @@ export class GatewayKeyRegistryDurableObject {
           override: await readStoredOverride(this.state.storage, keyId)
         } satisfies GatewayKeyRegistryRecordResponse);
       case "PUT":
-        return Response.json({
-          keyId,
-          override: await writeStoredOverride(
+        {
+          const body: unknown = await request.json();
+          const parsedPayload: {
+            override: GatewayApiKeyMetadataOverride;
+            reason?: string;
+          } =
+            parseConfiguredGatewayKeyRegistryOverrideUpdatePayload(body);
+          const actorContext =
+            typeof body === "object" && body !== null
+              ? gatewayKeyAuditActorContextFromRegistryRequest(body)
+              : undefined;
+          const result = await writeStoredOverride(
             this.state.storage,
             keyId,
-            parseGatewayApiKeyMetadataOverride(await request.json())
-          )
-        } satisfies GatewayKeyRegistryRecordResponse);
+            parsedPayload.override,
+            {
+              ...(operationId ? { operationId } : {}),
+              ...(parsedPayload.reason ? { reason: parsedPayload.reason } : {}),
+              ...(actorContext
+                ? toGatewayKeyAuditActorContextRecord(actorContext)
+                : {})
+            }
+          );
+          await appendStoredConfiguredKeyAuditEvent(
+            this.state.storage,
+            result.auditEvent
+          );
+
+          return Response.json({
+            keyId,
+            override: result.override,
+            events: [result.auditEvent]
+          } satisfies GatewayKeyRegistryRecordResponse);
+        }
       case "DELETE":
-        await clearStoredOverride(this.state.storage, keyId);
-        return Response.json({
-          keyId,
-          override: null
-        } satisfies GatewayKeyRegistryRecordResponse);
+        {
+          const body: unknown =
+            request.headers.get("content-type")?.includes("application/json")
+              ? await request.json()
+              : {};
+          const parsedPayload: {
+            reason?: string;
+          } =
+            parseConfiguredGatewayKeyRegistryOverrideClearPayload(body);
+          const actorContext =
+            typeof body === "object" && body !== null
+              ? gatewayKeyAuditActorContextFromRegistryRequest(body)
+              : undefined;
+          const result = await clearStoredOverride(this.state.storage, keyId, {
+            ...(operationId ? { operationId } : {}),
+            ...(parsedPayload.reason ? { reason: parsedPayload.reason } : {}),
+            ...(actorContext
+              ? toGatewayKeyAuditActorContextRecord(actorContext)
+              : {})
+          });
+          await appendStoredConfiguredKeyAuditEvent(
+            this.state.storage,
+            result.auditEvent
+          );
+
+          return Response.json({
+            keyId,
+            override: null,
+            events: [result.auditEvent]
+          } satisfies GatewayKeyRegistryRecordResponse);
+        }
       default:
         return new Response("Method not allowed", { status: 405 });
     }
@@ -1405,7 +1491,7 @@ export async function upsertGatewayKeyRegistryOverride(
   gatewayApiKey: GatewayApiKeyRecord,
   override: GatewayApiKeyMetadataOverride,
   requestId: string
-): Promise<GatewayKeyRegistryStoredOverride> {
+): Promise<GatewayKeyRegistryOverrideMutationResult> {
   const namespace = requireGatewayKeyRegistryNamespace(env, requestId);
   return fetchParsedRegistryResponse(
     () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
@@ -1426,7 +1512,29 @@ export async function upsertGatewayKeyRegistryOverride(
           throw new Error("Registry override write response was empty");
         }
 
-        return parsed.override;
+        return {
+          override: parsed.override,
+          auditEvent:
+            parsed.events?.find((event) => {
+              return (
+                event.kind === "override_updated" &&
+                event.keyId === gatewayApiKey.id
+              );
+            }) ??
+            createGatewayKeyAuditEvent({
+              keyId: gatewayApiKey.id,
+              kind: "override_updated",
+              ownership: "configured",
+              occurredAt: parsed.override.updatedAt,
+              operationId: requestId,
+              changes: [
+                {
+                  field: "registryOverride",
+                  after: parsed.override as unknown as Record<string, unknown>
+                }
+              ]
+            })
+        };
       }
     }
   );
@@ -1436,9 +1544,9 @@ export async function clearGatewayKeyRegistryOverride(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string
-): Promise<void> {
+): Promise<GatewayKeyRegistryOverrideClearMutationResult> {
   const namespace = requireGatewayKeyRegistryNamespace(env, requestId);
-  await fetchParsedRegistryResponse(
+  return fetchParsedRegistryResponse(
     () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
     buildRegistryRequest(requestId, REGISTRY_KIND_OVERRIDE, {
       method: "DELETE",
@@ -1446,7 +1554,32 @@ export async function clearGatewayKeyRegistryOverride(
     }),
     requestId,
     {
-      parse: () => null
+      parse: (value) => {
+        const parsed = parseGatewayKeyRegistryRecordResponse(value);
+
+        return {
+          auditEvent:
+            parsed.events?.find((event) => {
+              return (
+                event.kind === "override_cleared" &&
+                event.keyId === gatewayApiKey.id
+              );
+            }) ??
+            createGatewayKeyAuditEvent({
+              keyId: gatewayApiKey.id,
+              kind: "override_cleared",
+              ownership: "configured",
+              occurredAt: new Date().toISOString(),
+              operationId: requestId,
+              changes: [
+                {
+                  field: "registryOverride",
+                  after: null
+                }
+              ]
+            })
+        };
+      }
     }
   );
 }
@@ -2890,22 +3023,92 @@ async function readStoredOverride(
 async function writeStoredOverride(
   storage: DurableObjectStateLike["storage"],
   keyId: string,
-  override: GatewayApiKeyMetadataOverride
-): Promise<GatewayKeyRegistryStoredOverride> {
+  override: GatewayApiKeyMetadataOverride,
+  metadata?: {
+    operationId?: string;
+    reason?: string;
+    actor?: string;
+    actorSource?: "payload" | "trusted_header" | "credential";
+  }
+): Promise<GatewayKeyRegistryOverrideMutationResult> {
+  const previous = await readStoredOverride(storage, keyId);
   const next = {
     ...override,
     updatedAt: new Date().toISOString()
   };
 
   await storage.put(`registry:${keyId}`, next);
-  return next;
+
+  return {
+    override: next,
+    auditEvent: createGatewayKeyAuditEvent({
+      keyId,
+      kind: "override_updated",
+      ownership: "configured",
+      occurredAt: next.updatedAt,
+      ...(metadata?.operationId ? { operationId: metadata.operationId } : {}),
+      ...(metadata?.reason ? { reason: metadata.reason } : {}),
+      ...(metadata?.actor
+        ? {
+            actor: metadata.actor,
+            actorSource: metadata.actorSource
+          }
+        : {}),
+          changes: [
+        {
+          field: "registryOverride",
+          ...(previous
+            ? {
+                before: toGatewayAuditRecord(previous)
+              }
+            : {}),
+          after: toGatewayAuditRecord(next)
+        }
+      ]
+    })
+  };
 }
 
 async function clearStoredOverride(
   storage: DurableObjectStateLike["storage"],
-  keyId: string
-): Promise<void> {
+  keyId: string,
+  metadata?: {
+    operationId?: string;
+    reason?: string;
+    actor?: string;
+    actorSource?: "payload" | "trusted_header" | "credential";
+  }
+): Promise<GatewayKeyRegistryOverrideClearMutationResult> {
+  const previous = await readStoredOverride(storage, keyId);
   await storage.delete(`registry:${keyId}`);
+
+  return {
+    auditEvent: createGatewayKeyAuditEvent({
+      keyId,
+      kind: "override_cleared",
+      ownership: "configured",
+      occurredAt: new Date().toISOString(),
+      ...(metadata?.operationId ? { operationId: metadata.operationId } : {}),
+      ...(metadata?.reason ? { reason: metadata.reason } : {}),
+      ...(metadata?.actor
+        ? {
+            actor: metadata.actor,
+            actorSource: metadata.actorSource
+          }
+        : {}),
+      changes: [
+        {
+          field: "registryOverride",
+          ...(previous
+            ? {
+                before: toGatewayAuditRecord(previous)
+              }
+            : {}),
+          after: null
+        }
+      ]
+    })
+  };
 }
 
 async function readStoredDynamicKeyIndex(
@@ -3095,6 +3298,36 @@ async function readStoredDynamicKeyAuditEvents(
   });
 }
 
+async function readStoredConfiguredKeyAuditEvents(
+  storage: DurableObjectStateLike["storage"],
+  keyId: string
+): Promise<GatewayKeyAuditEvent[]> {
+  const value = await storage.get<unknown>(
+    `${CONFIGURED_KEY_AUDIT_EVENTS_PREFIX}${keyId}`
+  );
+
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error("Registry configured key audit events are invalid");
+  }
+
+  return value.map((entry) => {
+    const parsedEvent = parseGatewayKeyAuditEventsResponse({
+      keyId,
+      events: [entry]
+    }).events[0];
+
+    if (!parsedEvent) {
+      throw new Error("Registry configured key audit event is missing");
+    }
+
+    return createGatewayKeyAuditEvent(parsedEvent);
+  });
+}
+
 async function appendStoredDynamicKeyAuditEvent(
   storage: DurableObjectStateLike["storage"],
   event: GatewayKeyAuditEvent
@@ -3108,6 +3341,33 @@ async function appendStoredDynamicKeyAuditEvent(
 
   if (event.operationId) {
     const operationKey = `${DYNAMIC_KEY_OPERATION_INDEX_PREFIX}${event.operationId}`;
+    const existingKeyIds =
+      (await storage.get<unknown>(operationKey)) as string[] | undefined;
+    const normalizedKeyIds =
+      Array.isArray(existingKeyIds) &&
+      existingKeyIds.every((entry) => typeof entry === "string")
+        ? existingKeyIds
+        : [];
+
+    if (!normalizedKeyIds.includes(event.keyId)) {
+      await storage.put(operationKey, [...normalizedKeyIds, event.keyId]);
+    }
+  }
+}
+
+async function appendStoredConfiguredKeyAuditEvent(
+  storage: DurableObjectStateLike["storage"],
+  event: GatewayKeyAuditEvent
+): Promise<void> {
+  const events = await readStoredConfiguredKeyAuditEvents(storage, event.keyId);
+
+  await storage.put(`${CONFIGURED_KEY_AUDIT_EVENTS_PREFIX}${event.keyId}`, [
+    ...events,
+    createGatewayKeyAuditEvent(event)
+  ].slice(-MAX_GATEWAY_KEY_AUDIT_EVENTS));
+
+  if (event.operationId) {
+    const operationKey = `${CONFIGURED_KEY_OPERATION_INDEX_PREFIX}${event.operationId}`;
     const existingKeyIds =
       (await storage.get<unknown>(operationKey)) as string[] | undefined;
     const normalizedKeyIds =
@@ -3141,6 +3401,33 @@ async function readStoredDynamicKeyOperationEvents(
   const perKeyEvents = await Promise.all(
     rawKeyIds.map(async (keyId) => {
       return readStoredDynamicKeyAuditEvents(storage, keyId);
+    })
+  );
+
+  return perKeyEvents.flat().filter((event) => {
+    return event.operationId === operationId;
+  });
+}
+
+async function readStoredConfiguredKeyOperationEvents(
+  storage: DurableObjectStateLike["storage"],
+  operationId: string
+): Promise<GatewayKeyAuditEvent[]> {
+  const rawKeyIds = await storage.get<unknown>(
+    `${CONFIGURED_KEY_OPERATION_INDEX_PREFIX}${operationId}`
+  );
+
+  if (rawKeyIds === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(rawKeyIds) || !rawKeyIds.every((entry) => typeof entry === "string")) {
+    throw new Error("Registry configured key operation index is invalid");
+  }
+
+  const perKeyEvents = await Promise.all(
+    rawKeyIds.map(async (keyId) => {
+      return readStoredConfiguredKeyAuditEvents(storage, keyId);
     })
   );
 

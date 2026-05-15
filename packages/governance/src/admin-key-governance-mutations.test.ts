@@ -888,6 +888,7 @@ describe("clearGatewayAdminKeyRegistryOverride", () => {
     await expect(
       clearGatewayAdminKeyRegistryOverride(
         "key_env",
+        undefined,
         {
           clearRegistryOverride
         }

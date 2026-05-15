@@ -183,11 +183,16 @@ export interface UpdateGatewayAdminKeyRegistryOverridePort {
   updateRegistryOverride(
     keyId: string,
     payload: unknown
-  ): Promise<GatewayApiKeyMetadataOverride & { updatedAt: string }>;
+  ): Promise<{
+    override: GatewayApiKeyMetadataOverride & { updatedAt: string };
+    auditEvent?: object;
+  }>;
 }
 
 export interface ClearGatewayAdminKeyRegistryOverridePort {
-  clearRegistryOverride(keyId: string): Promise<void>;
+  clearRegistryOverride(keyId: string, payload?: unknown): Promise<{
+    auditEvent?: object;
+  } | void>;
 }
 
 export interface RevokeGatewayAdminKeyPort {
@@ -486,25 +491,34 @@ export async function updateGatewayAdminKeyRegistryOverride(
 ): Promise<{
   keyId: string;
   override: GatewayApiKeyMetadataOverride & { updatedAt: string };
+  auditEvent?: object;
 }> {
+  const result = await port.updateRegistryOverride(keyId, payload);
+
   return {
     keyId,
-    override: await port.updateRegistryOverride(keyId, payload)
+    override: result.override,
+    ...(result.auditEvent ? { auditEvent: result.auditEvent } : {})
   };
 }
 
 export async function clearGatewayAdminKeyRegistryOverride(
   keyId: string,
+  payload: unknown,
   port: ClearGatewayAdminKeyRegistryOverridePort
 ): Promise<{
   keyId: string;
   override: null;
+  auditEvent?: object;
 }> {
-  await port.clearRegistryOverride(keyId);
+  const result = await port.clearRegistryOverride(keyId, payload);
 
   return {
     keyId,
-    override: null
+    override: null,
+    ...(result && typeof result === "object" && "auditEvent" in result && result.auditEvent
+      ? { auditEvent: result.auditEvent }
+      : {})
   };
 }
 

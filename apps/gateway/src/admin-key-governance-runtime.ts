@@ -397,34 +397,41 @@ export function createAdminKeyGovernanceRuntime(
         );
       },
       async updateRegistryOverride(candidateKeyId: string, candidatePayload: unknown) {
-        return (
-          await updateConfiguredGatewayKeyRegistryOverride(
-            getGatewayApiKeys(),
-            candidateKeyId,
-            candidatePayload,
-            requestId,
-            {
-              writeRegistryOverride: async (gatewayApiKey, override) => {
-                return upsertGatewayKeyRegistryOverride(
-                  env,
-                  gatewayApiKey,
-                  override,
-                  requestId
-                );
-              }
-            }
-          )
-        ).override;
-      },
-      async clearRegistryOverride(candidateKeyId: string) {
-        await clearConfiguredGatewayKeyRegistryOverride(
+        return updateConfiguredGatewayKeyRegistryOverride(
           getGatewayApiKeys(),
           candidateKeyId,
+          candidatePayload,
+          requestId,
+          {
+            writeRegistryOverride: async (gatewayApiKey, override) => {
+              return upsertGatewayKeyRegistryOverride(
+                env,
+                gatewayApiKey,
+                override,
+                requestId
+              );
+            }
+          },
+          {
+            ...(actorContext ? { actorContext } : {}),
+            operationId: requestId
+          }
+        );
+      },
+      async clearRegistryOverride(candidateKeyId: string, candidatePayload?: unknown) {
+        return clearConfiguredGatewayKeyRegistryOverride(
+          getGatewayApiKeys(),
+          candidateKeyId,
+          candidatePayload,
           requestId,
           {
             clearRegistryOverride: async (gatewayApiKey) => {
-              await clearGatewayKeyRegistryOverride(env, gatewayApiKey, requestId);
+              return clearGatewayKeyRegistryOverride(env, gatewayApiKey, requestId);
             }
+          },
+          {
+            ...(actorContext ? { actorContext } : {}),
+            operationId: requestId
           }
         );
       },
