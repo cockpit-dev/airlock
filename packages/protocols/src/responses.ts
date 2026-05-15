@@ -44,8 +44,11 @@ const openAIResponsesTextConfigSchema = z.object({
     openAIResponsesTextFormatSchema,
     openAIResponsesJsonObjectFormatSchema,
     openAIResponsesJsonSchemaFormatSchema
-  ]),
+  ]).optional(),
   verbosity: z.enum(["low", "medium", "high"]).optional()
+}).refine((value) => value.format !== undefined || value.verbosity !== undefined, {
+  message: "text requires format or verbosity",
+  path: ["format"]
 });
 
 const openAIResponsesPromptSchema = z

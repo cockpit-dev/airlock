@@ -1260,6 +1260,20 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.responseTextVerbosity).toBe("high");
   });
 
+  it("normalizes responses verbosity without output format into canonical request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: "hello",
+      text: {
+        verbosity: "low"
+      }
+    });
+
+    expect(canonical.responseTextVerbosity).toBe("low");
+    expect(canonical.outputFormat).toBeUndefined();
+  });
+
   it("normalizes responses service_tier=scale into canonical request fields", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",

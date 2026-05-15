@@ -1463,6 +1463,20 @@ describe("openAIResponsesRequestSchema", () => {
     });
   });
 
+  it("accepts responses text verbosity without an explicit format", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      text: {
+        verbosity: "low"
+      }
+    });
+
+    expect(parsed.text).toEqual({
+      verbosity: "low"
+    });
+  });
+
   it("accepts responses service_tier=scale for OpenAI compatibility", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",

@@ -225,16 +225,51 @@ export function assertSupportedOpenAIResponsesSemantics(
   if (
     typeof payload.text !== "object" ||
     payload.text === null ||
-    !("format" in payload.text) ||
-    typeof payload.text.format !== "object" ||
-    payload.text.format === null ||
-    !("type" in payload.text.format) ||
-    (payload.text.format.type !== "text" &&
-      payload.text.format.type !== "json_object" &&
-      payload.text.format.type !== "json_schema")
+    (!("format" in payload.text) && !("verbosity" in payload.text))
   ) {
     throw new GatewayError(
-      "Unsupported OpenAI Responses text config: only text.format.type=text, json_object, or json_schema is supported",
+      "Unsupported OpenAI Responses text config: only text.format.type=text, json_object, or json_schema, and text.verbosity=low|medium|high are supported",
+      {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
+  }
+
+  if (
+    "format" in payload.text &&
+    payload.text.format !== undefined &&
+    (typeof payload.text.format !== "object" ||
+      payload.text.format === null ||
+      !("type" in payload.text.format) ||
+      (payload.text.format.type !== "text" &&
+        payload.text.format.type !== "json_object" &&
+        payload.text.format.type !== "json_schema"))
+  ) {
+    throw new GatewayError(
+      "Unsupported OpenAI Responses text config: only text.format.type=text, json_object, or json_schema, and text.verbosity=low|medium|high are supported",
+      {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
+  }
+
+  if (
+    "verbosity" in payload.text &&
+    payload.text.verbosity !== undefined &&
+    payload.text.verbosity !== "low" &&
+    payload.text.verbosity !== "medium" &&
+    payload.text.verbosity !== "high"
+  ) {
+    throw new GatewayError(
+      "Unsupported OpenAI Responses text config: only text.format.type=text, json_object, or json_schema, and text.verbosity=low|medium|high are supported",
       {
         code: "request_unsupported_openai_semantics",
         category: "request",

@@ -376,7 +376,7 @@ function normalizeOpenAIChatResponseFormat(
 function normalizeOpenAIResponsesTextFormat(
   text: OpenAIResponsesRequest["text"]
 ) {
-  if (text === undefined) {
+  if (text === undefined || text.format === undefined) {
     return undefined;
   }
 

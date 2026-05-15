@@ -19862,6 +19862,82 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts responses text verbosity without format and forwards it upstream for OpenAI", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          text: {
+            verbosity: "low"
+          },
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          text: {
+            verbosity: "low"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.openai.com/v1/responses");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      text: {
+        verbosity: "low"
+      }
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      id: "resp_123",
+      object: "response",
+      model: "gpt-4.1-mini",
+      text: {
+        verbosity: "low"
+      },
+      output_text: "hello there"
+    });
+  });
+
   it("accepts responses prompt and reasoning.effort and forwards them through the native openai responses path", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -24066,7 +24142,7 @@ describe("gateway app", () => {
     await expect(readJson(response)).resolves.toEqual({
       error: {
         message:
-          "Unsupported OpenAI Responses text config: only text.format.type=text, json_object, or json_schema is supported",
+          "Unsupported OpenAI Responses text config: only text.format.type=text, json_object, or json_schema, and text.verbosity=low|medium|high are supported",
         type: "request",
         code: "request_unsupported_openai_semantics"
       }
