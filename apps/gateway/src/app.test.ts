@@ -15674,6 +15674,92 @@ describe("gateway app", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  for (const testCase of [
+    {
+      title: "chat metadata is sent to Gemini",
+      model: "gemini-2.5-flash",
+      payload: {
+        metadata: {
+          tenant: "acme"
+        }
+      },
+      createEnv: () => ({
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      })
+    },
+    {
+      title: "chat store is sent to Anthropic",
+      model: "claude-sonnet-4-5",
+      payload: {
+        store: true
+      },
+      createEnv: () => createBindings()
+    },
+    {
+      title: "chat presence_penalty is sent to Gemini",
+      model: "gemini-2.5-flash",
+      payload: {
+        presence_penalty: 0.5
+      },
+      createEnv: () => ({
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      })
+    },
+    {
+      title: "chat seed is sent to Anthropic",
+      model: "claude-sonnet-4-5",
+      payload: {
+        seed: 1234
+      },
+      createEnv: () => createBindings()
+    }
+  ]) {
+    it(`fails closed when ${testCase.title}`, async () => {
+      const fetcher = vi.fn();
+      const app = createApp({ fetcher });
+
+      const response = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer gateway-secret"
+          },
+          body: JSON.stringify({
+            model: testCase.model,
+            ...testCase.payload,
+            messages: [
+              {
+                role: "user",
+                content: "hello"
+              }
+            ]
+          })
+        },
+        testCase.createEnv()
+      );
+
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        error: {
+          code: "provider_capability_not_supported",
+          message:
+            `Provider ${testCase.model.startsWith("gemini") ? "gemini" : "anthropic"} does not support required capability: openai_request_metadata`
+        }
+      });
+      expect(fetcher).not.toHaveBeenCalled();
+    });
+  }
+
   it("maps chat user into Anthropic metadata.user_id", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -22007,6 +22093,79 @@ describe("gateway app", () => {
     });
     expect(fetcher).not.toHaveBeenCalled();
   });
+
+  for (const testCase of [
+    {
+      title: "responses metadata is sent to Gemini",
+      model: "gemini-2.5-flash",
+      payload: {
+        metadata: {
+          tenant: "acme"
+        }
+      },
+      createEnv: () => ({
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      })
+    },
+    {
+      title: "responses store is sent to Anthropic",
+      model: "claude-sonnet-4-5",
+      payload: {
+        store: true
+      },
+      createEnv: () => createBindings()
+    },
+    {
+      title: "responses prompt_cache_retention is sent to Gemini",
+      model: "gemini-2.5-flash",
+      payload: {
+        prompt_cache_retention: "24h"
+      },
+      createEnv: () => ({
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      })
+    }
+  ]) {
+    it(`fails closed when ${testCase.title}`, async () => {
+      const fetcher = vi.fn();
+      const app = createApp({ fetcher });
+
+      const response = await app.request(
+        "http://localhost/v1/responses",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer gateway-secret"
+          },
+          body: JSON.stringify({
+            model: testCase.model,
+            input: "hello",
+            ...testCase.payload
+          })
+        },
+        testCase.createEnv()
+      );
+
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        error: {
+          code: "provider_capability_not_supported",
+          message:
+            `Provider ${testCase.model.startsWith("gemini") ? "gemini" : "anthropic"} does not support required capability: openai_request_metadata`
+        }
+      });
+      expect(fetcher).not.toHaveBeenCalled();
+    });
+  }
 
   it("maps responses safety_identifier into Anthropic metadata.user_id", async () => {
     const fetcher = vi.fn().mockResolvedValue(
