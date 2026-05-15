@@ -23,7 +23,7 @@ describe("deriveProviderTargetHealthSnapshot", () => {
 
     const snapshot = deriveProviderTargetHealthSnapshot(state);
     expect(snapshot.isOpen).toBe(true);
-    expect(snapshot.isHalfOpen).toBe(false);
+    expect(snapshot.isHalfOpen).toBeUndefined();
   });
 
   it("is not open when openedAt is undefined", () => {
@@ -65,7 +65,7 @@ describe("deriveProviderTargetHealthSnapshot", () => {
 
     const snapshot = deriveProviderTargetHealthSnapshot(state);
     expect(snapshot).toEqual({
-      isOpen: true,
+      isOpen: false,
       isHalfOpen: true,
       consecutiveRetryableFailures: 3,
       lastSuccessLatencyMs: 150,
@@ -113,7 +113,7 @@ describe("getFreshRetryableFailureCount", () => {
     expect(
       getFreshRetryableFailureCount(
         {
-          isOpen: true,
+          isOpen: false,
           isHalfOpen: true,
           consecutiveRetryableFailures: 3
         },
@@ -235,7 +235,7 @@ describe("getRecoveryScore", () => {
   it("returns 0 for half-open target", () => {
     expect(
       getRecoveryScore({
-        isOpen: true,
+        isOpen: false,
         isHalfOpen: true,
         consecutiveRetryableFailures: 1
       })

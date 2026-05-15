@@ -38,11 +38,13 @@ export interface RoutingFreshnessWindows {
 export function deriveProviderTargetHealthSnapshot(
   state: ProviderCircuitState
 ): ProviderTargetHealthSnapshot {
-  const isOpen = state.openedAt !== undefined && state.openedAt > 0;
+  const isHalfOpen = state.halfOpen === true;
+  const isOpen =
+    state.openedAt !== undefined && state.openedAt > 0 && !isHalfOpen;
 
   return {
     isOpen,
-    ...(isOpen ? { isHalfOpen: state.halfOpen === true } : {}),
+    ...(isHalfOpen ? { isHalfOpen: true } : {}),
     consecutiveRetryableFailures: state.consecutiveRetryableFailures,
     ...(state.lastSuccessLatencyMs !== undefined
       ? { lastSuccessLatencyMs: state.lastSuccessLatencyMs }
@@ -154,9 +156,7 @@ export function getSlidingWindowErrorRate(
  * - 1 = recovering (1 success since opening)
  * - 0 = half-open (probing)
  */
-export function getRecoveryScore(
-  health: ProviderTargetHealthSnapshot
-): number {
+export function getRecoveryScore(health: ProviderTargetHealthSnapshot): number {
   if (!health.isHalfOpen && health.recoverySuccessCount === undefined) {
     return 2;
   }

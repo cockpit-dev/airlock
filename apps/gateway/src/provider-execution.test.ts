@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CanonicalRequest, CanonicalStreamEvent } from "@airlock/canonical";
+import type {
+  CanonicalRequest,
+  CanonicalStreamEvent
+} from "@airlock/canonical";
 import type { GatewayApiKeyRecord } from "@airlock/governance";
 import { getProviderCapabilityDescriptor } from "@airlock/providers";
 import type { ModelRoute } from "@airlock/routing";
@@ -197,7 +200,10 @@ function createPersistentBreakerNamespace() {
                 ? { lastSuccessTotalTokens: current.lastSuccessTotalTokens }
                 : {}),
               ...(current.smoothedSuccessTotalTokens !== undefined
-                ? { smoothedSuccessTotalTokens: current.smoothedSuccessTotalTokens }
+                ? {
+                    smoothedSuccessTotalTokens:
+                      current.smoothedSuccessTotalTokens
+                  }
                 : {}),
               ...(current.lastSuccessAt !== undefined
                 ? { lastSuccessAt: current.lastSuccessAt }
@@ -205,8 +211,7 @@ function createPersistentBreakerNamespace() {
               ...(current.lastUsageObservedAt !== undefined
                 ? { lastUsageObservedAt: current.lastUsageObservedAt }
                 : {}),
-              ...((halfOpenProbeFailed ||
-                nextFailures >= (body.threshold ?? 1))
+              ...(halfOpenProbeFailed || nextFailures >= (body.threshold ?? 1)
                 ? { openedAt: body.now ?? 0 }
                 : {}),
               ...(body.now !== undefined ? { lastFailureAt: body.now } : {})
@@ -604,7 +609,7 @@ describe("assertProviderSupportsCanonicalRequest", () => {
             {
               id: "call_123",
               name: "lookup_weather",
-              arguments: "{\"city\":\"Shanghai\"}"
+              arguments: '{"city":"Shanghai"}'
             }
           ]
         }
@@ -661,7 +666,7 @@ describe("assertProviderSupportsCanonicalRequest", () => {
             {
               id: "call_123",
               name: "lookup_weather",
-              arguments: "{\"city\":\"Shanghai\"}"
+              arguments: '{"city":"Shanghai"}'
             }
           ]
         }
@@ -789,8 +794,12 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
-    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(response.model).toBe("claude-haiku-4-5");
     expect(response.outputText).toBe("hello from anthropic");
   });
@@ -871,7 +880,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
   });
 
   it("opens a target circuit after repeated retryable failures and skips it on the next request", async () => {
@@ -1020,7 +1031,9 @@ describe("executeRoutedRequest", () => {
 
     expect(secondResponse.model).toBe("claude-haiku-4-5");
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
   });
 
   it("allows a cooled-down target to recover on a later successful request", async () => {
@@ -1167,7 +1180,9 @@ describe("executeRoutedRequest", () => {
 
     expect(recoveredResponse.model).toBe("gpt-4.1-mini");
     expect(fetcher).toHaveBeenCalledTimes(3);
-    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[2]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
   });
 
   it("reopens the circuit immediately when a half-open probe fails retryably", async () => {
@@ -1203,7 +1218,8 @@ describe("executeRoutedRequest", () => {
         return new Response(
           JSON.stringify({
             error: {
-              message: openAIAttempts === 1 ? "rate limited" : "still rate limited"
+              message:
+                openAIAttempts === 1 ? "rate limited" : "still rate limited"
             }
           }),
           {
@@ -1628,7 +1644,9 @@ describe("executeRoutedRequest", () => {
 
     expect(secondResponse.model).toBe("gpt-4.1-mini");
     expect(fetcher).toHaveBeenCalledTimes(3);
-    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[2]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(openAIAttempts).toBe(2);
     expect(anthropicAttempts).toBe(1);
   });
@@ -1807,24 +1825,30 @@ describe("executeRoutedRequest", () => {
 
     const events: Array<unknown> = [];
 
-    for await (const event of executeRoutedStreamRequest(route, streamingRequest, {
-      config,
-      requestId: "req_half_open_promote_stream",
-      gatewayApiKey: {
-        id: "key_any",
-        label: "Any Provider",
-        value: "gateway-secret",
-        status: "active"
-      },
-      fetcher,
-      now: () => 1200,
-      circuitBreakerBackend: backend
-    })) {
+    for await (const event of executeRoutedStreamRequest(
+      route,
+      streamingRequest,
+      {
+        config,
+        requestId: "req_half_open_promote_stream",
+        gatewayApiKey: {
+          id: "key_any",
+          label: "Any Provider",
+          value: "gateway-secret",
+          status: "active"
+        },
+        fetcher,
+        now: () => 1200,
+        circuitBreakerBackend: backend
+      }
+    )) {
       events.push(event);
     }
 
     expect(fetcher).toHaveBeenCalledTimes(3);
-    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[2]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(openAIAttempts).toBe(2);
     expect(anthropicAttempts).toBe(1);
     expect(events).toEqual([
@@ -1963,8 +1987,12 @@ describe("executeRoutedRequest", () => {
     }
 
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
-    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(events).toEqual([
       {
         type: "response_started",
@@ -2101,8 +2129,12 @@ describe("executeRoutedRequest", () => {
     }
 
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
-    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(events).toEqual([
       {
         type: "response_started",
@@ -2565,7 +2597,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(response.model).toBe("gpt-4.1-mini");
   });
 
@@ -2690,7 +2724,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(response.model).toBe("gpt-4.1-mini");
   });
 
@@ -2784,7 +2820,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(response.model).toBe("claude-haiku-4-5");
   });
 
@@ -2985,7 +3023,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(response.model).toBe("claude-haiku-4-5");
   });
 
@@ -3127,7 +3167,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(response.model).toBe("claude-haiku-4-5");
   });
 
@@ -3273,7 +3315,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(response.model).toBe("gpt-4.1-mini");
   });
 
@@ -3396,7 +3440,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(fetcher.mock.calls[1]?.[0]).toBe(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     );
@@ -3493,7 +3539,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(response.model).toBe("claude-haiku-4-5");
   });
 
@@ -3616,7 +3664,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(fetcher.mock.calls[1]?.[0]).toBe(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     );
@@ -3746,7 +3796,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(response.model).toBe("gpt-4.1-mini");
   });
 
@@ -3870,7 +3922,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(response.model).toBe("claude-haiku-4-5");
   });
 
@@ -3996,7 +4050,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(response.model).toBe("claude-haiku-4-5");
   });
 
@@ -4126,7 +4182,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(response.model).toBe("claude-haiku-4-5");
   });
 
@@ -4227,7 +4285,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(response.model).toBe("gpt-4.1-mini");
   });
 
@@ -4328,7 +4388,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(response.model).toBe("gpt-4.1-mini");
   });
 
@@ -4462,7 +4524,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(response.model).toBe("gpt-4.1-mini");
   });
 
@@ -4587,7 +4651,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(response.model).toBe("gpt-4.1-mini");
   });
 
@@ -4712,7 +4778,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(response.model).toBe("gpt-4.1-mini");
   });
 
@@ -4846,7 +4914,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(response.model).toBe("gpt-4.1-mini");
   });
 
@@ -4973,7 +5043,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(response.model).toBe("gpt-4.1-mini");
   });
 
@@ -5200,7 +5272,9 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(response.model).toBe("claude-haiku-4-5");
   });
 
@@ -5262,7 +5336,8 @@ describe("executeRoutedRequest", () => {
       )
     );
 
-    const { executeRoutedStreamRequest } = await import("./provider-execution.js");
+    const { executeRoutedStreamRequest } =
+      await import("./provider-execution.js");
     const events: Array<unknown> = [];
 
     for await (const event of executeRoutedStreamRequest(route, request, {
@@ -5302,7 +5377,9 @@ describe("executeRoutedRequest", () => {
     }
 
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(events).toEqual([
       {
         type: "response_started",
@@ -5499,14 +5576,17 @@ describe("executeRoutedRequest", () => {
     );
     const abortTimeouts: number[] = [];
     const originalSetTimeout = globalThis.setTimeout;
-    const timeoutSpy = vi
-      .spyOn(globalThis, "setTimeout")
-      .mockImplementation(((handler: (...args: unknown[]) => void, timeout?: number, ...args: unknown[]) => {
-        abortTimeouts.push(Number(timeout));
-        return originalSetTimeout(handler, 0, ...args);
-      }) as typeof setTimeout);
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+      handler: (...args: unknown[]) => void,
+      timeout?: number,
+      ...args: unknown[]
+    ) => {
+      abortTimeouts.push(Number(timeout));
+      return originalSetTimeout(handler, 0, ...args);
+    }) as typeof setTimeout);
     const now = vi
       .fn<() => number>()
+      .mockReturnValueOnce(0)
       .mockReturnValueOnce(0)
       .mockReturnValueOnce(850)
       .mockReturnValueOnce(850)
@@ -5649,14 +5729,20 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
-    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[0] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[1] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
     expect(response.model).toBe("gpt-4.1-mini");
   });
 
@@ -5842,18 +5928,27 @@ describe("executeRoutedRequest", () => {
     });
 
     expect(fetcher).toHaveBeenCalledTimes(3);
-    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
-    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
-    expect(JSON.parse((fetcher.mock.calls[2] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-nano"
-      });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[0] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[1] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[2] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-nano"
+    });
     expect(response.model).toBe("gpt-4.1-nano");
   });
 
@@ -5978,7 +6073,9 @@ describe("executeRoutedRequest", () => {
 
         return await new Promise<Response>((_resolve, reject) => {
           signal?.addEventListener("abort", () => {
-            reject(new DOMException("The operation was aborted.", "AbortError"));
+            reject(
+              new DOMException("The operation was aborted.", "AbortError")
+            );
           });
         });
       });
