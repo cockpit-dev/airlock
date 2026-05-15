@@ -57,6 +57,7 @@ const allowedOpenAIChatTopLevelFields = [
   "stream",
   "user",
   "safety_identifier",
+  "metadata",
   "service_tier",
   "store",
   "prompt_cache_key",

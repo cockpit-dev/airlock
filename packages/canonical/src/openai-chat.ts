@@ -490,6 +490,15 @@ export function normalizeOpenAIChatRequest(
     model: request.model,
     stream: request.stream,
     ...(endUserId !== undefined ? { endUserId } : {}),
+    ...(request.metadata !== undefined
+      ? {
+          providerMetadata: {
+            openai: {
+              metadata: request.metadata
+            }
+          }
+        }
+      : {}),
     ...(request.service_tier !== undefined
       ? { serviceTier: request.service_tier }
       : {}),
@@ -880,6 +889,9 @@ export function encodeCanonicalToOpenAIChatResponse(
     object: "chat.completion",
     created: 0,
     model: response.model,
+    ...(response.metadata !== undefined
+      ? { metadata: response.metadata }
+      : {}),
     ...(response.serviceTier !== undefined
       ? { service_tier: response.serviceTier }
       : {}),

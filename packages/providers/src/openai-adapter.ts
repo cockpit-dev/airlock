@@ -725,6 +725,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     const payload = (await response.json()) as {
       id: string;
       model: string;
+      metadata?: Record<string, string>;
       parallel_tool_calls?: boolean;
       choices: Array<{
         finish_reason: "stop" | "length" | "tool_calls";
@@ -751,6 +752,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       id: payload.id,
       model: payload.model,
       outputText: normalizeOpenAIMessageContent(payload.choices[0]?.message.content),
+      ...(payload.metadata !== undefined
+        ? { metadata: payload.metadata }
+        : {}),
       ...(payload.choices[0]?.message.tool_calls
         ? {
             toolCalls: payload.choices[0].message.tool_calls.map((toolCall) => ({

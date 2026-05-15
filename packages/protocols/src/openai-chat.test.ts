@@ -217,6 +217,28 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(parsed.prompt_cache_retention).toBe("24h");
   });
 
+  it("accepts chat metadata with up to 16 string pairs", () => {
+    const parsed = openAIChatCompletionRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      metadata: {
+        tenant: "acme",
+        request_class: "interactive"
+      },
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.metadata).toEqual({
+      tenant: "acme",
+      request_class: "interactive"
+    });
+  });
+
   it("accepts chat service_tier=scale for OpenAI compatibility", () => {
     const parsed = openAIChatCompletionRequestSchema.parse({
       model: "gpt-4.1-mini",
@@ -270,6 +292,38 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(result.error.issues[0]?.message).toBe(
       "user must match safety_identifier when both are provided"
     );
+  });
+
+  it("rejects invalid chat metadata shapes", () => {
+    const tooManyEntries = openAIChatCompletionRequestSchema.safeParse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      metadata: Object.fromEntries(
+        Array.from({ length: 17 }, (_, index) => [`key_${index}`, "value"])
+      ),
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+    const invalidValue = openAIChatCompletionRequestSchema.safeParse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      metadata: {
+        tenant: 42
+      },
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(tooManyEntries.success).toBe(false);
+    expect(invalidValue.success).toBe(false);
   });
 
   it("accepts chat completion sampling fields", () => {

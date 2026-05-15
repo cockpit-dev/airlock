@@ -15,6 +15,12 @@ const openAIChatTextResponseFormatSchema = z.object({
   type: z.literal("text")
 });
 
+const openAIChatMetadataSchema = z
+  .record(z.string().min(1).max(64), z.string().max(512))
+  .refine((value) => Object.keys(value).length <= 16, {
+    message: "metadata can have at most 16 entries"
+  });
+
 const openAIChatJsonObjectResponseFormatSchema = z.object({
   type: z.literal("json_object")
 });
@@ -104,6 +110,7 @@ export const openAIChatCompletionRequestSchema = z
   stream: z.boolean().default(false),
   user: z.string().min(1).optional(),
   safety_identifier: z.string().min(1).optional(),
+  metadata: openAIChatMetadataSchema.optional(),
   service_tier: z.enum(["auto", "default", "flex", "priority", "scale"]).optional(),
   store: z.boolean().nullable().optional(),
   prompt_cache_key: z.string().min(1).optional(),
