@@ -44,7 +44,8 @@ const openAIResponsesTextConfigSchema = z.object({
     openAIResponsesTextFormatSchema,
     openAIResponsesJsonObjectFormatSchema,
     openAIResponsesJsonSchemaFormatSchema
-  ])
+  ]),
+  verbosity: z.enum(["low", "medium", "high"]).optional()
 });
 
 const openAIResponsesPromptSchema = z
@@ -59,6 +60,12 @@ const openAIResponsesPromptSchema = z
     message: "Prompt id is required",
     path: ["id"]
   });
+
+const openAIResponsesConversationSchema = z
+  .object({
+    id: z.string().min(1)
+  })
+  .strict();
 
 const openAIResponsesReasoningSchema = z.object({
   effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]).optional(),
@@ -150,7 +157,11 @@ export const openAIResponsesRequestSchema = z
   prompt: openAIResponsesPromptSchema.optional(),
   prompt_id: z.string().min(1).optional(),
   previous_response_id: z.string().min(1).optional(),
-  conversation: z.string().min(1).optional(),
+  conversation: z.union([
+    z.string().min(1),
+    openAIResponsesConversationSchema
+  ]).optional(),
+  truncation: z.enum(["auto", "disabled"]).optional(),
   stop: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
   max_output_tokens: z.number().int().positive().optional(),
   temperature: z.number().min(0).max(2).optional(),
@@ -186,6 +197,15 @@ export const openAIResponsesRequestSchema = z
     path: ["input"]
     }
   )
+  .refine(
+    (value) =>
+      value.previous_response_id === undefined ||
+      value.conversation === undefined,
+    {
+      message: "previous_response_id and conversation are mutually exclusive",
+      path: ["conversation"]
+    }
+  )
   .superRefine((value, context) => {
     const nestedPromptId = value.prompt?.id ?? value.prompt?.prompt_id;
 
@@ -217,10 +237,23 @@ export const openAIResponsesResponseSchema = z.object({
   status: z.literal("completed"),
   output: z.array(z.unknown()),
   output_text: z.string(),
+  conversation: z
+    .object({
+      id: z.string().min(1)
+    })
+    .strict()
+    .optional(),
   service_tier: z.enum(["auto", "default", "flex", "priority", "scale"]).optional(),
   store: z.boolean().optional(),
   prompt_cache_key: z.string().min(1).optional(),
   prompt_cache_retention: z.enum(["in_memory", "24h"]).optional(),
+  truncation: z.enum(["auto", "disabled"]).optional(),
+  text: z
+    .object({
+      verbosity: z.enum(["low", "medium", "high"]).optional()
+    })
+    .strict()
+    .optional(),
   usage: z
     .object({
       input_tokens: z.number().int().nonnegative(),

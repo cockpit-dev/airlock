@@ -180,7 +180,9 @@ describe("OpenAIProviderAdapter", () => {
         }
       ],
       previous_response_id: "resp_prev_123",
-      conversation: "conv_123"
+      conversation: {
+        id: "conv_123"
+      }
     });
     expect(response).toMatchObject({
       id: "resp_123",
@@ -731,6 +733,82 @@ describe("OpenAIProviderAdapter", () => {
     });
   });
 
+  it("forwards conversation object, truncation, and text verbosity through the native openai responses endpoint", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          conversation: {
+            id: "conv_123"
+          },
+          truncation: "disabled",
+          text: {
+            verbosity: "low"
+          },
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const response = await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        responseTruncation: "disabled",
+        responseTextVerbosity: "low",
+        conversationId: "conv_123"
+      },
+      {
+        requestId: "req_123",
+        requestMode: "openai_responses"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      conversation: {
+        id: "conv_123"
+      },
+      truncation: "disabled",
+      text: {
+        verbosity: "low"
+      }
+    });
+    expect(response.conversationId).toBe("conv_123");
+    expect(response.responseTruncation).toBe("disabled");
+    expect(response.responseTextVerbosity).toBe("low");
+  });
+
   it("forwards reasoning.summary through the native openai responses endpoint and preserves reasoning output items", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -1217,7 +1295,7 @@ describe("OpenAIProviderAdapter", () => {
     expect(JSON.parse(init.body as string)).toMatchObject({
       text: {
         format: {
-        type: "json_schema",
+          type: "json_schema",
           name: "weather",
           schema: {
             type: "object"

@@ -1346,6 +1346,34 @@ describe("openAIResponsesRequestSchema", () => {
     expect(parsed.prompt_cache_retention).toBe("in_memory");
   });
 
+  it("accepts responses conversation object and truncation", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      conversation: {
+        id: "conv_123"
+      },
+      truncation: "disabled",
+      text: {
+        format: {
+          type: "text"
+        },
+        verbosity: "high"
+      }
+    });
+
+    expect(parsed.conversation).toEqual({
+      id: "conv_123"
+    });
+    expect(parsed.truncation).toBe("disabled");
+    expect(parsed.text).toEqual({
+      format: {
+        type: "text"
+      },
+      verbosity: "high"
+    });
+  });
+
   it("accepts responses service_tier=scale for OpenAI compatibility", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",
@@ -1370,6 +1398,19 @@ describe("openAIResponsesRequestSchema", () => {
 
     expect(invalidServiceTier.success).toBe(false);
     expect(invalidStore.success).toBe(false);
+  });
+
+  it("rejects responses previous_response_id and conversation together", () => {
+    const parsed = openAIResponsesRequestSchema.safeParse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      previous_response_id: "resp_prev_123",
+      conversation: {
+        id: "conv_123"
+      }
+    });
+
+    expect(parsed.success).toBe(false);
   });
 
   it("rejects responses prompt_id when it conflicts with prompt.id", () => {

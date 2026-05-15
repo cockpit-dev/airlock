@@ -17768,7 +17768,9 @@ describe("gateway app", () => {
     const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://api.openai.com/v1/responses");
     expect(JSON.parse(init.body as string)).toMatchObject({
-      conversation: "conv_123"
+      conversation: {
+        id: "conv_123"
+      }
     });
     await expect(readJson(response)).resolves.toMatchObject({
       id: "resp_123",

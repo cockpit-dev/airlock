@@ -45,6 +45,9 @@ export interface CanonicalRequest {
   store?: boolean | null;
   promptCacheKey?: string;
   promptCacheRetention?: "in_memory" | "24h";
+  responseTruncation?: "auto" | "disabled";
+  responseTextVerbosity?: "low" | "medium" | "high";
+  conversationId?: string;
   outputFormat?:
     | {
       type: "text";
@@ -69,7 +72,6 @@ export interface CanonicalRequest {
     variables?: Record<string, string | number | boolean>;
   };
   previousResponseId?: string;
-  conversationId?: string;
   reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
   reasoningSummary?:
     | "auto"
@@ -115,6 +117,9 @@ export interface CanonicalResponse {
   serviceTier?: "auto" | "default" | "flex" | "priority" | "scale";
   promptCacheKey?: string;
   promptCacheRetention?: "in_memory" | "24h";
+  responseTruncation?: "auto" | "disabled";
+  responseTextVerbosity?: "low" | "medium" | "high";
+  conversationId?: string;
   usage?: CanonicalUsage;
   toolCalls?: CanonicalToolCall[];
   parallelToolCalls?: boolean;

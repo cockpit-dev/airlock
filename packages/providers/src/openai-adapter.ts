@@ -129,6 +129,37 @@ function mapCanonicalOpenAIRequestMetadata(
   };
 }
 
+function mapCanonicalOpenAIResponsesConversation(
+  conversationId: CanonicalRequest["conversationId"]
+) {
+  return conversationId !== undefined
+    ? { conversation: { id: conversationId } }
+    : undefined;
+}
+
+function mapCanonicalOpenAIResponsesText(
+  request: CanonicalRequest
+) {
+  const outputFormat = mapCanonicalOutputFormatToOpenAIResponses(
+    request.outputFormat
+  );
+
+  if (request.responseTextVerbosity === undefined && outputFormat === undefined) {
+    return undefined;
+  }
+
+  return {
+    text: {
+      ...(outputFormat?.format !== undefined
+        ? { format: outputFormat.format }
+        : {}),
+      ...(request.responseTextVerbosity !== undefined
+        ? { verbosity: request.responseTextVerbosity }
+        : {})
+    }
+  };
+}
+
 function mapCanonicalOutputFormatToOpenAIChat(
   outputFormat: CanonicalRequest["outputFormat"]
 ) {
@@ -1193,15 +1224,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   model: request.model,
                   stream: false,
                   input: buildOpenAIResponsesInput(request),
-                  ...(mapCanonicalOutputFormatToOpenAIResponses(
-                    request.outputFormat
-                  )
-                    ? {
-                        text: mapCanonicalOutputFormatToOpenAIResponses(
-                          request.outputFormat
-                        )
-                      }
-                    : {}),
+                  ...(mapCanonicalOpenAIResponsesText(request) ?? {}),
                   ...(request.prompt !== undefined
                     ? {
                         prompt: {
@@ -1219,9 +1242,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.previousResponseId !== undefined
                     ? { previous_response_id: request.previousResponseId }
                     : {}),
-                  ...(request.conversationId !== undefined
-                    ? { conversation: request.conversationId }
-                    : {}),
+                  ...(mapCanonicalOpenAIResponsesConversation(
+                    request.conversationId
+                  ) ?? {}),
                   ...(mapCanonicalEndUserIdToOpenAIResponses(request.endUserId) ??
                     {}),
                   ...(request.reasoningEffort !== undefined ||
@@ -1239,6 +1262,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                     : {}),
                   ...(request.maxOutputTokens !== undefined
                     ? { max_output_tokens: request.maxOutputTokens }
+                    : {}),
+                  ...(request.responseTruncation !== undefined
+                    ? { truncation: request.responseTruncation }
                     : {}),
                   ...(request.temperature !== undefined
                     ? { temperature: request.temperature }
@@ -1300,15 +1326,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 model: request.model,
                 stream: false,
                 input: buildOpenAIResponsesInput(request),
-                ...(mapCanonicalOutputFormatToOpenAIResponses(
-                  request.outputFormat
-                )
-                  ? {
-                      text: mapCanonicalOutputFormatToOpenAIResponses(
-                        request.outputFormat
-                      )
-                    }
-                  : {}),
+                ...(mapCanonicalOpenAIResponsesText(request) ?? {}),
                 ...(request.prompt !== undefined
                   ? {
                       prompt: {
@@ -1326,9 +1344,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(request.previousResponseId !== undefined
                   ? { previous_response_id: request.previousResponseId }
                   : {}),
-                ...(request.conversationId !== undefined
-                  ? { conversation: request.conversationId }
-                  : {}),
+                ...(mapCanonicalOpenAIResponsesConversation(
+                  request.conversationId
+                ) ?? {}),
                 ...(mapCanonicalEndUserIdToOpenAIResponses(request.endUserId) ??
                   {}),
                 ...(request.reasoningEffort !== undefined ||
@@ -1346,6 +1364,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   : {}),
                 ...(request.maxOutputTokens !== undefined
                   ? { max_output_tokens: request.maxOutputTokens }
+                  : {}),
+                ...(request.responseTruncation !== undefined
+                  ? { truncation: request.responseTruncation }
                   : {}),
                 ...(request.temperature !== undefined
                   ? { temperature: request.temperature }
@@ -1466,6 +1487,13 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       service_tier?: CanonicalResponse["serviceTier"];
       prompt_cache_key?: string;
       prompt_cache_retention?: CanonicalResponse["promptCacheRetention"];
+      truncation?: CanonicalResponse["responseTruncation"];
+      text?: {
+        verbosity?: CanonicalResponse["responseTextVerbosity"];
+      };
+      conversation?: {
+        id?: string;
+      } | string;
       output?: Array<{
         type?: string;
         role?: string;
@@ -1493,6 +1521,20 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
           : {}),
         ...(payload.prompt_cache_retention !== undefined
           ? { promptCacheRetention: payload.prompt_cache_retention }
+          : {}),
+        ...(payload.truncation !== undefined
+          ? { responseTruncation: payload.truncation }
+          : {}),
+        ...(payload.text?.verbosity !== undefined
+          ? { responseTextVerbosity: payload.text.verbosity }
+          : {}),
+        ...(payload.conversation !== undefined
+          ? {
+              conversationId:
+                typeof payload.conversation === "string"
+                  ? payload.conversation
+                  : payload.conversation.id
+            }
           : {}),
         ...(payload.choices[0]?.message.tool_calls
           ? {
@@ -1541,6 +1583,20 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         : {}),
       ...(payload.prompt_cache_retention !== undefined
         ? { promptCacheRetention: payload.prompt_cache_retention }
+        : {}),
+      ...(payload.truncation !== undefined
+        ? { responseTruncation: payload.truncation }
+        : {}),
+      ...(payload.text?.verbosity !== undefined
+        ? { responseTextVerbosity: payload.text.verbosity }
+        : {}),
+      ...(payload.conversation !== undefined
+        ? {
+            conversationId:
+              typeof payload.conversation === "string"
+                ? payload.conversation
+                : payload.conversation.id
+          }
         : {}),
       ...(reasoningSummary.length > 0 ? { reasoningSummary } : {}),
       ...(toolCalls ? { toolCalls } : {}),
@@ -1619,9 +1675,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.previousResponseId !== undefined
                     ? { previous_response_id: request.previousResponseId }
                     : {}),
-                  ...(request.conversationId !== undefined
-                    ? { conversation: request.conversationId }
-                    : {}),
+                  ...(mapCanonicalOpenAIResponsesConversation(
+                    request.conversationId
+                  ) ?? {}),
                   ...(mapCanonicalEndUserIdToOpenAIResponses(request.endUserId) ??
                     {}),
                   ...(request.reasoningEffort !== undefined
@@ -1639,6 +1695,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                     : {}),
                   ...(request.maxOutputTokens !== undefined
                     ? { max_output_tokens: request.maxOutputTokens }
+                    : {}),
+                  ...(request.responseTruncation !== undefined
+                    ? { truncation: request.responseTruncation }
                     : {}),
                   ...(request.temperature !== undefined
                     ? { temperature: request.temperature }
@@ -1723,9 +1782,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ...(request.previousResponseId !== undefined
                   ? { previous_response_id: request.previousResponseId }
                   : {}),
-                ...(request.conversationId !== undefined
-                  ? { conversation: request.conversationId }
-                  : {}),
+                ...(mapCanonicalOpenAIResponsesConversation(
+                  request.conversationId
+                ) ?? {}),
                 ...(mapCanonicalEndUserIdToOpenAIResponses(request.endUserId) ??
                   {}),
                 ...(request.reasoningEffort !== undefined
@@ -1743,6 +1802,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   : {}),
                 ...(request.maxOutputTokens !== undefined
                   ? { max_output_tokens: request.maxOutputTokens }
+                  : {}),
+                ...(request.responseTruncation !== undefined
+                  ? { truncation: request.responseTruncation }
                   : {}),
                 ...(request.temperature !== undefined
                   ? { temperature: request.temperature }

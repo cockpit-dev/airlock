@@ -1102,6 +1102,28 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.promptCacheRetention).toBe("in_memory");
   });
 
+  it("normalizes responses conversation object, truncation, and verbosity into canonical request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      conversation: {
+        id: "conv_123"
+      },
+      truncation: "auto",
+      text: {
+        format: {
+          type: "text"
+        },
+        verbosity: "high"
+      }
+    });
+
+    expect(canonical.conversationId).toBe("conv_123");
+    expect(canonical.responseTruncation).toBe("auto");
+    expect(canonical.responseTextVerbosity).toBe("high");
+  });
+
   it("normalizes responses service_tier=scale into canonical request fields", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",
@@ -1463,6 +1485,7 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
     expect(encoded.created_at).toBe(0);
     expect(encoded.parallel_tool_calls).toBe(true);
     expect(encoded.tools).toEqual([]);
+    expect(encoded.conversation).toBeUndefined();
     expect(encoded.output).toEqual([
       {
         id: "resp_123_output_0",
@@ -1483,6 +1506,22 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
       output_tokens: 8,
       total_tokens: 20
     });
+  });
+
+  it("encodes canonical conversation and response text controls into an OpenAI responses payload", () => {
+    const encoded = encodeCanonicalToOpenAIResponsesResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      outputText: "hello there",
+      finishReason: "stop",
+      conversationId: "conv_123",
+      responseTruncation: "disabled",
+      responseTextVerbosity: "low"
+    });
+
+    expect(encoded.conversation).toEqual({ id: "conv_123" });
+    expect(encoded.truncation).toBe("disabled");
+    expect(encoded.text).toEqual({ verbosity: "low" });
   });
 
   it("encodes canonical serviceTier=scale into an OpenAI responses payload", () => {

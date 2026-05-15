@@ -361,6 +361,16 @@ function normalizeOpenAIResponsesTextFormat(
   };
 }
 
+function normalizeOpenAIResponsesConversation(
+  conversation: OpenAIResponsesRequest["conversation"]
+) {
+  if (conversation === undefined) {
+    return undefined;
+  }
+
+  return typeof conversation === "string" ? conversation : conversation.id;
+}
+
 function normalizeOpenAIResponsesReasoning(
   reasoning: OpenAIResponsesRequest["reasoning"]
 ) {
@@ -576,6 +586,7 @@ export function normalizeOpenAIResponsesRequest(
     : [];
   const toolChoice = normalizeOpenAIToolChoice(request.tool_choice);
   const outputFormat = normalizeOpenAIResponsesTextFormat(request.text);
+  const conversationId = normalizeOpenAIResponsesConversation(request.conversation);
 
   return {
     model: request.model,
@@ -593,13 +604,14 @@ export function normalizeOpenAIResponsesRequest(
     ...(request.prompt_cache_retention !== undefined
       ? { promptCacheRetention: request.prompt_cache_retention }
       : {}),
+    ...(request.truncation !== undefined
+      ? { responseTruncation: request.truncation }
+      : {}),
     ...(outputFormat ? { outputFormat } : {}),
     ...(request.previous_response_id !== undefined
       ? { previousResponseId: request.previous_response_id }
       : {}),
-    ...(request.conversation !== undefined
-      ? { conversationId: request.conversation }
-      : {}),
+    ...(conversationId !== undefined ? { conversationId } : {}),
     ...(request.prompt !== undefined || request.prompt_id !== undefined
       ? {
           prompt: {
@@ -618,6 +630,9 @@ export function normalizeOpenAIResponsesRequest(
         }
       : {}),
     ...normalizeOpenAIResponsesReasoning(request.reasoning),
+    ...(request.text?.verbosity !== undefined
+      ? { responseTextVerbosity: request.text.verbosity }
+      : {}),
     ...(request.max_output_tokens !== undefined
       ? { maxOutputTokens: request.max_output_tokens }
       : {}),
@@ -923,11 +938,28 @@ export function encodeCanonicalToOpenAIResponsesResponse(
     ...(response.serviceTier !== undefined
       ? { service_tier: response.serviceTier }
       : {}),
+    ...(response.responseTextVerbosity !== undefined
+      ? {
+          text: {
+            verbosity: response.responseTextVerbosity
+          }
+        }
+      : {}),
+    ...(response.responseTruncation !== undefined
+      ? { truncation: response.responseTruncation }
+      : {}),
     ...(response.promptCacheKey !== undefined
       ? { prompt_cache_key: response.promptCacheKey }
       : {}),
     ...(response.promptCacheRetention !== undefined
       ? { prompt_cache_retention: response.promptCacheRetention }
+      : {}),
+    ...(response.conversationId !== undefined
+      ? {
+          conversation: {
+            id: response.conversationId
+          }
+        }
       : {}),
     ...(encodeCanonicalResponsesIncompleteDetails(response.finishReason)
       ? {
