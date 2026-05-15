@@ -3319,6 +3319,102 @@ describe("gateway app", () => {
     });
   });
 
+  it("preserves chat assistant text when gemini returns mixed text and functionCall", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              finishReason: "STOP",
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "Let me check that."
+                  },
+                  {
+                    functionCall: {
+                      name: "lookup_weather",
+                      args: {
+                        city: "Shanghai"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          stream: false,
+          tool_choice: "auto",
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "lookup_weather",
+                parameters: {
+                  type: "object"
+                }
+              }
+            }
+          ],
+          messages: [{ role: "user", content: "Weather in Shanghai?" }]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "chat.completion",
+      choices: [
+        {
+          finish_reason: "tool_calls",
+          message: {
+            role: "assistant",
+            content: "Let me check that.",
+            tool_calls: [
+              {
+                type: "function",
+                function: {
+                  name: "lookup_weather",
+                  arguments: "{\"city\":\"Shanghai\"}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    });
+  });
+
   it("forwards chat tool_choice required into Gemini ANY mode", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -4423,7 +4519,7 @@ describe("gateway app", () => {
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     const body = await readText(response);
 
-    expect(body).toContain('"tool_calls":[{"index":1');
+    expect(body).toContain('"tool_calls":[{"index":0');
     expect(body).toContain('"function":{"name":"lookup_weather"');
     expect(body).toContain('"finish_reason":"tool_calls"');
     expect(body).toContain("data: [DONE]");
@@ -22272,6 +22368,100 @@ describe("gateway app", () => {
     });
   });
 
+  it("preserves responses output_text when gemini returns mixed text and functionCall", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              finishReason: "STOP",
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "Let me check that."
+                  },
+                  {
+                    functionCall: {
+                      name: "lookup_weather",
+                      args: {
+                        city: "Shanghai"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          input: "Weather in Shanghai?",
+          tool_choice: "auto",
+          tools: [
+            {
+              type: "function",
+              name: "lookup_weather",
+              parameters: {
+                type: "object"
+              }
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "response",
+      output_text: "Let me check that.",
+      output: [
+        {
+          type: "message",
+          role: "assistant",
+          content: [
+            {
+              type: "output_text",
+              text: "Let me check that."
+            }
+          ]
+        },
+        {
+          type: "function_call",
+          name: "lookup_weather",
+          arguments: "{\"city\":\"Shanghai\"}",
+          status: "completed"
+        }
+      ]
+    });
+  });
+
   it("forwards responses tool_choice required into Gemini ANY mode", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -26125,6 +26315,104 @@ describe("gateway app", () => {
       role: "assistant",
       stop_reason: "tool_use",
       content: [
+        {
+          type: "tool_use",
+          name: "lookup_weather",
+          input: {
+            city: "Shanghai"
+          }
+        }
+      ]
+    });
+  });
+
+  it("preserves messages text blocks when gemini buffered response contains mixed text and functionCall", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              finishReason: "STOP",
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "Let me check that."
+                  },
+                  {
+                    functionCall: {
+                      name: "lookup_weather",
+                      args: {
+                        city: "Shanghai"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          max_tokens: 256,
+          tool_choice: {
+            type: "auto"
+          },
+          tools: [
+            {
+              name: "lookup_weather",
+              input_schema: {
+                type: "object"
+              }
+            }
+          ],
+          messages: [
+            {
+              role: "user",
+              content: "Weather in Shanghai?"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "message",
+      role: "assistant",
+      stop_reason: "tool_use",
+      content: [
+        {
+          type: "text",
+          text: "Let me check that."
+        },
         {
           type: "tool_use",
           name: "lookup_weather",

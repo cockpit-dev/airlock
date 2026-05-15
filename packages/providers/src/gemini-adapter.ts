@@ -333,6 +333,7 @@ export class GeminiProviderAdapter implements ProviderAdapter {
     let activeModel = request.model;
     let hasStarted = false;
     let sawToolCall = false;
+    let nextToolIndex = 0;
     const toolCallsById = new Map<
       string,
       {
@@ -409,18 +410,20 @@ export class GeminiProviderAdapter implements ProviderAdapter {
               };
             }
 
-            for (const [index, part] of parts.entries()) {
+            for (const part of parts) {
               if (!part.functionCall?.name) {
                 continue;
               }
 
               sawToolCall = true;
+              const toolIndex = nextToolIndex;
+              nextToolIndex += 1;
               const argumentsPayload =
                 part.functionCall.args === undefined
                   ? ""
                   : JSON.stringify(part.functionCall.args);
               const toolCall = {
-                id: `${responseId}_tool_${index}`,
+                id: `${responseId}_tool_${toolIndex}`,
                 name: part.functionCall.name,
                 arguments: argumentsPayload
               };
@@ -431,7 +434,7 @@ export class GeminiProviderAdapter implements ProviderAdapter {
                 responseId,
                 model,
                 toolCallId: toolCall.id,
-                toolIndex: index,
+                toolIndex,
                 toolName: toolCall.name,
                 argumentsDelta: toolCall.arguments
               };
@@ -688,14 +691,19 @@ function extractGeminiToolCalls(parts: GeminiContentPart[] | undefined) {
     return [];
   }
 
-  return parts.flatMap((part, index) => {
+  let toolIndex = 0;
+
+  return parts.flatMap((part) => {
     if (!part.functionCall?.name) {
       return [];
     }
 
+    const toolCallId = `gemini_call_${toolIndex}`;
+    toolIndex += 1;
+
     return [
       {
-        id: `gemini_call_${index}`,
+        id: toolCallId,
         name: part.functionCall.name,
         arguments:
           part.functionCall.args === undefined

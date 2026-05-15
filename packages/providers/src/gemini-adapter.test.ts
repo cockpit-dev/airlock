@@ -817,6 +817,82 @@ describe("GeminiProviderAdapter", () => {
     });
   });
 
+  it("maps mixed Gemini text and functionCall responses into canonical text and tool calls", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              finishReason: "STOP",
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "Let me check that."
+                  },
+                  {
+                    functionCall: {
+                      name: "lookup_weather",
+                      args: {
+                        city: "Shanghai"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+
+    const response = await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        tools: [
+          {
+            name: "lookup_weather",
+            inputSchema: {
+              type: "object"
+            }
+          }
+        ],
+        toolChoice: "auto"
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    expect(response).toMatchObject({
+      id: "gemini-response-123",
+      model: "gemini-2.5-flash",
+      outputText: "Let me check that.",
+      finishReason: "tool_calls",
+      toolCalls: [
+        {
+          id: "gemini_call_0",
+          name: "lookup_weather",
+          arguments: "{\"city\":\"Shanghai\"}"
+        }
+      ]
+    });
+  });
+
   it("forwards canonical tool replay history into Gemini contents", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -1470,8 +1546,8 @@ describe("GeminiProviderAdapter", () => {
         type: "tool_call_delta",
         responseId: "gemini-response-123",
         model: "gemini-2.5-flash",
-        toolCallId: "gemini-response-123_tool_1",
-        toolIndex: 1,
+        toolCallId: "gemini-response-123_tool_0",
+        toolIndex: 0,
         toolName: "lookup_weather",
         argumentsDelta: "{\"city\":\"Shanghai\"}"
       },
@@ -1482,7 +1558,7 @@ describe("GeminiProviderAdapter", () => {
         finishReason: "tool_calls",
         toolCalls: [
           {
-            id: "gemini-response-123_tool_1",
+            id: "gemini-response-123_tool_0",
             name: "lookup_weather",
             arguments: "{\"city\":\"Shanghai\"}"
           }
