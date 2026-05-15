@@ -22733,6 +22733,1316 @@ describe("gateway app", () => {
     });
   });
 
+  it("fails over to the configured fallback target on /v1/responses after a retryable upstream error", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "resp_fallback",
+            object: "response",
+            created_at: 1,
+            model: "gpt-4.1-nano",
+            status: "completed",
+            output: [
+              {
+                id: "msg_123",
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "fallback hello",
+                    annotations: []
+                  }
+                ]
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi",
+          stream: false
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "gpt-4.1-mini": ["openai:gpt-4.1-nano"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-nano"
+      });
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "response",
+      model: "gpt-4.1-nano",
+      output_text: "fallback hello"
+    });
+  });
+
+  it("fails over to the configured streaming fallback target on /v1/responses after a retryable pre-stream upstream error", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_stream_fallback","object":"response","created_at":1,"model":"gpt-4.1-nano","status":"in_progress","output":[],"tools":[]}}\n\n',
+                    'data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"fallback stream"}\n\n',
+                    'data: {"type":"response.completed","sequence_number":2,"response":{"id":"resp_stream_fallback","object":"response","created_at":1,"model":"gpt-4.1-nano","status":"completed","output":[{"id":"msg_123","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"fallback stream","annotations":[]}]}],"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
+                    "data: [DONE]\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi",
+          stream: true
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "gpt-4.1-mini": ["openai:gpt-4.1-nano"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-nano"
+      });
+    const body = await readText(response);
+    expect(body).toContain('"model":"gpt-4.1-nano"');
+    expect(body).toContain("fallback stream");
+    expect(body).toContain('"type":"response.completed"');
+    expect(body).toContain("data: [DONE]");
+  });
+
+  it("retries a retryable provider failure on the same target before succeeding on /v1/responses", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "resp_retry",
+            object: "response",
+            created_at: 1,
+            model: "gpt-4.1-mini",
+            status: "completed",
+            output: [
+              {
+                id: "msg_123",
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "retry recovered",
+                    annotations: []
+                  }
+                ]
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi",
+          stream: false
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_PROVIDER_MAX_RETRIES: "1",
+        AIRLOCK_PROVIDER_RETRY_BACKOFF_MS: "10"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "response",
+      model: "gpt-4.1-mini",
+      output_text: "retry recovered"
+    });
+  });
+
+  it("fails over only after same-target retries are exhausted on /v1/responses", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "still rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "resp_fallback",
+            object: "response",
+            created_at: 1,
+            model: "gpt-4.1-nano",
+            status: "completed",
+            output: [
+              {
+                id: "msg_123",
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "fallback hello",
+                    annotations: []
+                  }
+                ]
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi",
+          stream: false
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_PROVIDER_MAX_RETRIES: "1",
+        AIRLOCK_PROVIDER_RETRY_BACKOFF_MS: "10",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "gpt-4.1-mini": ["openai:gpt-4.1-nano"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    expect(JSON.parse((fetcher.mock.calls[2] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-nano"
+      });
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "response",
+      model: "gpt-4.1-nano",
+      output_text: "fallback hello"
+    });
+  });
+
+  it("does not fail over on non-retryable upstream errors on /v1/responses", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "bad request"
+          }
+        }),
+        {
+          status: 400,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi",
+          stream: false
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "gpt-4.1-mini": ["openai:gpt-4.1-nano"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "provider_upstream_error",
+        type: "provider"
+      }
+    });
+  });
+
+  it("fails over when the primary provider attempt times out on /v1/responses", async () => {
+    const fetcher = vi
+      .fn()
+      .mockImplementationOnce(async (_input, init?: RequestInit) => {
+        const signal = init?.signal;
+
+        return await new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        });
+      })
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "resp_fallback",
+            object: "response",
+            created_at: 1,
+            model: "gpt-4.1-nano",
+            status: "completed",
+            output: [
+              {
+                id: "msg_123",
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "fallback hello",
+                    annotations: []
+                  }
+                ]
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(10);
+
+    try {
+      const response = await app.request(
+        "http://localhost/v1/responses",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer gateway-secret"
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            input: "hi",
+            stream: false
+          })
+        },
+        {
+          ...createBindings(),
+          AIRLOCK_PROVIDER_TIMEOUT_MS: "50",
+          AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+            "gpt-4.1-mini": ["openai:gpt-4.1-nano"]
+          })
+        }
+      );
+
+      expect(response.status).toBe(200);
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      await expect(readJson(response)).resolves.toMatchObject({
+        object: "response",
+        model: "gpt-4.1-nano",
+        output_text: "fallback hello"
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("returns timeout instead of issuing another fallback call when the shared timeout budget is exhausted on /v1/responses", async () => {
+    const fetcher = vi
+      .fn()
+      .mockImplementationOnce(async (_input, init?: RequestInit) => {
+        const signal = init?.signal;
+
+        return await new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        });
+      });
+
+    const app = createApp({ fetcher });
+
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(5);
+
+    try {
+      const response = await app.request(
+        "http://localhost/v1/responses",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer gateway-secret"
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            input: "hi",
+            stream: false
+          })
+        },
+        {
+          ...createBindings(),
+          AIRLOCK_PROVIDER_TIMEOUT_MS: "1",
+          AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+            "gpt-4.1-mini": ["openai:gpt-4.1-nano", "openai:gpt-4.1-micro"]
+          })
+        }
+      );
+
+      expect(response.status).toBe(504);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      await expect(readJson(response)).resolves.toMatchObject({
+        error: {
+          code: "provider_timeout",
+          type: "provider"
+        }
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("returns 503 without another upstream fetch on /v1/responses when every eligible target is open", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "rate limited"
+          }
+        }),
+        {
+          status: 429,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+    const request = {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer gateway-secret"
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        input: "hi",
+        stream: false
+      })
+    };
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "1",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000"
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/responses",
+      request,
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(429);
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/responses",
+      request,
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(503);
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      error: {
+        code: "provider_circuit_open",
+        type: "routing"
+      }
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails over to the configured fallback target on /v1/messages after a retryable upstream error", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_123",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "fallback hello"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "claude-sonnet-4-5": ["anthropic:claude-haiku-4-5"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "claude-sonnet-4-5"
+      });
+    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "claude-haiku-4-5"
+      });
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "message",
+      model: "claude-haiku-4-5",
+      content: [
+        {
+          type: "text",
+          text: "fallback hello"
+        }
+      ]
+    });
+  });
+
+  it("fails over to the configured streaming fallback target on /v1/messages after a retryable pre-stream upstream error", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'event: message_start\ndata: {"message":{"id":"msg_stream_fallback","model":"claude-haiku-4-5"}}\n\n',
+                    'event: content_block_start\ndata: {"index":0,"content_block":{"type":"text","text":""}}\n\n',
+                    'event: content_block_delta\ndata: {"index":0,"delta":{"type":"text_delta","text":"fallback stream"}}\n\n',
+                    'event: content_block_stop\ndata: {"index":0}\n\n',
+                    'event: message_delta\ndata: {"delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":12,"output_tokens":8}}\n\n',
+                    "event: message_stop\ndata: {}\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          stream: true,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "claude-sonnet-4-5": ["anthropic:claude-haiku-4-5"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "claude-sonnet-4-5"
+      });
+    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "claude-haiku-4-5"
+      });
+    const body = await readText(response);
+    expect(body).toContain('"model":"claude-haiku-4-5"');
+    expect(body).toContain("fallback stream");
+    expect(body).toContain("event: message_stop");
+  });
+
+  it("retries a retryable provider failure on the same target before succeeding on /v1/messages", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_retry",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "retry recovered"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_PROVIDER_MAX_RETRIES: "1",
+        AIRLOCK_PROVIDER_RETRY_BACKOFF_MS: "10"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "claude-sonnet-4-5"
+      });
+    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "claude-sonnet-4-5"
+      });
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "message",
+      model: "claude-sonnet-4-5",
+      content: [
+        {
+          type: "text",
+          text: "retry recovered"
+        }
+      ]
+    });
+  });
+
+  it("fails over only after same-target retries are exhausted on /v1/messages", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "still rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_fallback",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "fallback hello"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_PROVIDER_MAX_RETRIES: "1",
+        AIRLOCK_PROVIDER_RETRY_BACKOFF_MS: "10",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "claude-sonnet-4-5": ["anthropic:claude-haiku-4-5"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "claude-sonnet-4-5"
+      });
+    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "claude-sonnet-4-5"
+      });
+    expect(JSON.parse((fetcher.mock.calls[2] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "claude-haiku-4-5"
+      });
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "message",
+      model: "claude-haiku-4-5",
+      content: [
+        {
+          type: "text",
+          text: "fallback hello"
+        }
+      ]
+    });
+  });
+
+  it("does not fail over on non-retryable upstream errors on /v1/messages", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "bad request"
+          }
+        }),
+        {
+          status: 400,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "claude-sonnet-4-5": ["anthropic:claude-haiku-4-5"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "error",
+      error: {
+        type: "provider"
+      }
+    });
+  });
+
+  it("fails over when the primary provider attempt times out on /v1/messages", async () => {
+    const fetcher = vi
+      .fn()
+      .mockImplementationOnce(async (_input, init?: RequestInit) => {
+        const signal = init?.signal;
+
+        return await new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        });
+      })
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_fallback",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "fallback hello"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(10);
+
+    try {
+      const response = await app.request(
+        "http://localhost/v1/messages",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer gateway-secret"
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-5",
+            max_tokens: 256,
+            messages: [
+              {
+                role: "user",
+                content: "hi"
+              }
+            ]
+          })
+        },
+        {
+          ...createBindings(),
+          AIRLOCK_PROVIDER_TIMEOUT_MS: "50",
+          AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+            "claude-sonnet-4-5": ["anthropic:claude-haiku-4-5"]
+          })
+        }
+      );
+
+      expect(response.status).toBe(200);
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      await expect(readJson(response)).resolves.toMatchObject({
+        type: "message",
+        model: "claude-haiku-4-5",
+        content: [
+          {
+            type: "text",
+            text: "fallback hello"
+          }
+        ]
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("returns timeout instead of issuing another fallback call when the shared timeout budget is exhausted on /v1/messages", async () => {
+    const fetcher = vi
+      .fn()
+      .mockImplementationOnce(async (_input, init?: RequestInit) => {
+        const signal = init?.signal;
+
+        return await new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        });
+      });
+
+    const app = createApp({ fetcher });
+
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(5);
+
+    try {
+      const response = await app.request(
+        "http://localhost/v1/messages",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer gateway-secret"
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-5",
+            max_tokens: 256,
+            messages: [
+              {
+                role: "user",
+                content: "hi"
+              }
+            ]
+          })
+        },
+        {
+          ...createBindings(),
+          AIRLOCK_PROVIDER_TIMEOUT_MS: "1",
+          AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+            "claude-sonnet-4-5": [
+              "anthropic:claude-haiku-4-5",
+              "anthropic:claude-instant-1.2"
+            ]
+          })
+        }
+      );
+
+      expect(response.status).toBe(504);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      await expect(readJson(response)).resolves.toMatchObject({
+        type: "error",
+        error: {
+          type: "provider"
+        }
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("returns 503 without another upstream fetch on /v1/messages when every eligible target is open", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "rate limited"
+          }
+        }),
+        {
+          status: 429,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+    const request = {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer gateway-secret"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: 256,
+        messages: [
+          {
+            role: "user",
+            content: "hi"
+          }
+        ]
+      })
+    };
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "1",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000"
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/messages",
+      request,
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(429);
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/messages",
+      request,
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(503);
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      type: "error",
+      error: {
+        type: "routing",
+        message: "All eligible provider targets are temporarily unavailable"
+      }
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("uses streaming completion usage to influence later lowest-cost routing in the app", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi
