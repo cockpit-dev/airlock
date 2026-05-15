@@ -1,92 +1,37 @@
 import type {
   GatewayApiKeyConcurrencyQuotaPolicy,
-  GatewayApiKeyRecord
+  GatewayApiKeyRecord,
+  GatewayKeyConcurrencyAcquireRequest,
+  GatewayKeyConcurrencyDecision,
+  GatewayKeyConcurrencyLease,
+  GatewayKeyConcurrencyReleaseRequest
+} from "@airlock/governance";
+import {
+  isGatewayKeyConcurrencyLease,
+  parseConcurrencyDecision,
+  getConcurrencyLeaseTtlMs,
+  createConcurrencyDecision,
+  createGatewayKeyConcurrencyExceededError,
+  createGatewayKeyConcurrencyHeaders
 } from "@airlock/governance";
 import { GatewayError } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
 import type { DurableObjectStateLike } from "./durable-object-state.js";
 
-interface GatewayKeyConcurrencyAcquireRequest {
-  kind: "acquire";
-  limit: number;
-  leaseId: string;
-  ttlMs: number;
-}
-
-interface GatewayKeyConcurrencyReleaseRequest {
-  leaseId: string;
-}
-
-interface GatewayKeyConcurrencyLease {
-  leaseId: string;
-  expiresAt: number;
-}
-
-interface GatewayKeyConcurrencyDecision {
-  allowed: boolean;
-  limit: number;
-  remaining: number;
-  resetAt: string;
-  retryAfterSeconds: number;
-}
-
-
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function parseConcurrencyDecision(value: unknown): GatewayKeyConcurrencyDecision {
-  if (!isRecord(value)) {
-    throw new Error("Concurrency decision must be an object");
-  }
-
-  const { allowed, limit, remaining, resetAt, retryAfterSeconds } = value;
-
-  if (
-    typeof allowed !== "boolean" ||
-    typeof limit !== "number" ||
-    !Number.isInteger(limit) ||
-    limit <= 0 ||
-    typeof remaining !== "number" ||
-    !Number.isInteger(remaining) ||
-    remaining < 0 ||
-    typeof resetAt !== "string" ||
-    Number.isNaN(Date.parse(resetAt)) ||
-    typeof retryAfterSeconds !== "number" ||
-    !Number.isInteger(retryAfterSeconds) ||
-    retryAfterSeconds < 0
-  ) {
-    throw new Error("Concurrency decision is invalid");
-  }
-
-  return {
-    allowed,
-    limit,
-    remaining,
-    resetAt,
-    retryAfterSeconds
-  };
-}
-
-function isGatewayKeyConcurrencyLease(
-  value: unknown
-): value is GatewayKeyConcurrencyLease {
-  return (
-    isRecord(value) &&
-    typeof value.leaseId === "string" &&
-    typeof value.expiresAt === "number" &&
-    Number.isInteger(value.expiresAt)
-  );
-}
+// Re-export governance functions consumed by route handlers
+export {
+  createGatewayKeyConcurrencyExceededError,
+  createGatewayKeyConcurrencyHeaders
+};
 
 export class GatewayKeyConcurrencyDurableObject {
   constructor(private readonly state: DurableObjectStateLike) {}
 
   async fetch(request: Request): Promise<Response> {
     if (request.method === "POST") {
-      const body = (await request.json()) as GatewayKeyConcurrencyAcquireRequest;
+      const body =
+        (await request.json()) as GatewayKeyConcurrencyAcquireRequest;
       const decision = await acquireGatewayKeyConcurrencyLeaseFromStorage(
         this.state.storage,
         {
@@ -100,7 +45,8 @@ export class GatewayKeyConcurrencyDurableObject {
     }
 
     if (request.method === "DELETE") {
-      const body = (await request.json()) as GatewayKeyConcurrencyReleaseRequest;
+      const body =
+        (await request.json()) as GatewayKeyConcurrencyReleaseRequest;
       await releaseGatewayKeyConcurrencyLeaseFromStorage(
         this.state.storage,
         body.leaseId
@@ -110,10 +56,6 @@ export class GatewayKeyConcurrencyDurableObject {
 
     return new Response("Method not allowed", { status: 405 });
   }
-}
-
-function getConcurrencyLeaseTtlMs(providerTimeoutMs: number): number {
-  return Math.max(1000, providerTimeoutMs);
 }
 
 async function readActiveLeases(
@@ -135,33 +77,7 @@ async function readActiveLeases(
   return activeLeases;
 }
 
-function createConcurrencyDecision(
-  limit: number,
-  activeLeases: GatewayKeyConcurrencyLease[],
-  ttlMs: number,
-  now = Date.now()
-): GatewayKeyConcurrencyDecision {
-  const nextResetAt =
-    activeLeases.length > 0
-      ? activeLeases.reduce((min, lease) => {
-          return Math.min(min, lease.expiresAt);
-        }, Number.POSITIVE_INFINITY)
-      : now + ttlMs;
-  const resetAtTimestamp = Number.isFinite(nextResetAt) ? nextResetAt : now + ttlMs;
-
-  return {
-    allowed: activeLeases.length < limit,
-    limit,
-    remaining: Math.max(0, limit - activeLeases.length),
-    resetAt: new Date(resetAtTimestamp).toISOString(),
-    retryAfterSeconds: Math.max(
-      0,
-      Math.ceil((resetAtTimestamp - now) / 1000)
-    )
-  };
-}
-
-export async function acquireGatewayKeyConcurrencyLeaseFromStorage(
+async function acquireGatewayKeyConcurrencyLeaseFromStorage(
   storage: DurableObjectStateLike["storage"],
   policy: GatewayApiKeyConcurrencyQuotaPolicy,
   leaseId: string,
@@ -177,7 +93,7 @@ export async function acquireGatewayKeyConcurrencyLeaseFromStorage(
     };
   }
 
-  const nextLeases = [
+  const nextLeases: GatewayKeyConcurrencyLease[] = [
     ...activeLeases,
     {
       leaseId,
@@ -192,7 +108,7 @@ export async function acquireGatewayKeyConcurrencyLeaseFromStorage(
   };
 }
 
-export async function releaseGatewayKeyConcurrencyLeaseFromStorage(
+async function releaseGatewayKeyConcurrencyLeaseFromStorage(
   storage: DurableObjectStateLike["storage"],
   leaseId: string,
   now = Date.now()
@@ -346,29 +262,4 @@ export async function releaseGatewayKeyConcurrencyLease(
       cause
     });
   }
-}
-
-export function createGatewayKeyConcurrencyExceededError(
-  decision: GatewayKeyConcurrencyDecision,
-  requestId: string
-): GatewayError {
-  return new GatewayError("Gateway API key concurrency quota exceeded", {
-    code: "quota_concurrency_exceeded",
-    category: "rate_limit",
-    httpStatus: 429,
-    retryable: false,
-    requestId,
-    headers: createGatewayKeyConcurrencyHeaders(decision)
-  });
-}
-
-export function createGatewayKeyConcurrencyHeaders(
-  decision: GatewayKeyConcurrencyDecision
-): Record<string, string> {
-  return {
-    "retry-after": String(decision.retryAfterSeconds),
-    "x-ratelimit-limit": String(decision.limit),
-    "x-ratelimit-remaining": String(decision.remaining),
-    "x-ratelimit-reset": decision.resetAt
-  };
 }
