@@ -1346,6 +1346,22 @@ describe("openAIResponsesRequestSchema", () => {
     expect(parsed.prompt_cache_retention).toBe("in_memory");
   });
 
+  it("accepts responses metadata with up to 16 string pairs", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      metadata: {
+        tenant: "acme",
+        request_class: "interactive"
+      }
+    });
+
+    expect(parsed.metadata).toEqual({
+      tenant: "acme",
+      request_class: "interactive"
+    });
+  });
+
   it("accepts responses conversation object and truncation", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",
@@ -1398,6 +1414,26 @@ describe("openAIResponsesRequestSchema", () => {
 
     expect(invalidServiceTier.success).toBe(false);
     expect(invalidStore.success).toBe(false);
+  });
+
+  it("rejects invalid responses metadata shapes", () => {
+    const tooManyEntries = openAIResponsesRequestSchema.safeParse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      metadata: Object.fromEntries(
+        Array.from({ length: 17 }, (_, index) => [`key_${index}`, "value"])
+      )
+    });
+    const invalidValue = openAIResponsesRequestSchema.safeParse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      metadata: {
+        tenant: 42
+      }
+    });
+
+    expect(tooManyEntries.success).toBe(false);
+    expect(invalidValue.success).toBe(false);
   });
 
   it("rejects responses previous_response_id and conversation together", () => {

@@ -230,6 +230,17 @@ export function assertProviderSupportsCanonicalRequest(
       requestId
     );
   }
+
+  if (
+    requirements.requiresOpenAIRequestMetadata &&
+    !descriptor.supportsOpenAIRequestMetadata
+  ) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "openai_request_metadata",
+      requestId
+    );
+  }
 }
 
 function createProviderAdapter(

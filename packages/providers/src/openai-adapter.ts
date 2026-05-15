@@ -116,6 +116,9 @@ function mapCanonicalOpenAIRequestMetadata(
   request: CanonicalRequest
 ) {
   return {
+    ...(request.providerMetadata?.openai?.metadata !== undefined
+      ? { metadata: request.providerMetadata.openai.metadata }
+      : {}),
     ...(request.serviceTier !== undefined
       ? { service_tier: request.serviceTier }
       : {}),
@@ -1485,6 +1488,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         reason?: string;
       };
       service_tier?: CanonicalResponse["serviceTier"];
+      metadata?: Record<string, string>;
       prompt_cache_key?: string;
       prompt_cache_retention?: CanonicalResponse["promptCacheRetention"];
       truncation?: CanonicalResponse["responseTruncation"];
@@ -1515,6 +1519,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         outputText: normalizeOpenAIMessageContent(payload.choices[0]?.message.content),
         ...(payload.service_tier !== undefined
           ? { serviceTier: payload.service_tier }
+          : {}),
+        ...(payload.metadata !== undefined
+          ? { metadata: payload.metadata }
           : {}),
         ...(payload.prompt_cache_key !== undefined
           ? { promptCacheKey: payload.prompt_cache_key }
@@ -1577,6 +1584,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       outputText: extractOutputTextFromOpenAIResponsesOutput(payload.output),
       ...(payload.service_tier !== undefined
         ? { serviceTier: payload.service_tier }
+        : {}),
+      ...(payload.metadata !== undefined
+        ? { metadata: payload.metadata }
         : {}),
       ...(payload.prompt_cache_key !== undefined
         ? { promptCacheKey: payload.prompt_cache_key }

@@ -67,6 +67,12 @@ const openAIResponsesConversationSchema = z
   })
   .strict();
 
+const openAIResponsesMetadataSchema = z
+  .record(z.string().min(1).max(64), z.string().max(512))
+  .refine((value) => Object.keys(value).length <= 16, {
+    message: "metadata can have at most 16 entries"
+  });
+
 const openAIResponsesReasoningSchema = z.object({
   effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]).optional(),
   summary: z.enum(["auto", "concise", "detailed"]).optional(),
@@ -150,6 +156,7 @@ export const openAIResponsesRequestSchema = z
   model: z.string().min(1),
   stream: z.boolean().default(false),
   safety_identifier: z.string().min(1).optional(),
+  metadata: openAIResponsesMetadataSchema.optional(),
   service_tier: z.enum(["auto", "default", "flex", "priority", "scale"]).optional(),
   store: z.boolean().optional(),
   prompt_cache_key: z.string().min(1).optional(),
@@ -237,6 +244,7 @@ export const openAIResponsesResponseSchema = z.object({
   status: z.literal("completed"),
   output: z.array(z.unknown()),
   output_text: z.string(),
+  metadata: openAIResponsesMetadataSchema.optional(),
   conversation: z
     .object({
       id: z.string().min(1)

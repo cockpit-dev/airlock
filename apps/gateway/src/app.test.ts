@@ -18176,6 +18176,103 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts responses metadata and forwards it upstream for OpenAI", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [],
+          output_text: "hello there",
+          metadata: {
+            tenant: "acme",
+            request_class: "interactive"
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          metadata: {
+            tenant: "acme",
+            request_class: "interactive"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      metadata: {
+        tenant: "acme",
+        request_class: "interactive"
+      }
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      metadata: {
+        tenant: "acme",
+        request_class: "interactive"
+      }
+    });
+  });
+
+  it("fails closed when responses metadata is sent to Anthropic", async () => {
+    const fetcher = vi.fn();
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          input: "hello",
+          metadata: {
+            tenant: "acme"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "provider_capability_not_supported",
+        message:
+          "Provider anthropic does not support required capability: openai_request_metadata"
+      }
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("maps responses safety_identifier into Anthropic metadata.user_id", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

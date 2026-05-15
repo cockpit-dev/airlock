@@ -55,6 +55,7 @@ const allowedOpenAIResponsesTopLevelFields = [
   "model",
   "stream",
   "safety_identifier",
+  "metadata",
   "service_tier",
   "store",
   "prompt_cache_key",

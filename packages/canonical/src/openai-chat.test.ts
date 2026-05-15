@@ -1102,6 +1102,27 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.promptCacheRetention).toBe("in_memory");
   });
 
+  it("normalizes responses metadata into canonical OpenAI-native request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      metadata: {
+        tenant: "acme",
+        request_class: "interactive"
+      }
+    });
+
+    expect(canonical.providerMetadata).toEqual({
+      openai: {
+        metadata: {
+          tenant: "acme",
+          request_class: "interactive"
+        }
+      }
+    });
+  });
+
   it("normalizes responses conversation object, truncation, and verbosity into canonical request fields", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",
@@ -1534,6 +1555,24 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
     });
 
     expect(encoded.service_tier).toBe("scale");
+  });
+
+  it("encodes canonical OpenAI-native metadata into an OpenAI responses payload", () => {
+    const encoded = encodeCanonicalToOpenAIResponsesResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      outputText: "hello there",
+      finishReason: "stop",
+      metadata: {
+        tenant: "acme",
+        request_class: "interactive"
+      }
+    });
+
+    expect(encoded.metadata).toEqual({
+      tenant: "acme",
+      request_class: "interactive"
+    });
   });
 
   it("encodes a max_tokens canonical response into an incomplete OpenAI responses payload", () => {

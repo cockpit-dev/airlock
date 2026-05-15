@@ -238,6 +238,7 @@ describe("assertProviderSupportsCanonicalRequest", () => {
           supportsReasoning: false,
           supportsStructuredOutputs: false,
           supportsParallelToolCallControl: false,
+          supportsOpenAIRequestMetadata: false,
           supportsRouteScopedShaping: true,
           supportsStaticFallbackSameProvider: true
         },
@@ -2150,6 +2151,7 @@ describe("executeRoutedRequest", () => {
             supportsReasoning: false,
             supportsStructuredOutputs: false,
             supportsParallelToolCallControl: false,
+            supportsOpenAIRequestMetadata: false,
             supportsRouteScopedShaping: true,
             supportsStaticFallbackSameProvider: true
           };

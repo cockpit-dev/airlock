@@ -62,6 +62,9 @@ export interface CanonicalRequest {
         strict?: boolean;
       };
   providerMetadata?: {
+    openai?: {
+      metadata?: Record<string, string>;
+    };
     anthropic?: {
       user_id: string;
     };
@@ -101,6 +104,7 @@ export interface CanonicalRequestCapabilityRequirements {
   requiresReasoning: boolean;
   requiresStructuredOutputs: boolean;
   requiresParallelToolCallControl: boolean;
+  requiresOpenAIRequestMetadata: boolean;
 }
 
 export interface CanonicalUsage {
@@ -114,6 +118,7 @@ export interface CanonicalResponse {
   model: string;
   outputText: string;
   finishReason: "stop" | "max_tokens" | "tool_calls";
+  metadata?: Record<string, string>;
   serviceTier?: "auto" | "default" | "flex" | "priority" | "scale";
   promptCacheKey?: string;
   promptCacheRetention?: "in_memory" | "24h";

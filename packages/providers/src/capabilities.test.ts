@@ -24,6 +24,7 @@ describe("provider capability descriptors", () => {
         supportsReasoning: true,
         supportsStructuredOutputs: true,
         supportsParallelToolCallControl: true,
+        supportsOpenAIRequestMetadata: true,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       },
@@ -43,6 +44,7 @@ describe("provider capability descriptors", () => {
         supportsReasoning: false,
         supportsStructuredOutputs: false,
         supportsParallelToolCallControl: false,
+        supportsOpenAIRequestMetadata: false,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       },
@@ -62,6 +64,7 @@ describe("provider capability descriptors", () => {
         supportsReasoning: false,
         supportsStructuredOutputs: true,
         supportsParallelToolCallControl: false,
+        supportsOpenAIRequestMetadata: false,
         supportsRouteScopedShaping: true,
         supportsStaticFallbackSameProvider: true
       }
@@ -85,6 +88,7 @@ describe("provider capability descriptors", () => {
       supportsReasoning: false,
       supportsStructuredOutputs: true,
       supportsParallelToolCallControl: false,
+      supportsOpenAIRequestMetadata: false,
       supportsRouteScopedShaping: true,
       supportsStaticFallbackSameProvider: true
     });
@@ -102,7 +106,8 @@ describe("provider capability descriptors", () => {
       supportsPrompt: true,
       supportsReasoning: true,
       supportsStructuredOutputs: true,
-      supportsParallelToolCallControl: true
+      supportsParallelToolCallControl: true,
+      supportsOpenAIRequestMetadata: true
     });
   });
 

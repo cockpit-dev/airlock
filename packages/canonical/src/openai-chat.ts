@@ -594,6 +594,15 @@ export function normalizeOpenAIResponsesRequest(
     ...(request.safety_identifier !== undefined
       ? { endUserId: request.safety_identifier }
       : {}),
+    ...(request.metadata !== undefined
+      ? {
+          providerMetadata: {
+            openai: {
+              metadata: request.metadata
+            }
+          }
+        }
+      : {}),
     ...(request.service_tier !== undefined
       ? { serviceTier: request.service_tier }
       : {}),
@@ -935,6 +944,9 @@ export function encodeCanonicalToOpenAIResponsesResponse(
     created_at: 0,
     model: response.model,
     status: encodeCanonicalResponsesStatus(response.finishReason),
+    ...(response.metadata !== undefined
+      ? { metadata: response.metadata }
+      : {}),
     ...(response.serviceTier !== undefined
       ? { service_tier: response.serviceTier }
       : {}),
