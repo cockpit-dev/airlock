@@ -1547,6 +1547,73 @@ describe("gateway app", () => {
     });
   });
 
+  it("emits request telemetry for a responses authentication failure", async () => {
+    const { sink, events } = createTelemetryRecorder();
+    const app = createApp({ fetcher: vi.fn(), telemetrySink: sink });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer wrong-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi"
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(401);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "gateway_request",
+      routePath: "/v1/responses",
+      outcome: "error",
+      statusCode: 401,
+      errorCode: "auth_invalid_api_key",
+      errorCategory: "authentication",
+      retryable: false
+    });
+  });
+
+  it("emits request telemetry for a messages authentication failure", async () => {
+    const { sink, events } = createTelemetryRecorder();
+    const app = createApp({ fetcher: vi.fn(), telemetrySink: sink });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer wrong-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(401);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "gateway_request",
+      routePath: "/v1/messages",
+      outcome: "error",
+      statusCode: 401,
+      errorCode: "auth_invalid_api_key",
+      errorCategory: "authentication",
+      retryable: false
+    });
+  });
+
   it("emits request telemetry for an upstream provider failure with attempted provider metadata", async () => {
     const { sink, events } = createTelemetryRecorder();
     const fetcher = vi.fn().mockResolvedValue(
@@ -1592,6 +1659,107 @@ describe("gateway app", () => {
       statusCode: 429,
       provider: "openai",
       providerModel: "gpt-4.1-mini",
+      errorCode: "provider_upstream_error",
+      errorCategory: "provider",
+      retryable: true
+    });
+  });
+
+  it("emits request telemetry for a responses upstream provider failure with attempted provider metadata", async () => {
+    const { sink, events } = createTelemetryRecorder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "rate limited"
+          }
+        }),
+        {
+          status: 429,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher, telemetrySink: sink });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi"
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(429);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "gateway_request",
+      routePath: "/v1/responses",
+      outcome: "error",
+      statusCode: 429,
+      provider: "openai",
+      providerModel: "gpt-4.1-mini",
+      errorCode: "provider_upstream_error",
+      errorCategory: "provider",
+      retryable: true
+    });
+  });
+
+  it("emits request telemetry for a messages upstream provider failure with attempted provider metadata", async () => {
+    const { sink, events } = createTelemetryRecorder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "rate limited"
+          }
+        }),
+        {
+          status: 429,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher, telemetrySink: sink });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(429);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "gateway_request",
+      routePath: "/v1/messages",
+      outcome: "error",
+      statusCode: 429,
+      provider: "anthropic",
+      providerModel: "claude-sonnet-4-5",
       errorCode: "provider_upstream_error",
       errorCategory: "provider",
       retryable: true
