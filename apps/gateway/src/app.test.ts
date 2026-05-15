@@ -19836,6 +19836,102 @@ describe("gateway app", () => {
     expect(body).toContain("data: [DONE]");
   });
 
+  it("preserves created_at only on openai responses lifecycle events, not text deltas", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n',
+                  'data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"resp_123_output_0","output_index":0,"content_index":0,"delta":"hello"}\n\n',
+                  'data: {"type":"response.output_text.done","sequence_number":2,"item_id":"resp_123_output_0","output_index":0,"content_index":0,"text":"hello"}\n\n',
+                  'data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"id":"resp_123_output_0","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello","annotations":[]}]}],"tools":[]}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi",
+          stream: true
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const events = parseSseDataEvents(await readText(response)) as Array<
+      Record<string, unknown>
+    >;
+    const createdEvent = events.find((event) => event.type === "response.created");
+    const inProgressEvent = events.find(
+      (event) => event.type === "response.in_progress"
+    );
+    const outputTextDeltaEvent = events.find(
+      (event) => event.type === "response.output_text.delta"
+    );
+    const outputTextDoneEvent = events.find(
+      (event) => event.type === "response.output_text.done"
+    );
+    const completedEvent = events.find((event) => event.type === "response.completed");
+
+    expect(createdEvent).toMatchObject({
+      type: "response.created",
+      response: {
+        created_at: 1
+      }
+    });
+    expect(inProgressEvent).toMatchObject({
+      type: "response.in_progress"
+    });
+    expect(inProgressEvent).toMatchObject({
+      response: {
+        created_at: 1
+      }
+    });
+    expect(outputTextDeltaEvent).toMatchObject({
+      type: "response.output_text.delta",
+      delta: "hello"
+    });
+    expect(outputTextDeltaEvent).not.toHaveProperty("created_at");
+    expect(outputTextDoneEvent).toMatchObject({
+      type: "response.output_text.done",
+      text: "hello"
+    });
+    expect(outputTextDoneEvent).not.toHaveProperty("created_at");
+    expect(completedEvent).toMatchObject({
+      type: "response.completed",
+      response: {
+        created_at: 1
+      }
+    });
+  });
+
   it("streams openai responses reasoning summary event fidelity and terminates with done", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi.fn().mockResolvedValueOnce(
@@ -20390,6 +20486,83 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts responses conversation object and forwards it through the native openai responses path", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          conversation: {
+            id: "conv_123"
+          },
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          conversation: {
+            id: "conv_123"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.openai.com/v1/responses");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      conversation: {
+        id: "conv_123"
+      }
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      id: "resp_123",
+      object: "response",
+      created_at: 1,
+      model: "gpt-4.1-mini",
+      conversation: {
+        id: "conv_123"
+      },
+      output_text: "hello there"
+    });
+  });
+
   it("rejects responses previous_response_id and conversation together", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -20406,6 +20579,39 @@ describe("gateway app", () => {
           input: "hello",
           previous_response_id: "resp_prev_123",
           conversation: "conv_123"
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message: "Invalid OpenAI Responses request payload",
+        type: "request",
+        code: "request_invalid_openai_payload"
+      }
+    });
+  });
+
+  it("rejects responses previous_response_id and conversation object together", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          previous_response_id: "resp_prev_123",
+          conversation: {
+            id: "conv_123"
+          }
         })
       },
       createBindings()
