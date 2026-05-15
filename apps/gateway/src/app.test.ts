@@ -26244,6 +26244,11 @@ describe("gateway app", () => {
     expect(body).toContain('"item_id":"call_123"');
     expect(body).toContain('"output_index":1');
     expect(body).toContain('"output":[{"id":"chatcmpl_123_output_0","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Let me check that.","annotations":[]}]},{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"}]');
+    expect(
+      body.match(
+        /"type":"response\.function_call_arguments\.(?:delta|done)".*?"item_id":"call_123".*?"\{\\"city\\":\\"Shanghai\\"\}"/g
+      )
+    ).toHaveLength(2);
     expect(body).toContain("data: [DONE]");
   });
 
