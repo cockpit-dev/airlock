@@ -17367,6 +17367,147 @@ describe("gateway app", () => {
     });
   });
 
+  it("uses streaming completion usage to influence later lowest-cost routing in the app", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'data: {"id":"chatcmpl_stream_usage_seed","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                    'data: {"id":"chatcmpl_stream_usage_seed","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"seed"},"finish_reason":null}]}\n\n',
+                    'data: {"id":"chatcmpl_stream_usage_seed","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":200,"completion_tokens":100,"total_tokens":300}}\n\n',
+                    "data: [DONE]\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_stream_cost_followup",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "hello from anthropic"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+    const breakerNamespace = createPersistentBreakerNamespace();
+    breakerNamespace.seedSuccess("anthropic:claude-haiku-4-5", 200, Date.now() - 1_000);
+    await breakerNamespace
+      .get(breakerNamespace.idFromName("anthropic:claude-haiku-4-5"))
+      .fetch(
+        new Request("https://airlock.internal/provider-circuit-breaker", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            kind: "success",
+            totalTokens: 20,
+            now: Date.now() - 1_000
+          })
+        })
+      );
+
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      ANTHROPIC_API_KEY: "anthropic-secret",
+      ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER: breakerNamespace,
+      AIRLOCK_MODEL_ALIASES:
+        "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+      AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+        "assistant-default": ["anthropic:claude-haiku-4-5"]
+      }),
+      AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+        "assistant-default": {
+          strategy: "lowest_cost",
+          costs: {
+            "openai:gpt-4.1-mini": 1,
+            "anthropic:claude-haiku-4-5": 2
+          }
+        }
+      })
+    };
+
+    const streamedResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: true,
+          messages: [{ role: "user", content: "seed observed cost" }]
+        })
+      },
+      bindings
+    );
+
+    expect(streamedResponse.status).toBe(200);
+    const streamedBody = await readText(streamedResponse);
+    expect(streamedBody).toContain('"total_tokens":300');
+
+    const bufferedResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "use cheaper effective target" }]
+        })
+      },
+      bindings
+    );
+
+    expect(bufferedResponse.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    await expect(readJson(bufferedResponse)).resolves.toMatchObject({
+      model: "claude-haiku-4-5"
+    });
+  });
+
   it("routes authorized chat completions requests to Gemini when configured", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

@@ -1065,6 +1065,7 @@ export async function* executeRoutedStreamRequest(
 
     let yieldedAnyEvent = false;
     let streamAttempt = 0;
+    let completedUsageTotalTokens: number | undefined;
 
     while (true) {
       try {
@@ -1078,6 +1079,9 @@ export async function* executeRoutedStreamRequest(
           requestMode,
           ...(requestShaping ? { requestShaping } : {})
         })) {
+          if (event.type === "response_completed") {
+            completedUsageTotalTokens = event.usage?.totalTokens;
+          }
           yieldedAnyEvent = true;
           yield event;
         }
@@ -1085,7 +1089,7 @@ export async function* executeRoutedStreamRequest(
         await circuitBreakerBackend.recordSuccess(
           target,
           now() - currentAttemptStartedAt,
-          undefined,
+          completedUsageTotalTokens,
           now()
         );
 
