@@ -5803,7 +5803,12 @@ describe("gateway app", () => {
     expect(body).toContain('"finish_reason":"stop"');
     expect(body).toContain("data: [DONE]");
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(init.body as string)).not.toHaveProperty("stream_options");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stream: true,
+      stream_options: {
+        include_usage: true
+      }
+    });
   });
 
   it("rejects unsupported chat stream_options variants", async () => {

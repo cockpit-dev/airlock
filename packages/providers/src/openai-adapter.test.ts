@@ -3095,7 +3095,7 @@ describe("OpenAIProviderAdapter", () => {
     ]);
   });
 
-  it("does not inject chat stream_options.include_usage unless explicitly requested", async () => {
+  it("always requests upstream chat usage for internal accounting even without explicit client opt-in", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -3143,7 +3143,12 @@ describe("OpenAIProviderAdapter", () => {
     }
 
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(init.body as string)).not.toHaveProperty("stream_options");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stream: true,
+      stream_options: {
+        include_usage: true
+      }
+    });
   });
 
   it("parses upstream streamed chat tool calls into tool_call_delta events and a tool_calls completion event", async () => {
