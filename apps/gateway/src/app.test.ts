@@ -14496,6 +14496,50 @@ describe("gateway app", () => {
     });
   });
 
+  it("rejects request-scoped signing directives on chat completions as a request error", async () => {
+    const fetcher = vi.fn();
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }],
+          airlock: {
+            requestShaping: {
+              signing: {
+                type: "hmac_sha256_header",
+                headerName: "x-airlock-signature",
+                secret: {
+                  secretRef: "request-secret"
+                },
+                components: ["method", "path"]
+              }
+            }
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        message: "Request shaping profile contains unsupported field: signing",
+        type: "request",
+        code: "request_invalid_request_shaping"
+      }
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("accepts chat completion text-part input and flattens it for upstream execution", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -20531,6 +20575,50 @@ describe("gateway app", () => {
       input: [{ type: "message", role: "user", content: "hi" }],
       temperature: 0.2
     });
+  });
+
+  it("rejects request-scoped signing directives on responses as a request error", async () => {
+    const fetcher = vi.fn();
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi",
+          stream: false,
+          airlock: {
+            requestShaping: {
+              signing: {
+                type: "hmac_sha256_header",
+                headerName: "x-airlock-signature",
+                secret: {
+                  secretRef: "request-secret"
+                },
+                components: ["method", "path"]
+              }
+            }
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        message: "Request shaping profile contains unsupported field: signing",
+        type: "request",
+        code: "request_invalid_request_shaping"
+      }
+    });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("accepts responses previous_response_id and forwards it through the native openai responses path", async () => {
@@ -27929,6 +28017,61 @@ describe("gateway app", () => {
       },
       messages: [{ role: "user", content: "hi" }]
     });
+  });
+
+  it("rejects request-scoped signing directives on /v1/messages as a request error", async () => {
+    const fetcher = vi.fn();
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ],
+          airlock: {
+            requestShaping: {
+              signing: {
+                type: "hmac_sha256_header",
+                headerName: "x-airlock-signature",
+                secret: {
+                  secretRef: "request-secret"
+                },
+                components: ["method", "path"]
+              }
+            }
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    const body = await readJson(response);
+
+    expect(body).toMatchObject({
+      type: "error",
+      error: {
+        type: "request",
+        message: "Request shaping profile contains unsupported field: signing"
+      }
+    });
+    if (!isRecord(body)) {
+      throw new Error("Expected an Anthropic error payload");
+    }
+    expect(typeof body.request_id).toBe("string");
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("accepts anthropic system text blocks and forwards them upstream", async () => {
