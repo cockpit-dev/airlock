@@ -15782,6 +15782,114 @@ describe("gateway app", () => {
     });
   });
 
+  it("deep merges nested jsonBody shaping across route defaults target overrides and request overrides", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }],
+          airlock: {
+            requestShaping: {
+              jsonBody: {
+                metadata: {
+                  nested: {
+                    level: 3,
+                    request: true
+                  }
+                }
+              }
+            }
+          }
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES: "assistant-default=openai:gpt-4.1-mini",
+        AIRLOCK_MODEL_SHAPING: JSON.stringify({
+          "assistant-default": {
+            defaults: {
+              jsonBody: {
+                metadata: {
+                  source: "route",
+                  nested: {
+                    trace: true,
+                    level: 1
+                  }
+                }
+              }
+            },
+            targets: {
+              "openai:gpt-4.1-mini": {
+                jsonBody: {
+                  metadata: {
+                    nested: {
+                      level: 2,
+                      target: "openai"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toEqual({
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [{ role: "user", content: "hi" }],
+      metadata: {
+        source: "route",
+        nested: {
+          trace: true,
+          level: 3,
+          target: "openai",
+          request: true
+        }
+      }
+    });
+  });
+
   it("fails over to the configured OpenAI fallback target on retryable upstream error", async () => {
     const fetcher = vi
       .fn()
