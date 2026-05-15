@@ -160,6 +160,7 @@ export async function handleMessages(
       config,
       gatewayApiKey,
       requestId,
+      requestMode: "openai_responses",
       ...(circuitBreakerBackend ? { circuitBreakerBackend } : {}),
       onAttemptTarget(target) {
         attemptedTarget = target;
@@ -326,6 +327,7 @@ export async function handleMessages(
       config,
       gatewayApiKey,
       requestId,
+      requestMode: "openai_responses",
       ...(circuitBreakerBackend ? { circuitBreakerBackend } : {}),
       onAttemptTarget(target) {
         attemptedTarget = target;

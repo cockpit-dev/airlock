@@ -26557,28 +26557,18 @@ describe("gateway app", () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          id: "chatcmpl_123",
-          object: "chat.completion",
-          created: 1,
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
           model: "gpt-4.1-mini",
-          choices: [
+          status: "completed",
+          output: [
             {
-              index: 0,
-              finish_reason: "tool_calls",
-              message: {
-                role: "assistant",
-                content: null,
-                tool_calls: [
-                  {
-                    id: "call_123",
-                    type: "function",
-                    function: {
-                      name: "lookup_weather",
-                      arguments: "{\"city\":\"Shanghai\"}"
-                    }
-                  }
-                ]
-              }
+              type: "function_call",
+              call_id: "call_123",
+              name: "lookup_weather",
+              arguments: "{\"city\":\"Shanghai\"}",
+              status: "completed"
             }
           ]
         }),
@@ -26627,10 +26617,23 @@ describe("gateway app", () => {
     );
 
     expect(response.status).toBe(200);
-    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
 
+    expect(url).toBe("https://api.openai.com/v1/responses");
     expect(JSON.parse(init.body as string)).toMatchObject({
       tool_choice: "required"
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      content: [
+        {
+          type: "tool_use",
+          id: "call_123",
+          name: "lookup_weather",
+          input: {
+            city: "Shanghai"
+          }
+        }
+      ]
     });
   });
 
@@ -26638,18 +26641,22 @@ describe("gateway app", () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          id: "chatcmpl_123",
-          object: "chat.completion",
-          created: 1,
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
           model: "gpt-4.1-mini",
-          choices: [
+          status: "completed",
+          output: [
             {
-              index: 0,
-              finish_reason: "stop",
-              message: {
-                role: "assistant",
-                content: "hello there"
-              }
+              type: "message",
+              role: "assistant",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
             }
           ]
         }),
@@ -26677,6 +26684,7 @@ describe("gateway app", () => {
           metadata: {
             user_id: "user_123"
           },
+          stream: false,
           messages: [
             {
               role: "user",
@@ -26689,7 +26697,9 @@ describe("gateway app", () => {
     );
 
     expect(response.status).toBe(200);
-    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe("https://api.openai.com/v1/responses");
     expect(JSON.parse(init.body as string)).toMatchObject({
       safety_identifier: "user_123"
     });
@@ -26740,18 +26750,22 @@ describe("gateway app", () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          id: "chatcmpl_123",
-          object: "chat.completion",
-          created: 1,
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
           model: "gpt-4.1-mini",
-          choices: [
+          status: "completed",
+          output: [
             {
-              index: 0,
-              finish_reason: "stop",
-              message: {
-                role: "assistant",
-                content: "I will answer directly."
-              }
+              type: "message",
+              role: "assistant",
+              content: [
+                {
+                  type: "output_text",
+                  text: "I will answer directly.",
+                  annotations: []
+                }
+              ]
             }
           ]
         }),
@@ -26800,8 +26814,9 @@ describe("gateway app", () => {
     );
 
     expect(response.status).toBe(200);
-    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
 
+    expect(url).toBe("https://api.openai.com/v1/responses");
     expect(JSON.parse(init.body as string)).toMatchObject({
       tool_choice: "none"
     });
@@ -27198,6 +27213,136 @@ describe("gateway app", () => {
               text: "Now summarize it."
             }
           ]
+        }
+      ]
+    });
+  });
+
+  it("preserves mixed anthropic user replay order when messages ingress routes to openai responses", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              type: "message",
+              role: "assistant",
+              content: [
+                {
+                  type: "output_text",
+                  text: "done",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          max_tokens: 256,
+          tools: [
+            {
+              name: "lookup_weather",
+              input_schema: {
+                type: "object"
+              }
+            }
+          ],
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: "call_123",
+                  name: "lookup_weather",
+                  input: {
+                    city: "Shanghai"
+                  }
+                }
+              ]
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Please use this tool result."
+                },
+                {
+                  type: "tool_result",
+                  tool_use_id: "call_123",
+                  content: "{\"temperature_c\":26}"
+                },
+                {
+                  type: "text",
+                  text: "Now summarize it."
+                }
+              ]
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe("https://api.openai.com/v1/responses");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      input: [
+        {
+          type: "function_call",
+          call_id: "call_123",
+          name: "lookup_weather",
+          arguments: "{\"city\":\"Shanghai\"}"
+        },
+        {
+          type: "message",
+          role: "user",
+          content: "Please use this tool result."
+        },
+        {
+          type: "function_call_output",
+          call_id: "call_123",
+          output: "{\"temperature_c\":26}"
+        },
+        {
+          type: "message",
+          role: "user",
+          content: "Now summarize it."
+        }
+      ]
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      content: [
+        {
+          type: "text",
+          text: "done"
         }
       ]
     });
