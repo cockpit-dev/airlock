@@ -5,9 +5,10 @@ import type {
 import {
   applyCircuitBreakerRetryableFailure,
   applyCircuitBreakerSuccess,
-  computeEffectiveCooldownMs,
+  isCircuitBreakerOpen,
   normalizeRecordSuccessArguments,
   parseProviderCircuitState,
+  shouldAttemptHalfOpenRecovery,
   shouldClaimHalfOpenProbe
 } from "@airlock/governance";
 import { serializeProviderTarget, type ProviderTarget } from "@airlock/routing";
@@ -303,26 +304,7 @@ export async function isProviderTargetCircuitOpen(
   backend: ProviderCircuitBreakerBackend
 ): Promise<boolean> {
   const state = await backend.getState(target);
-  return isCircuitBreakerOpenInternal(state, policy, now());
-}
-
-function isCircuitBreakerOpenInternal(
-  state: ProviderCircuitState | undefined,
-  policy: ProviderCircuitBreakerPolicy,
-  now: number
-): boolean {
-  if (!state || state.openedAt === undefined) {
-    return false;
-  }
-
-  if (
-    now - state.openedAt >= computeEffectiveCooldownMs(policy, state) &&
-    state.probeStartedAt === undefined
-  ) {
-    return false;
-  }
-
-  return true;
+  return isCircuitBreakerOpen(state, policy, now());
 }
 
 export async function getProviderTargetCircuitState(
@@ -333,24 +315,11 @@ export async function getProviderTargetCircuitState(
 ): Promise<ProviderCircuitState | undefined> {
   const state = await backend.getState(target);
 
-  if (!state || state.openedAt === undefined) {
+  if (!state || !shouldAttemptHalfOpenRecovery(state, policy, now())) {
     return state;
   }
 
   const currentNow = now();
-
-  if (currentNow - state.openedAt < computeEffectiveCooldownMs(policy, state)) {
-    return state;
-  }
-
-  if (
-    state.probeStartedAt !== undefined &&
-    currentNow - state.probeStartedAt <
-      computeEffectiveCooldownMs(policy, state)
-  ) {
-    return state;
-  }
-
   const claimed = await backend.claimHalfOpenProbe(target, policy, currentNow);
 
   if (!claimed) {

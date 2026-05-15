@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   applyCircuitBreakerRetryableFailure,
   applyCircuitBreakerSuccess,
-  parseProviderCircuitState
+  isCircuitBreakerOpen,
+  parseProviderCircuitState,
+  shouldAttemptHalfOpenRecovery
 } from "./provider-circuit-breaker.js";
 
 describe("applyCircuitBreakerRetryableFailure with sliding window", () => {
@@ -451,5 +453,115 @@ describe("backward compatibility", () => {
       openedAt: 5000,
       lastFailureAt: 5000
     });
+  });
+});
+
+describe("shouldAttemptHalfOpenRecovery", () => {
+  const policy = { threshold: 3, cooldownMs: 10_000 };
+
+  it("returns false when state has no openedAt", () => {
+    expect(
+      shouldAttemptHalfOpenRecovery(
+        { consecutiveRetryableFailures: 1 },
+        policy,
+        50_000
+      )
+    ).toBe(false);
+  });
+
+  it("returns false when cooldown has not expired", () => {
+    expect(
+      shouldAttemptHalfOpenRecovery(
+        { consecutiveRetryableFailures: 3, openedAt: 45_000 },
+        policy,
+        50_000
+      )
+    ).toBe(false);
+  });
+
+  it("returns true when cooldown has expired and no probe started", () => {
+    expect(
+      shouldAttemptHalfOpenRecovery(
+        { consecutiveRetryableFailures: 3, openedAt: 30_000 },
+        policy,
+        50_000
+      )
+    ).toBe(true);
+  });
+
+  it("returns false when probe is active and within cooldown", () => {
+    expect(
+      shouldAttemptHalfOpenRecovery(
+        {
+          consecutiveRetryableFailures: 3,
+          openedAt: 10_000,
+          probeStartedAt: 45_000
+        },
+        policy,
+        50_000
+      )
+    ).toBe(false);
+  });
+
+  it("returns true when probe has expired its own cooldown", () => {
+    expect(
+      shouldAttemptHalfOpenRecovery(
+        {
+          consecutiveRetryableFailures: 3,
+          openedAt: 10_000,
+          probeStartedAt: 20_000
+        },
+        policy,
+        50_000
+      )
+    ).toBe(true);
+  });
+});
+
+describe("isCircuitBreakerOpen", () => {
+  const policy = { threshold: 3, cooldownMs: 10_000 };
+
+  it("returns false for undefined state", () => {
+    expect(isCircuitBreakerOpen(undefined, policy, 50_000)).toBe(false);
+  });
+
+  it("returns false when no openedAt", () => {
+    expect(
+      isCircuitBreakerOpen({ consecutiveRetryableFailures: 0 }, policy, 50_000)
+    ).toBe(false);
+  });
+
+  it("returns true when within cooldown", () => {
+    expect(
+      isCircuitBreakerOpen(
+        { consecutiveRetryableFailures: 3, openedAt: 45_000 },
+        policy,
+        50_000
+      )
+    ).toBe(true);
+  });
+
+  it("returns false when cooldown expired and no probe", () => {
+    expect(
+      isCircuitBreakerOpen(
+        { consecutiveRetryableFailures: 3, openedAt: 30_000 },
+        policy,
+        50_000
+      )
+    ).toBe(false);
+  });
+
+  it("returns true when cooldown expired but probe is active", () => {
+    expect(
+      isCircuitBreakerOpen(
+        {
+          consecutiveRetryableFailures: 3,
+          openedAt: 10_000,
+          probeStartedAt: 45_000
+        },
+        policy,
+        50_000
+      )
+    ).toBe(true);
   });
 });

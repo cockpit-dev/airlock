@@ -384,6 +384,38 @@ export function shouldClaimHalfOpenProbe(
 }
 
 /**
+ * Pure decision: determines whether a half-open recovery probe should be
+ * attempted for a circuit that has an `openedAt` timestamp.
+ *
+ * Returns `true` when the cooldown has expired AND either no probe has been
+ * started or the existing probe has also exceeded its cooldown window.
+ */
+export function shouldAttemptHalfOpenRecovery(
+  state: ProviderCircuitState,
+  policy: ProviderCircuitBreakerPolicy,
+  now: number
+): boolean {
+  if (state.openedAt === undefined) {
+    return false;
+  }
+
+  const effectiveCooldownMs = computeEffectiveCooldownMs(policy, state);
+
+  if (now - state.openedAt < effectiveCooldownMs) {
+    return false;
+  }
+
+  if (
+    state.probeStartedAt !== undefined &&
+    now - state.probeStartedAt < effectiveCooldownMs
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Pure decision: determines whether a circuit is currently open.
  */
 export function isCircuitBreakerOpen(
