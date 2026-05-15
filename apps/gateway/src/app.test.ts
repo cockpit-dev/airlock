@@ -24043,6 +24043,442 @@ describe("gateway app", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the weighted ordered chain for retryable failover on /v1/responses", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            responseId: "gemini-response-123",
+            modelVersion: "gemini-2.5-flash",
+            candidates: [
+              {
+                content: {
+                  role: "model",
+                  parts: [
+                    {
+                      text: "hello from gemini"
+                    }
+                  ]
+                }
+              }
+            ],
+            usageMetadata: {
+              promptTokenCount: 12,
+              candidatesTokenCount: 8,
+              totalTokenCount: 20
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          input: "hi",
+          stream: false
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": [
+            "anthropic:claude-haiku-4-5",
+            "gemini:gemini-2.5-flash"
+          ]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "weighted",
+            weights: {
+              "openai:gpt-4.1-mini": 1,
+              "anthropic:claude-haiku-4-5": 10000,
+              "gemini:gemini-2.5-flash": 5000
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    );
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "response",
+      model: "gemini-2.5-flash",
+      output_text: "hello from gemini"
+    });
+  });
+
+  it("uses the cost-aware ordered chain for retryable failover on /v1/responses", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            responseId: "gemini-response-123",
+            modelVersion: "gemini-2.5-flash",
+            candidates: [
+              {
+                content: {
+                  role: "model",
+                  parts: [
+                    {
+                      text: "hello from gemini"
+                    }
+                  ]
+                }
+              }
+            ],
+            usageMetadata: {
+              promptTokenCount: 12,
+              candidatesTokenCount: 8,
+              totalTokenCount: 20
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          input: "hi",
+          stream: false
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": [
+            "anthropic:claude-haiku-4-5",
+            "gemini:gemini-2.5-flash"
+          ]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "lowest_cost",
+            costs: {
+              "openai:gpt-4.1-mini": 10,
+              "anthropic:claude-haiku-4-5": 2,
+              "gemini:gemini-2.5-flash": 4
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    );
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "response",
+      model: "gemini-2.5-flash",
+      output_text: "hello from gemini"
+    });
+  });
+
+  it("uses the weighted ordered chain for retryable failover on /v1/messages", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            responseId: "gemini-response-123",
+            modelVersion: "gemini-2.5-flash",
+            candidates: [
+              {
+                content: {
+                  role: "model",
+                  parts: [
+                    {
+                      text: "hello from gemini"
+                    }
+                  ]
+                }
+              }
+            ],
+            usageMetadata: {
+              promptTokenCount: 12,
+              candidatesTokenCount: 8,
+              totalTokenCount: 20
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=anthropic:claude-sonnet-4-5,claude-haiku-4-5=anthropic:claude-haiku-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": [
+            "anthropic:claude-haiku-4-5",
+            "gemini:gemini-2.5-flash"
+          ]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "weighted",
+            weights: {
+              "anthropic:claude-sonnet-4-5": 1,
+              "anthropic:claude-haiku-4-5": 10000,
+              "gemini:gemini-2.5-flash": 5000
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    );
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "message",
+      model: "gemini-2.5-flash",
+      content: [
+        {
+          type: "text",
+          text: "hello from gemini"
+        }
+      ]
+    });
+  });
+
+  it("uses the cost-aware ordered chain for retryable failover on /v1/messages", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            responseId: "gemini-response-123",
+            modelVersion: "gemini-2.5-flash",
+            candidates: [
+              {
+                content: {
+                  role: "model",
+                  parts: [
+                    {
+                      text: "hello from gemini"
+                    }
+                  ]
+                }
+              }
+            ],
+            usageMetadata: {
+              promptTokenCount: 12,
+              candidatesTokenCount: 8,
+              totalTokenCount: 20
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=anthropic:claude-sonnet-4-5,claude-haiku-4-5=anthropic:claude-haiku-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": [
+            "anthropic:claude-haiku-4-5",
+            "gemini:gemini-2.5-flash"
+          ]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "lowest_cost",
+            costs: {
+              "anthropic:claude-sonnet-4-5": 10,
+              "anthropic:claude-haiku-4-5": 2,
+              "gemini:gemini-2.5-flash": 4
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    );
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "message",
+      model: "gemini-2.5-flash",
+      content: [
+        {
+          type: "text",
+          text: "hello from gemini"
+        }
+      ]
+    });
+  });
+
   it("uses streaming completion usage to influence later lowest-cost routing in the app", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi
