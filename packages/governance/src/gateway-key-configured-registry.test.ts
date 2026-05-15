@@ -128,6 +128,81 @@ describe("updateConfiguredGatewayKeyRegistryOverride", () => {
     );
   });
 
+  it("forwards resolved audit metadata into configured-key override writes", async () => {
+    const writeRegistryOverride = vi.fn().mockResolvedValue({
+      override: {
+        label: "Runtime Key",
+        updatedAt: "2026-05-15T01:00:00.000Z"
+      },
+      auditEvent: {
+        keyId: "key_configured",
+        kind: "override_updated",
+        ownership: "configured",
+        occurredAt: "2026-05-15T01:00:00.000Z",
+        operationId: "req_456",
+        reason: "incident mitigation",
+        actor: "ops@example.com",
+        actorSource: "credential",
+        changes: [
+          {
+            field: "registryOverride",
+            after: {
+              label: "Runtime Key",
+              updatedAt: "2026-05-15T01:00:00.000Z"
+            }
+          }
+        ]
+      }
+    });
+
+    await expect(
+      updateConfiguredGatewayKeyRegistryOverride(
+        [createConfiguredKey()],
+        "key_configured",
+        {
+          label: "Runtime Key"
+        },
+        "req_456",
+        {
+          writeRegistryOverride
+        },
+        {
+          actorContext: {
+            actor: "ops@example.com",
+            actorSource: "credential"
+          },
+          reason: "incident mitigation",
+          operationId: "req_456"
+        }
+      )
+    ).resolves.toMatchObject({
+      keyId: "key_configured",
+      auditEvent: {
+        operationId: "req_456",
+        reason: "incident mitigation",
+        actor: "ops@example.com",
+        actorSource: "credential"
+      }
+    });
+
+    expect(writeRegistryOverride).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "key_configured"
+      }),
+      {
+        label: "Runtime Key"
+      },
+      {
+        actorContext: {
+          actor: "ops@example.com",
+          actorSource: "credential"
+        },
+        reason: "incident mitigation",
+        operationId: "req_456"
+      }
+    );
+  });
+
   it("rejects registry-unknown configured-key override updates", async () => {
     await expect(
       updateConfiguredGatewayKeyRegistryOverride(
@@ -184,6 +259,63 @@ describe("clearConfiguredGatewayKeyRegistryOverride", () => {
         id: "key_configured"
       }),
       {}
+    );
+  });
+
+  it("forwards resolved audit metadata into configured-key override clears", async () => {
+    const clearRegistryOverride = vi.fn().mockResolvedValue({
+      auditEvent: {
+        keyId: "key_configured",
+        kind: "override_cleared",
+        ownership: "configured",
+        occurredAt: "2026-05-15T02:00:00.000Z",
+        operationId: "req_789",
+        reason: "rollback",
+        actor: "ops@example.com",
+        actorSource: "trusted_header"
+      }
+    });
+
+    await expect(
+      clearConfiguredGatewayKeyRegistryOverride(
+        [createConfiguredKey()],
+        "key_configured",
+        {},
+        "req_789",
+        {
+          clearRegistryOverride
+        },
+        {
+          actorContext: {
+            actor: "ops@example.com",
+            actorSource: "trusted_header"
+          },
+          reason: "rollback",
+          operationId: "req_789"
+        }
+      )
+    ).resolves.toMatchObject({
+      keyId: "key_configured",
+      auditEvent: {
+        operationId: "req_789",
+        reason: "rollback",
+        actor: "ops@example.com",
+        actorSource: "trusted_header"
+      }
+    });
+
+    expect(clearRegistryOverride).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "key_configured"
+      }),
+      {
+        actorContext: {
+          actor: "ops@example.com",
+          actorSource: "trusted_header"
+        },
+        reason: "rollback",
+        operationId: "req_789"
+      }
     );
   });
 });

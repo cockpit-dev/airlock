@@ -313,7 +313,8 @@ describe("createAdminKeyGovernanceRuntime", () => {
     );
 
     await expect(runtime.write.updateRegistryOverride("key_configured", {
-      label: "Updated"
+      label: "Updated",
+      reason: "incident mitigation"
     })).resolves.toMatchObject({
       keyId: "key_configured",
       override: {
@@ -325,10 +326,25 @@ describe("createAdminKeyGovernanceRuntime", () => {
         operationId: "req_123"
       }
     });
-    expect(runtimeMocks.upsertGatewayKeyRegistryOverride).toHaveBeenCalled();
+    expect(runtimeMocks.upsertGatewayKeyRegistryOverride).toHaveBeenCalledWith(
+      env,
+      expect.objectContaining({
+        id: "key_configured"
+      }),
+      {
+        label: "Updated"
+      },
+      "req_123",
+      {
+        actorContext,
+        reason: "incident mitigation"
+      }
+    );
     expect(runtimeMocks.resolveGatewayApiKeyById).not.toHaveBeenCalled();
 
-    await expect(runtime.write.clearRegistryOverride("key_configured", undefined)).resolves.toMatchObject({
+    await expect(runtime.write.clearRegistryOverride("key_configured", {
+      reason: "rollback"
+    })).resolves.toMatchObject({
       keyId: "key_configured",
       override: null,
       auditEvent: {
@@ -336,7 +352,17 @@ describe("createAdminKeyGovernanceRuntime", () => {
         operationId: "req_123"
       }
     });
-    expect(runtimeMocks.clearGatewayKeyRegistryOverride).toHaveBeenCalled();
+    expect(runtimeMocks.clearGatewayKeyRegistryOverride).toHaveBeenCalledWith(
+      env,
+      expect.objectContaining({
+        id: "key_configured"
+      }),
+      "req_123",
+      {
+        actorContext,
+        reason: "rollback"
+      }
+    );
     expect(runtimeMocks.resolveGatewayApiKeyById).not.toHaveBeenCalled();
 
     await runtime.write.revokeKey("key_registry", {

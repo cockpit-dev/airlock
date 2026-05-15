@@ -9145,6 +9145,7 @@ describe("gateway app", () => {
         },
         body: JSON.stringify({
           label: "Runtime Key 1",
+          reason: "runtime override",
           actor: "spoofed@example.com"
         })
       },
@@ -9193,7 +9194,11 @@ describe("gateway app", () => {
       expect.arrayContaining([
         expect.objectContaining({
           keyId: "key_1",
-          kind: "override_updated"
+          kind: "override_updated",
+          operationId,
+          reason: "runtime override",
+          actor: "trusted@example.com",
+          actorSource: "trusted_header"
         })
       ])
     );
@@ -9222,7 +9227,10 @@ describe("gateway app", () => {
         expect.objectContaining({
           keyId: "key_1",
           kind: "override_updated",
-          operationId
+          operationId,
+          reason: "runtime override",
+          actor: "trusted@example.com",
+          actorSource: "trusted_header"
         })
       ])
     );

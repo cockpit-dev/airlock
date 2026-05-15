@@ -403,12 +403,18 @@ export function createAdminKeyGovernanceRuntime(
           candidatePayload,
           requestId,
           {
-            writeRegistryOverride: async (gatewayApiKey, override) => {
+            writeRegistryOverride: async (gatewayApiKey, override, audit) => {
               return upsertGatewayKeyRegistryOverride(
                 env,
                 gatewayApiKey,
                 override,
-                requestId
+                requestId,
+                {
+                  ...(audit?.reason ? { reason: audit.reason } : {}),
+                  ...(audit?.actorContext
+                    ? { actorContext: audit.actorContext }
+                    : {})
+                }
               );
             }
           },
@@ -425,8 +431,18 @@ export function createAdminKeyGovernanceRuntime(
           candidatePayload,
           requestId,
           {
-            clearRegistryOverride: async (gatewayApiKey) => {
-              return clearGatewayKeyRegistryOverride(env, gatewayApiKey, requestId);
+            clearRegistryOverride: async (gatewayApiKey, audit) => {
+              return clearGatewayKeyRegistryOverride(
+                env,
+                gatewayApiKey,
+                requestId,
+                {
+                  ...(audit?.reason ? { reason: audit.reason } : {}),
+                  ...(audit?.actorContext
+                    ? { actorContext: audit.actorContext }
+                    : {})
+                }
+              );
             }
           },
           {

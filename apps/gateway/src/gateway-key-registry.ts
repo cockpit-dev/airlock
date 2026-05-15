@@ -138,6 +138,15 @@ interface GatewayKeyRegistryLookupRequest {
   bearerToken: string;
 }
 
+interface GatewayKeyRegistryOverrideMutationRequest {
+  override: GatewayApiKeyMetadataOverride;
+  auditMetadata?: {
+    reason?: string;
+    actor?: string;
+    actorSource?: "payload" | "trusted_header" | "credential";
+  };
+}
+
 interface GatewayKeyRegistryOverrideMutationResult {
   override: GatewayKeyRegistryStoredOverride;
   auditEvent: GatewayKeyAuditEvent;
@@ -1391,24 +1400,22 @@ export class GatewayKeyRegistryDurableObject {
       case "PUT":
         {
           const body: unknown = await request.json();
-          const parsedPayload: {
-            override: GatewayApiKeyMetadataOverride;
-            reason?: string;
-          } =
-            parseConfiguredGatewayKeyRegistryOverrideUpdatePayload(body);
-          const actorContext =
-            typeof body === "object" && body !== null
-              ? gatewayKeyAuditActorContextFromRegistryRequest(body)
-              : undefined;
+          const parsedRequest =
+            parseGatewayKeyRegistryOverrideMutationRequest(body);
           const result = await writeStoredOverride(
             this.state.storage,
             keyId,
-            parsedPayload.override,
+            parsedRequest.override,
             {
               ...(operationId ? { operationId } : {}),
-              ...(parsedPayload.reason ? { reason: parsedPayload.reason } : {}),
-              ...(actorContext
-                ? toGatewayKeyAuditActorContextRecord(actorContext)
+              ...(parsedRequest.auditMetadata?.reason
+                ? { reason: parsedRequest.auditMetadata.reason }
+                : {}),
+              ...(parsedRequest.auditMetadata?.actor
+                ? {
+                    actor: parsedRequest.auditMetadata.actor,
+                    actorSource: parsedRequest.auditMetadata.actorSource
+                  }
                 : {})
             }
           );
@@ -1429,19 +1436,17 @@ export class GatewayKeyRegistryDurableObject {
             request.headers.get("content-type")?.includes("application/json")
               ? await request.json()
               : {};
-          const parsedPayload: {
-            reason?: string;
-          } =
-            parseConfiguredGatewayKeyRegistryOverrideClearPayload(body);
-          const actorContext =
-            typeof body === "object" && body !== null
-              ? gatewayKeyAuditActorContextFromRegistryRequest(body)
-              : undefined;
+          const parsedRequest = parseGatewayKeyRegistryOverrideClearRequest(body);
           const result = await clearStoredOverride(this.state.storage, keyId, {
             ...(operationId ? { operationId } : {}),
-            ...(parsedPayload.reason ? { reason: parsedPayload.reason } : {}),
-            ...(actorContext
-              ? toGatewayKeyAuditActorContextRecord(actorContext)
+            ...(parsedRequest.auditMetadata?.reason
+              ? { reason: parsedRequest.auditMetadata.reason }
+              : {}),
+            ...(parsedRequest.auditMetadata?.actor
+              ? {
+                  actor: parsedRequest.auditMetadata.actor,
+                  actorSource: parsedRequest.auditMetadata.actorSource
+                }
               : {})
           });
           await appendStoredConfiguredKeyAuditEvent(
@@ -1490,7 +1495,11 @@ export async function upsertGatewayKeyRegistryOverride(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
   override: GatewayApiKeyMetadataOverride,
-  requestId: string
+  requestId: string,
+  audit?: {
+    reason?: string;
+    actorContext?: GatewayKeyAuditActorContext;
+  }
 ): Promise<GatewayKeyRegistryOverrideMutationResult> {
   const namespace = requireGatewayKeyRegistryNamespace(env, requestId);
   return fetchParsedRegistryResponse(
@@ -1501,7 +1510,15 @@ export async function upsertGatewayKeyRegistryOverride(
       headers: {
         "content-type": "application/json"
       },
-      body: JSON.stringify(override)
+      body: JSON.stringify({
+        override,
+        auditMetadata: {
+          ...(audit?.reason ? { reason: audit.reason } : {}),
+          ...(audit?.actorContext
+            ? toGatewayKeyAuditActorContextRecord(audit.actorContext)
+            : {})
+        }
+      } satisfies GatewayKeyRegistryOverrideMutationRequest)
     }),
     requestId,
     {
@@ -1527,6 +1544,10 @@ export async function upsertGatewayKeyRegistryOverride(
               ownership: "configured",
               occurredAt: parsed.override.updatedAt,
               operationId: requestId,
+              ...(audit?.reason ? { reason: audit.reason } : {}),
+              ...(audit?.actorContext
+                ? toGatewayKeyAuditActorContextRecord(audit.actorContext)
+                : {}),
               changes: [
                 {
                   field: "registryOverride",
@@ -1543,14 +1564,29 @@ export async function upsertGatewayKeyRegistryOverride(
 export async function clearGatewayKeyRegistryOverride(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
-  requestId: string
+  requestId: string,
+  audit?: {
+    reason?: string;
+    actorContext?: GatewayKeyAuditActorContext;
+  }
 ): Promise<GatewayKeyRegistryOverrideClearMutationResult> {
   const namespace = requireGatewayKeyRegistryNamespace(env, requestId);
   return fetchParsedRegistryResponse(
     () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
     buildRegistryRequest(requestId, REGISTRY_KIND_OVERRIDE, {
       method: "DELETE",
-      keyId: gatewayApiKey.id
+      keyId: gatewayApiKey.id,
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        auditMetadata: {
+          ...(audit?.reason ? { reason: audit.reason } : {}),
+          ...(audit?.actorContext
+            ? toGatewayKeyAuditActorContextRecord(audit.actorContext)
+            : {})
+        }
+      })
     }),
     requestId,
     {
@@ -1571,6 +1607,10 @@ export async function clearGatewayKeyRegistryOverride(
               ownership: "configured",
               occurredAt: new Date().toISOString(),
               operationId: requestId,
+              ...(audit?.reason ? { reason: audit.reason } : {}),
+              ...(audit?.actorContext
+                ? toGatewayKeyAuditActorContextRecord(audit.actorContext)
+                : {}),
               changes: [
                 {
                   field: "registryOverride",
@@ -3018,6 +3058,114 @@ async function readStoredOverride(
   );
 
   return value ?? null;
+}
+
+function parseGatewayKeyRegistryOverrideMutationRequest(
+  value: unknown
+): GatewayKeyRegistryOverrideMutationRequest {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    const parsed = parseConfiguredGatewayKeyRegistryOverrideUpdatePayload(value);
+    return {
+      override: parsed.override,
+      ...(parsed.reason ? { auditMetadata: { reason: parsed.reason } } : {})
+    };
+  }
+
+  const record = value as Record<string, unknown>;
+
+  if ("override" in record) {
+    const parsedOverride = parseConfiguredGatewayKeyRegistryOverrideUpdatePayload(
+      record.override
+    );
+    const parsedAuditMetadata =
+      "auditMetadata" in record
+        ? parseGatewayKeyRegistryOverrideAuditMetadata(record.auditMetadata)
+        : undefined;
+
+    return {
+      override: parsedOverride.override,
+      ...((parsedOverride.reason || parsedAuditMetadata)
+        ? {
+            auditMetadata: {
+              ...(parsedOverride.reason ? { reason: parsedOverride.reason } : {}),
+              ...(parsedAuditMetadata ?? {})
+            }
+          }
+        : {})
+    };
+  }
+
+  const parsed = parseConfiguredGatewayKeyRegistryOverrideUpdatePayload(value);
+  return {
+    override: parsed.override,
+    ...(parsed.reason ? { auditMetadata: { reason: parsed.reason } } : {})
+  };
+}
+
+function parseGatewayKeyRegistryOverrideClearRequest(value: unknown): {
+  auditMetadata?: {
+    reason?: string;
+    actor?: string;
+    actorSource?: "payload" | "trusted_header" | "credential";
+  };
+} {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "auditMetadata" in value
+  ) {
+    const record = value as Record<string, unknown>;
+    const parsedBody = parseConfiguredGatewayKeyRegistryOverrideClearPayload(
+      "reason" in record ? { reason: record.reason } : {}
+    );
+    const parsedAuditMetadata = parseGatewayKeyRegistryOverrideAuditMetadata(
+      record.auditMetadata
+    );
+
+    return {
+      ...((parsedBody.reason || parsedAuditMetadata)
+        ? {
+            auditMetadata: {
+              ...(parsedBody.reason ? { reason: parsedBody.reason } : {}),
+              ...(parsedAuditMetadata ?? {})
+            }
+          }
+        : {})
+    };
+  }
+
+  const parsed = parseConfiguredGatewayKeyRegistryOverrideClearPayload(value);
+  return {
+    ...(parsed.reason ? { auditMetadata: { reason: parsed.reason } } : {})
+  };
+}
+
+function parseGatewayKeyRegistryOverrideAuditMetadata(value: unknown):
+  | {
+      reason?: string;
+      actor?: string;
+      actorSource?: "payload" | "trusted_header" | "credential";
+    }
+  | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const parsed = parseGatewayKeyRegistryLifecycleActionRequest(
+    value,
+    "Gateway configured key registry override payload is invalid"
+  );
+  const actorContext = gatewayKeyAuditActorContextFromRegistryRequest(value);
+
+  if (!parsed.reason && !actorContext) {
+    return undefined;
+  }
+
+  return {
+    ...(parsed.reason ? { reason: parsed.reason } : {}),
+    ...(actorContext ? toGatewayKeyAuditActorContextRecord(actorContext) : {})
+  };
 }
 
 async function writeStoredOverride(
