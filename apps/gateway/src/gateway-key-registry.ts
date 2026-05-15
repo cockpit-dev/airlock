@@ -100,6 +100,7 @@ import {
   requireDynamicGatewayKeyRegistryNamespace,
   requireGatewayKeyRegistryNamespace
 } from "./gateway-key-registry-transport.js";
+import type { DurableObjectStateLike } from "./durable-object-state.js";
 
 const REGISTRY_KIND_OVERRIDE = "override";
 const REGISTRY_KIND_DYNAMIC = "dynamic";
@@ -126,13 +127,7 @@ const DYNAMIC_KEY_OPERATION_INDEX_PREFIX = "dynamic_operation:";
 const CONFIGURED_KEY_AUDIT_EVENTS_PREFIX = "configured_events:";
 const CONFIGURED_KEY_OPERATION_INDEX_PREFIX = "configured_operation:";
 
-interface DurableObjectStateLike {
-  storage: {
-    get<T>(key: string): Promise<T | undefined>;
-    put<T>(key: string, value: T): Promise<void>;
-    delete(key: string): Promise<boolean | void>;
-  };
-}
+
 
 interface GatewayKeyRegistryLookupRequest {
   bearerToken: string;

@@ -5,6 +5,7 @@ import type {
 import { GatewayError } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
+import type { DurableObjectStateLike } from "./durable-object-state.js";
 
 interface GatewayKeyTokenQuotaDecision {
   allowed: boolean;
@@ -65,12 +66,7 @@ interface GatewayKeyTokenQuotaStorage {
   reservations?: GatewayKeyTokenQuotaReservation[];
 }
 
-interface DurableObjectStateLike {
-  storage: {
-    get<T>(key: string): Promise<T | undefined>;
-    put<T>(key: string, value: T): Promise<void>;
-  };
-}
+
 
 export interface GatewayKeyTokenReservationHandle {
   reservationId: string;

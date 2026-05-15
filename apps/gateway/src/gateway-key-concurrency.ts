@@ -5,6 +5,7 @@ import type {
 import { GatewayError } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
+import type { DurableObjectStateLike } from "./durable-object-state.js";
 
 interface GatewayKeyConcurrencyAcquireRequest {
   kind: "acquire";
@@ -30,12 +31,7 @@ interface GatewayKeyConcurrencyDecision {
   retryAfterSeconds: number;
 }
 
-interface DurableObjectStateLike {
-  storage: {
-    get<T>(key: string): Promise<T | undefined>;
-    put<T>(key: string, value: T): Promise<void>;
-  };
-}
+
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

@@ -49,13 +49,9 @@ import {
   isGatewayKeyRevocationEnabled,
   requireGatewayKeyRevocationNamespace
 } from "./gateway-key-revocation-transport.js";
+import type { DurableObjectStateLike } from "./durable-object-state.js";
 
-interface DurableObjectStateLike {
-  storage: {
-    get<T>(key: string): Promise<T | undefined>;
-    put<T>(key: string, value: T): Promise<void>;
-  };
-}
+
 const REVOCATION_EVENTS_KEY = "revocation_events";
 const REVOCATION_OPERATION_EVENTS_PREFIX = "revocation_operation:";
 
