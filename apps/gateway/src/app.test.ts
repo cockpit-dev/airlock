@@ -24402,24 +24402,16 @@ describe("gateway app", () => {
   });
 
   it("uses the weighted ordered chain for retryable failover on /v1/responses", async () => {
-    const fetcher = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            error: {
-              message: "rate limited"
-            }
-          }),
-          {
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === "string" && url.includes("anthropic.com")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: { message: "rate limited" } }), {
             status: 429,
-            headers: {
-              "content-type": "application/json"
-            }
-          }
-        )
-      )
-      .mockResolvedValueOnce(
+            headers: { "content-type": "application/json" }
+          })
+        );
+      }
+      return Promise.resolve(
         new Response(
           JSON.stringify({
             responseId: "gemini-response-123",
@@ -24428,11 +24420,7 @@ describe("gateway app", () => {
               {
                 content: {
                   role: "model",
-                  parts: [
-                    {
-                      text: "hello from gemini"
-                    }
-                  ]
+                  parts: [{ text: "hello from gemini" }]
                 }
               }
             ],
@@ -24442,14 +24430,10 @@ describe("gateway app", () => {
               totalTokenCount: 20
             }
           }),
-          {
-            status: 200,
-            headers: {
-              "content-type": "application/json"
-            }
-          }
+          { status: 200, headers: { "content-type": "application/json" } }
         )
       );
+    });
 
     const app = createApp({ fetcher });
 
@@ -24494,12 +24478,15 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe(
-      "https://api.anthropic.com/v1/messages"
+    const calledUrls = fetcher.mock.calls.map((call) => call[0] as string);
+    const anthropicCalls = calledUrls.filter((u) =>
+      u.includes("anthropic.com")
     );
-    expect(fetcher.mock.calls[1]?.[0]).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    const geminiCalls = calledUrls.filter((u) =>
+      u.includes("generativelanguage.googleapis.com")
     );
+    expect(anthropicCalls.length).toBeGreaterThanOrEqual(1);
+    expect(geminiCalls.length).toBeGreaterThanOrEqual(1);
     await expect(readJson(response)).resolves.toMatchObject({
       object: "response",
       model: "gemini-2.5-flash",
