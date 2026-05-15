@@ -137,6 +137,8 @@ export async function handleChatCompletions(
     ...parsed,
     model: route.target.providerModel
   });
+  const includeUsageInStream =
+    canonicalRequest.providerMetadata?.openai?.chatIncludeUsage === true;
   const requestShaping = parseRequestShapingExtension(
     parsed.airlock?.requestShaping
   );
@@ -248,7 +250,11 @@ export async function handleChatCompletions(
       controller.enqueue(
         encoder.encode(
           `data: ${JSON.stringify(
-            encodeCanonicalToOpenAIChatStreamChunk(event, streamId)
+            encodeCanonicalToOpenAIChatStreamChunk(
+              event,
+              streamId,
+              includeUsageInStream
+            )
           )}\n\n`
         )
       );

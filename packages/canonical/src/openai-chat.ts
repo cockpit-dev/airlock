@@ -534,7 +534,8 @@ export function normalizeOpenAIChatRequest(
     ...((request.frequency_penalty !== undefined ||
       request.metadata !== undefined ||
       request.presence_penalty !== undefined ||
-      request.seed !== undefined)
+      request.seed !== undefined ||
+      request.stream_options?.include_usage === true)
       ? {
           providerMetadata: {
             openai: {
@@ -547,7 +548,10 @@ export function normalizeOpenAIChatRequest(
               ...(request.presence_penalty !== undefined
                 ? { presencePenalty: request.presence_penalty }
                 : {}),
-              ...(request.seed !== undefined ? { seed: request.seed } : {})
+              ...(request.seed !== undefined ? { seed: request.seed } : {}),
+              ...(request.stream_options?.include_usage === true
+                ? { chatIncludeUsage: true }
+                : {})
             }
           }
         }
@@ -904,7 +908,8 @@ export function normalizeAnthropicMessagesRequest(
 
 export function encodeCanonicalToOpenAIChatStreamChunk(
   event: CanonicalStreamEvent,
-  streamId: string
+  streamId: string,
+  includeUsage = true
 ) {
   if (event.type === "response_started") {
     return {
@@ -1010,7 +1015,9 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
     ...(event.systemFingerprint !== undefined
       ? { system_fingerprint: event.systemFingerprint }
       : {}),
-    ...(event.usage ? { usage: encodeCanonicalUsage(event.usage) } : {}),
+    ...(includeUsage && event.usage
+      ? { usage: encodeCanonicalUsage(event.usage) }
+      : {}),
     choices: [
       {
         index: 0,

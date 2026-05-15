@@ -200,6 +200,28 @@ describe("normalizeOpenAIChatRequest", () => {
     });
   });
 
+  it("normalizes chat stream_options.include_usage into canonical OpenAI-native request fields", () => {
+    const canonical = normalizeOpenAIChatRequest({
+      model: "gpt-4.1-mini",
+      stream: true,
+      stream_options: {
+        include_usage: true
+      },
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.providerMetadata).toEqual({
+      openai: {
+        chatIncludeUsage: true
+      }
+    });
+  });
+
   it("normalizes chat service_tier=scale into canonical request fields", () => {
     const canonical = normalizeOpenAIChatRequest({
       model: "gpt-4.1-mini",
@@ -827,6 +849,42 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
         completion_tokens: 8,
         total_tokens: 20
       }
+    });
+  });
+
+  it("omits usage from a response_completed chunk when includeUsage=false", async () => {
+    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIChatStreamChunk(
+        {
+          type: "response_completed",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          finishReason: "stop",
+          usage: {
+            inputTokens: 12,
+            outputTokens: 8,
+            totalTokens: 20
+          }
+        },
+        "chatcmpl-stream-123",
+        false
+      )
+    ).toEqual({
+      id: "chatcmpl-stream-123",
+      object: "chat.completion.chunk",
+      created: 0,
+      model: "gpt-4.1-mini",
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: "stop"
+        }
+      ]
     });
   });
 

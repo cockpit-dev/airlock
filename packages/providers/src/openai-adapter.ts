@@ -330,7 +330,8 @@ function buildOpenAIChatRequestBody(
           )
         }
       : {}),
-    ...(stream
+    ...(stream &&
+    request.providerMetadata?.openai?.chatIncludeUsage === true
       ? {
           stream_options: {
             include_usage: true

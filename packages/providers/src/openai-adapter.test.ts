@@ -3041,7 +3041,12 @@ describe("OpenAIProviderAdapter", () => {
     for await (const event of adapter.stream(
       {
         ...createCanonicalRequest(),
-        stream: true
+        stream: true,
+        providerMetadata: {
+          openai: {
+            chatIncludeUsage: true
+          }
+        }
       },
       {
         requestId: "req_stream_123"
@@ -3088,6 +3093,57 @@ describe("OpenAIProviderAdapter", () => {
         }
       }
     ]);
+  });
+
+  it("does not inject chat stream_options.include_usage unless explicitly requested", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+              'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}\n\n',
+              "data: [DONE]\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const streamIterator = adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true
+      },
+      {
+        requestId: "req_stream_implicit_usage"
+      }
+    )[Symbol.asyncIterator]();
+
+    while (true) {
+      const nextChunk = await streamIterator.next();
+      if (nextChunk.done) {
+        break;
+      }
+    }
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).not.toHaveProperty("stream_options");
   });
 
   it("parses upstream streamed chat tool calls into tool_call_delta events and a tool_calls completion event", async () => {

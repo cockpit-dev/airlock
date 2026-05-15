@@ -5751,6 +5751,61 @@ describe("gateway app", () => {
     });
   });
 
+  it("does not expose a streamed chat usage chunk unless include_usage was explicitly requested", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const body = await readText(response);
+    expect(body).not.toContain('"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}');
+    expect(body).toContain('"finish_reason":"stop"');
+    expect(body).toContain("data: [DONE]");
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).not.toHaveProperty("stream_options");
+  });
+
   it("rejects unsupported chat stream_options variants", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -15489,6 +15544,9 @@ describe("gateway app", () => {
         body: JSON.stringify({
           model: "gpt-4.1-mini",
           stream: true,
+          stream_options: {
+            include_usage: true
+          },
           messages: [{ role: "user", content: "hi" }]
         })
       },
@@ -17046,6 +17104,9 @@ describe("gateway app", () => {
         body: JSON.stringify({
           model: "gpt-4.1-mini",
           stream: true,
+          stream_options: {
+            include_usage: true
+          },
           messages: [{ role: "user", content: "hi" }]
         })
       },
@@ -18811,6 +18872,9 @@ describe("gateway app", () => {
         body: JSON.stringify({
           model: "assistant-default",
           stream: true,
+          stream_options: {
+            include_usage: true
+          },
           messages: [{ role: "user", content: "seed observed cost" }]
         })
       },
