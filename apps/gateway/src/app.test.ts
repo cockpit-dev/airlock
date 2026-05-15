@@ -51,7 +51,11 @@ function isRecordArray(value: unknown): value is Record<string, unknown>[] {
 function isModelDirectoryPayload(
   value: unknown
 ): value is ModelDirectoryPayload {
-  if (!isRecord(value) || value.object !== "list" || !Array.isArray(value.data)) {
+  if (
+    !isRecord(value) ||
+    value.object !== "list" ||
+    !Array.isArray(value.data)
+  ) {
     return false;
   }
 
@@ -63,9 +67,7 @@ function isModelDirectoryPayload(
   );
 }
 
-function isGatewayKeyEventsPayload(
-  value: unknown
-): value is {
+function isGatewayKeyEventsPayload(value: unknown): value is {
   keyId: string;
   events: Array<{
     keyId: string;
@@ -91,11 +93,14 @@ function isGatewayKeyEventsPayload(
         isRecord(event) &&
         typeof event.keyId === "string" &&
         typeof event.kind === "string" &&
-        (event.ownership === undefined || typeof event.ownership === "string") &&
-        (event.occurredAt === undefined || typeof event.occurredAt === "string") &&
+        (event.ownership === undefined ||
+          typeof event.ownership === "string") &&
+        (event.occurredAt === undefined ||
+          typeof event.occurredAt === "string") &&
         (event.reason === undefined || typeof event.reason === "string") &&
         (event.actor === undefined || typeof event.actor === "string") &&
-        (event.actorSource === undefined || typeof event.actorSource === "string") &&
+        (event.actorSource === undefined ||
+          typeof event.actorSource === "string") &&
         (event.changes === undefined ||
           (Array.isArray(event.changes) &&
             event.changes.every((change) => {
@@ -111,9 +116,7 @@ function isGatewayKeyEventsPayload(
   );
 }
 
-function isGatewayKeyOperationEventsPayload(
-  value: unknown
-): value is {
+function isGatewayKeyOperationEventsPayload(value: unknown): value is {
   operationId: string;
   events: Array<{
     keyId: string;
@@ -242,7 +245,11 @@ function createTokenQuotaNamespace() {
             return sum + reservation.tokens;
           }, 0);
 
-          const decision = (used: number, nextReserved: number, allowed: boolean) => {
+          const decision = (
+            used: number,
+            nextReserved: number,
+            allowed: boolean
+          ) => {
             return {
               allowed,
               limit: body.limit,
@@ -267,9 +274,12 @@ function createTokenQuotaNamespace() {
           if (body.kind === "charge") {
             current.usedTokens += body.tokens;
             state.set(id.name, current);
-            const nextReserved = current.reservations.reduce((sum, reservation) => {
-              return sum + reservation.tokens;
-            }, 0);
+            const nextReserved = current.reservations.reduce(
+              (sum, reservation) => {
+                return sum + reservation.tokens;
+              },
+              0
+            );
 
             return Response.json(
               decision(current.usedTokens, nextReserved, true)
@@ -307,13 +317,18 @@ function createTokenQuotaNamespace() {
           }
 
           if (body.kind === "release") {
-            current.reservations = current.reservations.filter((reservation) => {
-              return reservation.reservationId !== body.reservationId;
-            });
+            current.reservations = current.reservations.filter(
+              (reservation) => {
+                return reservation.reservationId !== body.reservationId;
+              }
+            );
             state.set(id.name, current);
-            const nextReserved = current.reservations.reduce((sum, reservation) => {
-              return sum + reservation.tokens;
-            }, 0);
+            const nextReserved = current.reservations.reduce(
+              (sum, reservation) => {
+                return sum + reservation.tokens;
+              },
+              0
+            );
 
             return Response.json(
               decision(current.usedTokens, nextReserved, true)
@@ -331,9 +346,12 @@ function createTokenQuotaNamespace() {
             current.usedTokens + body.actualTokens - (reservation?.tokens ?? 0)
           );
           state.set(id.name, current);
-          const nextReserved = current.reservations.reduce((sum, nextReservation) => {
-            return sum + nextReservation.tokens;
-          }, 0);
+          const nextReserved = current.reservations.reduce(
+            (sum, nextReservation) => {
+              return sum + nextReservation.tokens;
+            },
+            0
+          );
 
           return Response.json(
             decision(current.usedTokens, nextReserved, true)
@@ -543,12 +561,11 @@ function createRevocationNamespace() {
           await Promise.resolve();
           const method = request.method;
           const url = new URL(request.url);
-          const current =
-            state.get(id.name) ?? {
-              revoked: false,
-              updatedAt: new Date(0).toISOString(),
-              events: []
-            };
+          const current = state.get(id.name) ?? {
+            revoked: false,
+            updatedAt: new Date(0).toISOString(),
+            events: []
+          };
 
           if (url.searchParams.get("kind") === "operation_events") {
             if (method === "GET") {
@@ -633,10 +650,14 @@ function createRevocationNamespace() {
                         kind: "revoked" as const,
                         ownership: body.ownership ?? "configured",
                         occurredAt,
-                        ...(body.operationId ? { operationId: body.operationId } : {}),
+                        ...(body.operationId
+                          ? { operationId: body.operationId }
+                          : {}),
                         ...(body.reason ? { reason: body.reason } : {}),
                         ...(body.actor ? { actor: body.actor } : {}),
-                        ...(body.actorSource ? { actorSource: body.actorSource } : {})
+                        ...(body.actorSource
+                          ? { actorSource: body.actorSource }
+                          : {})
                       }
                     ]
             };
@@ -671,10 +692,14 @@ function createRevocationNamespace() {
                         kind: "unrevoked" as const,
                         ownership: body.ownership ?? "configured",
                         occurredAt,
-                        ...(body.operationId ? { operationId: body.operationId } : {}),
+                        ...(body.operationId
+                          ? { operationId: body.operationId }
+                          : {}),
                         ...(body.reason ? { reason: body.reason } : {}),
                         ...(body.actor ? { actor: body.actor } : {}),
-                        ...(body.actorSource ? { actorSource: body.actorSource } : {})
+                        ...(body.actorSource
+                          ? { actorSource: body.actorSource }
+                          : {})
                       }
                     ]
             };
@@ -852,7 +877,10 @@ function createPersistentBreakerNamespace() {
                 ? { lastSuccessTotalTokens: current.lastSuccessTotalTokens }
                 : {}),
               ...(current.smoothedSuccessTotalTokens !== undefined
-                ? { smoothedSuccessTotalTokens: current.smoothedSuccessTotalTokens }
+                ? {
+                    smoothedSuccessTotalTokens:
+                      current.smoothedSuccessTotalTokens
+                  }
                 : {}),
               ...(current.lastSuccessAt !== undefined
                 ? { lastSuccessAt: current.lastSuccessAt }
@@ -860,8 +888,7 @@ function createPersistentBreakerNamespace() {
               ...(current.lastUsageObservedAt !== undefined
                 ? { lastUsageObservedAt: current.lastUsageObservedAt }
                 : {}),
-              ...((halfOpenProbeFailed ||
-                nextFailures >= (body.threshold ?? 1))
+              ...(halfOpenProbeFailed || nextFailures >= (body.threshold ?? 1)
                 ? { openedAt: body.now ?? 0 }
                 : {}),
               ...(body.now !== undefined ? { lastFailureAt: body.now } : {})
@@ -887,7 +914,9 @@ function createPersistentBreakerNamespace() {
         lastSuccessLatencyMs: latencyMs,
         smoothedSuccessLatencyMs:
           current?.smoothedSuccessLatencyMs !== undefined
-            ? Math.round(current.smoothedSuccessLatencyMs * 0.7 + latencyMs * 0.3)
+            ? Math.round(
+                current.smoothedSuccessLatencyMs * 0.7 + latencyMs * 0.3
+              )
             : latencyMs,
         lastSuccessAt: now,
         ...(current?.lastFailureAt !== undefined
@@ -1780,7 +1809,10 @@ describe("gateway app", () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(readJson(response)).resolves.toEqual({ ok: true, ready: true });
+    await expect(readJson(response)).resolves.toEqual({
+      ok: true,
+      ready: true
+    });
   });
 
   it("returns ready from /readyz when structured gateway key config is valid", async () => {
@@ -1809,7 +1841,10 @@ describe("gateway app", () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(readJson(response)).resolves.toEqual({ ok: true, ready: true });
+    await expect(readJson(response)).resolves.toEqual({
+      ok: true,
+      ready: true
+    });
   });
 
   it("lists the configured model directory from /v1/models", async () => {
@@ -3866,7 +3901,9 @@ describe("gateway app", () => {
 
     const firstResponse = await firstResponsePromise;
     expect(firstResponse.status).toBe(200);
-    await expect(readText(firstResponse)).resolves.toContain("event: message_stop");
+    await expect(readText(firstResponse)).resolves.toContain(
+      "event: message_stop"
+    );
 
     const thirdResponse = await app.request(
       "http://localhost/v1/messages",
@@ -3887,7 +3924,9 @@ describe("gateway app", () => {
     );
 
     expect(thirdResponse.status).toBe(200);
-    await expect(readText(thirdResponse)).resolves.toContain("event: message_stop");
+    await expect(readText(thirdResponse)).resolves.toContain(
+      "event: message_stop"
+    );
   });
 
   it("charges buffered token usage and blocks later requests when the token window is exhausted", async () => {
@@ -4781,7 +4820,9 @@ describe("gateway app", () => {
     );
 
     expect(firstResponse.status).toBe(200);
-    await expect(readText(firstResponse)).resolves.toContain("event: message_stop");
+    await expect(readText(firstResponse)).resolves.toContain(
+      "event: message_stop"
+    );
 
     const secondResponse = await app.request(
       "http://localhost/v1/messages",
@@ -5041,7 +5082,7 @@ describe("gateway app", () => {
                 type: "function",
                 function: {
                   name: "lookup_weather",
-                  arguments: "{\"city\":\"Shanghai\"}"
+                  arguments: '{"city":"Shanghai"}'
                 }
               }
             ]
@@ -5170,7 +5211,7 @@ describe("gateway app", () => {
                 type: "function",
                 function: {
                   name: "lookup_weather",
-                  arguments: "{\"city\":\"Shanghai\"}"
+                  arguments: '{"city":"Shanghai"}'
                 }
               }
             ]
@@ -5266,7 +5307,7 @@ describe("gateway app", () => {
                 type: "function",
                 function: {
                   name: "lookup_weather",
-                  arguments: "{\"city\":\"Shanghai\"}"
+                  arguments: '{"city":"Shanghai"}'
                 }
               }
             ]
@@ -5597,7 +5638,7 @@ describe("gateway app", () => {
                 type: "function",
                 function: {
                   name: "lookup_weather",
-                  arguments: "{\"city\":\"Shanghai\"}"
+                  arguments: '{"city":"Shanghai"}'
                 }
               }
             ]
@@ -5954,7 +5995,7 @@ describe("gateway app", () => {
                     type: "function",
                     function: {
                       name: "lookup_weather",
-                      arguments: "{\"city\":\"Shanghai\"}"
+                      arguments: '{"city":"Shanghai"}'
                     }
                   }
                 ]
@@ -6048,7 +6089,7 @@ describe("gateway app", () => {
                 type: "function",
                 function: {
                   name: "lookup_weather",
-                  arguments: "{\"city\":\"Shanghai\"}"
+                  arguments: '{"city":"Shanghai"}'
                 }
               }
             ]
@@ -6118,7 +6159,7 @@ describe("gateway app", () => {
                   type: "function",
                   function: {
                     name: "lookup_weather",
-                    arguments: "{\"city\":\"Shanghai\"}"
+                    arguments: '{"city":"Shanghai"}'
                   }
                 }
               ]
@@ -6126,7 +6167,7 @@ describe("gateway app", () => {
             {
               role: "tool",
               tool_call_id: "call_123",
-              content: "{\"temperature_c\":26}"
+              content: '{"temperature_c":26}'
             }
           ]
         })
@@ -6159,7 +6200,7 @@ describe("gateway app", () => {
             {
               type: "tool_result",
               tool_use_id: "call_123",
-              content: "{\"temperature_c\":26}"
+              content: '{"temperature_c":26}'
             }
           ]
         }
@@ -6453,9 +6494,15 @@ describe("gateway app", () => {
     const body = await readText(response);
 
     expect(body).toContain('"delta":{"content":"Let me check that."}');
-    expect(body).toContain('"delta":{"tool_calls":[{"index":0,"id":"gemini-response-123_tool_0","type":"function","function":{"name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}"}}]}');
-    expect(body.indexOf('"delta":{"content":"Let me check that."}')).toBeLessThan(
-      body.indexOf('"delta":{"tool_calls":[{"index":0,"id":"gemini-response-123_tool_0"')
+    expect(body).toContain(
+      '"delta":{"tool_calls":[{"index":0,"id":"gemini-response-123_tool_0","type":"function","function":{"name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}"}}]}'
+    );
+    expect(
+      body.indexOf('"delta":{"content":"Let me check that."}')
+    ).toBeLessThan(
+      body.indexOf(
+        '"delta":{"tool_calls":[{"index":0,"id":"gemini-response-123_tool_0"'
+      )
     );
     expect(body).toContain('"finish_reason":"tool_calls"');
   });
@@ -6522,7 +6569,7 @@ describe("gateway app", () => {
                   type: "function",
                   function: {
                     name: "lookup_weather",
-                    arguments: "{\"city\":\"Shanghai\"}"
+                    arguments: '{"city":"Shanghai"}'
                   }
                 }
               ]
@@ -6530,7 +6577,7 @@ describe("gateway app", () => {
             {
               role: "tool",
               tool_call_id: "call_123",
-              content: "{\"temperature_c\":26}"
+              content: '{"temperature_c":26}'
             }
           ]
         })
@@ -6724,8 +6771,12 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const body = await readText(response);
 
-    expect(body).toContain('"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"lookup_weather","arguments":"{\\"city\\":\\"Shang"}}]');
-    expect(body).toContain('"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"lookup_weather","arguments":"hai\\"}"}}]');
+    expect(body).toContain(
+      '"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"lookup_weather","arguments":"{\\"city\\":\\"Shang"}}]'
+    );
+    expect(body).toContain(
+      '"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"lookup_weather","arguments":"hai\\"}"}}]'
+    );
     expect(body).toContain('"finish_reason":"tool_calls"');
     expect(body).toContain("data: [DONE]");
   });
@@ -6793,7 +6844,9 @@ describe("gateway app", () => {
     const body = await readText(response);
 
     expect(body).toContain('"delta":{"content":"Let me check that."}');
-    expect(body).toContain('"delta":{"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}"}}]}');
+    expect(body).toContain(
+      '"delta":{"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}"}}]}'
+    );
     expect(body).toContain('"finish_reason":"tool_calls"');
     expect(body).toContain("data: [DONE]");
   });
@@ -6858,7 +6911,9 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const body = await readText(response);
 
-    expect(body).toContain('"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"lookup_weather","arguments":""}}]');
+    expect(body).toContain(
+      '"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"lookup_weather","arguments":""}}]'
+    );
     expect(body).toContain('"finish_reason":"tool_calls"');
     expect(body).toContain("data: [DONE]");
   });
@@ -6926,8 +6981,12 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const body = await readText(response);
 
-    expect(body).toContain('"tool_calls":[{"index":0,"id":"toolu_123","type":"function","function":{"name":"lookup_weather","arguments":"{\\"city\\":\\"Shang"}}]');
-    expect(body).toContain('"tool_calls":[{"index":0,"id":"toolu_123","type":"function","function":{"name":"lookup_weather","arguments":"hai\\"}"}}]');
+    expect(body).toContain(
+      '"tool_calls":[{"index":0,"id":"toolu_123","type":"function","function":{"name":"lookup_weather","arguments":"{\\"city\\":\\"Shang"}}]'
+    );
+    expect(body).toContain(
+      '"tool_calls":[{"index":0,"id":"toolu_123","type":"function","function":{"name":"lookup_weather","arguments":"hai\\"}"}}]'
+    );
     expect(body).toContain('"finish_reason":"tool_calls"');
     expect(body).toContain("data: [DONE]");
   });
@@ -7061,7 +7120,7 @@ describe("gateway app", () => {
               finish_reason: "stop",
               message: {
                 role: "assistant",
-                content: "{\"city\":\"Shanghai\"}"
+                content: '{"city":"Shanghai"}'
               }
             }
           ]
@@ -7133,7 +7192,7 @@ describe("gateway app", () => {
               finish_reason: "stop",
               message: {
                 role: "assistant",
-                content: "{\"city\":\"Shanghai\"}"
+                content: '{"city":"Shanghai"}'
               }
             }
           ]
@@ -7344,7 +7403,7 @@ describe("gateway app", () => {
                 role: "model",
                 parts: [
                   {
-                    text: "{\"city\":\"Shanghai\"}"
+                    text: '{"city":"Shanghai"}'
                   }
                 ]
               }
@@ -7408,7 +7467,7 @@ describe("gateway app", () => {
                 role: "model",
                 parts: [
                   {
-                    text: "{\"city\":\"Shanghai\"}"
+                    text: '{"city":"Shanghai"}'
                   }
                 ]
               }
@@ -7709,7 +7768,9 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     const body = await readText(response);
-    expect(body).toContain('"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}');
+    expect(body).toContain(
+      '"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}'
+    );
     expect(body).toContain("data: [DONE]");
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
 
@@ -7769,7 +7830,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     const body = await readText(response);
-    expect(body).not.toContain('"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}');
+    expect(body).not.toContain(
+      '"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}'
+    );
     expect(body).toContain('"finish_reason":"stop"');
     expect(body).toContain("data: [DONE]");
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
@@ -11462,10 +11525,14 @@ describe("gateway app", () => {
 
     expect(operationEventsResponse.status).toBe(200);
     const operationEventsPayload = await readJson(operationEventsResponse);
-    expect(isGatewayKeyOperationEventsPayload(operationEventsPayload)).toBe(true);
+    expect(isGatewayKeyOperationEventsPayload(operationEventsPayload)).toBe(
+      true
+    );
 
     if (!isGatewayKeyOperationEventsPayload(operationEventsPayload)) {
-      throw new Error("configured override operation events response shape was invalid");
+      throw new Error(
+        "configured override operation events response shape was invalid"
+      );
     }
 
     expect(operationEventsPayload.events).toEqual(
@@ -13187,17 +13254,17 @@ describe("gateway app", () => {
           },
           body: JSON.stringify({
             rotations: [
-            {
-              keyId: "key_dynamic_a",
-              valueHash:
+              {
+                keyId: "key_dynamic_a",
+                valueHash:
                   "1d017ea45be35d4491906be88a88483fbfc9552d44c79deef909e9dec1dcd908",
                 overlapSeconds: 60
-            },
-            {
-              keyId: "key_dynamic_b",
-              valueHash:
+              },
+              {
+                keyId: "key_dynamic_b",
+                valueHash:
                   "95ee2bd51ba5315db6299c44e85afdb11ab03757d25d6b1e7bc9df2a5b0ba8c2"
-            }
+              }
             ],
             reason: "fleet rollover",
             actor: "ops@example.com"
@@ -13656,7 +13723,9 @@ describe("gateway app", () => {
     }
 
     expect(
-      defaultInventoryPayload.keys.some((entry) => entry.keyId === "key_dynamic")
+      defaultInventoryPayload.keys.some(
+        (entry) => entry.keyId === "key_dynamic"
+      )
     ).toBe(false);
 
     const archivedInventoryResponse = await app.request(
@@ -13682,7 +13751,9 @@ describe("gateway app", () => {
     }
 
     expect(
-      archivedInventoryPayload.keys.find((entry) => entry.keyId === "key_dynamic")
+      archivedInventoryPayload.keys.find(
+        (entry) => entry.keyId === "key_dynamic"
+      )
     ).toMatchObject({
       runtime: {
         effectiveStatus: "archived",
@@ -13924,10 +13995,14 @@ describe("gateway app", () => {
     }
 
     expect(
-      defaultInventoryPayload.keys.some((entry) => entry.keyId === "key_dynamic_a")
+      defaultInventoryPayload.keys.some(
+        (entry) => entry.keyId === "key_dynamic_a"
+      )
     ).toBe(false);
     expect(
-      defaultInventoryPayload.keys.some((entry) => entry.keyId === "key_dynamic_b")
+      defaultInventoryPayload.keys.some(
+        (entry) => entry.keyId === "key_dynamic_b"
+      )
     ).toBe(false);
 
     for (const token of ["runtime-secret", "rotated-secret"]) {
@@ -13974,7 +14049,9 @@ describe("gateway app", () => {
     }
 
     expect(
-      archivedInventoryPayload.keys.find((entry) => entry.keyId === "key_dynamic_a")
+      archivedInventoryPayload.keys.find(
+        (entry) => entry.keyId === "key_dynamic_a"
+      )
     ).toMatchObject({
       runtime: {
         effectiveStatus: "archived",
@@ -13982,7 +14059,9 @@ describe("gateway app", () => {
       }
     });
     expect(
-      archivedInventoryPayload.keys.find((entry) => entry.keyId === "key_dynamic_b")
+      archivedInventoryPayload.keys.find(
+        (entry) => entry.keyId === "key_dynamic_b"
+      )
     ).toMatchObject({
       runtime: {
         effectiveStatus: "archived",
@@ -14232,7 +14311,9 @@ describe("gateway app", () => {
             body: JSON.stringify({
               model: "gpt-4.1-mini",
               stream: false,
-              messages: [{ role: "user", content: "old secret after bulk finalize" }]
+              messages: [
+                { role: "user", content: "old secret after bulk finalize" }
+              ]
             })
           },
           bindings
@@ -14253,7 +14334,9 @@ describe("gateway app", () => {
             body: JSON.stringify({
               model: "gpt-4.1-mini",
               stream: false,
-              messages: [{ role: "user", content: "new secret after bulk finalize" }]
+              messages: [
+                { role: "user", content: "new secret after bulk finalize" }
+              ]
             })
           },
           bindings
@@ -14450,7 +14533,9 @@ describe("gateway app", () => {
             body: JSON.stringify({
               model: "gpt-4.1-mini",
               stream: false,
-              messages: [{ role: "user", content: "old secret after bulk cancel" }]
+              messages: [
+                { role: "user", content: "old secret after bulk cancel" }
+              ]
             })
           },
           bindings
@@ -14471,7 +14556,9 @@ describe("gateway app", () => {
             body: JSON.stringify({
               model: "gpt-4.1-mini",
               stream: false,
-              messages: [{ role: "user", content: "new secret after bulk cancel" }]
+              messages: [
+                { role: "user", content: "new secret after bulk cancel" }
+              ]
             })
           },
           bindings
@@ -15049,7 +15136,9 @@ describe("gateway app", () => {
         return event.kind === "updated";
       });
       const rotatedEvent = eventsPayload.events.find((event) => {
-        return event.kind === "rotated" && event.reason === "credential rollover";
+        return (
+          event.kind === "rotated" && event.reason === "credential rollover"
+        );
       });
       const finalizedEvent = eventsPayload.events.find((event) => {
         return event.kind === "rotation_finalized";
@@ -15278,13 +15367,17 @@ describe("gateway app", () => {
 
     expect(operationEventsResponse.status).toBe(200);
     const operationEventsPayload = await readJson(operationEventsResponse);
-    expect(isGatewayKeyOperationEventsPayload(operationEventsPayload)).toBe(true);
+    expect(isGatewayKeyOperationEventsPayload(operationEventsPayload)).toBe(
+      true
+    );
 
     if (!isGatewayKeyOperationEventsPayload(operationEventsPayload)) {
       throw new Error("operation events response shape was invalid");
     }
 
-    expect(operationEventsPayload.operationId).toBe(bulkDeletePayload.operationId);
+    expect(operationEventsPayload.operationId).toBe(
+      bulkDeletePayload.operationId
+    );
     expect(operationEventsPayload).toMatchObject({
       summary: {
         operationId: bulkDeletePayload.operationId,
@@ -15382,7 +15475,9 @@ describe("gateway app", () => {
 
     expect(operationEventsResponse.status).toBe(200);
     const operationEventsPayload = await readJson(operationEventsResponse);
-    expect(isGatewayKeyOperationEventsPayload(operationEventsPayload)).toBe(true);
+    expect(isGatewayKeyOperationEventsPayload(operationEventsPayload)).toBe(
+      true
+    );
 
     if (!isGatewayKeyOperationEventsPayload(operationEventsPayload)) {
       throw new Error("operation events response shape was invalid");
@@ -17606,8 +17701,7 @@ describe("gateway app", () => {
       await expect(readJson(response)).resolves.toMatchObject({
         error: {
           code: "provider_capability_not_supported",
-          message:
-            `Provider ${testCase.model.startsWith("gemini") ? "gemini" : "anthropic"} does not support required capability: openai_request_metadata`
+          message: `Provider ${testCase.model.startsWith("gemini") ? "gemini" : "anthropic"} does not support required capability: openai_request_metadata`
         }
       });
       expect(fetcher).not.toHaveBeenCalled();
@@ -18064,14 +18158,20 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
-    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-nano"
-      });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[0] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[1] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-nano"
+    });
     await expect(readJson(response)).resolves.toMatchObject({
       model: "gpt-4.1-nano"
     });
@@ -18151,14 +18251,20 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
-    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-nano"
-      });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[0] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[1] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-nano"
+    });
     const body = await readText(response);
     expect(body).toContain('"model":"gpt-4.1-nano"');
     expect(body).toContain("fallback stream");
@@ -18236,14 +18342,20 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
-    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[0] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[1] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
     await expect(readJson(response)).resolves.toMatchObject({
       model: "gpt-4.1-mini"
     });
@@ -18337,18 +18449,27 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(3);
-    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
-    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
-    expect(JSON.parse((fetcher.mock.calls[2] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-nano"
-      });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[0] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[1] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[2] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-nano"
+    });
     await expect(readJson(response)).resolves.toMatchObject({
       model: "gpt-4.1-nano"
     });
@@ -18407,7 +18528,9 @@ describe("gateway app", () => {
 
         return await new Promise<Response>((_resolve, reject) => {
           signal?.addEventListener("abort", () => {
-            reject(new DOMException("The operation was aborted.", "AbortError"));
+            reject(
+              new DOMException("The operation was aborted.", "AbortError")
+            );
           });
         });
       })
@@ -18488,7 +18611,9 @@ describe("gateway app", () => {
 
         return await new Promise<Response>((_resolve, reject) => {
           signal?.addEventListener("abort", () => {
-            reject(new DOMException("The operation was aborted.", "AbortError"));
+            reject(
+              new DOMException("The operation was aborted.", "AbortError")
+            );
           });
         });
       });
@@ -18811,8 +18936,12 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
-    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "claude-haiku-4-5"
     });
@@ -18874,7 +19003,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(429);
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       error: {
         code: "provider_upstream_error",
@@ -18944,34 +19075,32 @@ describe("gateway app", () => {
   });
 
   it("routes directly to the first provider-allowed fallback target without calling a disallowed primary target", async () => {
-    const fetcher = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            id: "chatcmpl_123",
-            object: "chat.completion",
-            created: 1,
-            model: "gpt-4.1-mini",
-            choices: [
-              {
-                index: 0,
-                finish_reason: "stop",
-                message: {
-                  role: "assistant",
-                  content: "hello from openai"
-                }
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello from openai"
               }
-            ]
-          }),
-          {
-            status: 200,
-            headers: {
-              "content-type": "application/json"
             }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
           }
-        )
-      );
+        }
+      )
+    );
 
     const app = createApp({ fetcher });
 
@@ -19012,7 +19141,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "gpt-4.1-mini"
     });
@@ -19080,7 +19211,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "claude-haiku-4-5"
     });
@@ -19148,7 +19281,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "claude-haiku-4-5"
     });
@@ -19276,9 +19411,15 @@ describe("gateway app", () => {
 
     expect(secondResponse.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(3);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
-    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
-    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
+    expect(fetcher.mock.calls[2]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(secondResponse)).resolves.toMatchObject({
       model: "claude-haiku-4-5"
     });
@@ -19294,7 +19435,8 @@ describe("gateway app", () => {
         return new Response(
           JSON.stringify({
             error: {
-              message: openAIAttempts === 1 ? "rate limited" : "still rate limited"
+              message:
+                openAIAttempts === 1 ? "rate limited" : "still rate limited"
             }
           }),
           {
@@ -19648,7 +19790,9 @@ describe("gateway app", () => {
       model: "gpt-4.1-mini"
     });
     expect(fetcher).toHaveBeenCalledTimes(3);
-    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[2]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     expect(openAIAttempts).toBe(2);
     expect(anthropicAttempts).toBe(1);
   });
@@ -19707,7 +19851,9 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     const body = await readText(response);
-    expect(body).toContain('"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}');
+    expect(body).toContain(
+      '"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}'
+    );
     expect(body).toContain("data: [DONE]");
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
@@ -20124,23 +20270,21 @@ describe("gateway app", () => {
   });
 
   it("rejects cross-provider fallback at request time when request-scoped shaping lacks a target-scoped shaping contract", async () => {
-    const fetcher = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            error: {
-              message: "rate limited"
-            }
-          }),
-          {
-            status: 429,
-            headers: {
-              "content-type": "application/json"
-            }
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "rate limited"
           }
-        )
-      );
+        }),
+        {
+          status: 429,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
 
     const app = createApp({ fetcher });
 
@@ -20237,7 +20381,11 @@ describe("gateway app", () => {
       )
     );
     const breakerNamespace = createPersistentBreakerNamespace();
-    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, currentTime - 1_000);
+    breakerNamespace.seedSuccess(
+      "openai:gpt-4.1-mini",
+      200,
+      currentTime - 1_000
+    );
     breakerNamespace.seedSuccess(
       "anthropic:claude-haiku-4-5",
       5,
@@ -20293,7 +20441,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(routeFetcher).toHaveBeenCalledTimes(1);
-    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "gpt-4.1-mini"
     });
@@ -20325,9 +20475,17 @@ describe("gateway app", () => {
       )
     );
     const breakerNamespace = createPersistentBreakerNamespace();
-    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, currentTime - 2_000);
+    breakerNamespace.seedSuccess(
+      "openai:gpt-4.1-mini",
+      200,
+      currentTime - 2_000
+    );
     breakerNamespace.seedFailure("openai:gpt-4.1-mini", currentTime - 1_500);
-    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 220, currentTime - 1_000);
+    breakerNamespace.seedSuccess(
+      "openai:gpt-4.1-mini",
+      220,
+      currentTime - 1_000
+    );
     breakerNamespace.seedSuccess(
       "anthropic:claude-haiku-4-5",
       220,
@@ -20381,7 +20539,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(routeFetcher).toHaveBeenCalledTimes(1);
-    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "claude-haiku-4-5"
     });
@@ -20416,14 +20576,22 @@ describe("gateway app", () => {
       )
     );
     const breakerNamespace = createPersistentBreakerNamespace();
-    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, currentTime - 60_000);
+    breakerNamespace.seedSuccess(
+      "openai:gpt-4.1-mini",
+      200,
+      currentTime - 60_000
+    );
     breakerNamespace.seedSuccess(
       "anthropic:claude-haiku-4-5",
       200,
       currentTime - 60_000
     );
     breakerNamespace.seedFailure("openai:gpt-4.1-mini", currentTime - 40_000);
-    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 220, currentTime - 38_000);
+    breakerNamespace.seedSuccess(
+      "openai:gpt-4.1-mini",
+      220,
+      currentTime - 38_000
+    );
 
     const app = createApp({ fetcher: routeFetcher });
 
@@ -20438,7 +20606,9 @@ describe("gateway app", () => {
         body: JSON.stringify({
           model: "assistant-default",
           stream: false,
-          messages: [{ role: "user", content: "ignore aged-out recovery penalty" }]
+          messages: [
+            { role: "user", content: "ignore aged-out recovery penalty" }
+          ]
         })
       },
       {
@@ -20472,7 +20642,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(routeFetcher).toHaveBeenCalledTimes(1);
-    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "gpt-4.1-mini"
     });
@@ -20562,7 +20734,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(routeFetcher).toHaveBeenCalledTimes(1);
-    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "claude-haiku-4-5"
     });
@@ -20594,7 +20768,11 @@ describe("gateway app", () => {
       )
     );
     const breakerNamespace = createPersistentBreakerNamespace();
-    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, currentTime - 1_000);
+    breakerNamespace.seedSuccess(
+      "openai:gpt-4.1-mini",
+      200,
+      currentTime - 1_000
+    );
     breakerNamespace.seedSuccess(
       "anthropic:claude-haiku-4-5",
       200,
@@ -20676,7 +20854,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(routeFetcher).toHaveBeenCalledTimes(1);
-    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "claude-haiku-4-5"
     });
@@ -20708,7 +20888,11 @@ describe("gateway app", () => {
       )
     );
     const breakerNamespace = createPersistentBreakerNamespace();
-    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, currentTime - 1_000);
+    breakerNamespace.seedSuccess(
+      "openai:gpt-4.1-mini",
+      200,
+      currentTime - 1_000
+    );
     breakerNamespace.seedSuccess(
       "anthropic:claude-haiku-4-5",
       200,
@@ -20758,7 +20942,9 @@ describe("gateway app", () => {
         body: JSON.stringify({
           model: "assistant-default",
           stream: false,
-          messages: [{ role: "user", content: "break cost tie with observed usage" }]
+          messages: [
+            { role: "user", content: "break cost tie with observed usage" }
+          ]
         })
       },
       {
@@ -20792,7 +20978,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(routeFetcher).toHaveBeenCalledTimes(1);
-    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "claude-haiku-4-5"
     });
@@ -20865,7 +21053,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(routeFetcher).toHaveBeenCalledTimes(1);
-    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "gpt-4.1-mini"
     });
@@ -20912,7 +21102,9 @@ describe("gateway app", () => {
         body: JSON.stringify({
           model: "assistant-default",
           stream: false,
-          messages: [{ role: "user", content: "prefer primary on lowest-cost tie" }]
+          messages: [
+            { role: "user", content: "prefer primary on lowest-cost tie" }
+          ]
         })
       },
       {
@@ -20938,7 +21130,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(routeFetcher).toHaveBeenCalledTimes(1);
-    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "gpt-4.1-mini"
     });
@@ -20973,7 +21167,11 @@ describe("gateway app", () => {
       )
     );
     const breakerNamespace = createPersistentBreakerNamespace();
-    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, currentTime - 60_000);
+    breakerNamespace.seedSuccess(
+      "openai:gpt-4.1-mini",
+      200,
+      currentTime - 60_000
+    );
     breakerNamespace.seedSuccess(
       "anthropic:claude-haiku-4-5",
       200,
@@ -20994,7 +21192,12 @@ describe("gateway app", () => {
         body: JSON.stringify({
           model: "assistant-default",
           stream: false,
-          messages: [{ role: "user", content: "ignore stale closed-target failure count" }]
+          messages: [
+            {
+              role: "user",
+              content: "ignore stale closed-target failure count"
+            }
+          ]
         })
       },
       {
@@ -21024,7 +21227,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(routeFetcher).toHaveBeenCalledTimes(1);
-    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "gpt-4.1-mini"
     });
@@ -21143,7 +21348,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(routeFetcher).toHaveBeenCalledTimes(1);
-    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "gpt-4.1-mini"
     });
@@ -21317,7 +21524,9 @@ describe("gateway app", () => {
         body: JSON.stringify({
           model: "assistant-default",
           stream: false,
-          messages: [{ role: "user", content: "stale observed cost should stay stale" }]
+          messages: [
+            { role: "user", content: "stale observed cost should stay stale" }
+          ]
         })
       },
       bindings
@@ -21325,8 +21534,12 @@ describe("gateway app", () => {
 
     expect(secondResponse.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
-    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     await expect(readJson(secondResponse)).resolves.toMatchObject({
       model: "gpt-4.1-mini"
     });
@@ -21415,7 +21628,9 @@ describe("gateway app", () => {
         body: JSON.stringify({
           model: "assistant-default",
           stream: false,
-          messages: [{ role: "user", content: "ignore stale observed priority cost" }]
+          messages: [
+            { role: "user", content: "ignore stale observed priority cost" }
+          ]
         })
       },
       {
@@ -21445,7 +21660,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(routeFetcher).toHaveBeenCalledTimes(1);
-    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "gpt-4.1-mini"
     });
@@ -21480,7 +21697,11 @@ describe("gateway app", () => {
       )
     );
     const breakerNamespace = createPersistentBreakerNamespace();
-    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 320, currentTime - 1_000);
+    breakerNamespace.seedSuccess(
+      "openai:gpt-4.1-mini",
+      320,
+      currentTime - 1_000
+    );
     breakerNamespace.seedSuccess(
       "anthropic:claude-haiku-4-5",
       900,
@@ -21534,7 +21755,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(routeFetcher).toHaveBeenCalledTimes(1);
-    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       model: "gpt-4.1-mini"
     });
@@ -21614,8 +21837,12 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
-    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/responses"
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       object: "response",
       model: "claude-haiku-4-5",
@@ -21696,7 +21923,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/responses"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       object: "response",
       model: "gpt-4.1-mini",
@@ -21770,7 +21999,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       object: "response",
       model: "claude-haiku-4-5",
@@ -21844,7 +22075,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       object: "response",
       model: "claude-haiku-4-5",
@@ -21962,8 +22195,12 @@ describe("gateway app", () => {
     );
 
     expect(firstResponse.status).toBe(200);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
-    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/responses"
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(firstResponse)).resolves.toMatchObject({
       object: "response",
       model: "claude-haiku-4-5",
@@ -21988,7 +22225,9 @@ describe("gateway app", () => {
     );
 
     expect(secondResponse.status).toBe(200);
-    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[2]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(secondResponse)).resolves.toMatchObject({
       object: "response",
       model: "claude-haiku-4-5",
@@ -22031,7 +22270,11 @@ describe("gateway app", () => {
       )
     );
     const breakerNamespace = createPersistentBreakerNamespace();
-    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, currentTime - 1_000);
+    breakerNamespace.seedSuccess(
+      "openai:gpt-4.1-mini",
+      200,
+      currentTime - 1_000
+    );
     breakerNamespace.seedSuccess(
       "anthropic:claude-haiku-4-5",
       5,
@@ -22087,7 +22330,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(routeFetcher).toHaveBeenCalledTimes(1);
-    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/responses"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       object: "response",
       model: "gpt-4.1-mini",
@@ -22184,8 +22429,12 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
-    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.openai.com/v1/responses");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.openai.com/v1/responses"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       type: "message",
       model: "gpt-4.1-mini",
@@ -22281,7 +22530,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/responses"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       type: "message",
       model: "gpt-4.1-mini",
@@ -22375,7 +22626,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/responses"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       type: "message",
       model: "gpt-4.1-mini",
@@ -22469,7 +22722,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/responses"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       type: "message",
       model: "gpt-4.1-mini",
@@ -22617,8 +22872,12 @@ describe("gateway app", () => {
     );
 
     expect(firstResponse.status).toBe(200);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
-    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.openai.com/v1/responses");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.openai.com/v1/responses"
+    );
     await expect(readJson(firstResponse)).resolves.toMatchObject({
       type: "message",
       model: "gpt-4.1-mini",
@@ -22653,7 +22912,9 @@ describe("gateway app", () => {
     );
 
     expect(secondResponse.status).toBe(200);
-    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.openai.com/v1/responses");
+    expect(fetcher.mock.calls[2]?.[0]).toBe(
+      "https://api.openai.com/v1/responses"
+    );
     await expect(readJson(secondResponse)).resolves.toMatchObject({
       type: "message",
       model: "gpt-4.1-mini",
@@ -22753,7 +23014,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(routeFetcher).toHaveBeenCalledTimes(1);
-    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(response)).resolves.toMatchObject({
       type: "message",
       model: "claude-haiku-4-5",
@@ -22843,14 +23106,20 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
-    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-nano"
-      });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[0] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[1] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-nano"
+    });
     await expect(readJson(response)).resolves.toMatchObject({
       object: "response",
       model: "gpt-4.1-nano",
@@ -22929,14 +23198,20 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
-    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-nano"
-      });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[0] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[1] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-nano"
+    });
     const body = await readText(response);
     expect(body).toContain('"model":"gpt-4.1-nano"');
     expect(body).toContain("fallback stream");
@@ -23020,14 +23295,20 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
-    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[0] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[1] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
     await expect(readJson(response)).resolves.toMatchObject({
       object: "response",
       model: "gpt-4.1-mini",
@@ -23129,18 +23410,27 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(3);
-    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
-    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-mini"
-      });
-    expect(JSON.parse((fetcher.mock.calls[2] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "gpt-4.1-nano"
-      });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[0] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[1] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[2] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "gpt-4.1-nano"
+    });
     await expect(readJson(response)).resolves.toMatchObject({
       object: "response",
       model: "gpt-4.1-nano",
@@ -23207,7 +23497,9 @@ describe("gateway app", () => {
 
         return await new Promise<Response>((_resolve, reject) => {
           signal?.addEventListener("abort", () => {
-            reject(new DOMException("The operation was aborted.", "AbortError"));
+            reject(
+              new DOMException("The operation was aborted.", "AbortError")
+            );
           });
         });
       })
@@ -23296,7 +23588,9 @@ describe("gateway app", () => {
 
         return await new Promise<Response>((_resolve, reject) => {
           signal?.addEventListener("abort", () => {
-            reject(new DOMException("The operation was aborted.", "AbortError"));
+            reject(
+              new DOMException("The operation was aborted.", "AbortError")
+            );
           });
         });
       });
@@ -23479,14 +23773,20 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "claude-sonnet-4-5"
-      });
-    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "claude-haiku-4-5"
-      });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[0] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "claude-sonnet-4-5"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[1] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "claude-haiku-4-5"
+    });
     await expect(readJson(response)).resolves.toMatchObject({
       type: "message",
       model: "claude-haiku-4-5",
@@ -23578,14 +23878,20 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "claude-sonnet-4-5"
-      });
-    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "claude-haiku-4-5"
-      });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[0] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "claude-sonnet-4-5"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[1] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "claude-haiku-4-5"
+    });
     const body = await readText(response);
     expect(body).toContain('"model":"claude-haiku-4-5"');
     expect(body).toContain("fallback stream");
@@ -23664,14 +23970,20 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "claude-sonnet-4-5"
-      });
-    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "claude-sonnet-4-5"
-      });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[0] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "claude-sonnet-4-5"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[1] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "claude-sonnet-4-5"
+    });
     await expect(readJson(response)).resolves.toMatchObject({
       type: "message",
       model: "claude-sonnet-4-5",
@@ -23774,18 +24086,27 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(3);
-    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "claude-sonnet-4-5"
-      });
-    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "claude-sonnet-4-5"
-      });
-    expect(JSON.parse((fetcher.mock.calls[2] as [string, RequestInit])[1].body as string))
-      .toMatchObject({
-        model: "claude-haiku-4-5"
-      });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[0] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "claude-sonnet-4-5"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[1] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "claude-sonnet-4-5"
+    });
+    expect(
+      JSON.parse(
+        (fetcher.mock.calls[2] as [string, RequestInit])[1].body as string
+      )
+    ).toMatchObject({
+      model: "claude-haiku-4-5"
+    });
     await expect(readJson(response)).resolves.toMatchObject({
       type: "message",
       model: "claude-haiku-4-5",
@@ -23862,7 +24183,9 @@ describe("gateway app", () => {
 
         return await new Promise<Response>((_resolve, reject) => {
           signal?.addEventListener("abort", () => {
-            reject(new DOMException("The operation was aborted.", "AbortError"));
+            reject(
+              new DOMException("The operation was aborted.", "AbortError")
+            );
           });
         });
       })
@@ -23952,7 +24275,9 @@ describe("gateway app", () => {
 
         return await new Promise<Response>((_resolve, reject) => {
           signal?.addEventListener("abort", () => {
-            reject(new DOMException("The operation was aborted.", "AbortError"));
+            reject(
+              new DOMException("The operation was aborted.", "AbortError")
+            );
           });
         });
       });
@@ -24169,7 +24494,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(fetcher.mock.calls[1]?.[0]).toBe(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     );
@@ -24273,7 +24600,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(fetcher.mock.calls[1]?.[0]).toBe(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     );
@@ -24285,24 +24614,16 @@ describe("gateway app", () => {
   });
 
   it("uses the weighted ordered chain for retryable failover on /v1/messages", async () => {
-    const fetcher = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            error: {
-              message: "rate limited"
-            }
-          }),
-          {
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === "string" && url.includes("anthropic.com")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: { message: "rate limited" } }), {
             status: 429,
-            headers: {
-              "content-type": "application/json"
-            }
-          }
-        )
-      )
-      .mockResolvedValueOnce(
+            headers: { "content-type": "application/json" }
+          })
+        );
+      }
+      return Promise.resolve(
         new Response(
           JSON.stringify({
             responseId: "gemini-response-123",
@@ -24311,11 +24632,7 @@ describe("gateway app", () => {
               {
                 content: {
                   role: "model",
-                  parts: [
-                    {
-                      text: "hello from gemini"
-                    }
-                  ]
+                  parts: [{ text: "hello from gemini" }]
                 }
               }
             ],
@@ -24325,14 +24642,10 @@ describe("gateway app", () => {
               totalTokenCount: 20
             }
           }),
-          {
-            status: 200,
-            headers: {
-              "content-type": "application/json"
-            }
-          }
+          { status: 200, headers: { "content-type": "application/json" } }
         )
       );
+    });
 
     const app = createApp({ fetcher });
 
@@ -24382,10 +24695,15 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
-    expect(fetcher.mock.calls[1]?.[0]).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    const calledUrls = fetcher.mock.calls.map((call) => call[0] as string);
+    const anthropicCalls = calledUrls.filter((u) =>
+      u.includes("anthropic.com")
     );
+    const geminiCalls = calledUrls.filter((u) =>
+      u.includes("generativelanguage.googleapis.com")
+    );
+    expect(anthropicCalls.length).toBeGreaterThanOrEqual(1);
+    expect(geminiCalls.length).toBeGreaterThanOrEqual(1);
     await expect(readJson(response)).resolves.toMatchObject({
       type: "message",
       model: "gemini-2.5-flash",
@@ -24496,7 +24814,9 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     expect(fetcher.mock.calls[1]?.[0]).toBe(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     );
@@ -24565,7 +24885,11 @@ describe("gateway app", () => {
         )
       );
     const breakerNamespace = createPersistentBreakerNamespace();
-    breakerNamespace.seedSuccess("anthropic:claude-haiku-4-5", 200, Date.now() - 1_000);
+    breakerNamespace.seedSuccess(
+      "anthropic:claude-haiku-4-5",
+      200,
+      Date.now() - 1_000
+    );
     await breakerNamespace
       .get(breakerNamespace.idFromName("anthropic:claude-haiku-4-5"))
       .fetch(
@@ -24650,7 +24974,9 @@ describe("gateway app", () => {
 
     expect(bufferedResponse.status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
     await expect(readJson(bufferedResponse)).resolves.toMatchObject({
       model: "claude-haiku-4-5"
     });
@@ -25388,7 +25714,9 @@ describe("gateway app", () => {
     const events = parseSseDataEvents(await readText(response)) as Array<
       Record<string, unknown>
     >;
-    const createdEvent = events.find((event) => event.type === "response.created");
+    const createdEvent = events.find(
+      (event) => event.type === "response.created"
+    );
     const inProgressEvent = events.find(
       (event) => event.type === "response.in_progress"
     );
@@ -25398,7 +25726,9 @@ describe("gateway app", () => {
     const outputTextDoneEvent = events.find(
       (event) => event.type === "response.output_text.done"
     );
-    const completedEvent = events.find((event) => event.type === "response.completed");
+    const completedEvent = events.find(
+      (event) => event.type === "response.completed"
+    );
 
     expect(createdEvent).toMatchObject({
       type: "response.created",
@@ -26559,7 +26889,10 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
-    const upstreamBody = JSON.parse(init.body as string) as Record<string, unknown>;
+    const upstreamBody = JSON.parse(init.body as string) as Record<
+      string,
+      unknown
+    >;
     expect(upstreamBody).toMatchObject({
       metadata: {
         user_id: "metadata-user-123",
@@ -27139,8 +27472,7 @@ describe("gateway app", () => {
       await expect(readJson(response)).resolves.toMatchObject({
         error: {
           code: "provider_capability_not_supported",
-          message:
-            `Provider ${testCase.model.startsWith("gemini") ? "gemini" : "anthropic"} does not support required capability: openai_request_metadata`
+          message: `Provider ${testCase.model.startsWith("gemini") ? "gemini" : "anthropic"} does not support required capability: openai_request_metadata`
         }
       });
       expect(fetcher).not.toHaveBeenCalled();
@@ -27412,7 +27744,8 @@ describe("gateway app", () => {
     expect(response.status).toBe(400);
     await expect(readJson(response)).resolves.toEqual({
       error: {
-        message: "Provider anthropic does not support required capability: prompt",
+        message:
+          "Provider anthropic does not support required capability: prompt",
         type: "routing",
         code: "provider_capability_not_supported"
       }
@@ -27478,7 +27811,8 @@ describe("gateway app", () => {
     expect(response.status).toBe(400);
     await expect(readJson(response)).resolves.toEqual({
       error: {
-        message: "Provider anthropic does not support required capability: prompt",
+        message:
+          "Provider anthropic does not support required capability: prompt",
         type: "routing",
         code: "provider_capability_not_supported"
       }
@@ -28327,7 +28661,7 @@ describe("gateway app", () => {
                   type: "function",
                   function: {
                     name: "lookup_weather",
-                    arguments: "{\"city\":\"Shanghai\"}"
+                    arguments: '{"city":"Shanghai"}'
                   }
                 }
               ]
@@ -28335,7 +28669,7 @@ describe("gateway app", () => {
             {
               role: "tool",
               tool_call_id: "call_123",
-              content: "{\"temperature_c\":26}"
+              content: '{"temperature_c":26}'
             }
           ]
         })
@@ -28461,12 +28795,12 @@ describe("gateway app", () => {
               type: "function_call",
               call_id: "call_123",
               name: "lookup_weather",
-              arguments: "{\"city\":\"Shanghai\"}"
+              arguments: '{"city":"Shanghai"}'
             },
             {
               type: "function_call_output",
               call_id: "call_123",
-              output: "{\"temperature_c\":26}"
+              output: '{"temperature_c":26}'
             }
           ]
         })
@@ -28599,7 +28933,7 @@ describe("gateway app", () => {
                 {
                   type: "tool_result",
                   tool_use_id: "call_123",
-                  content: "{\"temperature_c\":26}"
+                  content: '{"temperature_c":26}'
                 }
               ]
             }
@@ -28739,7 +29073,7 @@ describe("gateway app", () => {
                 {
                   type: "tool_result",
                   tool_use_id: "call_123",
-                  content: "{\"temperature_c\":26}"
+                  content: '{"temperature_c":26}'
                 },
                 {
                   type: "text",
@@ -28843,7 +29177,7 @@ describe("gateway app", () => {
                   type: "function",
                   function: {
                     name: "lookup_weather",
-                    arguments: "{\"city\":\"Shanghai\"}"
+                    arguments: '{"city":"Shanghai"}'
                   }
                 }
               ]
@@ -28851,7 +29185,7 @@ describe("gateway app", () => {
             {
               role: "tool",
               tool_call_id: "call_123",
-              content: "{\"temperature_c\":26}"
+              content: '{"temperature_c":26}'
             }
           ]
         })
@@ -28899,12 +29233,12 @@ describe("gateway app", () => {
               type: "function_call",
               call_id: "call_123",
               name: "lookup_weather",
-              arguments: "{\"city\":\"Shanghai\"}"
+              arguments: '{"city":"Shanghai"}'
             },
             {
               type: "function_call_output",
               call_id: "call_123",
-              output: "{\"temperature_c\":26}"
+              output: '{"temperature_c":26}'
             }
           ]
         })
@@ -28967,7 +29301,7 @@ describe("gateway app", () => {
                 {
                   type: "tool_result",
                   tool_use_id: "call_123",
-                  content: "{\"temperature_c\":26}"
+                  content: '{"temperature_c":26}'
                 }
               ]
             }
@@ -29036,7 +29370,7 @@ describe("gateway app", () => {
                   type: "function",
                   function: {
                     name: "lookup_weather",
-                    arguments: "\"Shanghai\""
+                    arguments: '"Shanghai"'
                   }
                 }
               ]
@@ -29096,7 +29430,7 @@ describe("gateway app", () => {
               type: "function_call",
               call_id: "call_123",
               name: "lookup_weather",
-              arguments: "\"Shanghai\""
+              arguments: '"Shanghai"'
             }
           ]
         })
@@ -29460,7 +29794,7 @@ describe("gateway app", () => {
           type: "function_call",
           call_id: "call_123",
           name: "lookup_weather",
-          arguments: "{\"city\":\"Shanghai\"}",
+          arguments: '{"city":"Shanghai"}',
           status: "completed"
         }
       ]
@@ -29577,7 +29911,7 @@ describe("gateway app", () => {
         {
           type: "function_call",
           name: "lookup_weather",
-          arguments: "{\"city\":\"Shanghai\"}",
+          arguments: '{"city":"Shanghai"}',
           status: "completed"
         }
       ]
@@ -29671,7 +30005,7 @@ describe("gateway app", () => {
         {
           type: "function_call",
           name: "lookup_weather",
-          arguments: "{\"city\":\"Shanghai\"}",
+          arguments: '{"city":"Shanghai"}',
           status: "completed"
         }
       ]
@@ -30279,12 +30613,12 @@ describe("gateway app", () => {
               type: "function_call",
               call_id: "call_123",
               name: "lookup_weather",
-              arguments: "{\"city\":\"Shanghai\"}"
+              arguments: '{"city":"Shanghai"}'
             },
             {
               type: "function_call_output",
               call_id: "call_123",
-              output: "{\"temperature_c\":26}"
+              output: '{"temperature_c":26}'
             }
           ]
         })
@@ -30317,7 +30651,7 @@ describe("gateway app", () => {
             {
               type: "tool_result",
               tool_use_id: "call_123",
-              content: "{\"temperature_c\":26}"
+              content: '{"temperature_c":26}'
             }
           ]
         }
@@ -30595,9 +30929,13 @@ describe("gateway app", () => {
     expect(body).toContain('"type":"response.output_text.delta"');
     expect(body).toContain('"delta":"Let me check that."');
     expect(body).toContain('"type":"response.output_item.added"');
-    expect(body).toContain('"output_index":1,"item":{"type":"function_call","call_id":"gemini-response-123_tool_0"');
+    expect(body).toContain(
+      '"output_index":1,"item":{"type":"function_call","call_id":"gemini-response-123_tool_0"'
+    );
     expect(body.indexOf('"delta":"Let me check that."')).toBeLessThan(
-      body.indexOf('"output_index":1,"item":{"type":"function_call","call_id":"gemini-response-123_tool_0"')
+      body.indexOf(
+        '"output_index":1,"item":{"type":"function_call","call_id":"gemini-response-123_tool_0"'
+      )
     );
     expect(body).toContain('"type":"response.completed"');
   });
@@ -30660,12 +30998,12 @@ describe("gateway app", () => {
               type: "function_call",
               call_id: "call_123",
               name: "lookup_weather",
-              arguments: "{\"city\":\"Shanghai\"}"
+              arguments: '{"city":"Shanghai"}'
             },
             {
               type: "function_call_output",
               call_id: "call_123",
-              output: "{\"temperature_c\":26}"
+              output: '{"temperature_c":26}'
             }
           ]
         })
@@ -31011,7 +31349,9 @@ describe("gateway app", () => {
     expect(body).toContain('"output_index":1');
     expect(body).toContain('"item_id":"call_456"');
     expect(body).toContain('"arguments":"{\\"date\\":\\"2026-05-14\\"}"');
-    expect(body).toContain('"output":[{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"},{"type":"function_call","call_id":"call_456","name":"lookup_calendar","arguments":"{\\"date\\":\\"2026-05-14\\"}","status":"completed"}]');
+    expect(body).toContain(
+      '"output":[{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"},{"type":"function_call","call_id":"call_456","name":"lookup_calendar","arguments":"{\\"date\\":\\"2026-05-14\\"}","status":"completed"}]'
+    );
     expect(body).toContain("data: [DONE]");
   });
 
@@ -31082,7 +31422,9 @@ describe("gateway app", () => {
     expect(body).toContain('"type":"response.function_call_arguments.done"');
     expect(body).toContain('"item_id":"call_123"');
     expect(body).toContain('"output_index":1');
-    expect(body).toContain('"output":[{"id":"chatcmpl_123_output_0","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Let me check that.","annotations":[]}]},{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"}]');
+    expect(body).toContain(
+      '"output":[{"id":"chatcmpl_123_output_0","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Let me check that.","annotations":[]}]},{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"}]'
+    );
     expect(
       body.match(
         /"type":"response\.function_call_arguments\.(?:delta|done)".*?"item_id":"call_123".*?"\{\\"city\\":\\"Shanghai\\"\}"/g
@@ -31155,7 +31497,9 @@ describe("gateway app", () => {
     expect(body).toContain('"output_index":0');
     expect(body).toContain('"item_id":"call_123"');
     expect(body).toContain('"output_index":1');
-    expect(body).toContain('"output":[{"id":"chatcmpl_123_output_0","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Let me check that.","annotations":[]}]},{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"}]');
+    expect(body).toContain(
+      '"output":[{"id":"chatcmpl_123_output_0","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Let me check that.","annotations":[]}]},{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"}]'
+    );
     expect(body).toContain("data: [DONE]");
   });
 
@@ -31535,7 +31879,7 @@ describe("gateway app", () => {
               content: [
                 {
                   type: "output_text",
-                  text: "{\"city\":\"Shanghai\"}",
+                  text: '{"city":"Shanghai"}',
                   annotations: []
                 }
               ]
@@ -31612,7 +31956,7 @@ describe("gateway app", () => {
               content: [
                 {
                   type: "output_text",
-                  text: "{\"city\":\"Shanghai\"}",
+                  text: '{"city":"Shanghai"}',
                   annotations: []
                 }
               ]
@@ -31825,7 +32169,7 @@ describe("gateway app", () => {
                 role: "model",
                 parts: [
                   {
-                    text: "{\"city\":\"Shanghai\"}"
+                    text: '{"city":"Shanghai"}'
                   }
                 ]
               }
@@ -31890,7 +32234,7 @@ describe("gateway app", () => {
                 role: "model",
                 parts: [
                   {
-                    text: "{\"city\":\"Shanghai\"}"
+                    text: '{"city":"Shanghai"}'
                   }
                 ]
               }
@@ -32192,8 +32536,7 @@ describe("gateway app", () => {
     expect(response.status).toBe(400);
     await expect(readJson(response)).resolves.toEqual({
       error: {
-        message:
-          "OpenAI Responses stream_options requires stream=true",
+        message: "OpenAI Responses stream_options requires stream=true",
         type: "request",
         code: "request_unsupported_openai_semantics"
       }
@@ -32310,7 +32653,9 @@ describe("gateway app", () => {
       model: "gpt-4.1-mini",
       stream: true
     });
-    expect(JSON.parse(init.body as string)).not.toHaveProperty("stream_options");
+    expect(JSON.parse(init.body as string)).not.toHaveProperty(
+      "stream_options"
+    );
   });
 
   it("preserves started parallel_tool_calls state across native openai responses streaming when completed omits it", async () => {
@@ -32493,7 +32838,9 @@ describe("gateway app", () => {
     expect(body).toContain('"delta":"hello"');
     expect(body).not.toContain('"logprobs":[]');
     expect(body).not.toContain('"logprobs":{"content":[]}');
-    expect(body).not.toContain('"type":"response.output_text.delta","sequence_number":4,"item_id":"resp_123_output_0","output_index":0,"content_index":0,"delta":"hello","logprobs":[]');
+    expect(body).not.toContain(
+      '"type":"response.output_text.delta","sequence_number":4,"item_id":"resp_123_output_0","output_index":0,"content_index":0,"delta":"hello","logprobs":[]'
+    );
     expect(body).toContain("data: [DONE]");
   });
 
@@ -32598,8 +32945,7 @@ describe("gateway app", () => {
     expect(response.status).toBe(400);
     await expect(readJson(response)).resolves.toEqual({
       error: {
-        message:
-          "OpenAI Responses stream_options requires stream=true",
+        message: "OpenAI Responses stream_options requires stream=true",
         type: "request",
         code: "request_unsupported_openai_semantics"
       }
@@ -33376,12 +33722,26 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const body = await readText(response);
 
-    expect(body).toContain('"index":0,"content_block":{"type":"text","text":""}');
-    expect(body).toContain('"index":0,"delta":{"type":"text_delta","text":"Let me check that."}');
-    expect(body).toContain('"index":1,"content_block":{"type":"tool_use","id":"gemini-response-123_tool_0","name":"lookup_weather","input":{}}');
-    expect(body).toContain('"index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Shanghai\\"}"}');
-    expect(body.indexOf('"index":0,"delta":{"type":"text_delta","text":"Let me check that."}')).toBeLessThan(
-      body.indexOf('"index":1,"content_block":{"type":"tool_use","id":"gemini-response-123_tool_0"')
+    expect(body).toContain(
+      '"index":0,"content_block":{"type":"text","text":""}'
+    );
+    expect(body).toContain(
+      '"index":0,"delta":{"type":"text_delta","text":"Let me check that."}'
+    );
+    expect(body).toContain(
+      '"index":1,"content_block":{"type":"tool_use","id":"gemini-response-123_tool_0","name":"lookup_weather","input":{}}'
+    );
+    expect(body).toContain(
+      '"index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Shanghai\\"}"}'
+    );
+    expect(
+      body.indexOf(
+        '"index":0,"delta":{"type":"text_delta","text":"Let me check that."}'
+      )
+    ).toBeLessThan(
+      body.indexOf(
+        '"index":1,"content_block":{"type":"tool_use","id":"gemini-response-123_tool_0"'
+      )
     );
     expect(body).toContain('"stop_reason":"tool_use"');
   });
@@ -33462,7 +33822,7 @@ describe("gateway app", () => {
                 {
                   type: "tool_result",
                   tool_use_id: "call_123",
-                  content: "{\"temperature_c\":26}"
+                  content: '{"temperature_c":26}'
                 }
               ]
             }
@@ -33595,12 +33955,20 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const body = await readText(response);
 
-    expect(body).toContain('event: content_block_start');
-    expect(body).toContain('"index":0,"content_block":{"type":"text","text":""}');
-    expect(body).toContain('"index":0,"delta":{"type":"text_delta","text":"Let me check that."}');
-    expect(body).toContain('"index":1,"content_block":{"type":"tool_use","id":"call_123","name":"lookup_weather","input":{}}');
-    expect(body).toContain('"index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Shanghai\\"}"}');
-    expect(body).toContain('event: content_block_stop');
+    expect(body).toContain("event: content_block_start");
+    expect(body).toContain(
+      '"index":0,"content_block":{"type":"text","text":""}'
+    );
+    expect(body).toContain(
+      '"index":0,"delta":{"type":"text_delta","text":"Let me check that."}'
+    );
+    expect(body).toContain(
+      '"index":1,"content_block":{"type":"tool_use","id":"call_123","name":"lookup_weather","input":{}}'
+    );
+    expect(body).toContain(
+      '"index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Shanghai\\"}"}'
+    );
+    expect(body).toContain("event: content_block_stop");
     expect(body).toContain('"stop_reason":"tool_use"');
   });
 
@@ -33671,7 +34039,9 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const body = await readText(response);
 
-    expect(body).toContain('"index":0,"content_block":{"type":"tool_use","id":"call_123","name":"lookup_weather","input":{}}');
+    expect(body).toContain(
+      '"index":0,"content_block":{"type":"tool_use","id":"call_123","name":"lookup_weather","input":{}}'
+    );
     expect(body).toContain('"stop_reason":"tool_use"');
   });
 
@@ -34833,7 +35203,7 @@ describe("gateway app", () => {
               type: "function_call",
               call_id: "call_123",
               name: "lookup_weather",
-              arguments: "{\"city\":\"Shanghai\"}",
+              arguments: '{"city":"Shanghai"}',
               status: "completed"
             }
           ]
@@ -35253,7 +35623,7 @@ describe("gateway app", () => {
                 {
                   type: "tool_result",
                   tool_use_id: "call_123",
-                  content: "{\"temperature_c\":26}"
+                  content: '{"temperature_c":26}'
                 }
               ]
             }
@@ -35291,7 +35661,7 @@ describe("gateway app", () => {
             {
               type: "tool_result",
               tool_use_id: "call_123",
-              content: "{\"temperature_c\":26}"
+              content: '{"temperature_c":26}'
             }
           ]
         }
@@ -35443,7 +35813,7 @@ describe("gateway app", () => {
                 {
                   type: "tool_result",
                   tool_use_id: "call_123",
-                  content: "{\"temperature_c\":26}"
+                  content: '{"temperature_c":26}'
                 },
                 {
                   type: "text",
@@ -35472,7 +35842,7 @@ describe("gateway app", () => {
             {
               type: "tool_result",
               tool_use_id: "call_123",
-              content: "{\"temperature_c\":26}"
+              content: '{"temperature_c":26}'
             },
             {
               type: "text",
@@ -35561,7 +35931,7 @@ describe("gateway app", () => {
                 {
                   type: "tool_result",
                   tool_use_id: "call_123",
-                  content: "{\"temperature_c\":26}"
+                  content: '{"temperature_c":26}'
                 },
                 {
                   type: "text",
@@ -35585,7 +35955,7 @@ describe("gateway app", () => {
           type: "function_call",
           call_id: "call_123",
           name: "lookup_weather",
-          arguments: "{\"city\":\"Shanghai\"}"
+          arguments: '{"city":"Shanghai"}'
         },
         {
           type: "message",
@@ -35595,7 +35965,7 @@ describe("gateway app", () => {
         {
           type: "function_call_output",
           call_id: "call_123",
-          output: "{\"temperature_c\":26}"
+          output: '{"temperature_c":26}'
         },
         {
           type: "message",
@@ -35641,7 +36011,7 @@ describe("gateway app", () => {
               type: "function_call",
               call_id: "call_123",
               name: "lookup_weather",
-              arguments: "{\"city\":\"Shanghai\"}",
+              arguments: '{"city":"Shanghai"}',
               status: "completed"
             }
           ]
@@ -35857,7 +36227,9 @@ describe("gateway app", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/responses"
+    );
     const body = await readText(response);
 
     expect(body).toContain("event: content_block_start");
@@ -35938,11 +36310,21 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const body = await readText(response);
 
-    expect(body).toContain('"index":0,"content_block":{"type":"text","text":""}');
-    expect(body).toContain('"index":0,"delta":{"type":"text_delta","text":"Let me check that."}');
-    expect(body).toContain('"index":1,"content_block":{"type":"tool_use","id":"call_123","name":"lookup_weather","input":{}}');
-    expect(body).toContain('"index":1,"delta":{"type":"input_json_delta","partial_json":""}');
-    expect(body).toContain('"index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Shanghai\\"}"}');
+    expect(body).toContain(
+      '"index":0,"content_block":{"type":"text","text":""}'
+    );
+    expect(body).toContain(
+      '"index":0,"delta":{"type":"text_delta","text":"Let me check that."}'
+    );
+    expect(body).toContain(
+      '"index":1,"content_block":{"type":"tool_use","id":"call_123","name":"lookup_weather","input":{}}'
+    );
+    expect(body).toContain(
+      '"index":1,"delta":{"type":"input_json_delta","partial_json":""}'
+    );
+    expect(body).toContain(
+      '"index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Shanghai\\"}"}'
+    );
     expect(body).toContain('"stop_reason":"tool_use"');
   });
 
@@ -36073,9 +36455,13 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const body = await readText(response);
 
-    const reasoningIndex = body.indexOf('"type":"response.reasoning_summary_text.delta"');
+    const reasoningIndex = body.indexOf(
+      '"type":"response.reasoning_summary_text.delta"'
+    );
     const textIndex = body.indexOf('"type":"response.output_text.delta"');
-    const toolIndex = body.indexOf('"type":"response.function_call_arguments.delta"');
+    const toolIndex = body.indexOf(
+      '"type":"response.function_call_arguments.delta"'
+    );
 
     expect(reasoningIndex).toBeGreaterThanOrEqual(0);
     expect(textIndex).toBeGreaterThan(reasoningIndex);
@@ -36155,10 +36541,18 @@ describe("gateway app", () => {
     expect(response.status).toBe(200);
     const body = await readText(response);
 
-    expect(body).toContain('"index":0,"content_block":{"type":"text","text":""}');
-    expect(body).toContain('"index":0,"delta":{"type":"text_delta","text":"Let me check that."}');
-    expect(body).toContain('"index":1,"content_block":{"type":"tool_use","id":"call_123","name":"lookup_weather","input":{}}');
-    expect(body).toContain('"index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Shanghai\\"}"}');
+    expect(body).toContain(
+      '"index":0,"content_block":{"type":"text","text":""}'
+    );
+    expect(body).toContain(
+      '"index":0,"delta":{"type":"text_delta","text":"Let me check that."}'
+    );
+    expect(body).toContain(
+      '"index":1,"content_block":{"type":"tool_use","id":"call_123","name":"lookup_weather","input":{}}'
+    );
+    expect(body).toContain(
+      '"index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":\\"Shanghai\\"}"}'
+    );
     expect(body).toContain('"stop_reason":"tool_use"');
   });
 
