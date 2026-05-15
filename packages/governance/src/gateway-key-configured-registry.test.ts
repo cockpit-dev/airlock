@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   clearConfiguredGatewayKeyRegistryOverride,
   getConfiguredGatewayApiKeyStatusSnapshot,
+  parseGatewayKeyRegistryOverrideMutationRequest,
+  parseGatewayKeyRegistryOverrideClearRequest,
+  parseGatewayKeyRegistryOverrideAuditMetadata,
   resolveConfiguredGatewayApiKeyRuntime,
   updateConfiguredGatewayKeyRegistryOverride
 } from "./gateway-key-configured-registry.js";
@@ -64,6 +67,176 @@ describe("resolveConfiguredGatewayApiKeyRuntime", () => {
     ).resolves.toEqual({
       runtimeGatewayApiKey: createConfiguredKey(),
       registryOverride: null
+    });
+  });
+});
+
+describe("parseGatewayKeyRegistryOverrideMutationRequest", () => {
+  it("parses a flat payload as override-only", () => {
+    const result = parseGatewayKeyRegistryOverrideMutationRequest({
+      label: "Updated Key",
+      status: "active"
+    });
+
+    expect(result).toEqual({
+      override: {
+        label: "Updated Key",
+        status: "active"
+      }
+    });
+  });
+
+  it("parses a wrapped payload with override and auditMetadata", () => {
+    const result = parseGatewayKeyRegistryOverrideMutationRequest({
+      override: {
+        label: "Updated Key"
+      },
+      auditMetadata: {
+        reason: "rotated",
+        actor: "ops@example.com",
+        actorSource: "credential"
+      }
+    });
+
+    expect(result).toEqual({
+      override: {
+        label: "Updated Key"
+      },
+      auditMetadata: {
+        reason: "rotated",
+        actor: "ops@example.com",
+        actorSource: "credential"
+      }
+    });
+  });
+
+  it("merges reason from payload-level into auditMetadata", () => {
+    const result = parseGatewayKeyRegistryOverrideMutationRequest({
+      label: "Updated Key",
+      reason: "maintenance"
+    });
+
+    expect(result).toEqual({
+      override: {
+        label: "Updated Key"
+      },
+      auditMetadata: {
+        reason: "maintenance"
+      }
+    });
+  });
+
+  it("parses a wrapped payload with override but no auditMetadata", () => {
+    const result = parseGatewayKeyRegistryOverrideMutationRequest({
+      override: {
+        label: "Updated Key"
+      }
+    });
+
+    expect(result).toEqual({
+      override: {
+        label: "Updated Key"
+      }
+    });
+  });
+});
+
+describe("parseGatewayKeyRegistryOverrideClearRequest", () => {
+  it("returns empty when no auditMetadata is provided", () => {
+    const result = parseGatewayKeyRegistryOverrideClearRequest({});
+
+    expect(result).toEqual({});
+  });
+
+  it("parses auditMetadata with reason", () => {
+    const result = parseGatewayKeyRegistryOverrideClearRequest({
+      auditMetadata: {
+        reason: "rollback"
+      }
+    });
+
+    expect(result).toEqual({
+      auditMetadata: {
+        reason: "rollback"
+      }
+    });
+  });
+
+  it("parses auditMetadata with actor context", () => {
+    const result = parseGatewayKeyRegistryOverrideClearRequest({
+      auditMetadata: {
+        actor: "ops@example.com",
+        actorSource: "trusted_header"
+      }
+    });
+
+    expect(result).toEqual({
+      auditMetadata: {
+        actor: "ops@example.com",
+        actorSource: "trusted_header"
+      }
+    });
+  });
+
+  it("extracts reason from top-level into auditMetadata", () => {
+    const result = parseGatewayKeyRegistryOverrideClearRequest({
+      reason: "incident"
+    });
+
+    expect(result).toEqual({
+      auditMetadata: {
+        reason: "incident"
+      }
+    });
+  });
+});
+
+describe("parseGatewayKeyRegistryOverrideAuditMetadata", () => {
+  it("returns undefined for null input", () => {
+    expect(parseGatewayKeyRegistryOverrideAuditMetadata(null)).toBeUndefined();
+  });
+
+  it("returns undefined for undefined input", () => {
+    expect(
+      parseGatewayKeyRegistryOverrideAuditMetadata(undefined)
+    ).toBeUndefined();
+  });
+
+  it("returns undefined when no reason or actor context", () => {
+    expect(parseGatewayKeyRegistryOverrideAuditMetadata({})).toBeUndefined();
+  });
+
+  it("extracts reason from audit metadata", () => {
+    expect(
+      parseGatewayKeyRegistryOverrideAuditMetadata({ reason: "scheduled" })
+    ).toEqual({
+      reason: "scheduled"
+    });
+  });
+
+  it("extracts actor context from audit metadata", () => {
+    expect(
+      parseGatewayKeyRegistryOverrideAuditMetadata({
+        actor: "admin@example.com",
+        actorSource: "credential"
+      })
+    ).toEqual({
+      actor: "admin@example.com",
+      actorSource: "credential"
+    });
+  });
+
+  it("extracts both reason and actor context", () => {
+    expect(
+      parseGatewayKeyRegistryOverrideAuditMetadata({
+        reason: "emergency",
+        actor: "admin@example.com",
+        actorSource: "payload"
+      })
+    ).toEqual({
+      reason: "emergency",
+      actor: "admin@example.com",
+      actorSource: "payload"
     });
   });
 });

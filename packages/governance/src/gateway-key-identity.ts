@@ -1,6 +1,10 @@
 import { createGatewayKeyNotFoundError } from "./gateway-key-registry-validation.js";
 
-import type { GatewayApiKeyOwnership, GatewayApiKeyRecord } from "./gateway-auth.js";
+import {
+  sha256Hex,
+  type GatewayApiKeyOwnership,
+  type GatewayApiKeyRecord
+} from "./gateway-auth.js";
 import type { GatewayKeyRegistryDynamicKeyView } from "./gateway-key-registry.js";
 
 export interface GatewayApiKeyOwnershipResolutionPort {
@@ -68,4 +72,28 @@ export async function resolveGatewayApiKeyByIdWithOwnership(
   }
 
   throw createGatewayKeyNotFoundError(requestId);
+}
+
+export async function toDynamicUniquenessComparableGatewayApiKeys(
+  gatewayApiKeys: readonly GatewayApiKeyRecord[]
+): Promise<GatewayApiKeyRecord[]> {
+  return Promise.all(
+    gatewayApiKeys.map(async (entry) => {
+      if (entry.valueHash) {
+        return entry;
+      }
+
+      if (!entry.value) {
+        return entry;
+      }
+
+      const rest = { ...entry };
+      delete rest.value;
+
+      return {
+        ...rest,
+        valueHash: await sha256Hex(entry.value)
+      };
+    })
+  );
 }

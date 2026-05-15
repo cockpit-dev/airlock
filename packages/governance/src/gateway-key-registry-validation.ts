@@ -114,6 +114,15 @@ export async function requireRegistryKey(
   return existingKey;
 }
 
+export function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every((entry) => {
+      return typeof entry === "string" && entry.trim().length > 0;
+    })
+  );
+}
+
 export async function requireRegistryKeys(
   keyIds: readonly string[],
   requestId: string,

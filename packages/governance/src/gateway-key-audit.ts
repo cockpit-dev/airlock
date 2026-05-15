@@ -508,3 +508,11 @@ export function parseOptionalGatewayKeyAuditActorSource(
 
   return value;
 }
+
+export function toGatewayAuditRecord(
+  value: object
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined)
+  );
+}

@@ -978,7 +978,7 @@ export function createGatewayApiKeyRegistrySnapshot(
   };
 }
 
-async function sha256Hex(value: string): Promise<string> {
+export async function sha256Hex(value: string): Promise<string> {
   const encoded = new TextEncoder().encode(value);
   const digest = await crypto.subtle.digest("SHA-256", encoded);
 

@@ -13,7 +13,12 @@ import {
   type GatewayKeyAuditActorContext
 } from "./gateway-key-audit.js";
 import { requireConfiguredGatewayApiKeyById } from "./gateway-key-identity.js";
-import type { GatewayKeyRegistryStoredOverride } from "./gateway-key-registry.js";
+import {
+  parseGatewayKeyRegistryLifecycleActionRequest,
+  gatewayKeyAuditActorContextFromRegistryRequest,
+  toGatewayKeyAuditActorContextRecord,
+  type GatewayKeyRegistryStoredOverride
+} from "./gateway-key-registry.js";
 import {
   getGatewayApiKeyStatusSnapshot,
   type GatewayKeyStatusSnapshotPort
@@ -311,6 +316,125 @@ export async function getConfiguredGatewayApiKeyStatusSnapshot(
     "configured",
     port
   );
+}
+
+export interface GatewayKeyRegistryOverrideMutationRequest {
+  override: GatewayApiKeyMetadataOverride;
+  auditMetadata?: {
+    reason?: string;
+    actor?: string;
+    actorSource?: "payload" | "trusted_header" | "credential";
+  };
+}
+
+export function parseGatewayKeyRegistryOverrideAuditMetadata(value: unknown):
+  | {
+      reason?: string;
+      actor?: string;
+      actorSource?: "payload" | "trusted_header" | "credential";
+    }
+  | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const parsed = parseGatewayKeyRegistryLifecycleActionRequest(
+    value,
+    "Gateway configured key registry override payload is invalid"
+  );
+  const actorContext = gatewayKeyAuditActorContextFromRegistryRequest(value);
+
+  if (!parsed.reason && !actorContext) {
+    return undefined;
+  }
+
+  return {
+    ...(parsed.reason ? { reason: parsed.reason } : {}),
+    ...(actorContext ? toGatewayKeyAuditActorContextRecord(actorContext) : {})
+  };
+}
+
+export function parseGatewayKeyRegistryOverrideMutationRequest(
+  value: unknown
+): GatewayKeyRegistryOverrideMutationRequest {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    const parsed =
+      parseConfiguredGatewayKeyRegistryOverrideUpdatePayload(value);
+    return {
+      override: parsed.override,
+      ...(parsed.reason ? { auditMetadata: { reason: parsed.reason } } : {})
+    };
+  }
+
+  const record = value as Record<string, unknown>;
+
+  if ("override" in record) {
+    const parsedOverride =
+      parseConfiguredGatewayKeyRegistryOverrideUpdatePayload(record.override);
+    const parsedAuditMetadata =
+      "auditMetadata" in record
+        ? parseGatewayKeyRegistryOverrideAuditMetadata(record.auditMetadata)
+        : undefined;
+
+    return {
+      override: parsedOverride.override,
+      ...(parsedOverride.reason || parsedAuditMetadata
+        ? {
+            auditMetadata: {
+              ...(parsedOverride.reason
+                ? { reason: parsedOverride.reason }
+                : {}),
+              ...(parsedAuditMetadata ?? {})
+            }
+          }
+        : {})
+    };
+  }
+
+  const parsed = parseConfiguredGatewayKeyRegistryOverrideUpdatePayload(value);
+  return {
+    override: parsed.override,
+    ...(parsed.reason ? { auditMetadata: { reason: parsed.reason } } : {})
+  };
+}
+
+export function parseGatewayKeyRegistryOverrideClearRequest(value: unknown): {
+  auditMetadata?: {
+    reason?: string;
+    actor?: string;
+    actorSource?: "payload" | "trusted_header" | "credential";
+  };
+} {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "auditMetadata" in value
+  ) {
+    const record = value as Record<string, unknown>;
+    const parsedBody = parseConfiguredGatewayKeyRegistryOverrideClearPayload(
+      "reason" in record ? { reason: record.reason } : {}
+    );
+    const parsedAuditMetadata = parseGatewayKeyRegistryOverrideAuditMetadata(
+      record.auditMetadata
+    );
+
+    return {
+      ...(parsedBody.reason || parsedAuditMetadata
+        ? {
+            auditMetadata: {
+              ...(parsedBody.reason ? { reason: parsedBody.reason } : {}),
+              ...(parsedAuditMetadata ?? {})
+            }
+          }
+        : {})
+    };
+  }
+
+  const parsed = parseConfiguredGatewayKeyRegistryOverrideClearPayload(value);
+  return {
+    ...(parsed.reason ? { auditMetadata: { reason: parsed.reason } } : {})
+  };
 }
 
 export type {
