@@ -1,6 +1,7 @@
-import { GatewayError } from "@airlock/shared";
-
-import { parseGatewayDynamicApiKeyRecord, type GatewayApiKeyRecord } from "./gateway-auth.js";
+import {
+  parseGatewayDynamicApiKeyRecord,
+  type GatewayApiKeyRecord
+} from "./gateway-auth.js";
 import {
   parseGatewayKeyRegistryBulkRotateRequest,
   parseGatewayKeyRegistryBulkRotationActionRequest,
@@ -12,38 +13,18 @@ import {
   assertRegistryOwnedKeyId,
   assertRegistryOwnedKeyIds,
   createGatewayKeyNotFoundError,
+  createGatewayKeyRotationNotCancelableError,
+  createGatewayKeyRotationNotStagedError,
   requireRegistryKey,
   requireRegistryKeys
 } from "./gateway-key-registry-validation.js";
 
-function createGatewayKeyRotationNotStagedError(requestId: string): GatewayError {
-  return new GatewayError("Gateway API key does not have an active staged rotation", {
-    code: "gateway_key_rotation_not_staged",
-    category: "governance",
-    httpStatus: 409,
-    retryable: false,
-    requestId
-  });
-}
-
-function createGatewayKeyRotationNotCancelableError(
-  requestId: string
-): GatewayError {
-  return new GatewayError("Gateway API key staged rotation can no longer be canceled", {
-    code: "gateway_key_rotation_not_cancelable",
-    category: "governance",
-    httpStatus: 409,
-    retryable: false,
-    requestId
-  });
-}
-
 export interface RotateGatewayRegistryKeyPort {
   isConfiguredKey(keyId: string): boolean;
-  getRegistryKey(keyId: string): Promise<GatewayKeyRegistryDynamicKeyView | null>;
-  listComparableKeysForRotation(
+  getRegistryKey(
     keyId: string
-  ): Promise<GatewayApiKeyRecord[]>;
+  ): Promise<GatewayKeyRegistryDynamicKeyView | null>;
+  listComparableKeysForRotation(keyId: string): Promise<GatewayApiKeyRecord[]>;
   validateRotatedKey(
     existingKey: GatewayKeyRegistryDynamicKeyView,
     valueHash: string,
@@ -58,7 +39,9 @@ export interface RotateGatewayRegistryKeyPort {
 
 export interface FinalizeGatewayRegistryKeyRotationPort {
   isConfiguredKey(keyId: string): boolean;
-  getRegistryKey(keyId: string): Promise<GatewayKeyRegistryDynamicKeyView | null>;
+  getRegistryKey(
+    keyId: string
+  ): Promise<GatewayKeyRegistryDynamicKeyView | null>;
   finalizeRegistryKeyRotation(
     keyId: string,
     request: ReturnType<typeof parseGatewayKeyRegistryRotationActionRequest>
@@ -67,7 +50,9 @@ export interface FinalizeGatewayRegistryKeyRotationPort {
 
 export interface CancelGatewayRegistryKeyRotationPort {
   isConfiguredKey(keyId: string): boolean;
-  getRegistryKey(keyId: string): Promise<GatewayKeyRegistryDynamicKeyView | null>;
+  getRegistryKey(
+    keyId: string
+  ): Promise<GatewayKeyRegistryDynamicKeyView | null>;
   cancelRegistryKeyRotation(
     keyId: string,
     request: ReturnType<typeof parseGatewayKeyRegistryRotationActionRequest>
@@ -86,7 +71,9 @@ export interface BulkRotateGatewayRegistryKeysPort {
     comparableKeys: readonly GatewayApiKeyRecord[]
   ): GatewayApiKeyRecord;
   clearRevocationOverlay(key: GatewayKeyRegistryDynamicKeyView): Promise<void>;
-  bulkRotateRegistryKeys(payload: ReturnType<typeof parseGatewayKeyRegistryBulkRotateRequest>): Promise<{
+  bulkRotateRegistryKeys(
+    payload: ReturnType<typeof parseGatewayKeyRegistryBulkRotateRequest>
+  ): Promise<{
     operationId?: string;
     keys: GatewayKeyRegistryDynamicKeyView[];
   }>;
@@ -124,8 +111,6 @@ export interface BulkCancelGatewayRegistryKeyRotationsPort {
   }>;
 }
 
-
-
 function assertStagedRotation(
   key: GatewayKeyRegistryDynamicKeyView,
   requestId: string
@@ -134,8 +119,6 @@ function assertStagedRotation(
     throw createGatewayKeyRotationNotStagedError(requestId);
   }
 }
-
-
 
 export async function rotateGatewayRegistryKey(
   keyId: string,

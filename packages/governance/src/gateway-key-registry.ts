@@ -16,8 +16,7 @@ import {
   type GatewayKeyAuditActorSource
 } from "./gateway-key-audit.js";
 
-export interface GatewayKeyRegistryStoredOverride
-  extends GatewayApiKeyMetadataOverride {
+export interface GatewayKeyRegistryStoredOverride extends GatewayApiKeyMetadataOverride {
   updatedAt: string;
 }
 
@@ -313,7 +312,9 @@ export function parseGatewayKeyRegistryStoredDynamicKey(
     previousValueHashExpiresAt !== undefined &&
     !isValidTimestamp(previousValueHashExpiresAt)
   ) {
-    throw new Error("Registry dynamic key previousValueHashExpiresAt is invalid");
+    throw new Error(
+      "Registry dynamic key previousValueHashExpiresAt is invalid"
+    );
   }
 
   if (archivedAt !== undefined && !isValidTimestamp(archivedAt)) {
@@ -347,7 +348,9 @@ export function createGatewayKeyRegistryDynamicKeyView(
       ...(key.archivedAt ? { archivedAt: key.archivedAt } : {}),
       ...(key.policy ? { policy: key.policy } : {})
     },
-    ...(key.previousValueHash ? { previousValueHash: key.previousValueHash } : {}),
+    ...(key.previousValueHash
+      ? { previousValueHash: key.previousValueHash }
+      : {}),
     ...(key.previousValueHashExpiresAt
       ? { previousValueHashExpiresAt: key.previousValueHashExpiresAt }
       : {}),
@@ -421,8 +424,12 @@ export function createStoredGatewayRegistryFieldDiffs(
   pushScalarDiff("notBefore", before.notBefore, after.notBefore);
   pushScalarDiff("expiresAt", before.expiresAt, after.expiresAt);
 
-  const beforePolicy = toComparableStoredGatewayRegistryPolicyValue(before.policy);
-  const afterPolicy = toComparableStoredGatewayRegistryPolicyValue(after.policy);
+  const beforePolicy = toComparableStoredGatewayRegistryPolicyValue(
+    before.policy
+  );
+  const afterPolicy = toComparableStoredGatewayRegistryPolicyValue(
+    after.policy
+  );
 
   if (JSON.stringify(beforePolicy) !== JSON.stringify(afterPolicy)) {
     diffs.push({
@@ -606,9 +613,12 @@ export function parseGatewayKeyRegistryDynamicKeyListResponse(
 
   if (
     value.operationId !== undefined &&
-    (typeof value.operationId !== "string" || value.operationId.trim().length === 0)
+    (typeof value.operationId !== "string" ||
+      value.operationId.trim().length === 0)
   ) {
-    throw new Error("Registry dynamic key list response operationId is invalid");
+    throw new Error(
+      "Registry dynamic key list response operationId is invalid"
+    );
   }
 
   return {
@@ -647,7 +657,8 @@ export function parseGatewayKeyRegistryBulkDeleteResponse(
 
   if (
     value.operationId !== undefined &&
-    (typeof value.operationId !== "string" || value.operationId.trim().length === 0)
+    (typeof value.operationId !== "string" ||
+      value.operationId.trim().length === 0)
   ) {
     throw new Error("Registry bulk delete response operationId is invalid");
   }
@@ -671,7 +682,8 @@ export function parseGatewayKeyRegistryBulkCreateResponse(
 
   if (
     value.operationId !== undefined &&
-    (typeof value.operationId !== "string" || value.operationId.trim().length === 0)
+    (typeof value.operationId !== "string" ||
+      value.operationId.trim().length === 0)
   ) {
     throw new Error("Registry bulk create response operationId is invalid");
   }
@@ -842,10 +854,10 @@ export function parseGatewayKeyRegistryBulkCreateRequest(
   for (const entry of value.keys) {
     try {
       keys.push(
-        parseGatewayDynamicApiKeyRecord(stripGatewayKeyAuditActorMetadata(entry), [
-          ...existingGatewayApiKeys,
-          ...keys
-        ])
+        parseGatewayDynamicApiKeyRecord(
+          stripGatewayKeyAuditActorMetadata(entry),
+          [...existingGatewayApiKeys, ...keys]
+        )
       );
     } catch (cause) {
       throw toGatewayKeyRegistryRequestValidationError(message, cause);
@@ -1512,6 +1524,20 @@ export function toGatewayKeyAuditActorContextRecord(
   return {
     actor: actorContext.actor,
     actorSource: actorContext.actorSource
+  };
+}
+
+export function buildGatewayKeyAuditContext(options: {
+  operationId?: string;
+  reason?: string;
+  actorContext?: GatewayKeyAuditActorContext;
+}): Record<string, unknown> {
+  return {
+    ...(options.operationId ? { operationId: options.operationId } : {}),
+    ...(options.reason ? { reason: options.reason } : {}),
+    ...(options.actorContext
+      ? toGatewayKeyAuditActorContextRecord(options.actorContext)
+      : {})
   };
 }
 

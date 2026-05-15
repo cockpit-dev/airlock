@@ -24,6 +24,60 @@ export function createGatewayKeyNotFoundError(requestId: string): GatewayError {
   });
 }
 
+export function createGatewayKeyRotationNotStagedError(
+  requestId: string
+): GatewayError {
+  return new GatewayError(
+    "Gateway API key does not have an active staged rotation",
+    {
+      code: "gateway_key_rotation_not_staged",
+      category: "governance",
+      httpStatus: 409,
+      retryable: false,
+      requestId
+    }
+  );
+}
+
+export function createGatewayKeyRotationNotCancelableError(
+  requestId: string
+): GatewayError {
+  return new GatewayError(
+    "Gateway API key staged rotation can no longer be canceled",
+    {
+      code: "gateway_key_rotation_not_cancelable",
+      category: "governance",
+      httpStatus: 409,
+      retryable: false,
+      requestId
+    }
+  );
+}
+
+export function createGatewayKeyAlreadyArchivedError(
+  requestId: string
+): GatewayError {
+  return new GatewayError("Gateway API key is already archived", {
+    code: "gateway_key_already_archived",
+    category: "governance",
+    httpStatus: 409,
+    retryable: false,
+    requestId
+  });
+}
+
+export function createGatewayKeyNotArchivedError(
+  requestId: string
+): GatewayError {
+  return new GatewayError("Gateway API key is not archived", {
+    code: "gateway_key_not_archived",
+    category: "governance",
+    httpStatus: 409,
+    retryable: false,
+    requestId
+  });
+}
+
 export function assertRegistryOwnedKeyId(
   keyId: string,
   requestId: string,

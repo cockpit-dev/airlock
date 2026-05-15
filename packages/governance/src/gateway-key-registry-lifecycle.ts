@@ -1,5 +1,3 @@
-import { GatewayError } from "@airlock/shared";
-
 import {
   parseGatewayKeyRegistryBulkArchiveRequest,
   parseGatewayKeyRegistryBulkRestoreRequest,
@@ -9,33 +7,17 @@ import {
 import {
   assertRegistryOwnedKeyId,
   assertRegistryOwnedKeyIds,
+  createGatewayKeyAlreadyArchivedError,
+  createGatewayKeyNotArchivedError,
   requireRegistryKey,
   requireRegistryKeys
 } from "./gateway-key-registry-validation.js";
 
-function createGatewayKeyAlreadyArchivedError(requestId: string): GatewayError {
-  return new GatewayError("Gateway API key is already archived", {
-    code: "gateway_key_already_archived",
-    category: "governance",
-    httpStatus: 409,
-    retryable: false,
-    requestId
-  });
-}
-
-function createGatewayKeyNotArchivedError(requestId: string): GatewayError {
-  return new GatewayError("Gateway API key is not archived", {
-    code: "gateway_key_not_archived",
-    category: "governance",
-    httpStatus: 409,
-    retryable: false,
-    requestId
-  });
-}
-
 export interface ArchiveGatewayRegistryKeyPort {
   isConfiguredKey(keyId: string): boolean;
-  getRegistryKey(keyId: string): Promise<GatewayKeyRegistryDynamicKeyView | null>;
+  getRegistryKey(
+    keyId: string
+  ): Promise<GatewayKeyRegistryDynamicKeyView | null>;
   archiveRegistryKey(
     keyId: string,
     request: ReturnType<typeof parseGatewayKeyRegistryLifecycleActionRequest>
@@ -44,7 +26,9 @@ export interface ArchiveGatewayRegistryKeyPort {
 
 export interface RestoreGatewayRegistryKeyPort {
   isConfiguredKey(keyId: string): boolean;
-  getRegistryKey(keyId: string): Promise<GatewayKeyRegistryDynamicKeyView | null>;
+  getRegistryKey(
+    keyId: string
+  ): Promise<GatewayKeyRegistryDynamicKeyView | null>;
   restoreRegistryKey(
     keyId: string,
     request: ReturnType<typeof parseGatewayKeyRegistryLifecycleActionRequest>
@@ -82,8 +66,6 @@ export interface BulkRestoreGatewayRegistryKeysPort {
     keys: GatewayKeyRegistryDynamicKeyView[];
   }>;
 }
-
-
 
 function assertNotArchived(
   existingKey: GatewayKeyRegistryDynamicKeyView,
