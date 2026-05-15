@@ -21507,6 +21507,1232 @@ describe("gateway app", () => {
     });
   });
 
+  it("fails over across providers on /v1/responses when an unshaped route has a retryable primary failure", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_123",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "fallback hello"
+              }
+            ],
+            usage: {
+              input_tokens: 12,
+              output_tokens: 8
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          input: "hi",
+          stream: false
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "response",
+      model: "claude-haiku-4-5",
+      output_text: "fallback hello"
+    });
+  });
+
+  it("routes directly to the first provider-allowed fallback target on /v1/responses without calling a disallowed primary target", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello from openai",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          input: "hi",
+          stream: false
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedProviders: ["openai"]
+            }
+          }
+        ]),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=anthropic:claude-sonnet-4-5,gpt-4.1-mini=openai:gpt-4.1-mini",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["openai:gpt-4.1-mini"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "response",
+      model: "gpt-4.1-mini",
+      output_text: "hello from openai"
+    });
+  });
+
+  it("can start from a weighted fallback target before the configured primary target on /v1/responses", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello from anthropic"
+            }
+          ],
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          input: "hi",
+          stream: false
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "weighted",
+            weights: {
+              "openai:gpt-4.1-mini": 1,
+              "anthropic:claude-haiku-4-5": 10000
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "response",
+      model: "claude-haiku-4-5",
+      output_text: "hello from anthropic"
+    });
+  });
+
+  it("can start from a lower-cost fallback target before the configured primary target on /v1/responses", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello from anthropic"
+            }
+          ],
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          input: "hi",
+          stream: false
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "lowest_cost",
+            costs: {
+              "openai:gpt-4.1-mini": 10,
+              "anthropic:claude-haiku-4-5": 3
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "response",
+      model: "claude-haiku-4-5",
+      output_text: "hello from anthropic"
+    });
+  });
+
+  it("prefers a healthier closed fallback target on /v1/responses when health-priority selection is configured", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_123",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "healthy fallback"
+              }
+            ],
+            usage: {
+              input_tokens: 12,
+              output_tokens: 8
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_124",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "healthy fallback again"
+              }
+            ],
+            usage: {
+              input_tokens: 12,
+              output_tokens: 8
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "1",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER: createPersistentBreakerNamespace(),
+      AIRLOCK_MODEL_ALIASES:
+        "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+      AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+        "assistant-default": ["anthropic:claude-haiku-4-5"]
+      }),
+      AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+        "assistant-default": {
+          strategy: "health_priority"
+        }
+      })
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          input: "hi",
+          stream: false
+        })
+      },
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    await expect(readJson(firstResponse)).resolves.toMatchObject({
+      object: "response",
+      model: "claude-haiku-4-5",
+      output_text: "healthy fallback"
+    });
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          input: "hi again",
+          stream: false
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(200);
+    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      object: "response",
+      model: "claude-haiku-4-5",
+      output_text: "healthy fallback again"
+    });
+  });
+
+  it("routes to a healthy in-slo target on /v1/responses when priority target selection is configured", async () => {
+    const currentTime = Date.now();
+    const routeFetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "resp_priority",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello from openai",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const breakerNamespace = createPersistentBreakerNamespace();
+    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, currentTime - 1_000);
+    breakerNamespace.seedSuccess(
+      "anthropic:claude-haiku-4-5",
+      5,
+      currentTime - 1_000
+    );
+
+    const bindings = {
+      ...createBindings(),
+      ANTHROPIC_API_KEY: "anthropic-secret",
+      ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER: breakerNamespace,
+      AIRLOCK_MODEL_ALIASES:
+        "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+      AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+        "assistant-default": ["anthropic:claude-haiku-4-5"]
+      }),
+      AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+        "assistant-default": {
+          strategy: "priority",
+          latencySloMs: {
+            "openai:gpt-4.1-mini": 300,
+            "anthropic:claude-haiku-4-5": 1
+          },
+          costs: {
+            "openai:gpt-4.1-mini": 10,
+            "anthropic:claude-haiku-4-5": 3
+          }
+        }
+      })
+    };
+
+    const app = createApp({ fetcher: routeFetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          input: "hi again",
+          stream: false
+        })
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(200);
+    expect(routeFetcher).toHaveBeenCalledTimes(1);
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    await expect(readJson(response)).resolves.toMatchObject({
+      object: "response",
+      model: "gpt-4.1-mini",
+      output_text: "hello from openai"
+    });
+  });
+
+  it("fails over across providers on /v1/messages when an unshaped route has a retryable primary failure", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "resp_123",
+            object: "response",
+            created_at: 1,
+            model: "gpt-4.1-mini",
+            status: "completed",
+            output: [
+              {
+                id: "msg_123",
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "fallback hello",
+                    annotations: []
+                  }
+                ]
+              }
+            ],
+            usage: {
+              input_tokens: 12,
+              output_tokens: 8,
+              total_tokens: 20
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=anthropic:claude-haiku-4-5,gpt-4.1-mini=openai:gpt-4.1-mini",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["openai:gpt-4.1-mini"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.openai.com/v1/responses");
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "message",
+      model: "gpt-4.1-mini",
+      content: [
+        {
+          type: "text",
+          text: "fallback hello"
+        }
+      ]
+    });
+  });
+
+  it("routes directly to the first provider-allowed fallback target on /v1/messages without calling a disallowed primary target", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello from openai",
+                  annotations: []
+                }
+              ]
+            }
+          ],
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8,
+            total_tokens: 20
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              allowedProviders: ["openai"]
+            }
+          }
+        ]),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=anthropic:claude-sonnet-4-5,gpt-4.1-mini=openai:gpt-4.1-mini",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["openai:gpt-4.1-mini"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "message",
+      model: "gpt-4.1-mini",
+      content: [
+        {
+          type: "text",
+          text: "hello from openai"
+        }
+      ]
+    });
+  });
+
+  it("can start from a weighted fallback target before the configured primary target on /v1/messages", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello from openai",
+                  annotations: []
+                }
+              ]
+            }
+          ],
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8,
+            total_tokens: 20
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=anthropic:claude-haiku-4-5,gpt-4.1-mini=openai:gpt-4.1-mini",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["openai:gpt-4.1-mini"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "weighted",
+            weights: {
+              "anthropic:claude-haiku-4-5": 1,
+              "openai:gpt-4.1-mini": 10000
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "message",
+      model: "gpt-4.1-mini",
+      content: [
+        {
+          type: "text",
+          text: "hello from openai"
+        }
+      ]
+    });
+  });
+
+  it("can start from a lower-cost fallback target before the configured primary target on /v1/messages", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello from openai",
+                  annotations: []
+                }
+              ]
+            }
+          ],
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8,
+            total_tokens: 20
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=anthropic:claude-haiku-4-5,gpt-4.1-mini=openai:gpt-4.1-mini",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["openai:gpt-4.1-mini"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "lowest_cost",
+            costs: {
+              "anthropic:claude-haiku-4-5": 10,
+              "openai:gpt-4.1-mini": 3
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/responses");
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "message",
+      model: "gpt-4.1-mini",
+      content: [
+        {
+          type: "text",
+          text: "hello from openai"
+        }
+      ]
+    });
+  });
+
+  it("prefers a healthier closed fallback target on /v1/messages when health-priority selection is configured", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "resp_123",
+            object: "response",
+            created_at: 1,
+            model: "gpt-4.1-mini",
+            status: "completed",
+            output: [
+              {
+                id: "msg_123",
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "healthy fallback",
+                    annotations: []
+                  }
+                ]
+              }
+            ],
+            usage: {
+              input_tokens: 12,
+              output_tokens: 8,
+              total_tokens: 20
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "resp_124",
+            object: "response",
+            created_at: 1,
+            model: "gpt-4.1-mini",
+            status: "completed",
+            output: [
+              {
+                id: "msg_124",
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "healthy fallback again",
+                    annotations: []
+                  }
+                ]
+              }
+            ],
+            usage: {
+              input_tokens: 12,
+              output_tokens: 8,
+              total_tokens: 20
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "1",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER: createPersistentBreakerNamespace(),
+      AIRLOCK_MODEL_ALIASES:
+        "assistant-default=anthropic:claude-haiku-4-5,gpt-4.1-mini=openai:gpt-4.1-mini",
+      AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+        "assistant-default": ["openai:gpt-4.1-mini"]
+      }),
+      AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+        "assistant-default": {
+          strategy: "health_priority"
+        }
+      })
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.openai.com/v1/responses");
+    await expect(readJson(firstResponse)).resolves.toMatchObject({
+      type: "message",
+      model: "gpt-4.1-mini",
+      content: [
+        {
+          type: "text",
+          text: "healthy fallback"
+        }
+      ]
+    });
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi again"
+            }
+          ]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(200);
+    expect(fetcher.mock.calls[2]?.[0]).toBe("https://api.openai.com/v1/responses");
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      type: "message",
+      model: "gpt-4.1-mini",
+      content: [
+        {
+          type: "text",
+          text: "healthy fallback again"
+        }
+      ]
+    });
+  });
+
+  it("routes to a healthy in-slo target on /v1/messages when priority target selection is configured", async () => {
+    const currentTime = Date.now();
+    const routeFetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "msg_priority",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello from anthropic"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const breakerNamespace = createPersistentBreakerNamespace();
+    breakerNamespace.seedSuccess(
+      "anthropic:claude-haiku-4-5",
+      200,
+      currentTime - 1_000
+    );
+    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 5, currentTime - 1_000);
+
+    const bindings = {
+      ...createBindings(),
+      OPENAI_API_KEY: "openai-secret",
+      OPENAI_BASE_URL: "https://api.openai.com/v1",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER: breakerNamespace,
+      AIRLOCK_MODEL_ALIASES:
+        "assistant-default=anthropic:claude-haiku-4-5,gpt-4.1-mini=openai:gpt-4.1-mini",
+      AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+        "assistant-default": ["openai:gpt-4.1-mini"]
+      }),
+      AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+        "assistant-default": {
+          strategy: "priority",
+          latencySloMs: {
+            "anthropic:claude-haiku-4-5": 300,
+            "openai:gpt-4.1-mini": 1
+          },
+          costs: {
+            "anthropic:claude-haiku-4-5": 10,
+            "openai:gpt-4.1-mini": 3
+          }
+        }
+      })
+    };
+
+    const app = createApp({ fetcher: routeFetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "hi again"
+            }
+          ]
+        })
+      },
+      bindings
+    );
+
+    expect(response.status).toBe(200);
+    expect(routeFetcher).toHaveBeenCalledTimes(1);
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "message",
+      model: "claude-haiku-4-5",
+      content: [
+        {
+          type: "text",
+          text: "hello from anthropic"
+        }
+      ]
+    });
+  });
+
   it("uses streaming completion usage to influence later lowest-cost routing in the app", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi
