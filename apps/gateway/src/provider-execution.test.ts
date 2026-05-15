@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CanonicalRequest } from "@airlock/canonical";
+import type { CanonicalRequest, CanonicalStreamEvent } from "@airlock/canonical";
 import type { GatewayApiKeyRecord } from "@airlock/governance";
 import { getProviderCapabilityDescriptor } from "@airlock/providers";
 import type { ModelRoute } from "@airlock/routing";
@@ -1622,6 +1622,142 @@ describe("executeRoutedRequest", () => {
         responseId: "chatcmpl_half_open_stream",
         model: "gpt-4.1-mini",
         finishReason: "stop"
+      }
+    ]);
+  });
+
+  it("fails over to the next streaming target when the first target errors before yielding events", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "assistant-default",
+      stream: true,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const encoder = new TextEncoder();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_stream_fallback","type":"message","role":"assistant","model":"claude-haiku-4-5","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":12,"output_tokens":0}}}\n\n',
+                    'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+                    'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"fallback stream"}}\n\n',
+                    'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n',
+                    'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":4}}\n\n',
+                    'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      );
+    const config = {
+      mode: "free" as const,
+      providerTimeoutMs: 1000,
+      providerMaxRetries: 0,
+      providerRetryBackoffMs: 0,
+      providerCircuitBreakerThreshold: 3,
+      providerCircuitBreakerCooldownMs: 60_000,
+      modelGroups: {},
+      gatewayApiKeys: [],
+      modelAliases: [],
+      anthropic: {
+        apiKey: "anthropic-secret",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultMaxTokens: 256
+      },
+      openAI: {
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    };
+
+    const events: CanonicalStreamEvent[] = [];
+
+    for await (const event of executeRoutedStreamRequest(route, request, {
+      config,
+      requestId: "req_stream_failover",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher
+    })) {
+      events.push(event);
+    }
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "msg_stream_fallback",
+        model: "claude-haiku-4-5"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "msg_stream_fallback",
+        model: "claude-haiku-4-5",
+        delta: "fallback stream"
+      },
+      {
+        type: "response_completed",
+        responseId: "msg_stream_fallback",
+        model: "claude-haiku-4-5",
+        finishReason: "stop",
+        usage: {
+          inputTokens: 0,
+          outputTokens: 4,
+          totalTokens: 4
+        }
       }
     ]);
   });

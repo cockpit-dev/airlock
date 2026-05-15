@@ -14782,6 +14782,92 @@ describe("gateway app", () => {
     });
   });
 
+  it("fails over to the configured streaming fallback target on retryable pre-stream upstream error", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'data: {"id":"chatcmpl_stream_fallback","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-nano","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                    'data: {"id":"chatcmpl_stream_fallback","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-nano","choices":[{"index":0,"delta":{"content":"fallback stream"},"finish_reason":null}]}\n\n',
+                    'data: {"id":"chatcmpl_stream_fallback","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-nano","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+                    "data: [DONE]\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "gpt-4.1-mini": ["openai:gpt-4.1-nano"]
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(JSON.parse((fetcher.mock.calls[0] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-mini"
+      });
+    expect(JSON.parse((fetcher.mock.calls[1] as [string, RequestInit])[1].body as string))
+      .toMatchObject({
+        model: "gpt-4.1-nano"
+      });
+    const body = await readText(response);
+    expect(body).toContain('"model":"gpt-4.1-nano"');
+    expect(body).toContain("fallback stream");
+    expect(body).toContain('"finish_reason":"stop"');
+    expect(body).toContain("data: [DONE]");
+  });
+
   it("retries a retryable provider failure on the same target before succeeding", async () => {
     const fetcher = vi
       .fn()

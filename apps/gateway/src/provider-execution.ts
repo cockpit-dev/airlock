@@ -957,64 +957,90 @@ export async function* executeRoutedStreamRequest(
   ).filter((target) => {
     return getProviderDescriptor(target.provider).supportsStreaming;
   });
-  const target = targets[0];
-
-  if (!target) {
+  if (targets.length === 0) {
     throw createUnsupportedCapabilityError(route.target.provider, "streaming", requestId);
   }
 
   const deadline = now() + config.providerTimeoutMs;
-  const currentAttemptStartedAt = now();
-  const currentRemainingTimeoutMs = deadline - currentAttemptStartedAt;
+  let lastError: unknown;
 
-  if (currentRemainingTimeoutMs <= 0) {
-    throw createProviderTimeoutError(requestId);
-  }
+  for (let index = 0; index < targets.length; index += 1) {
+    const target = targets[index];
 
-  const currentAttemptRequest = createAttemptRequest(request, target);
-  onAttemptTarget?.(target);
-  const adapter = createProviderAdapter(
-    route,
-    target,
-    config,
-    currentAttemptRequest,
-    requestId,
-    getProviderDescriptor,
-    fetcher
-  );
-
-  if (!adapter.stream) {
-    throw createUnsupportedCapabilityError(target.provider, "streaming", requestId);
-  }
-
-  try {
-    for await (const event of adapter.stream(currentAttemptRequest, {
-      requestId,
-      timeoutMs: currentRemainingTimeoutMs,
-      requestMode,
-      ...(requestShaping ? { requestShaping } : {})
-    })) {
-      yield event;
+    if (!target) {
+      throw new Error("Provider target is required for stream execution");
     }
 
-    await circuitBreakerBackend.recordSuccess(
+    const currentAttemptStartedAt = now();
+    const currentRemainingTimeoutMs = deadline - currentAttemptStartedAt;
+
+    if (currentRemainingTimeoutMs <= 0) {
+      throw createProviderTimeoutError(requestId);
+    }
+
+    const currentAttemptRequest = createAttemptRequest(request, target);
+    onAttemptTarget?.(target);
+    const adapter = createProviderAdapter(
+      route,
       target,
-      now() - currentAttemptStartedAt,
-      now()
+      config,
+      currentAttemptRequest,
+      requestId,
+      getProviderDescriptor,
+      fetcher
     );
-  } catch (error) {
-    if (
-      error instanceof GatewayError &&
-      error.category === "provider" &&
-      error.retryable
-    ) {
-      await circuitBreakerBackend.recordRetryableFailure(
+
+    if (!adapter.stream) {
+      throw createUnsupportedCapabilityError(target.provider, "streaming", requestId);
+    }
+
+    let yieldedAnyEvent = false;
+
+    try {
+      for await (const event of adapter.stream(currentAttemptRequest, {
+        requestId,
+        timeoutMs: currentRemainingTimeoutMs,
+        requestMode,
+        ...(requestShaping ? { requestShaping } : {})
+      })) {
+        yieldedAnyEvent = true;
+        yield event;
+      }
+
+      await circuitBreakerBackend.recordSuccess(
         target,
-        circuitBreakerPolicy,
+        now() - currentAttemptStartedAt,
         now()
       );
-    }
 
-    throw error;
+      return;
+    } catch (error) {
+      lastError = error;
+
+      if (
+        error instanceof GatewayError &&
+        error.category === "provider" &&
+        error.retryable
+      ) {
+        await circuitBreakerBackend.recordRetryableFailure(
+          target,
+          circuitBreakerPolicy,
+          currentAttemptStartedAt
+        );
+      }
+
+      const shouldFailOver =
+        !yieldedAnyEvent &&
+        error instanceof GatewayError &&
+        error.category === "provider" &&
+        error.retryable &&
+        index < targets.length - 1;
+
+      if (!shouldFailOver) {
+        throw error;
+      }
+    }
   }
+
+  throw lastError instanceof Error ? lastError : new Error("Provider stream execution failed");
 }
