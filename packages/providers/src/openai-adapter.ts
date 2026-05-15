@@ -2339,26 +2339,6 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               }
 
               if (
-                completedOutputText.length > streamedOutputText.length &&
-                completedOutputText.startsWith(streamedOutputText)
-              ) {
-                const missingOutputText = completedOutputText.slice(
-                  streamedOutputText.length
-                );
-
-                streamedOutputText = completedOutputText;
-
-                if (missingOutputText.length > 0) {
-                  yield {
-                    type: "output_text_delta",
-                    responseId,
-                    model,
-                    delta: missingOutputText
-                  };
-                }
-              }
-
-              if (
                 reasoningSummary.length > streamedReasoningSummary.length &&
                 reasoningSummary.startsWith(streamedReasoningSummary)
               ) {
@@ -2374,6 +2354,26 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                     responseId,
                     model,
                     delta: missingReasoningSummary
+                  };
+                }
+              }
+
+              if (
+                completedOutputText.length > streamedOutputText.length &&
+                completedOutputText.startsWith(streamedOutputText)
+              ) {
+                const missingOutputText = completedOutputText.slice(
+                  streamedOutputText.length
+                );
+
+                streamedOutputText = completedOutputText;
+
+                if (missingOutputText.length > 0) {
+                  yield {
+                    type: "output_text_delta",
+                    responseId,
+                    model,
+                    delta: missingOutputText
                   };
                 }
               }
