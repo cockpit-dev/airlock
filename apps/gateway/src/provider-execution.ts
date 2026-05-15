@@ -52,11 +52,22 @@ type ProviderTargetHealthSnapshot = {
   lastSuccessAt?: number;
   lastUsageObservedAt?: number;
   lastFailureAt?: number;
+  recoverySuccessCount?: number;
+  windowedTotalAttempts?: number;
+  windowedFailures?: number;
 };
 
-const PRIORITY_LATENCY_FRESHNESS_WINDOW_MS = 30_000;
-const OBSERVED_TOKEN_COST_FRESHNESS_WINDOW_MS = 30_000;
-const RETRYABLE_FAILURE_FRESHNESS_WINDOW_MS = 30_000;
+type RoutingFreshnessWindows = {
+  latencyFreshnessMs: number;
+  costFreshnessMs: number;
+  failureFreshnessMs: number;
+  recoveryWindowMs: number;
+};
+
+const DEFAULT_LATENCY_FRESHNESS_MS = 30_000;
+const DEFAULT_COST_FRESHNESS_MS = 30_000;
+const DEFAULT_FAILURE_FRESHNESS_MS = 30_000;
+const DEFAULT_RECOVERY_WINDOW_MS = 30_000;
 
 function createUnsupportedCapabilityError(
   provider: string,
@@ -166,7 +177,8 @@ function compareByOriginalRouteOrder(
 
 function getFreshRetryableFailureCount(
   health: ProviderTargetHealthSnapshot,
-  now: () => number
+  now: () => number,
+  freshnessMs: number
 ): number {
   if (health.consecutiveRetryableFailures <= 0) {
     return 0;
@@ -178,7 +190,7 @@ function getFreshRetryableFailureCount(
 
   if (
     health.lastFailureAt === undefined ||
-    now() - health.lastFailureAt > RETRYABLE_FAILURE_FRESHNESS_WINDOW_MS
+    now() - health.lastFailureAt > freshnessMs
   ) {
     return 0;
   }
@@ -188,7 +200,8 @@ function getFreshRetryableFailureCount(
 
 function getFreshSmoothedLatency(
   health: ProviderTargetHealthSnapshot,
-  now: () => number
+  now: () => number,
+  freshnessMs: number
 ): number {
   const latency =
     health.smoothedSuccessLatencyMs ?? health.lastSuccessLatencyMs;
@@ -199,7 +212,7 @@ function getFreshSmoothedLatency(
 
   if (
     health.lastSuccessAt === undefined ||
-    now() - health.lastSuccessAt > PRIORITY_LATENCY_FRESHNESS_WINDOW_MS
+    now() - health.lastSuccessAt > freshnessMs
   ) {
     return Number.POSITIVE_INFINITY;
   }
@@ -514,13 +527,14 @@ function scoreWeightedTarget(
 function adjustWeightForFailures(
   weight: number,
   health: ProviderTargetHealthSnapshot,
-  now: () => number
+  now: () => number,
+  freshnessMs: number
 ): number {
   if (health.isOpen) {
     return 0;
   }
 
-  const failures = getFreshRetryableFailureCount(health, now);
+  const failures = getFreshRetryableFailureCount(health, now, freshnessMs);
 
   if (failures <= 0) {
     return weight;
@@ -534,7 +548,8 @@ function reorderTargetsForRoute(
   targets: ProviderTarget[],
   requestId: string,
   now: () => number,
-  healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
+  healthByTarget: Map<string, ProviderTargetHealthSnapshot>,
+  windows: RoutingFreshnessWindows
 ): ProviderTarget[] {
   const targetSelection = route.targetSelection;
   const originalOrder = getOriginalTargetOrder(targets);
@@ -547,13 +562,11 @@ function reorderTargetsForRoute(
     return [...targets].sort((left, right) => {
       const leftKey = serializeProviderTarget(left);
       const rightKey = serializeProviderTarget(right);
-      const leftHealth = healthByTarget?.get(serializeProviderTarget(left)) ?? {
+      const leftHealth = healthByTarget.get(leftKey) ?? {
         isOpen: false,
         consecutiveRetryableFailures: 0
       };
-      const rightHealth = healthByTarget?.get(
-        serializeProviderTarget(right)
-      ) ?? {
+      const rightHealth = healthByTarget.get(rightKey) ?? {
         isOpen: false,
         consecutiveRetryableFailures: 0
       };
@@ -568,15 +581,15 @@ function reorderTargetsForRoute(
         return leftHealth.isHalfOpen ? 1 : -1;
       }
 
-      const leftFailures = getFreshRetryableFailureCount(leftHealth, now);
-      const rightFailures = getFreshRetryableFailureCount(rightHealth, now);
+      const leftFailures = getFreshRetryableFailureCount(leftHealth, now, windows.failureFreshnessMs);
+      const rightFailures = getFreshRetryableFailureCount(rightHealth, now, windows.failureFreshnessMs);
 
       if (leftFailures !== rightFailures) {
         return leftFailures - rightFailures;
       }
 
-      const leftLatency = getFreshSmoothedLatency(leftHealth, now);
-      const rightLatency = getFreshSmoothedLatency(rightHealth, now);
+      const leftLatency = getFreshSmoothedLatency(leftHealth, now, windows.latencyFreshnessMs);
+      const rightLatency = getFreshSmoothedLatency(rightHealth, now, windows.latencyFreshnessMs);
 
       if (leftLatency !== rightLatency) {
         return leftLatency - rightLatency;
@@ -590,13 +603,11 @@ function reorderTargetsForRoute(
     return [...targets].sort((left, right) => {
       const leftKey = serializeProviderTarget(left);
       const rightKey = serializeProviderTarget(right);
-      const leftHealth = healthByTarget?.get(serializeProviderTarget(left)) ?? {
+      const leftHealth = healthByTarget.get(leftKey) ?? {
         isOpen: false,
         consecutiveRetryableFailures: 0
       };
-      const rightHealth = healthByTarget?.get(
-        serializeProviderTarget(right)
-      ) ?? {
+      const rightHealth = healthByTarget.get(rightKey) ?? {
         isOpen: false,
         consecutiveRetryableFailures: 0
       };
@@ -607,8 +618,8 @@ function reorderTargetsForRoute(
         return leftHealth.isHalfOpen ? 1 : -1;
       }
 
-      const leftFailures = getFreshRetryableFailureCount(leftHealth, now);
-      const rightFailures = getFreshRetryableFailureCount(rightHealth, now);
+      const leftFailures = getFreshRetryableFailureCount(leftHealth, now, windows.failureFreshnessMs);
+      const rightFailures = getFreshRetryableFailureCount(rightHealth, now, windows.failureFreshnessMs);
 
       if (leftFailures !== rightFailures) {
         return leftFailures - rightFailures;
@@ -619,12 +630,14 @@ function reorderTargetsForRoute(
       const leftObservedMultiplier = getFreshObservedTokenCostMultiplier(
         leftKey,
         now,
-        healthByTarget
+        healthByTarget,
+        windows.costFreshnessMs
       );
       const rightObservedMultiplier = getFreshObservedTokenCostMultiplier(
         rightKey,
         now,
-        healthByTarget
+        healthByTarget,
+        windows.costFreshnessMs
       );
       const leftCost =
         leftObservedMultiplier !== undefined
@@ -648,7 +661,8 @@ function reorderTargetsForRoute(
       targets,
       targetSelection,
       now,
-      healthByTarget
+      healthByTarget,
+      windows
     );
   }
 
@@ -657,19 +671,20 @@ function reorderTargetsForRoute(
     const rightKey = serializeProviderTarget(right);
     const leftRawWeight = targetSelection.weights[leftKey] ?? 1;
     const rightRawWeight = targetSelection.weights[rightKey] ?? 1;
-    const leftHealth = healthByTarget?.get(leftKey) ?? {
+    const leftHealth = healthByTarget.get(leftKey) ?? {
       isOpen: false,
       consecutiveRetryableFailures: 0
     };
-    const rightHealth = healthByTarget?.get(rightKey) ?? {
+    const rightHealth = healthByTarget.get(rightKey) ?? {
       isOpen: false,
       consecutiveRetryableFailures: 0
     };
-    const leftWeight = adjustWeightForFailures(leftRawWeight, leftHealth, now);
+    const leftWeight = adjustWeightForFailures(leftRawWeight, leftHealth, now, windows.failureFreshnessMs);
     const rightWeight = adjustWeightForFailures(
       rightRawWeight,
       rightHealth,
-      now
+      now,
+      windows.failureFreshnessMs
     );
     const rightScore = scoreWeightedTarget(
       route,
@@ -691,10 +706,11 @@ function getPriorityLatencyStatus(
   targetKey: string,
   selection: PriorityRouteTargetSelection,
   now: () => number,
-  healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
+  healthByTarget: Map<string, ProviderTargetHealthSnapshot>,
+  latencyFreshnessMs: number
 ): number {
   const latencySlo = selection.latencySloMs?.[targetKey];
-  const health = healthByTarget?.get(targetKey);
+  const health = healthByTarget.get(targetKey);
   const observedLatency =
     health?.smoothedSuccessLatencyMs ?? health?.lastSuccessLatencyMs;
 
@@ -705,7 +721,7 @@ function getPriorityLatencyStatus(
   if (
     observedLatency === undefined ||
     health?.lastSuccessAt === undefined ||
-    now() - health.lastSuccessAt > PRIORITY_LATENCY_FRESHNESS_WINDOW_MS
+    now() - health.lastSuccessAt > latencyFreshnessMs
   ) {
     return 1;
   }
@@ -717,10 +733,11 @@ function getPriorityLatencyDeltaRatio(
   targetKey: string,
   selection: PriorityRouteTargetSelection,
   now: () => number,
-  healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
+  healthByTarget: Map<string, ProviderTargetHealthSnapshot>,
+  latencyFreshnessMs: number
 ): number | undefined {
   const latencySlo = selection.latencySloMs?.[targetKey];
-  const health = healthByTarget?.get(targetKey);
+  const health = healthByTarget.get(targetKey);
   const observedLatency =
     health?.smoothedSuccessLatencyMs ?? health?.lastSuccessLatencyMs;
 
@@ -728,7 +745,7 @@ function getPriorityLatencyDeltaRatio(
     latencySlo === undefined ||
     observedLatency === undefined ||
     health?.lastSuccessAt === undefined ||
-    now() - health.lastSuccessAt > PRIORITY_LATENCY_FRESHNESS_WINDOW_MS
+    now() - health.lastSuccessAt > latencyFreshnessMs
   ) {
     return undefined;
   }
@@ -739,13 +756,14 @@ function getPriorityLatencyDeltaRatio(
 function getFreshObservedTokenCostMultiplier(
   targetKey: string,
   now: () => number,
-  healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
+  healthByTarget: Map<string, ProviderTargetHealthSnapshot>,
+  costFreshnessMs: number
 ): number | undefined {
-  const health = healthByTarget?.get(targetKey);
+  const health = healthByTarget.get(targetKey);
 
   if (
     health?.lastUsageObservedAt === undefined ||
-    now() - health.lastUsageObservedAt > OBSERVED_TOKEN_COST_FRESHNESS_WINDOW_MS
+    now() - health.lastUsageObservedAt > costFreshnessMs
   ) {
     return undefined;
   }
@@ -757,7 +775,8 @@ function getPriorityEffectiveCost(
   targetKey: string,
   selection: PriorityRouteTargetSelection,
   now: () => number,
-  healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
+  healthByTarget: Map<string, ProviderTargetHealthSnapshot>,
+  costFreshnessMs: number
 ): number | undefined {
   const configuredCost = selection.costs?.[targetKey];
 
@@ -768,7 +787,8 @@ function getPriorityEffectiveCost(
   const observedMultiplier = getFreshObservedTokenCostMultiplier(
     targetKey,
     now,
-    healthByTarget
+    healthByTarget,
+    costFreshnessMs
   );
 
   if (observedMultiplier === undefined) {
@@ -778,13 +798,44 @@ function getPriorityEffectiveCost(
   return configuredCost * observedMultiplier;
 }
 
+function getSlidingWindowErrorRate(
+  health: ProviderTargetHealthSnapshot
+): number {
+  const total = health.windowedTotalAttempts ?? 0;
+  const failures = health.windowedFailures ?? 0;
+
+  if (total <= 0) {
+    return 0;
+  }
+
+  return failures / total;
+}
+
+function getRecoveryScore(health: ProviderTargetHealthSnapshot): number {
+  if (!health.isHalfOpen && health.recoverySuccessCount === undefined) {
+    return 2;
+  }
+
+  if (health.isHalfOpen) {
+    return 0;
+  }
+
+  const count = health.recoverySuccessCount ?? 0;
+
+  if (count >= 2) {
+    return 2;
+  }
+
+  return 1;
+}
+
 function reorderTargetsForPrioritySelection(
   targets: ProviderTarget[],
   selection: PriorityRouteTargetSelection,
   now: () => number,
-  healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
+  healthByTarget: Map<string, ProviderTargetHealthSnapshot>,
+  windows: RoutingFreshnessWindows
 ): ProviderTarget[] {
-  const PRIORITY_RECOVERY_WINDOW_MS = 30_000;
   const originalOrder = getOriginalTargetOrder(targets);
 
   function getPriorityRecoveryPenalty(health: {
@@ -799,15 +850,15 @@ function reorderTargetsForPrioritySelection(
       health.lastSuccessAt === undefined ||
       health.lastFailureAt > health.lastSuccessAt
     ) {
-      return now() - health.lastFailureAt <= PRIORITY_RECOVERY_WINDOW_MS
+      return now() - health.lastFailureAt <= windows.recoveryWindowMs
         ? 2
         : 0;
     }
 
     if (
       health.lastSuccessAt - health.lastFailureAt <=
-        PRIORITY_RECOVERY_WINDOW_MS &&
-      now() - health.lastSuccessAt <= PRIORITY_RECOVERY_WINDOW_MS
+        windows.recoveryWindowMs &&
+      now() - health.lastSuccessAt <= windows.recoveryWindowMs
     ) {
       return 1;
     }
@@ -818,11 +869,11 @@ function reorderTargetsForPrioritySelection(
   return [...targets].sort((left, right) => {
     const leftKey = serializeProviderTarget(left);
     const rightKey = serializeProviderTarget(right);
-    const leftHealth = healthByTarget?.get(leftKey) ?? {
+    const leftHealth = healthByTarget.get(leftKey) ?? {
       isOpen: false,
       consecutiveRetryableFailures: 0
     };
-    const rightHealth = healthByTarget?.get(rightKey) ?? {
+    const rightHealth = healthByTarget.get(rightKey) ?? {
       isOpen: false,
       consecutiveRetryableFailures: 0
     };
@@ -838,12 +889,12 @@ function reorderTargetsForPrioritySelection(
     }
 
     if (
-      getFreshRetryableFailureCount(leftHealth, now) !==
-      getFreshRetryableFailureCount(rightHealth, now)
+      getFreshRetryableFailureCount(leftHealth, now, windows.failureFreshnessMs) !==
+      getFreshRetryableFailureCount(rightHealth, now, windows.failureFreshnessMs)
     ) {
       return (
-        getFreshRetryableFailureCount(leftHealth, now) -
-        getFreshRetryableFailureCount(rightHealth, now)
+        getFreshRetryableFailureCount(leftHealth, now, windows.failureFreshnessMs) -
+        getFreshRetryableFailureCount(rightHealth, now, windows.failureFreshnessMs)
       );
     }
 
@@ -854,17 +905,33 @@ function reorderTargetsForPrioritySelection(
       return leftRecoveryPenalty - rightRecoveryPenalty;
     }
 
+    const leftRecoveryScore = getRecoveryScore(leftHealth);
+    const rightRecoveryScore = getRecoveryScore(rightHealth);
+
+    if (leftRecoveryScore !== rightRecoveryScore) {
+      return rightRecoveryScore - leftRecoveryScore;
+    }
+
+    const leftErrorRate = getSlidingWindowErrorRate(leftHealth);
+    const rightErrorRate = getSlidingWindowErrorRate(rightHealth);
+
+    if (leftErrorRate !== rightErrorRate) {
+      return leftErrorRate - rightErrorRate;
+    }
+
     const leftLatencyStatus = getPriorityLatencyStatus(
       leftKey,
       selection,
       now,
-      healthByTarget
+      healthByTarget,
+      windows.latencyFreshnessMs
     );
     const rightLatencyStatus = getPriorityLatencyStatus(
       rightKey,
       selection,
       now,
-      healthByTarget
+      healthByTarget,
+      windows.latencyFreshnessMs
     );
 
     if (leftLatencyStatus !== rightLatencyStatus) {
@@ -875,13 +942,15 @@ function reorderTargetsForPrioritySelection(
       leftKey,
       selection,
       now,
-      healthByTarget
+      healthByTarget,
+      windows.latencyFreshnessMs
     );
     const rightLatencyDeltaRatio = getPriorityLatencyDeltaRatio(
       rightKey,
       selection,
       now,
-      healthByTarget
+      healthByTarget,
+      windows.latencyFreshnessMs
     );
 
     if (
@@ -896,13 +965,15 @@ function reorderTargetsForPrioritySelection(
       leftKey,
       selection,
       now,
-      healthByTarget
+      healthByTarget,
+      windows.costFreshnessMs
     );
     const rightCost = getPriorityEffectiveCost(
       rightKey,
       selection,
       now,
-      healthByTarget
+      healthByTarget,
+      windows.costFreshnessMs
     );
 
     if (
@@ -953,7 +1024,8 @@ function selectEligibleTargets(
   getProviderDescriptor: ProviderCapabilityDescriptorResolver,
   circuitBreakerPolicy: ProviderCircuitBreakerPolicy,
   now: () => number,
-  circuitBreakerBackend: ProviderCircuitBreakerBackend
+  circuitBreakerBackend: ProviderCircuitBreakerBackend,
+  windows: RoutingFreshnessWindows
 ): Promise<ProviderTarget[]> {
   const candidates = [route.target, ...(route.fallbacks ?? [])];
   const eligibleTargets: ProviderTarget[] = [];
@@ -1036,6 +1108,15 @@ function selectEligibleTargets(
           : {}),
         ...(circuitState?.lastFailureAt !== undefined
           ? { lastFailureAt: circuitState.lastFailureAt }
+          : {}),
+        ...(circuitState?.recoverySuccessCount !== undefined
+          ? { recoverySuccessCount: circuitState.recoverySuccessCount }
+          : {}),
+        ...(circuitState?.windowedTotalAttempts !== undefined
+          ? { windowedTotalAttempts: circuitState.windowedTotalAttempts }
+          : {}),
+        ...(circuitState?.windowedFailures !== undefined
+          ? { windowedFailures: circuitState.windowedFailures }
           : {})
       });
 
@@ -1054,7 +1135,8 @@ function selectEligibleTargets(
           eligibleTargets,
           requestId,
           now,
-          healthByTarget
+          healthByTarget,
+          windows
         ),
         healthByTarget
       );
@@ -1107,6 +1189,12 @@ export async function executeRoutedRequest(
     circuitBreakerBackend = createInMemoryCircuitBreakerBackend()
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
+  const windows: RoutingFreshnessWindows = {
+    latencyFreshnessMs: config.routingLatencyFreshnessMs ?? DEFAULT_LATENCY_FRESHNESS_MS,
+    costFreshnessMs: config.routingCostFreshnessMs ?? DEFAULT_COST_FRESHNESS_MS,
+    failureFreshnessMs: config.routingFailureFreshnessMs ?? DEFAULT_FAILURE_FRESHNESS_MS,
+    recoveryWindowMs: config.routingRecoveryWindowMs ?? DEFAULT_RECOVERY_WINDOW_MS
+  };
   const targets = await selectEligibleTargets(
     route,
     request,
@@ -1115,7 +1203,8 @@ export async function executeRoutedRequest(
     getProviderDescriptor,
     circuitBreakerPolicy,
     now,
-    circuitBreakerBackend
+    circuitBreakerBackend,
+    windows
   );
   const deadline = now() + config.providerTimeoutMs;
   let lastError: unknown;
@@ -1255,6 +1344,12 @@ export async function* executeRoutedStreamRequest(
     circuitBreakerBackend = createInMemoryCircuitBreakerBackend()
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
+  const streamWindows: RoutingFreshnessWindows = {
+    latencyFreshnessMs: config.routingLatencyFreshnessMs ?? DEFAULT_LATENCY_FRESHNESS_MS,
+    costFreshnessMs: config.routingCostFreshnessMs ?? DEFAULT_COST_FRESHNESS_MS,
+    failureFreshnessMs: config.routingFailureFreshnessMs ?? DEFAULT_FAILURE_FRESHNESS_MS,
+    recoveryWindowMs: config.routingRecoveryWindowMs ?? DEFAULT_RECOVERY_WINDOW_MS
+  };
   const targets = (
     await selectEligibleTargets(
       route,
@@ -1264,7 +1359,8 @@ export async function* executeRoutedStreamRequest(
       getProviderDescriptor,
       circuitBreakerPolicy,
       now,
-      circuitBreakerBackend
+      circuitBreakerBackend,
+      streamWindows
     )
   ).filter((target) => {
     return getProviderDescriptor(target.provider).supportsStreaming;

@@ -24,6 +24,7 @@ export interface ProviderCircuitState {
   windowedTotalAttempts?: number;
   windowedFailures?: number;
   windowStartAt?: number;
+  recoverySuccessCount?: number;
 }
 
 const LATENCY_SMOOTHING_PREVIOUS_WEIGHT = 0.7;
@@ -223,9 +224,14 @@ export function applyCircuitBreakerSuccess(
       ? advanceSlidingWindow(current, policy, now, false)
       : undefined;
 
+  const wasHalfOpen = current.openedAt !== undefined;
+
   return {
     consecutiveRetryableFailures: 0,
     halfOpenRetryableFailureCount: 0,
+    ...(wasHalfOpen
+      ? { recoverySuccessCount: (current.recoverySuccessCount ?? 0) + 1 }
+      : {}),
     ...(latencyMs !== undefined ? { lastSuccessLatencyMs: latencyMs } : {}),
     ...(nextSmoothedLatencyMs !== undefined
       ? { smoothedSuccessLatencyMs: nextSmoothedLatencyMs }
@@ -306,6 +312,11 @@ export function applyCircuitBreakerRetryableFailure(
     halfOpenRetryableFailureCount: halfOpenProbeFailed
       ? (current.halfOpenRetryableFailureCount ?? 0) + 1
       : 0,
+    ...(shouldOpen && current.recoverySuccessCount !== undefined
+      ? { recoverySuccessCount: 0 }
+      : current.recoverySuccessCount !== undefined
+        ? { recoverySuccessCount: current.recoverySuccessCount }
+        : {}),
     ...(current.lastSuccessLatencyMs !== undefined
       ? { lastSuccessLatencyMs: current.lastSuccessLatencyMs }
       : {}),
@@ -454,7 +465,8 @@ export function parseProviderCircuitState(
     lastFailureAt,
     windowedTotalAttempts,
     windowedFailures,
-    windowStartAt
+    windowStartAt,
+    recoverySuccessCount
   } = value;
 
   if (
@@ -546,6 +558,17 @@ export function parseProviderCircuitState(
     throw new Error("Provider circuit state windowStartAt is invalid");
   }
 
+  if (
+    recoverySuccessCount !== undefined &&
+    (typeof recoverySuccessCount !== "number" ||
+      !Number.isInteger(recoverySuccessCount) ||
+      recoverySuccessCount < 0)
+  ) {
+    throw new Error(
+      "Provider circuit state recoverySuccessCount is invalid"
+    );
+  }
+
   return {
     consecutiveRetryableFailures,
     ...(openedAt !== undefined ? { openedAt } : {}),
@@ -568,6 +591,7 @@ export function parseProviderCircuitState(
       ? { windowedTotalAttempts }
       : {}),
     ...(windowedFailures !== undefined ? { windowedFailures } : {}),
-    ...(windowStartAt !== undefined ? { windowStartAt } : {})
+    ...(windowStartAt !== undefined ? { windowStartAt } : {}),
+    ...(recoverySuccessCount !== undefined ? { recoverySuccessCount } : {})
   };
 }

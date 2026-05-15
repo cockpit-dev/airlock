@@ -36,6 +36,10 @@ export interface GatewayConfig {
   providerCircuitBreakerErrorRateWindowMs?: number;
   providerCircuitBreakerErrorRateThreshold?: number;
   providerCircuitBreakerMinAttemptsInWindow?: number;
+  routingLatencyFreshnessMs: number;
+  routingCostFreshnessMs: number;
+  routingFailureFreshnessMs: number;
+  routingRecoveryWindowMs: number;
   gatewayKeyRegistryEnabled?: boolean;
   internalAdminCredentials?: InternalAdminCredential[];
   gatewayApiKeys: GatewayApiKeyRecord[];
@@ -368,6 +372,10 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
     ...(env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_MIN_ATTEMPTS_IN_WINDOW !== undefined
       ? { providerCircuitBreakerMinAttemptsInWindow: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_MIN_ATTEMPTS_IN_WINDOW }
       : {}),
+    routingLatencyFreshnessMs: env.AIRLOCK_ROUTING_LATENCY_FRESHNESS_MS,
+    routingCostFreshnessMs: env.AIRLOCK_ROUTING_COST_FRESHNESS_MS,
+    routingFailureFreshnessMs: env.AIRLOCK_ROUTING_FAILURE_FRESHNESS_MS,
+    routingRecoveryWindowMs: env.AIRLOCK_ROUTING_RECOVERY_WINDOW_MS,
     gatewayKeyRegistryEnabled: env.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED,
     internalAdminCredentials,
     gatewayApiKeys,
