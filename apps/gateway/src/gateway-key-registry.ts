@@ -426,6 +426,9 @@ export class GatewayKeyRegistryDurableObject {
           bulkRequest.keys,
           {
             ...(operationId ? { operationId } : {}),
+            ...(bulkRequest.auditMetadata?.reason
+              ? { reason: bulkRequest.auditMetadata.reason }
+              : {}),
             ...(bulkRequest.actorContext
               ? toGatewayKeyAuditActorContextRecord(
                   bulkRequest.actorContext
@@ -1214,6 +1217,9 @@ export class GatewayKeyRegistryDurableObject {
         const transition = buildCreateGatewayRegistryKeyTransition(
           createRequest.key,
           {
+            ...(createRequest.auditMetadata?.reason
+              ? { reason: createRequest.auditMetadata.reason }
+              : {}),
             ...(createRequest.actorContext
               ? toGatewayKeyAuditActorContextRecord(
                   createRequest.actorContext
@@ -1484,6 +1490,9 @@ export async function createGatewayRegistryApiKey(
             },
             body: JSON.stringify({
               ...createRequest.key,
+              ...(createRequest.auditMetadata?.reason
+                ? { reason: createRequest.auditMetadata.reason }
+                : {}),
               ...(actorContext ?? createRequest.actorContext
                 ? toGatewayKeyAuditActorContextRecord(
                     actorContext ?? createRequest.actorContext!
@@ -1548,6 +1557,9 @@ export async function bulkCreateGatewayRegistryApiKeys(
             },
             body: JSON.stringify({
               keys: createRequest.keys,
+              ...(createRequest.auditMetadata?.reason
+                ? { reason: createRequest.auditMetadata.reason }
+                : {}),
               ...(actorContext ?? createRequest.actorContext
                 ? toGatewayKeyAuditActorContextRecord(
                     actorContext ?? createRequest.actorContext!

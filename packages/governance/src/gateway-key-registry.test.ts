@@ -455,6 +455,10 @@ describe("registry payload parsers", () => {
           "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
         status: "active"
       },
+      auditMetadata: {
+        actor: "ops@example.com",
+        actorSource: "payload"
+      },
       actorContext: {
         actor: "ops@example.com",
         actorSource: "payload"
@@ -634,6 +638,10 @@ describe("registry payload parsers", () => {
           status: "revoked"
         }
       ],
+      auditMetadata: {
+        actor: "ops@example.com",
+        actorSource: "credential"
+      },
       actorContext: {
         actor: "ops@example.com",
         actorSource: "credential"

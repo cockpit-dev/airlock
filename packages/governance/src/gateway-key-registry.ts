@@ -69,6 +69,7 @@ export interface GatewayKeyRegistryBulkCreateResponse {
 }
 
 export interface GatewayKeyRegistryCreateRequest extends GatewayApiKeyRecord {
+  reason?: string;
   actor?: string;
   actorSource?: GatewayKeyAuditActorSource;
 }
@@ -142,6 +143,7 @@ export interface GatewayKeyRegistryBulkRotationActionRequest {
 
 export interface GatewayKeyRegistryBulkCreateRequest {
   keys: GatewayApiKeyRecord[];
+  auditMetadata?: GatewayKeyRegistryUpdateAuditMetadata;
   actorContext?: GatewayKeyAuditActorContext;
 }
 
@@ -727,6 +729,11 @@ export function parseGatewayKeyRegistryCreateRequest(
   existingGatewayApiKeys: readonly GatewayApiKeyRecord[]
 ): {
   key: GatewayApiKeyRecord;
+  auditMetadata: {
+    reason?: string;
+    actor?: string;
+    actorSource?: GatewayKeyAuditActorSource;
+  };
   actorContext?: GatewayKeyAuditActorContext;
 } {
   let key: GatewayApiKeyRecord;
@@ -744,11 +751,47 @@ export function parseGatewayKeyRegistryCreateRequest(
   }
 
   if (!isRecord(value) || value.actor === undefined) {
-    return { key };
+    return {
+      key,
+      auditMetadata: {
+        ...(isRecord(value) && value.reason !== undefined
+          ? {
+              reason: parseRequiredGatewayKeyRegistryReason(
+                value.reason,
+                "Gateway dynamic key create payload is invalid"
+              )
+            }
+          : {})
+      }
+    };
   }
 
   return {
     key,
+    auditMetadata: {
+      ...(value.reason !== undefined
+        ? {
+            reason: parseRequiredGatewayKeyRegistryReason(
+              value.reason,
+              "Gateway dynamic key create payload is invalid"
+            )
+          }
+        : {}),
+      ...(value.actor !== undefined
+        ? {
+            actor: parseRequiredGatewayKeyRegistryActorContext(
+              value.actor,
+              "actorSource" in value ? value.actorSource : undefined,
+              "Gateway dynamic key create payload is invalid"
+            ).actor,
+            actorSource: parseRequiredGatewayKeyRegistryActorContext(
+              value.actor,
+              "actorSource" in value ? value.actorSource : undefined,
+              "Gateway dynamic key create payload is invalid"
+            ).actorSource
+          }
+        : {})
+    },
     actorContext: parseRequiredGatewayKeyRegistryActorContext(
       value.actor,
       "actorSource" in value ? value.actorSource : undefined,
@@ -797,11 +840,44 @@ export function parseGatewayKeyRegistryBulkCreateRequest(
   }
 
   if (value.actor === undefined) {
-    return { keys };
+    return {
+      keys,
+      auditMetadata: {
+        ...(value.reason !== undefined
+          ? {
+              reason: parseRequiredGatewayKeyRegistryReason(
+                value.reason,
+                message
+              )
+            }
+          : {})
+      }
+    };
   }
 
   return {
     keys,
+    auditMetadata: {
+      ...(value.reason !== undefined
+        ? {
+            reason: parseRequiredGatewayKeyRegistryReason(value.reason, message)
+          }
+        : {}),
+      ...(value.actor !== undefined
+        ? {
+            actor: parseRequiredGatewayKeyRegistryActorContext(
+              value.actor,
+              "actorSource" in value ? value.actorSource : undefined,
+              message
+            ).actor,
+            actorSource: parseRequiredGatewayKeyRegistryActorContext(
+              value.actor,
+              "actorSource" in value ? value.actorSource : undefined,
+              message
+            ).actorSource
+          }
+        : {})
+    },
     actorContext: parseRequiredGatewayKeyRegistryActorContext(
       value.actor,
       "actorSource" in value ? value.actorSource : undefined,

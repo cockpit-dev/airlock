@@ -94,6 +94,49 @@ describe("createGatewayRegistryKey", () => {
       actorSource: "payload"
     });
   });
+
+  it("passes create audit metadata through the registry port when present", async () => {
+    const createRegistryKey = vi
+      .fn<
+        (request: {
+          key: GatewayApiKeyRecord;
+          auditMetadata: {
+            reason?: string;
+            actor?: string;
+            actorSource?: "payload" | "trusted_header" | "credential";
+          };
+          actorContext?: {
+            actor: string;
+            actorSource: "payload" | "trusted_header" | "credential";
+          };
+        }) => Promise<GatewayKeyRegistryDynamicKeyView>
+      >()
+      .mockResolvedValue(createRegistryView());
+
+    await createGatewayRegistryKey(
+      {
+        id: "key_dynamic",
+        label: "Dynamic Key",
+        valueHash: currentHash,
+        status: "active",
+        reason: "initial rollout",
+        actor: "ops@example.com"
+      },
+      "req_123",
+      {
+        listComparableKeysForCreate: vi.fn().mockResolvedValue([]),
+        validateRuntimeDependencies: vi.fn(),
+        createRegistryKey
+      }
+    );
+
+    const createRequest = createRegistryKey.mock.calls[0]?.[0];
+    expect(createRequest).toMatchObject({
+      auditMetadata: {
+        reason: "initial rollout"
+      }
+    });
+  });
 });
 
 describe("bulkCreateGatewayRegistryKeys", () => {
@@ -177,6 +220,59 @@ describe("bulkCreateGatewayRegistryKeys", () => {
         }
       })
     );
+  });
+
+  it("passes bulk create audit metadata through the registry port when present", async () => {
+    const bulkCreateRegistryKeysWrite = vi
+      .fn<
+        (request: {
+          keys: GatewayApiKeyRecord[];
+          auditMetadata?: {
+            reason?: string;
+            actor?: string;
+            actorSource?: "payload" | "trusted_header" | "credential";
+          };
+          actorContext?: {
+            actor: string;
+            actorSource: "payload" | "trusted_header" | "credential";
+          };
+        }) => Promise<{
+          operationId: string;
+          keys: GatewayKeyRegistryDynamicKeyView[];
+        }>
+      >()
+      .mockResolvedValue({
+        operationId: "req_bulk_create_123",
+        keys: []
+      });
+
+    await bulkCreateGatewayRegistryKeys(
+      {
+        keys: [
+          {
+            id: "key_dynamic",
+            label: "Dynamic Key",
+            valueHash: currentHash,
+            status: "active"
+          }
+        ],
+        reason: "initial rollout",
+        actor: "ops@example.com"
+      },
+      "req_123",
+      {
+        listComparableKeysForCreate: vi.fn().mockResolvedValue([]),
+        validateRuntimeDependencies: vi.fn(),
+        bulkCreateRegistryKeys: bulkCreateRegistryKeysWrite
+      }
+    );
+
+    const bulkCreateRequest = bulkCreateRegistryKeysWrite.mock.calls[0]?.[0];
+    expect(bulkCreateRequest).toMatchObject({
+      auditMetadata: {
+        reason: "initial rollout"
+      }
+    });
   });
 });
 
