@@ -287,7 +287,11 @@ describe("assertProviderSupportsCanonicalRequest", () => {
           supportsOpenAIRequestMetadata: false,
           supportsOpenAIResponsesTextControls: false,
           supportsRouteScopedShaping: true,
-          supportsStaticFallbackSameProvider: true
+          supportsStaticFallbackSameProvider: true,
+          supportsToolChoice: false,
+          supportsStopSequences: false,
+          supportsSamplingParameters: false,
+          supportsAnthropicRequestMetadata: false
         },
         request,
         "req_123"
@@ -2612,7 +2616,11 @@ describe("executeRoutedRequest", () => {
             supportsOpenAIRequestMetadata: false,
             supportsOpenAIResponsesTextControls: false,
             supportsRouteScopedShaping: true,
-            supportsStaticFallbackSameProvider: true
+            supportsStaticFallbackSameProvider: true,
+            supportsToolChoice: false,
+            supportsStopSequences: false,
+            supportsSamplingParameters: false,
+            supportsAnthropicRequestMetadata: false
           };
         }
 

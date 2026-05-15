@@ -371,6 +371,47 @@ export function assertProviderSupportsCanonicalRequest(
       requestId
     );
   }
+
+  if (requirements.requiresToolChoice && !descriptor.supportsToolChoice) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "tool_choice",
+      requestId
+    );
+  }
+
+  if (
+    requirements.requiresStopSequences &&
+    !descriptor.supportsStopSequences
+  ) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "stop_sequences",
+      requestId
+    );
+  }
+
+  if (
+    requirements.requiresSamplingParameters &&
+    !descriptor.supportsSamplingParameters
+  ) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "sampling_parameters",
+      requestId
+    );
+  }
+
+  if (
+    requirements.requiresAnthropicRequestMetadata &&
+    !descriptor.supportsAnthropicRequestMetadata
+  ) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "anthropic_request_metadata",
+      requestId
+    );
+  }
 }
 
 function createProviderAdapter(

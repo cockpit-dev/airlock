@@ -25,7 +25,11 @@ const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
     supportsOpenAIRequestMetadata: true,
     supportsOpenAIResponsesTextControls: true,
     supportsRouteScopedShaping: true,
-    supportsStaticFallbackSameProvider: true
+    supportsStaticFallbackSameProvider: true,
+    supportsToolChoice: true,
+    supportsStopSequences: true,
+    supportsSamplingParameters: true,
+    supportsAnthropicRequestMetadata: false
   },
   {
     provider: "anthropic",
@@ -47,7 +51,11 @@ const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
     supportsOpenAIRequestMetadata: false,
     supportsOpenAIResponsesTextControls: false,
     supportsRouteScopedShaping: true,
-    supportsStaticFallbackSameProvider: true
+    supportsStaticFallbackSameProvider: true,
+    supportsToolChoice: true,
+    supportsStopSequences: true,
+    supportsSamplingParameters: true,
+    supportsAnthropicRequestMetadata: true
   },
   {
     provider: "gemini",
@@ -69,7 +77,11 @@ const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
     supportsOpenAIRequestMetadata: false,
     supportsOpenAIResponsesTextControls: false,
     supportsRouteScopedShaping: true,
-    supportsStaticFallbackSameProvider: true
+    supportsStaticFallbackSameProvider: true,
+    supportsToolChoice: true,
+    supportsStopSequences: true,
+    supportsSamplingParameters: true,
+    supportsAnthropicRequestMetadata: false
   }
 ];
 

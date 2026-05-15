@@ -116,6 +116,10 @@ export interface CanonicalRequestCapabilityRequirements {
   requiresParallelToolCallControl: boolean;
   requiresOpenAIRequestMetadata: boolean;
   requiresOpenAIResponsesTextControls: boolean;
+  requiresToolChoice: boolean;
+  requiresStopSequences: boolean;
+  requiresSamplingParameters: boolean;
+  requiresAnthropicRequestMetadata: boolean;
 }
 
 export interface CanonicalUsage {

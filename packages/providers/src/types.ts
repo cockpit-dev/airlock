@@ -29,6 +29,10 @@ export interface ProviderCapabilityDescriptor {
   supportsOpenAIResponsesTextControls: boolean;
   supportsRouteScopedShaping: boolean;
   supportsStaticFallbackSameProvider: boolean;
+  supportsToolChoice: boolean;
+  supportsStopSequences: boolean;
+  supportsSamplingParameters: boolean;
+  supportsAnthropicRequestMetadata: boolean;
 }
 
 export interface ProviderRequestContext {

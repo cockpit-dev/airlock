@@ -57,6 +57,12 @@ export function getCanonicalRequestCapabilityRequirements(
       request.providerMetadata?.openai?.responsesIncludeObfuscation === false,
     requiresOpenAIResponsesTextControls:
       request.responseTruncation !== undefined ||
-      request.responseTextVerbosity !== undefined
+      request.responseTextVerbosity !== undefined,
+    requiresToolChoice: request.toolChoice !== undefined,
+    requiresStopSequences: (request.stopSequences?.length ?? 0) > 0,
+    requiresSamplingParameters:
+      request.temperature !== undefined || request.topP !== undefined,
+    requiresAnthropicRequestMetadata:
+      request.providerMetadata?.anthropic !== undefined
   };
 }

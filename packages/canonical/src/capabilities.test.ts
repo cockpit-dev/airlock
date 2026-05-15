@@ -37,7 +37,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -69,7 +73,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -109,7 +117,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -152,7 +164,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -185,7 +201,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -219,7 +239,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -250,7 +274,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -278,7 +306,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -318,7 +350,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -358,7 +394,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: true,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -393,7 +433,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -434,7 +478,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: true,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -475,7 +523,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: true,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -515,7 +567,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -558,7 +614,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -597,7 +657,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: true,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -636,7 +700,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: true,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -672,7 +740,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: true,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -709,7 +781,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: true,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -742,7 +818,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: false
+      requiresOpenAIResponsesTextControls: false,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 
@@ -776,7 +856,11 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
-      requiresOpenAIResponsesTextControls: true
+      requiresOpenAIResponsesTextControls: true,
+      requiresToolChoice: false,
+      requiresStopSequences: false,
+      requiresSamplingParameters: false,
+      requiresAnthropicRequestMetadata: false
     });
   });
 });

@@ -28,7 +28,11 @@ describe("provider capability descriptors", () => {
         supportsOpenAIRequestMetadata: true,
         supportsOpenAIResponsesTextControls: true,
         supportsRouteScopedShaping: true,
-        supportsStaticFallbackSameProvider: true
+        supportsStaticFallbackSameProvider: true,
+        supportsToolChoice: true,
+        supportsStopSequences: true,
+        supportsSamplingParameters: true,
+        supportsAnthropicRequestMetadata: false
       },
       {
         provider: "anthropic",
@@ -50,7 +54,11 @@ describe("provider capability descriptors", () => {
         supportsOpenAIRequestMetadata: false,
         supportsOpenAIResponsesTextControls: false,
         supportsRouteScopedShaping: true,
-        supportsStaticFallbackSameProvider: true
+        supportsStaticFallbackSameProvider: true,
+        supportsToolChoice: true,
+        supportsStopSequences: true,
+        supportsSamplingParameters: true,
+        supportsAnthropicRequestMetadata: true
       },
       {
         provider: "gemini",
@@ -72,7 +80,11 @@ describe("provider capability descriptors", () => {
         supportsOpenAIRequestMetadata: false,
         supportsOpenAIResponsesTextControls: false,
         supportsRouteScopedShaping: true,
-        supportsStaticFallbackSameProvider: true
+        supportsStaticFallbackSameProvider: true,
+        supportsToolChoice: true,
+        supportsStopSequences: true,
+        supportsSamplingParameters: true,
+        supportsAnthropicRequestMetadata: false
       }
     ]);
   });
@@ -98,7 +110,11 @@ describe("provider capability descriptors", () => {
       supportsOpenAIRequestMetadata: false,
       supportsOpenAIResponsesTextControls: false,
       supportsRouteScopedShaping: true,
-      supportsStaticFallbackSameProvider: true
+      supportsStaticFallbackSameProvider: true,
+      supportsToolChoice: true,
+      supportsStopSequences: true,
+      supportsSamplingParameters: true,
+      supportsAnthropicRequestMetadata: false
     });
   });
 
