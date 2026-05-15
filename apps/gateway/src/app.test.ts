@@ -2405,6 +2405,197 @@ describe("gateway app", () => {
     });
   });
 
+  it("rejects over-quota structured gateway keys on responses requests", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_quota",
+          label: "Quota Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            requestQuota: {
+              limit: 1,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_QUOTA: createQuotaNamespace()
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi"
+        })
+      },
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi again"
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    expect(secondResponse.headers.get("retry-after")).toBeTruthy();
+    expect(secondResponse.headers.get("x-ratelimit-limit")).toBe("1");
+    expect(secondResponse.headers.get("x-ratelimit-remaining")).toBe("0");
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      error: {
+        code: "quota_requests_exceeded"
+      }
+    });
+  });
+
+  it("rejects over-quota structured gateway keys on messages requests", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_quota",
+          label: "Quota Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            requestQuota: {
+              limit: 1,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_QUOTA: createQuotaNamespace()
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [{ role: "user", content: "hi again" }]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    expect(secondResponse.headers.get("retry-after")).toBeTruthy();
+    expect(secondResponse.headers.get("x-ratelimit-limit")).toBe("1");
+    expect(secondResponse.headers.get("x-ratelimit-remaining")).toBe("0");
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      type: "error",
+      error: {
+        type: "rate_limit",
+        message: "Gateway API key request quota exceeded"
+      }
+    });
+  });
+
   it("does not consume quota for malformed chat completions request bodies", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -2636,6 +2827,305 @@ describe("gateway app", () => {
     expect(thirdResponse.status).toBe(200);
   });
 
+  it("rejects a second in-flight buffered responses request when a key concurrency quota is exhausted", async () => {
+    let resolveFirstRequest: ((response: Response) => void) | undefined;
+    const fetcher = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        return await new Promise<Response>((resolve) => {
+          resolveFirstRequest = resolve;
+        });
+      })
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "resp_after_release",
+            object: "response",
+            created_at: 1,
+            model: "gpt-4.1-mini",
+            status: "completed",
+            output: [
+              {
+                id: "msg_123",
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "hello after release",
+                    annotations: []
+                  }
+                ]
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_concurrency",
+          label: "Concurrency Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            concurrencyQuota: {
+              limit: 1
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_CONCURRENCY: createConcurrencyNamespace()
+    };
+
+    const firstResponsePromise = app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "first"
+        })
+      },
+      bindings
+    );
+
+    await Promise.resolve();
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "second"
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      error: {
+        code: "quota_concurrency_exceeded"
+      }
+    });
+
+    resolveFirstRequest?.(
+      new Response(
+        JSON.stringify({
+          id: "resp_held",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_held",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello from held request",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const firstResponse = await firstResponsePromise;
+    expect(firstResponse.status).toBe(200);
+
+    const thirdResponse = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "third"
+        })
+      },
+      bindings
+    );
+
+    expect(thirdResponse.status).toBe(200);
+  });
+
+  it("rejects a second in-flight buffered messages request when a key concurrency quota is exhausted", async () => {
+    let resolveFirstRequest: ((response: Response) => void) | undefined;
+    const fetcher = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        return await new Promise<Response>((resolve) => {
+          resolveFirstRequest = resolve;
+        });
+      })
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_after_release",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "hello after release"
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_concurrency",
+          label: "Concurrency Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            concurrencyQuota: {
+              limit: 1
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_CONCURRENCY: createConcurrencyNamespace()
+    };
+
+    const firstResponsePromise = app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [{ role: "user", content: "first" }]
+        })
+      },
+      bindings
+    );
+
+    await Promise.resolve();
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [{ role: "user", content: "second" }]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      type: "error",
+      error: {
+        type: "rate_limit",
+        message: "Gateway API key concurrency quota exceeded"
+      }
+    });
+
+    resolveFirstRequest?.(
+      new Response(
+        JSON.stringify({
+          id: "msg_held",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello from held request"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const firstResponse = await firstResponsePromise;
+    expect(firstResponse.status).toBe(200);
+
+    const thirdResponse = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [{ role: "user", content: "third" }]
+        })
+      },
+      bindings
+    );
+
+    expect(thirdResponse.status).toBe(200);
+  });
+
   it("rejects a second in-flight streaming request when a key concurrency quota is exhausted and releases the slot after stream completion", async () => {
     let releaseFirstStream: (() => void) | undefined;
     const encoder = new TextEncoder();
@@ -2786,6 +3276,311 @@ describe("gateway app", () => {
     await expect(readText(thirdResponse)).resolves.toContain("data: [DONE]");
   });
 
+  it("rejects a second in-flight streaming responses request when a key concurrency quota is exhausted and releases the slot after stream completion", async () => {
+    let releaseFirstStream: (() => void) | undefined;
+    const encoder = new TextEncoder();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n'
+                )
+              );
+              releaseFirstStream = () => {
+                controller.enqueue(
+                  encoder.encode(
+                    [
+                      'data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"resp_123_output_0","output_index":0,"content_index":0,"delta":"hello"}\n\n',
+                      'data: {"type":"response.completed","sequence_number":2,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"id":"resp_123_output_0","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello","annotations":[]}]}],"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
+                      "data: [DONE]\n\n"
+                    ].join("")
+                  )
+                );
+                controller.close();
+              };
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_456","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n',
+                    'data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"resp_456_output_0","output_index":0,"content_index":0,"delta":"after"}\n\n',
+                    'data: {"type":"response.completed","sequence_number":2,"response":{"id":"resp_456","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"id":"resp_456_output_0","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"after","annotations":[]}]}],"tools":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}\n\n',
+                    "data: [DONE]\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_concurrency",
+          label: "Concurrency Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            concurrencyQuota: {
+              limit: 1
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_CONCURRENCY: createConcurrencyNamespace()
+    };
+
+    const firstResponsePromise = app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "first stream",
+          stream: true
+        })
+      },
+      bindings
+    );
+
+    await Promise.resolve();
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "second stream",
+          stream: true
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      error: {
+        code: "quota_concurrency_exceeded"
+      }
+    });
+
+    releaseFirstStream?.();
+
+    const firstResponse = await firstResponsePromise;
+    expect(firstResponse.status).toBe(200);
+    await expect(readText(firstResponse)).resolves.toContain("data: [DONE]");
+
+    const thirdResponse = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "third stream",
+          stream: true
+        })
+      },
+      bindings
+    );
+
+    expect(thirdResponse.status).toBe(200);
+    await expect(readText(thirdResponse)).resolves.toContain("data: [DONE]");
+  });
+
+  it("rejects a second in-flight streaming messages request when a key concurrency quota is exhausted and releases the slot after stream completion", async () => {
+    let releaseFirstStream: (() => void) | undefined;
+    const encoder = new TextEncoder();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-sonnet-4-5"}}\n\n'
+                )
+              );
+              releaseFirstStream = () => {
+                controller.enqueue(
+                  encoder.encode(
+                    [
+                      'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"hello"}}\n\n',
+                      'event: message_delta\ndata: {"delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":12,"output_tokens":8}}\n\n',
+                      "event: message_stop\ndata: {}\n\n"
+                    ].join("")
+                  )
+                );
+                controller.close();
+              };
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'event: message_start\ndata: {"message":{"id":"msg_456","model":"claude-sonnet-4-5"}}\n\n',
+                    'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"after"}}\n\n',
+                    'event: message_delta\ndata: {"delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":1,"output_tokens":1}}\n\n',
+                    "event: message_stop\ndata: {}\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_concurrency",
+          label: "Concurrency Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            concurrencyQuota: {
+              limit: 1
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_CONCURRENCY: createConcurrencyNamespace()
+    };
+
+    const firstResponsePromise = app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 16,
+          stream: true,
+          messages: [{ role: "user", content: "first stream" }]
+        })
+      },
+      bindings
+    );
+
+    await Promise.resolve();
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 16,
+          stream: true,
+          messages: [{ role: "user", content: "second stream" }]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      type: "error",
+      error: {
+        type: "rate_limit",
+        message: "Gateway API key concurrency quota exceeded"
+      }
+    });
+
+    releaseFirstStream?.();
+
+    const firstResponse = await firstResponsePromise;
+    expect(firstResponse.status).toBe(200);
+    await expect(readText(firstResponse)).resolves.toContain("event: message_stop");
+
+    const thirdResponse = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 16,
+          stream: true,
+          messages: [{ role: "user", content: "third stream" }]
+        })
+      },
+      bindings
+    );
+
+    expect(thirdResponse.status).toBe(200);
+    await expect(readText(thirdResponse)).resolves.toContain("event: message_stop");
+  });
+
   it("charges buffered token usage and blocks later requests when the token window is exhausted", async () => {
     const fetcher = vi
       .fn()
@@ -2913,6 +3708,274 @@ describe("gateway app", () => {
     await expect(readJson(secondResponse)).resolves.toMatchObject({
       error: {
         code: "quota_tokens_exceeded"
+      }
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("charges buffered responses token usage and blocks later requests when the token window is exhausted", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "resp_123",
+            object: "response",
+            created_at: 1,
+            model: "gpt-4.1-mini",
+            status: "completed",
+            output: [
+              {
+                id: "msg_123",
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "hello there",
+                    annotations: []
+                  }
+                ]
+              }
+            ],
+            usage: {
+              input_tokens: 12,
+              output_tokens: 8,
+              total_tokens: 20
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "resp_456",
+            object: "response",
+            created_at: 1,
+            model: "gpt-4.1-mini",
+            status: "completed",
+            output: [
+              {
+                id: "msg_456",
+                type: "message",
+                role: "assistant",
+                status: "completed",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "should not be reached",
+                    annotations: []
+                  }
+                ]
+              }
+            ],
+            usage: {
+              input_tokens: 1,
+              output_tokens: 1,
+              total_tokens: 2
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_token_quota",
+          label: "Token Quota Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            tokenQuota: {
+              limit: 20,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA: createTokenQuotaNamespace()
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi"
+        })
+      },
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "second"
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    expect(secondResponse.headers.get("x-ratelimit-limit")).toBe("20");
+    expect(secondResponse.headers.get("x-ratelimit-remaining")).toBe("0");
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      error: {
+        code: "quota_tokens_exceeded"
+      }
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("charges buffered messages token usage and blocks later requests when the token window is exhausted", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_123",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "hello there"
+              }
+            ],
+            usage: {
+              input_tokens: 12,
+              output_tokens: 8
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_456",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-5",
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: "should not be reached"
+              }
+            ],
+            usage: {
+              input_tokens: 1,
+              output_tokens: 1
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_token_quota",
+          label: "Token Quota Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            tokenQuota: {
+              limit: 20,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA: createTokenQuotaNamespace()
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 16,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 16,
+          messages: [{ role: "user", content: "second" }]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    expect(secondResponse.headers.get("x-ratelimit-limit")).toBe("20");
+    expect(secondResponse.headers.get("x-ratelimit-remaining")).toBe("0");
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      type: "error",
+      error: {
+        type: "rate_limit",
+        message: "Gateway API key token quota exceeded"
       }
     });
     expect(fetcher).toHaveBeenCalledTimes(1);
@@ -3193,6 +4256,248 @@ describe("gateway app", () => {
     await expect(readJson(secondResponse)).resolves.toMatchObject({
       error: {
         code: "quota_tokens_exceeded"
+      }
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("charges streaming responses token usage and blocks later requests when the token window is exhausted", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n',
+                    'data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"hello"}\n\n',
+                    'data: {"type":"response.completed","sequence_number":2,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"id":"msg_123","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello","annotations":[]}]}],"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
+                    "data: [DONE]\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_456","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n',
+                    'data: {"type":"response.completed","sequence_number":1,"response":{"id":"resp_456","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[],"tools":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}\n\n',
+                    "data: [DONE]\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_token_quota",
+          label: "Token Quota Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            tokenQuota: {
+              limit: 20,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA: createTokenQuotaNamespace()
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "first stream",
+          stream: true
+        })
+      },
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+    await expect(readText(firstResponse)).resolves.toContain("data: [DONE]");
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "second stream",
+          stream: true
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      error: {
+        code: "quota_tokens_exceeded"
+      }
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("charges streaming messages token usage and blocks later requests when the token window is exhausted", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-sonnet-4-5"}}\n\n',
+                    'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"hello"}}\n\n',
+                    'event: message_delta\ndata: {"delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":12,"output_tokens":8}}\n\n',
+                    "event: message_stop\ndata: {}\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'event: message_start\ndata: {"message":{"id":"msg_456","model":"claude-sonnet-4-5"}}\n\n',
+                    'event: message_delta\ndata: {"delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":1,"output_tokens":1}}\n\n',
+                    "event: message_stop\ndata: {}\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+        {
+          id: "key_token_quota",
+          label: "Token Quota Key",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            tokenQuota: {
+              limit: 20,
+              windowSeconds: 3600
+            }
+          }
+        }
+      ]),
+      AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA: createTokenQuotaNamespace()
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 16,
+          stream: true,
+          messages: [{ role: "user", content: "first stream" }]
+        })
+      },
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+    await expect(readText(firstResponse)).resolves.toContain("event: message_stop");
+
+    const secondResponse = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 16,
+          stream: true,
+          messages: [{ role: "user", content: "second stream" }]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(429);
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      type: "error",
+      error: {
+        type: "rate_limit",
+        message: "Gateway API key token quota exceeded"
       }
     });
     expect(fetcher).toHaveBeenCalledTimes(1);
