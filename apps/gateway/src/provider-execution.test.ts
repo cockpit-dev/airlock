@@ -457,6 +457,34 @@ describe("assertProviderSupportsCanonicalRequest", () => {
       )
     ).not.toThrow();
   });
+
+  it("allows streamed tool replay requests for gemini", () => {
+    const request: CanonicalRequest = {
+      model: "gemini-2.5-flash",
+      stream: true,
+      messages: [
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [
+            {
+              id: "call_123",
+              name: "lookup_weather",
+              arguments: "{\"city\":\"Shanghai\"}"
+            }
+          ]
+        }
+      ]
+    };
+
+    expect(() =>
+      assertProviderSupportsCanonicalRequest(
+        getProviderCapabilityDescriptor("gemini"),
+        request,
+        "req_123"
+      )
+    ).not.toThrow();
+  });
 });
 
 describe("executeRoutedRequest", () => {

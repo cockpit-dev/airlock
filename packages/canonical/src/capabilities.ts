@@ -14,7 +14,7 @@ export function getCanonicalRequestCapabilityRequirements(
   });
   const requiresTools =
     (request.tools?.length ?? 0) > 0 || requiresToolReplay;
-  const requiresStreamingTools = request.stream && (request.tools?.length ?? 0) > 0;
+  const requiresStreamingTools = request.stream && requiresTools;
 
   return {
     requiresStreaming: request.stream,

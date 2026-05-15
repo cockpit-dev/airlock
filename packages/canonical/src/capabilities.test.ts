@@ -440,6 +440,46 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     });
   });
 
+  it("marks streaming tool requirements when canonical requests stream tool replay history", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: true,
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        },
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [
+            {
+              id: "call_123",
+              name: "lookup_weather",
+              arguments: "{\"city\":\"Shanghai\"}"
+            }
+          ]
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: true,
+      requiresTools: true,
+      requiresToolReplay: true,
+      requiresStreamingTools: true,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresEndUserId: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false,
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: false
+    });
+  });
+
   it("marks end-user requirements when canonical requests include an end-user id", () => {
     const request: CanonicalRequest = {
       model: "gpt-4.1-mini",
