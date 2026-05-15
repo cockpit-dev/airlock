@@ -52,6 +52,7 @@ function createPersistentBreakerNamespace() {
       lastSuccessTotalTokens?: number;
       smoothedSuccessTotalTokens?: number;
       lastSuccessAt?: number;
+      lastUsageObservedAt?: number;
       lastFailureAt?: number;
     }
   >();
@@ -108,11 +109,23 @@ function createPersistentBreakerNamespace() {
                   : {}),
                 ...(body.totalTokens !== undefined
                   ? { lastSuccessTotalTokens: body.totalTokens }
-                  : {}),
+                  : current.lastSuccessTotalTokens !== undefined
+                    ? { lastSuccessTotalTokens: current.lastSuccessTotalTokens }
+                    : {}),
                 ...(nextSmoothedTotalTokens !== undefined
                   ? { smoothedSuccessTotalTokens: nextSmoothedTotalTokens }
-                  : {}),
+                  : current.smoothedSuccessTotalTokens !== undefined
+                    ? {
+                        smoothedSuccessTotalTokens:
+                          current.smoothedSuccessTotalTokens
+                      }
+                    : {}),
                 ...(body.now !== undefined ? { lastSuccessAt: body.now } : {}),
+                ...(body.totalTokens !== undefined && body.now !== undefined
+                  ? { lastUsageObservedAt: body.now }
+                  : current.lastUsageObservedAt !== undefined
+                    ? { lastUsageObservedAt: current.lastUsageObservedAt }
+                    : {}),
                 ...(current.lastFailureAt !== undefined
                   ? { lastFailureAt: current.lastFailureAt }
                   : {})
@@ -163,6 +176,7 @@ function createPersistentBreakerNamespace() {
               lastSuccessTotalTokens?: number;
               smoothedSuccessTotalTokens?: number;
               lastSuccessAt?: number;
+              lastUsageObservedAt?: number;
               lastFailureAt?: number;
             } = {
               consecutiveRetryableFailures: nextFailures,
@@ -183,6 +197,9 @@ function createPersistentBreakerNamespace() {
                 : {}),
               ...(current.lastSuccessAt !== undefined
                 ? { lastSuccessAt: current.lastSuccessAt }
+                : {}),
+              ...(current.lastUsageObservedAt !== undefined
+                ? { lastUsageObservedAt: current.lastUsageObservedAt }
                 : {}),
               ...((halfOpenProbeFailed ||
                 nextFailures >= (body.threshold ?? 1))
@@ -2565,6 +2582,27 @@ describe("executeRoutedRequest", () => {
     });
   });
 
+  it("retains the latest usage-observed timestamp independently from later usage-free successes", async () => {
+    const backend = createPersistentCircuitBreakerBackend(
+      createPersistentBreakerNamespace()
+    );
+    const target = {
+      provider: "openai" as const,
+      providerModel: "gpt-4.1-mini"
+    };
+
+    await backend.recordSuccess(target, 200, 500, 1000);
+    await backend.recordSuccess(target, 150, undefined, 2000);
+
+    await expect(backend.getState(target)).resolves.toMatchObject({
+      lastSuccessLatencyMs: 150,
+      lastSuccessAt: 2000,
+      lastSuccessTotalTokens: 500,
+      smoothedSuccessTotalTokens: 500,
+      lastUsageObservedAt: 1000
+    });
+  });
+
   it("retains the last failure signal across a recovery success", async () => {
     const backend = createPersistentCircuitBreakerBackend(
       createPersistentBreakerNamespace()
@@ -3911,6 +3949,136 @@ describe("executeRoutedRequest", () => {
         }
       },
       requestId: "req_stale_dynamic_priority_cost",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 70_000,
+      circuitBreakerBackend: backend
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(response.model).toBe("gpt-4.1-mini");
+  });
+
+  it("does not refresh stale observed token cost memory with a later usage-free success", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ],
+      targetSelection: {
+        strategy: "lowest_cost",
+        costs: {
+          "openai:gpt-4.1-mini": 1,
+          "anthropic:claude-haiku-4-5": 10
+        }
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const backend = createPersistentCircuitBreakerBackend(
+      createPersistentBreakerNamespace()
+    );
+
+    await backend.recordSuccess(
+      {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      200,
+      500,
+      1_000
+    );
+    await backend.recordSuccess(
+      {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      120,
+      undefined,
+      69_000
+    );
+    await backend.recordSuccess(
+      {
+        provider: "anthropic",
+        providerModel: "claude-haiku-4-5"
+      },
+      200,
+      50,
+      60_000
+    );
+
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_stale_usage_free_refresh",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello from openai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const response = await executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
+        providerCircuitBreakerThreshold: 3,
+        providerCircuitBreakerCooldownMs: 60_000,
+        providerCircuitBreakerPersistent: true,
+        modelGroups: {},
+        gatewayApiKeys: [],
+        modelAliases: [],
+        anthropic: {
+          apiKey: "anthropic-secret",
+          baseUrl: "https://api.anthropic.com/v1",
+          defaultMaxTokens: 256
+        },
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_stale_usage_free_refresh",
       gatewayApiKey: {
         id: "key_any",
         label: "Any Provider",

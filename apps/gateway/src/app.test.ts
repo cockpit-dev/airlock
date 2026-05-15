@@ -707,6 +707,7 @@ function createPersistentBreakerNamespace() {
       lastSuccessTotalTokens?: number;
       smoothedSuccessTotalTokens?: number;
       lastSuccessAt?: number;
+      lastUsageObservedAt?: number;
       lastFailureAt?: number;
     }
   >();
@@ -767,11 +768,23 @@ function createPersistentBreakerNamespace() {
                   : {}),
                 ...(body.totalTokens !== undefined
                   ? { lastSuccessTotalTokens: body.totalTokens }
-                  : {}),
+                  : current.lastSuccessTotalTokens !== undefined
+                    ? { lastSuccessTotalTokens: current.lastSuccessTotalTokens }
+                    : {}),
                 ...(nextSmoothedTotalTokens !== undefined
                   ? { smoothedSuccessTotalTokens: nextSmoothedTotalTokens }
-                  : {}),
+                  : current.smoothedSuccessTotalTokens !== undefined
+                    ? {
+                        smoothedSuccessTotalTokens:
+                          current.smoothedSuccessTotalTokens
+                      }
+                    : {}),
                 ...(body.now !== undefined ? { lastSuccessAt: body.now } : {}),
+                ...(body.totalTokens !== undefined && body.now !== undefined
+                  ? { lastUsageObservedAt: body.now }
+                  : current.lastUsageObservedAt !== undefined
+                    ? { lastUsageObservedAt: current.lastUsageObservedAt }
+                    : {}),
                 ...(current.lastFailureAt !== undefined
                   ? { lastFailureAt: current.lastFailureAt }
                   : {})
@@ -822,6 +835,7 @@ function createPersistentBreakerNamespace() {
               lastSuccessTotalTokens?: number;
               smoothedSuccessTotalTokens?: number;
               lastSuccessAt?: number;
+              lastUsageObservedAt?: number;
               lastFailureAt?: number;
             } = {
               consecutiveRetryableFailures: nextFailures,
@@ -842,6 +856,9 @@ function createPersistentBreakerNamespace() {
                 : {}),
               ...(current.lastSuccessAt !== undefined
                 ? { lastSuccessAt: current.lastSuccessAt }
+                : {}),
+              ...(current.lastUsageObservedAt !== undefined
+                ? { lastUsageObservedAt: current.lastUsageObservedAt }
                 : {}),
               ...((halfOpenProbeFailed ||
                 nextFailures >= (body.threshold ?? 1))

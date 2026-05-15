@@ -16,6 +16,7 @@ export interface ProviderCircuitState {
   lastSuccessTotalTokens?: number;
   smoothedSuccessTotalTokens?: number;
   lastSuccessAt?: number;
+  lastUsageObservedAt?: number;
   lastFailureAt?: number;
 }
 
@@ -167,7 +168,9 @@ export function createInMemoryCircuitBreakerBackend(): ProviderCircuitBreakerBac
           : {}),
         ...(normalized.totalTokens !== undefined
           ? { lastSuccessTotalTokens: normalized.totalTokens }
-          : {}),
+          : existing?.lastSuccessTotalTokens !== undefined
+            ? { lastSuccessTotalTokens: existing.lastSuccessTotalTokens }
+            : {}),
         ...(normalized.totalTokens !== undefined
           ? {
               smoothedSuccessTotalTokens: computeSmoothedSuccessTotalTokens(
@@ -175,8 +178,18 @@ export function createInMemoryCircuitBreakerBackend(): ProviderCircuitBreakerBac
                 normalized.totalTokens
               )
             }
-          : {}),
+          : existing?.smoothedSuccessTotalTokens !== undefined
+            ? {
+                smoothedSuccessTotalTokens:
+                  existing.smoothedSuccessTotalTokens
+              }
+            : {}),
         ...(normalized.now !== undefined ? { lastSuccessAt: normalized.now } : {}),
+        ...(normalized.totalTokens !== undefined && normalized.now !== undefined
+          ? { lastUsageObservedAt: normalized.now }
+          : existing?.lastUsageObservedAt !== undefined
+            ? { lastUsageObservedAt: existing.lastUsageObservedAt }
+            : {}),
         ...(existing?.lastFailureAt !== undefined
           ? { lastFailureAt: existing.lastFailureAt }
           : {})
@@ -260,6 +273,7 @@ function parseProviderCircuitState(value: unknown): ProviderCircuitState {
     lastSuccessTotalTokens,
     smoothedSuccessTotalTokens,
     lastSuccessAt,
+    lastUsageObservedAt,
     lastFailureAt
   } = value;
 
@@ -307,6 +321,14 @@ function parseProviderCircuitState(value: unknown): ProviderCircuitState {
   }
 
   if (
+    lastUsageObservedAt !== undefined &&
+    (typeof lastUsageObservedAt !== "number" ||
+      !Number.isInteger(lastUsageObservedAt))
+  ) {
+    throw new Error("Provider circuit state lastUsageObservedAt is invalid");
+  }
+
+  if (
     lastFailureAt !== undefined &&
     (typeof lastFailureAt !== "number" || !Number.isInteger(lastFailureAt))
   ) {
@@ -331,6 +353,7 @@ function parseProviderCircuitState(value: unknown): ProviderCircuitState {
       ? { smoothedSuccessTotalTokens }
       : {}),
     ...(lastSuccessAt !== undefined ? { lastSuccessAt } : {}),
+    ...(lastUsageObservedAt !== undefined ? { lastUsageObservedAt } : {}),
     ...(lastFailureAt !== undefined ? { lastFailureAt } : {})
   };
 }
@@ -395,11 +418,23 @@ export class ProviderCircuitBreakerDurableObject {
             : {}),
           ...(body.totalTokens !== undefined
             ? { lastSuccessTotalTokens: body.totalTokens }
-            : {}),
+            : current.lastSuccessTotalTokens !== undefined
+              ? { lastSuccessTotalTokens: current.lastSuccessTotalTokens }
+              : {}),
           ...(nextSmoothedTotalTokens !== undefined
             ? { smoothedSuccessTotalTokens: nextSmoothedTotalTokens }
-            : {}),
+            : current.smoothedSuccessTotalTokens !== undefined
+              ? {
+                  smoothedSuccessTotalTokens:
+                    current.smoothedSuccessTotalTokens
+                }
+              : {}),
           ...(body.now !== undefined ? { lastSuccessAt: body.now } : {}),
+          ...(body.totalTokens !== undefined && body.now !== undefined
+            ? { lastUsageObservedAt: body.now }
+            : current.lastUsageObservedAt !== undefined
+              ? { lastUsageObservedAt: current.lastUsageObservedAt }
+              : {}),
           ...(current.lastFailureAt !== undefined
             ? { lastFailureAt: current.lastFailureAt }
             : {})
@@ -471,6 +506,9 @@ export class ProviderCircuitBreakerDurableObject {
           : {}),
         ...(current.lastSuccessAt !== undefined
           ? { lastSuccessAt: current.lastSuccessAt }
+          : {}),
+        ...(current.lastUsageObservedAt !== undefined
+          ? { lastUsageObservedAt: current.lastUsageObservedAt }
           : {}),
         ...((current.probeStartedAt !== undefined ||
           nextFailures >= (body.threshold ?? 1)) &&

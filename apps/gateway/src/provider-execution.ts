@@ -50,6 +50,7 @@ type ProviderTargetHealthSnapshot = {
   lastSuccessTotalTokens?: number;
   smoothedSuccessTotalTokens?: number;
   lastSuccessAt?: number;
+  lastUsageObservedAt?: number;
   lastFailureAt?: number;
 };
 
@@ -537,8 +538,8 @@ function getFreshObservedTokenCostMultiplier(
   const health = healthByTarget?.get(targetKey);
 
   if (
-    health?.lastSuccessAt === undefined ||
-    now() - health.lastSuccessAt > OBSERVED_TOKEN_COST_FRESHNESS_WINDOW_MS
+    health?.lastUsageObservedAt === undefined ||
+    now() - health.lastUsageObservedAt > OBSERVED_TOKEN_COST_FRESHNESS_WINDOW_MS
   ) {
     return undefined;
   }
@@ -804,6 +805,9 @@ function selectEligibleTargets(
           : {}),
         ...(circuitState?.lastSuccessAt !== undefined
           ? { lastSuccessAt: circuitState.lastSuccessAt }
+          : {}),
+        ...(circuitState?.lastUsageObservedAt !== undefined
+          ? { lastUsageObservedAt: circuitState.lastUsageObservedAt }
           : {}),
         ...(circuitState?.lastFailureAt !== undefined
           ? { lastFailureAt: circuitState.lastFailureAt }
