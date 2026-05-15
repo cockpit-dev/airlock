@@ -1123,6 +1123,151 @@ describe("gateway app", () => {
     });
   });
 
+  it("emits request telemetry for a successful buffered responses request", async () => {
+    const { sink, events } = createTelemetryRecorder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ],
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8,
+            total_tokens: 20
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher, telemetrySink: sink });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi"
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "gateway_request",
+      routePath: "/v1/responses",
+      outcome: "success",
+      statusCode: 200,
+      provider: "openai",
+      providerModel: "gpt-4.1-mini",
+      externalModel: "gpt-4.1-mini",
+      gatewayKeyId: "gak_1",
+      fallbackUsed: false,
+      usage: {
+        inputTokens: 12,
+        outputTokens: 8,
+        totalTokens: 20
+      }
+    });
+  });
+
+  it("emits request telemetry for a successful buffered messages request", async () => {
+    const { sink, events } = createTelemetryRecorder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ],
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher, telemetrySink: sink });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "gateway_request",
+      routePath: "/v1/messages",
+      outcome: "success",
+      statusCode: 200,
+      provider: "anthropic",
+      providerModel: "claude-sonnet-4-5",
+      externalModel: "claude-sonnet-4-5",
+      gatewayKeyId: "gak_1",
+      fallbackUsed: false,
+      usage: {
+        inputTokens: 12,
+        outputTokens: 8,
+        totalTokens: 20
+      }
+    });
+  });
+
   it("returns an OpenAI chat completion length finish reason when the upstream truncates at max tokens", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
