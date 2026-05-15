@@ -87,13 +87,16 @@ function createProviderTimeoutError(requestId: string): GatewayError {
 }
 
 function createProviderCircuitOpenError(requestId: string): GatewayError {
-  return new GatewayError("All eligible provider targets are temporarily unavailable", {
-    code: "provider_circuit_open",
-    category: "routing",
-    httpStatus: 503,
-    retryable: true,
-    requestId
-  });
+  return new GatewayError(
+    "All eligible provider targets are temporarily unavailable",
+    {
+      code: "provider_circuit_open",
+      category: "routing",
+      httpStatus: 503,
+      retryable: true,
+      requestId
+    }
+  );
 }
 
 function getProviderCircuitBreakerPolicy(
@@ -141,7 +144,11 @@ function compareByOriginalRouteOrder(
   const leftIndex = originalOrder.get(leftKey);
   const rightIndex = originalOrder.get(rightKey);
 
-  if (leftIndex !== undefined && rightIndex !== undefined && leftIndex !== rightIndex) {
+  if (
+    leftIndex !== undefined &&
+    rightIndex !== undefined &&
+    leftIndex !== rightIndex
+  ) {
     return leftIndex - rightIndex;
   }
 
@@ -170,6 +177,27 @@ function getFreshRetryableFailureCount(
   return health.consecutiveRetryableFailures;
 }
 
+function getFreshSmoothedLatency(
+  health: ProviderTargetHealthSnapshot,
+  now: () => number
+): number {
+  const latency =
+    health.smoothedSuccessLatencyMs ?? health.lastSuccessLatencyMs;
+
+  if (latency === undefined) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  if (
+    health.lastSuccessAt === undefined ||
+    now() - health.lastSuccessAt > PRIORITY_LATENCY_FRESHNESS_WINDOW_MS
+  ) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return latency;
+}
+
 export function assertProviderSupportsCanonicalRequest(
   descriptor: ProviderCapabilityDescriptor,
   request: CanonicalRequest,
@@ -177,7 +205,10 @@ export function assertProviderSupportsCanonicalRequest(
 ) {
   const requirements = getCanonicalRequestCapabilityRequirements(request);
 
-  if (requirements.requiresSystemMessages && !descriptor.supportsSystemMessages) {
+  if (
+    requirements.requiresSystemMessages &&
+    !descriptor.supportsSystemMessages
+  ) {
     throw createUnsupportedCapabilityError(
       descriptor.provider,
       "system_messages",
@@ -209,7 +240,10 @@ export function assertProviderSupportsCanonicalRequest(
     );
   }
 
-  if (requirements.requiresStreamingTools && !descriptor.supportsStreamingTools) {
+  if (
+    requirements.requiresStreamingTools &&
+    !descriptor.supportsStreamingTools
+  ) {
     throw createUnsupportedCapabilityError(
       descriptor.provider,
       "streaming_tools",
@@ -247,7 +281,10 @@ export function assertProviderSupportsCanonicalRequest(
     );
   }
 
-  if (requirements.requiresConversationId && !descriptor.supportsConversationId) {
+  if (
+    requirements.requiresConversationId &&
+    !descriptor.supportsConversationId
+  ) {
     throw createUnsupportedCapabilityError(
       descriptor.provider,
       "conversation",
@@ -390,7 +427,7 @@ function assertCrossProviderRequestShapingSafety(
   requestShaping: RequestShapingProfile | undefined,
   requestId: string
 ) {
-  if (!requestShaping || !(route.fallbacks?.length)) {
+  if (!requestShaping || !route.fallbacks?.length) {
     return;
   }
 
@@ -403,8 +440,7 @@ function assertCrossProviderRequestShapingSafety(
   }
 
   const hasTargetScopedShaping =
-    route.shaping !== undefined &&
-    "targets" in route.shaping;
+    route.shaping !== undefined && "targets" in route.shaping;
 
   if (!hasTargetScopedShaping) {
     throw new GatewayError(
@@ -465,7 +501,9 @@ function reorderTargetsForRoute(
         isOpen: false,
         consecutiveRetryableFailures: 0
       };
-      const rightHealth = healthByTarget?.get(serializeProviderTarget(right)) ?? {
+      const rightHealth = healthByTarget?.get(
+        serializeProviderTarget(right)
+      ) ?? {
         isOpen: false,
         consecutiveRetryableFailures: 0
       };
@@ -474,18 +512,24 @@ function reorderTargetsForRoute(
         return leftHealth.isOpen ? 1 : -1;
       }
 
-      if ((leftHealth.isHalfOpen ?? false) !== (rightHealth.isHalfOpen ?? false)) {
+      if (
+        (leftHealth.isHalfOpen ?? false) !== (rightHealth.isHalfOpen ?? false)
+      ) {
         return leftHealth.isHalfOpen ? 1 : -1;
       }
 
-      if (
-        getFreshRetryableFailureCount(leftHealth, now) !==
-        getFreshRetryableFailureCount(rightHealth, now)
-      ) {
-        return (
-          getFreshRetryableFailureCount(leftHealth, now) -
-          getFreshRetryableFailureCount(rightHealth, now)
-        );
+      const leftFailures = getFreshRetryableFailureCount(leftHealth, now);
+      const rightFailures = getFreshRetryableFailureCount(rightHealth, now);
+
+      if (leftFailures !== rightFailures) {
+        return leftFailures - rightFailures;
+      }
+
+      const leftLatency = getFreshSmoothedLatency(leftHealth, now);
+      const rightLatency = getFreshSmoothedLatency(rightHealth, now);
+
+      if (leftLatency !== rightLatency) {
+        return leftLatency - rightLatency;
       }
 
       return compareByOriginalRouteOrder(leftKey, rightKey, originalOrder);
@@ -496,6 +540,30 @@ function reorderTargetsForRoute(
     return [...targets].sort((left, right) => {
       const leftKey = serializeProviderTarget(left);
       const rightKey = serializeProviderTarget(right);
+      const leftHealth = healthByTarget?.get(serializeProviderTarget(left)) ?? {
+        isOpen: false,
+        consecutiveRetryableFailures: 0
+      };
+      const rightHealth = healthByTarget?.get(
+        serializeProviderTarget(right)
+      ) ?? {
+        isOpen: false,
+        consecutiveRetryableFailures: 0
+      };
+
+      if (
+        (leftHealth.isHalfOpen ?? false) !== (rightHealth.isHalfOpen ?? false)
+      ) {
+        return leftHealth.isHalfOpen ? 1 : -1;
+      }
+
+      const leftFailures = getFreshRetryableFailureCount(leftHealth, now);
+      const rightFailures = getFreshRetryableFailureCount(rightHealth, now);
+
+      if (leftFailures !== rightFailures) {
+        return leftFailures - rightFailures;
+      }
+
       const leftConfiguredCost = targetSelection.costs[leftKey] ?? 1;
       const rightConfiguredCost = targetSelection.costs[rightKey] ?? 1;
       const leftObservedMultiplier = getFreshObservedTokenCostMultiplier(
@@ -539,7 +607,12 @@ function reorderTargetsForRoute(
       targetSelection.weights[serializeProviderTarget(left)] ?? 1;
     const rightWeight =
       targetSelection.weights[serializeProviderTarget(right)] ?? 1;
-    const rightScore = scoreWeightedTarget(route, right, requestId, rightWeight);
+    const rightScore = scoreWeightedTarget(
+      route,
+      right,
+      requestId,
+      rightWeight
+    );
     const leftScore = scoreWeightedTarget(route, left, requestId, leftWeight);
 
     if (rightScore !== leftScore) {
@@ -654,12 +727,10 @@ function reorderTargetsForPrioritySelection(
   const PRIORITY_RECOVERY_WINDOW_MS = 30_000;
   const originalOrder = getOriginalTargetOrder(targets);
 
-  function getPriorityRecoveryPenalty(
-    health: {
-      lastSuccessAt?: number;
-      lastFailureAt?: number;
-    }
-  ): number {
+  function getPriorityRecoveryPenalty(health: {
+    lastSuccessAt?: number;
+    lastFailureAt?: number;
+  }): number {
     if (health.lastFailureAt === undefined) {
       return 0;
     }
@@ -668,11 +739,14 @@ function reorderTargetsForPrioritySelection(
       health.lastSuccessAt === undefined ||
       health.lastFailureAt > health.lastSuccessAt
     ) {
-      return now() - health.lastFailureAt <= PRIORITY_RECOVERY_WINDOW_MS ? 2 : 0;
+      return now() - health.lastFailureAt <= PRIORITY_RECOVERY_WINDOW_MS
+        ? 2
+        : 0;
     }
 
     if (
-      health.lastSuccessAt - health.lastFailureAt <= PRIORITY_RECOVERY_WINDOW_MS &&
+      health.lastSuccessAt - health.lastFailureAt <=
+        PRIORITY_RECOVERY_WINDOW_MS &&
       now() - health.lastSuccessAt <= PRIORITY_RECOVERY_WINDOW_MS
     ) {
       return 1;
@@ -697,7 +771,9 @@ function reorderTargetsForPrioritySelection(
       return leftHealth.isOpen ? 1 : -1;
     }
 
-    if ((leftHealth.isHalfOpen ?? false) !== (rightHealth.isHalfOpen ?? false)) {
+    if (
+      (leftHealth.isHalfOpen ?? false) !== (rightHealth.isHalfOpen ?? false)
+    ) {
       return leftHealth.isHalfOpen ? 1 : -1;
     }
 
@@ -769,7 +845,11 @@ function reorderTargetsForPrioritySelection(
       healthByTarget
     );
 
-    if (leftCost !== undefined && rightCost !== undefined && leftCost !== rightCost) {
+    if (
+      leftCost !== undefined &&
+      rightCost !== undefined &&
+      leftCost !== rightCost
+    ) {
       return leftCost - rightCost;
     }
 
@@ -784,7 +864,9 @@ function promoteHalfOpenProbeTarget(
   // Preserve ordinary health ordering, but give one cooled-down target a real
   // recovery probe so it cannot starve behind permanently healthy peers.
   const firstHalfOpenIndex = targets.findIndex((target) => {
-    return healthByTarget?.get(serializeProviderTarget(target))?.isHalfOpen === true;
+    return (
+      healthByTarget?.get(serializeProviderTarget(target))?.isHalfOpen === true
+    );
   });
 
   if (firstHalfOpenIndex < 0) {
@@ -828,7 +910,11 @@ function selectEligibleTargets(
       }
 
       try {
-        assertGatewayKeyAllowsProvider(gatewayApiKey, target.provider, requestId);
+        assertGatewayKeyAllowsProvider(
+          gatewayApiKey,
+          target.provider,
+          requestId
+        );
       } catch (error) {
         if (error instanceof GatewayError) {
           lastAuthorizationError = error;
@@ -865,7 +951,8 @@ function selectEligibleTargets(
       healthByTarget.set(serializeProviderTarget(target), {
         isOpen,
         ...(isHalfOpen ? { isHalfOpen } : {}),
-        consecutiveRetryableFailures: circuitState?.consecutiveRetryableFailures ?? 0,
+        consecutiveRetryableFailures:
+          circuitState?.consecutiveRetryableFailures ?? 0,
         ...(circuitState?.lastSuccessLatencyMs !== undefined
           ? { lastSuccessLatencyMs: circuitState.lastSuccessLatencyMs }
           : {}),
@@ -876,7 +963,10 @@ function selectEligibleTargets(
           ? { lastSuccessTotalTokens: circuitState.lastSuccessTotalTokens }
           : {}),
         ...(circuitState?.smoothedSuccessTotalTokens !== undefined
-          ? { smoothedSuccessTotalTokens: circuitState.smoothedSuccessTotalTokens }
+          ? {
+              smoothedSuccessTotalTokens:
+                circuitState.smoothedSuccessTotalTokens
+            }
           : {}),
         ...(circuitState?.lastSuccessAt !== undefined
           ? { lastSuccessAt: circuitState.lastSuccessAt }
@@ -922,7 +1012,9 @@ function selectEligibleTargets(
       throw createProviderCircuitOpenError(requestId);
     }
 
-    throw new Error("At least one provider target is required for route execution");
+    throw new Error(
+      "At least one provider target is required for route execution"
+    );
   })();
 }
 
@@ -1069,7 +1161,9 @@ export async function executeRoutedRequest(
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error("Provider execution failed");
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Provider execution failed");
 }
 
 export async function* executeRoutedStreamRequest(
@@ -1104,20 +1198,24 @@ export async function* executeRoutedStreamRequest(
   assertCrossProviderRequestShapingSafety(route, requestShaping, requestId);
   const targets = (
     await selectEligibleTargets(
-    route,
-    request,
-    gatewayApiKey,
-    requestId,
-    getProviderDescriptor,
-    circuitBreakerPolicy,
-    now,
-    circuitBreakerBackend
-  )
+      route,
+      request,
+      gatewayApiKey,
+      requestId,
+      getProviderDescriptor,
+      circuitBreakerPolicy,
+      now,
+      circuitBreakerBackend
+    )
   ).filter((target) => {
     return getProviderDescriptor(target.provider).supportsStreaming;
   });
   if (targets.length === 0) {
-    throw createUnsupportedCapabilityError(route.target.provider, "streaming", requestId);
+    throw createUnsupportedCapabilityError(
+      route.target.provider,
+      "streaming",
+      requestId
+    );
   }
 
   const deadline = now() + config.providerTimeoutMs;
@@ -1150,7 +1248,11 @@ export async function* executeRoutedStreamRequest(
     );
 
     if (!adapter.stream) {
-      throw createUnsupportedCapabilityError(target.provider, "streaming", requestId);
+      throw createUnsupportedCapabilityError(
+        target.provider,
+        "streaming",
+        requestId
+      );
     }
 
     let yieldedAnyEvent = false;
@@ -1161,7 +1263,9 @@ export async function* executeRoutedStreamRequest(
       try {
         onAttemptTarget?.(target);
         const currentStreamAttemptRequest =
-          streamAttempt === 0 ? currentAttemptRequest : createAttemptRequest(request, target);
+          streamAttempt === 0
+            ? currentAttemptRequest
+            : createAttemptRequest(request, target);
 
         for await (const event of adapter.stream(currentStreamAttemptRequest, {
           requestId,
@@ -1239,5 +1343,7 @@ export async function* executeRoutedStreamRequest(
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error("Provider stream execution failed");
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Provider stream execution failed");
 }
