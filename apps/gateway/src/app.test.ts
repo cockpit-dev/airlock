@@ -966,6 +966,10 @@ function createTelemetryRecorder() {
 }
 
 beforeEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.resetAllMocks();
+  vi.restoreAllMocks();
   resetProviderCircuitBreakerState();
 });
 
@@ -7466,8 +7470,32 @@ describe("gateway app", () => {
     });
   });
 
-  it("fails closed when chat response_format.type=json_schema is streamed to gemini", async () => {
-    const app = createApp({ fetcher: vi.fn() });
+  it("accepts streamed chat response_format.type=json_schema and forwards it upstream for gemini", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"role":"model","parts":[{"text":"{\\"city\\":\\"Shanghai\\"}"}]}}]}\n\n',
+                  'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[]}}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":8,"totalTokenCount":20}}\n\n'
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
 
     const response = await app.request(
       "http://localhost/v1/chat/completions",
@@ -7501,15 +7529,20 @@ describe("gateway app", () => {
       }
     );
 
-    expect(response.status).toBe(400);
-    await expect(readJson(response)).resolves.toEqual({
-      error: {
-        message:
-          "Provider gemini does not support required capability: streaming_structured_outputs",
-        type: "routing",
-        code: "provider_capability_not_supported"
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseJsonSchema: {
+          type: "object"
+        }
       }
     });
+    const body = await readText(response);
+    expect(body).toContain('\\"city\\":\\"Shanghai\\"');
+    expect(body).toContain("data: [DONE]");
   });
 
   it("rejects unsupported chat semantics like modalities", async () => {
@@ -31839,8 +31872,32 @@ describe("gateway app", () => {
     });
   });
 
-  it("fails closed when responses text.format.type=json_schema is streamed to gemini", async () => {
-    const app = createApp({ fetcher: vi.fn() });
+  it("accepts streamed responses text.format.type=json_schema and forwards it upstream for gemini", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"role":"model","parts":[{"text":"{\\"city\\":\\"Shanghai\\"}"}]}}]}\n\n',
+                  'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[]}}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":8,"totalTokenCount":20}}\n\n'
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
 
     const response = await app.request(
       "http://localhost/v1/responses",
@@ -31874,15 +31931,20 @@ describe("gateway app", () => {
       }
     );
 
-    expect(response.status).toBe(400);
-    await expect(readJson(response)).resolves.toEqual({
-      error: {
-        message:
-          "Provider gemini does not support required capability: streaming_structured_outputs",
-        type: "routing",
-        code: "provider_capability_not_supported"
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseJsonSchema: {
+          type: "object"
+        }
       }
     });
+    const body = await readText(response);
+    expect(body).toContain('\\"city\\":\\"Shanghai\\"');
+    expect(body).toContain("data: [DONE]");
   });
 
   it("accepts supported responses sampling semantics and forwards them upstream", async () => {

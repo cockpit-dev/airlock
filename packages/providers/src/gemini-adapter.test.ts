@@ -1572,6 +1572,92 @@ describe("GeminiProviderAdapter", () => {
     ]);
   });
 
+  it("forwards canonical json_schema output format into Gemini streaming JSON schema generation config", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"role":"model","parts":[{"text":"{\\"city\\":\\"Shanghai\\"}"}]}}]}\n\n',
+              'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":6,"totalTokenCount":16}}\n\n'
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true,
+        outputFormat: {
+          type: "json_schema",
+          name: "weather",
+          schema: {
+            type: "object"
+          },
+          strict: true
+        }
+      },
+      {
+        requestId: "req_stream_structured_123"
+      }
+    )) {
+      events.push(event);
+    }
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseJsonSchema: {
+          type: "object"
+        }
+      }
+    });
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash",
+        delta: "{\"city\":\"Shanghai\"}"
+      },
+      {
+        type: "response_completed",
+        responseId: "gemini-response-123",
+        model: "gemini-2.5-flash",
+        finishReason: "stop",
+        usage: {
+          inputTokens: 10,
+          outputTokens: 6,
+          totalTokens: 16
+        }
+      }
+    ]);
+  });
+
   it("forwards streamed canonical tool replay history into Gemini streaming contents", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({

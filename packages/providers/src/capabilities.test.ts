@@ -67,7 +67,7 @@ describe("provider capability descriptors", () => {
         supportsPrompt: false,
         supportsReasoning: false,
         supportsStructuredOutputs: true,
-        supportsStreamingStructuredOutputs: false,
+        supportsStreamingStructuredOutputs: true,
         supportsParallelToolCallControl: false,
         supportsOpenAIRequestMetadata: false,
         supportsOpenAIResponsesTextControls: false,
@@ -93,7 +93,7 @@ describe("provider capability descriptors", () => {
       supportsPrompt: false,
       supportsReasoning: false,
       supportsStructuredOutputs: true,
-      supportsStreamingStructuredOutputs: false,
+      supportsStreamingStructuredOutputs: true,
       supportsParallelToolCallControl: false,
       supportsOpenAIRequestMetadata: false,
       supportsOpenAIResponsesTextControls: false,
@@ -145,7 +145,7 @@ describe("provider capability descriptors", () => {
       supportsToolReplay: true,
       supportsStreamingTools: true,
       supportsStructuredOutputs: true,
-      supportsStreamingStructuredOutputs: false
+      supportsStreamingStructuredOutputs: true
     });
   });
 });

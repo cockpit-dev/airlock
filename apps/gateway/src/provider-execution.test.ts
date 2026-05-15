@@ -17,6 +17,10 @@ import {
 } from "./circuit-breaker.js";
 
 beforeEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.resetAllMocks();
+  vi.restoreAllMocks();
   resetProviderCircuitBreakerState();
 });
 
@@ -361,7 +365,7 @@ describe("assertProviderSupportsCanonicalRequest", () => {
     ).not.toThrow();
   });
 
-  it("throws a typed error when the provider descriptor lacks streaming structured output support", () => {
+  it("allows streaming structured output requests for gemini", () => {
     const request: CanonicalRequest = {
       model: "gemini-2.5-flash",
       stream: true,
@@ -387,19 +391,7 @@ describe("assertProviderSupportsCanonicalRequest", () => {
         request,
         "req_123"
       )
-    ).toThrow(
-      new GatewayError(
-        "Provider gemini does not support required capability: streaming_structured_outputs",
-        {
-          code: "provider_capability_not_supported",
-          category: "routing",
-          httpStatus: 400,
-          retryable: false,
-          provider: "gemini",
-          requestId: "req_123"
-        }
-      )
-    );
+    ).not.toThrow();
   });
 
   it("throws a typed error when the provider descriptor lacks parallel tool call control support", () => {

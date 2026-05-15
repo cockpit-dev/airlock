@@ -64,7 +64,7 @@ const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
     supportsPrompt: false,
     supportsReasoning: false,
     supportsStructuredOutputs: true,
-    supportsStreamingStructuredOutputs: false,
+    supportsStreamingStructuredOutputs: true,
     supportsParallelToolCallControl: false,
     supportsOpenAIRequestMetadata: false,
     supportsOpenAIResponsesTextControls: false,
