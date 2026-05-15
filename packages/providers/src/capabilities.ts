@@ -22,6 +22,7 @@ const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
     supportsStructuredOutputs: true,
     supportsParallelToolCallControl: true,
     supportsOpenAIRequestMetadata: true,
+    supportsOpenAIResponsesTextControls: true,
     supportsRouteScopedShaping: true,
     supportsStaticFallbackSameProvider: true
   },
@@ -42,6 +43,7 @@ const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
     supportsStructuredOutputs: false,
     supportsParallelToolCallControl: false,
     supportsOpenAIRequestMetadata: false,
+    supportsOpenAIResponsesTextControls: false,
     supportsRouteScopedShaping: true,
     supportsStaticFallbackSameProvider: true
   },
@@ -62,6 +64,7 @@ const PROVIDER_CAPABILITY_DESCRIPTORS: ProviderCapabilityDescriptor[] = [
     supportsStructuredOutputs: true,
     supportsParallelToolCallControl: false,
     supportsOpenAIRequestMetadata: false,
+    supportsOpenAIResponsesTextControls: false,
     supportsRouteScopedShaping: true,
     supportsStaticFallbackSameProvider: true
   }

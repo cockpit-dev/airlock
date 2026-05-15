@@ -25,6 +25,7 @@ export interface ProviderCapabilityDescriptor {
   supportsStructuredOutputs: boolean;
   supportsParallelToolCallControl: boolean;
   supportsOpenAIRequestMetadata: boolean;
+  supportsOpenAIResponsesTextControls: boolean;
   supportsRouteScopedShaping: boolean;
   supportsStaticFallbackSameProvider: boolean;
 }

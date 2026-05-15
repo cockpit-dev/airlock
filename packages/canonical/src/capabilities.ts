@@ -41,6 +41,9 @@ export function getCanonicalRequestCapabilityRequirements(
       request.providerMetadata?.openai?.metadata !== undefined ||
       request.providerMetadata?.openai?.frequencyPenalty !== undefined ||
       request.providerMetadata?.openai?.presencePenalty !== undefined ||
-      request.providerMetadata?.openai?.seed !== undefined
+      request.providerMetadata?.openai?.seed !== undefined,
+    requiresOpenAIResponsesTextControls:
+      request.responseTruncation !== undefined ||
+      request.responseTextVerbosity !== undefined
   };
 }

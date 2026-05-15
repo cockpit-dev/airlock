@@ -35,7 +35,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -65,7 +66,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -103,7 +105,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -144,7 +147,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -175,7 +179,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -207,7 +212,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -236,7 +242,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: true,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -262,7 +269,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: true,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -300,7 +308,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: true,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -333,7 +342,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: true,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -372,7 +382,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: true,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -411,7 +422,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: true,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -449,7 +461,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -490,7 +503,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -527,7 +541,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: true
+      requiresOpenAIRequestMetadata: true,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -564,7 +579,8 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: true
+      requiresOpenAIRequestMetadata: true,
+      requiresOpenAIResponsesTextControls: false
     });
   });
 
@@ -595,7 +611,41 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresReasoning: false,
       requiresStructuredOutputs: false,
       requiresParallelToolCallControl: false,
-      requiresOpenAIRequestMetadata: false
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
+    });
+  });
+
+  it("marks OpenAI Responses text controls when truncation or text verbosity are present", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      responseTruncation: "disabled",
+      responseTextVerbosity: "high",
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: false,
+      requiresTools: false,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresEndUserId: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false,
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: false,
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: true
     });
   });
 });

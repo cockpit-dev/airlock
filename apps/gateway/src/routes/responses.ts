@@ -71,6 +71,7 @@ const allowedOpenAIResponsesTopLevelFields = [
   "instructions",
   "reasoning",
   "text",
+  "truncation",
   "stream_options",
   "parallel_tool_calls",
   "tools",

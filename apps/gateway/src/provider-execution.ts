@@ -303,6 +303,17 @@ export function assertProviderSupportsCanonicalRequest(
       requestId
     );
   }
+
+  if (
+    requirements.requiresOpenAIResponsesTextControls &&
+    !descriptor.supportsOpenAIResponsesTextControls
+  ) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "openai_responses_text_controls",
+      requestId
+    );
+  }
 }
 
 function createProviderAdapter(

@@ -108,6 +108,7 @@ export interface CanonicalRequestCapabilityRequirements {
   requiresStructuredOutputs: boolean;
   requiresParallelToolCallControl: boolean;
   requiresOpenAIRequestMetadata: boolean;
+  requiresOpenAIResponsesTextControls: boolean;
 }
 
 export interface CanonicalUsage {

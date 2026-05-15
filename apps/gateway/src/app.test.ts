@@ -21014,6 +21014,146 @@ describe("gateway app", () => {
     });
   });
 
+  it("fails closed when responses text.verbosity is sent to Anthropic", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          input: "hello",
+          text: {
+            verbosity: "high"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider anthropic does not support required capability: openai_responses_text_controls",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
+  it("fails closed when responses text.verbosity is sent to gemini", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          input: "hello",
+          text: {
+            verbosity: "high"
+          }
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider gemini does not support required capability: openai_responses_text_controls",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
+  it("fails closed when responses truncation is sent to Anthropic", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          input: "hello",
+          truncation: "disabled"
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider anthropic does not support required capability: openai_responses_text_controls",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
+  it("fails closed when responses truncation is sent to gemini", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          input: "hello",
+          truncation: "disabled"
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider gemini does not support required capability: openai_responses_text_controls",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
   it("fails closed when chat parallel_tool_calls=false is sent to a non-openai provider", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -24238,6 +24378,70 @@ describe("gateway app", () => {
           role: "assistant"
         }
       ]
+    });
+  });
+
+  it("accepts responses truncation and forwards it upstream for OpenAI", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          truncation: "disabled",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          truncation: "disabled"
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.openai.com/v1/responses");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      truncation: "disabled"
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      truncation: "disabled"
     });
   });
 
