@@ -5316,6 +5316,86 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts streamed chat response_format.type=json_schema and forwards it upstream for OpenAI", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"{\\"city\\":\\"Shanghai\\"}"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "weather",
+              schema: {
+                type: "object"
+              },
+              strict: true
+            }
+          },
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stream: true,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "weather",
+          schema: {
+            type: "object"
+          },
+          strict: true
+        }
+      },
+      stream_options: {
+        include_usage: true
+      }
+    });
+    const body = await readText(response);
+    expect(body).toContain('\\"city\\":\\"Shanghai\\"');
+    expect(body).toContain("data: [DONE]");
+  });
+
   it("fails closed when chat response_format.type=json_object is sent to a non-openai provider", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -25342,6 +25422,83 @@ describe("gateway app", () => {
         }
       }
     });
+  });
+
+  it("accepts streamed responses text.format.type=json_schema and forwards it upstream for OpenAI", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n',
+                  'data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"{\\"city\\":\\"Shanghai\\"}"}\n\n',
+                  'data: {"type":"response.completed","sequence_number":2,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"id":"msg_123","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"{\\"city\\":\\"Shanghai\\"}","annotations":[]}]}],"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          input: "hello",
+          text: {
+            format: {
+              type: "json_schema",
+              name: "weather",
+              schema: {
+                type: "object"
+              },
+              strict: true
+            }
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stream: true,
+      text: {
+        format: {
+          type: "json_schema",
+          name: "weather",
+          schema: {
+            type: "object"
+          },
+          strict: true
+        }
+      }
+    });
+    const body = await readText(response);
+    expect(body).toContain('\\"city\\":\\"Shanghai\\"');
+    expect(body).toContain("data: [DONE]");
   });
 
   it("fails closed when responses text.format.type=json_object is sent to a non-openai provider", async () => {
