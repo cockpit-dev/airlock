@@ -1268,6 +1268,143 @@ describe("gateway app", () => {
     });
   });
 
+  it("emits request telemetry for a successful streaming responses request with usage", async () => {
+    const { sink, events } = createTelemetryRecorder();
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n',
+                  'data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"resp_123_output_0","output_index":0,"content_index":0,"delta":"hello"}\n\n',
+                  'data: {"type":"response.completed","sequence_number":2,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"id":"resp_123_output_0","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello","annotations":[]}]}],"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher, telemetrySink: sink });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi",
+          stream: true
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readText(response)).resolves.toContain("data: [DONE]");
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "gateway_request",
+      routePath: "/v1/responses",
+      outcome: "success",
+      statusCode: 200,
+      provider: "openai",
+      providerModel: "gpt-4.1-mini",
+      externalModel: "gpt-4.1-mini",
+      gatewayKeyId: "gak_1",
+      fallbackUsed: false,
+      usage: {
+        inputTokens: 12,
+        outputTokens: 8,
+        totalTokens: 20
+      }
+    });
+  });
+
+  it("emits request telemetry for a successful streaming messages request with usage", async () => {
+    const { sink, events } = createTelemetryRecorder();
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-sonnet-4-5"}}\n\n',
+                  'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"hello"}}\n\n',
+                  'event: message_delta\ndata: {"delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":12,"output_tokens":8}}\n\n',
+                  "event: message_stop\ndata: {}\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher, telemetrySink: sink });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 16,
+          stream: true,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readText(response)).resolves.toContain("event: message_stop");
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "gateway_request",
+      routePath: "/v1/messages",
+      outcome: "success",
+      statusCode: 200,
+      provider: "anthropic",
+      providerModel: "claude-sonnet-4-5",
+      externalModel: "claude-sonnet-4-5",
+      gatewayKeyId: "gak_1",
+      fallbackUsed: false,
+      usage: {
+        inputTokens: 12,
+        outputTokens: 8,
+        totalTokens: 20
+      }
+    });
+  });
+
   it("returns an OpenAI chat completion length finish reason when the upstream truncates at max tokens", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
