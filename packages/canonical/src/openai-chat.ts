@@ -738,7 +738,15 @@ export function normalizeAnthropicMessagesRequest(
   request: AnthropicMessagesRequest
 ): CanonicalRequest {
   const systemMessages = request.system
-    ? [{ role: "system" as const, content: request.system }]
+    ? [
+        {
+          role: "system" as const,
+          content:
+            typeof request.system === "string"
+              ? request.system
+              : request.system.map((block) => block.text).join("\n")
+        }
+      ]
     : [];
   const messages = request.messages.map((message) => {
     if (typeof message.content === "string") {
@@ -774,7 +782,13 @@ export function normalizeAnthropicMessagesRequest(
     if (message.role === "user" && toolResultBlocks.length > 0) {
       return {
         role: "tool" as const,
-        content: toolResultBlocks.map((block) => block.content).join("\n"),
+        content: toolResultBlocks
+          .map((block) => {
+            return typeof block.content === "string"
+              ? block.content
+              : block.content.map((contentBlock) => contentBlock.text).join("\n");
+          })
+          .join("\n"),
         toolCallId: toolResultBlocks[0]?.tool_use_id ?? ""
       };
     }

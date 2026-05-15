@@ -111,12 +111,22 @@ function buildAnthropicMessages(
       if (message.role === "assistant" && message.toolCalls?.length) {
         return {
           role: "assistant" as const,
-          content: message.toolCalls.map((toolCall) => ({
-            type: "tool_use" as const,
-            id: toolCall.id,
-            name: toolCall.name,
-            input: parseAnthropicToolInput(toolCall.arguments, requestId)
-          }))
+          content: [
+            ...(message.content.length > 0
+              ? [
+                  {
+                    type: "text" as const,
+                    text: message.content
+                  }
+                ]
+              : []),
+            ...message.toolCalls.map((toolCall) => ({
+              type: "tool_use" as const,
+              id: toolCall.id,
+              name: toolCall.name,
+              input: parseAnthropicToolInput(toolCall.arguments, requestId)
+            }))
+          ]
         };
       }
 
@@ -187,7 +197,16 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                 jsonBody: {
                   model: request.model,
                   max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
-                  ...(systemMessage ? { system: systemMessage.content } : {}),
+                  ...(systemMessage
+                    ? {
+                        system: [
+                          {
+                            type: "text" as const,
+                            text: systemMessage.content
+                          }
+                        ]
+                      }
+                    : {}),
                   ...(request.endUserId !== undefined
                     ? {
                         metadata: {
@@ -246,7 +265,16 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
               jsonBody: {
                 model: request.model,
                 max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
-                ...(systemMessage ? { system: systemMessage.content } : {}),
+                ...(systemMessage
+                  ? {
+                      system: [
+                        {
+                          type: "text" as const,
+                          text: systemMessage.content
+                        }
+                      ]
+                    }
+                  : {}),
                 ...(request.endUserId !== undefined
                   ? {
                       metadata: {
@@ -422,11 +450,20 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                   "content-type": "application/json"
                 },
                 query: {},
-                jsonBody: {
-                  model: request.model,
-                  max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
-                  stream: true,
-                  ...(systemMessage ? { system: systemMessage.content } : {}),
+                  jsonBody: {
+                    model: request.model,
+                    max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
+                    stream: true,
+                    ...(systemMessage
+                      ? {
+                          system: [
+                            {
+                              type: "text" as const,
+                              text: systemMessage.content
+                            }
+                          ]
+                        }
+                      : {}),
                   ...(request.endUserId !== undefined
                     ? {
                         metadata: {
@@ -464,11 +501,20 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                 "content-type": "application/json"
               },
               query: {},
-              jsonBody: {
-                model: request.model,
-                max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
-                stream: true,
-                ...(systemMessage ? { system: systemMessage.content } : {}),
+                jsonBody: {
+                  model: request.model,
+                  max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
+                  stream: true,
+                  ...(systemMessage
+                    ? {
+                        system: [
+                          {
+                            type: "text" as const,
+                            text: systemMessage.content
+                          }
+                        ]
+                      }
+                    : {}),
                 ...(request.endUserId !== undefined
                   ? {
                       metadata: {

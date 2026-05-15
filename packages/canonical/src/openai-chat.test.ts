@@ -2988,6 +2988,35 @@ describe("normalizeAnthropicMessagesRequest", () => {
     ]);
   });
 
+  it("normalizes anthropic system text blocks into a canonical system message", () => {
+    const canonical = normalizeAnthropicMessagesRequest({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: false,
+      system: [
+        {
+          type: "text",
+          text: "You are precise."
+        },
+        {
+          type: "text",
+          text: "Prefer terse answers."
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      { role: "system", content: "You are precise.\nPrefer terse answers." },
+      { role: "user", content: "hello" }
+    ]);
+  });
+
   it("preserves streaming intent for anthropic messages requests", () => {
     const canonical = normalizeAnthropicMessagesRequest({
       model: "claude-sonnet-4-5",
@@ -3246,6 +3275,43 @@ describe("normalizeAnthropicMessagesRequest", () => {
       {
         role: "tool",
         content: "{\"temperature_c\":26}",
+        toolCallId: "call_123"
+      }
+    ]);
+  });
+
+  it("normalizes anthropic tool_result text blocks into canonical tool replay text", () => {
+    const canonical = normalizeAnthropicMessagesRequest({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call_123",
+              content: [
+                {
+                  type: "text",
+                  text: "26C"
+                },
+                {
+                  type: "text",
+                  text: "and sunny"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      {
+        role: "tool",
+        content: "26C\nand sunny",
         toolCallId: "call_123"
       }
     ]);

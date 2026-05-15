@@ -90,7 +90,12 @@ describe("AnthropicProviderAdapter", () => {
     expect(JSON.parse(init.body as string)).toEqual({
       model: "claude-sonnet-4-5",
       max_tokens: 256,
-      system: "You are precise.",
+      system: [
+        {
+          type: "text",
+          text: "You are precise."
+        }
+      ],
       metadata: {
         source: "airlock"
       },
@@ -107,6 +112,54 @@ describe("AnthropicProviderAdapter", () => {
       inputTokens: 14,
       outputTokens: 9,
       totalTokens: 23
+    });
+  });
+
+  it("encodes canonical system messages as anthropic system text blocks", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new AnthropicProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultMaxTokens: 256,
+      fetcher
+    });
+
+    await adapter.complete(createCanonicalRequest(), {
+      requestId: "req_123"
+    });
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      system: [
+        {
+          type: "text",
+          text: "You are precise."
+        }
+      ]
     });
   });
 
@@ -730,6 +783,170 @@ describe("AnthropicProviderAdapter", () => {
     });
   });
 
+  it("preserves assistant text when replaying mixed text and tool calls into Anthropic", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "The temperature is 26C."
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new AnthropicProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultMaxTokens: 256,
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        model: "claude-sonnet-4-5",
+        stream: false,
+        tools: [
+          {
+            name: "lookup_weather",
+            inputSchema: {
+              type: "object"
+            }
+          }
+        ],
+        toolChoice: "auto",
+        messages: [
+          {
+            role: "user",
+            content: "Weather in Shanghai?"
+          },
+          {
+            role: "assistant",
+            content: "Let me check that.",
+            toolCalls: [
+              {
+                id: "call_123",
+                name: "lookup_weather",
+                arguments: "{\"city\":\"Shanghai\"}"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      messages: [
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "Let me check that."
+            },
+            {
+              type: "tool_use",
+              id: "call_123",
+              name: "lookup_weather",
+              input: {
+                city: "Shanghai"
+              }
+            }
+          ]
+        }
+      ]
+    });
+  });
+
+  it("encodes canonical tool results as anthropic tool_result blocks", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new AnthropicProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultMaxTokens: 256,
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        model: "claude-sonnet-4-5",
+        stream: false,
+        messages: [
+          {
+            role: "tool",
+            content: "26C\nand sunny",
+            toolCallId: "call_123"
+          }
+        ]
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call_123",
+              content: "26C\nand sunny"
+            }
+          ]
+        }
+      ]
+    });
+  });
+
   it("returns canonical tool calls with empty output text for tool_use responses", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -993,7 +1210,12 @@ describe("AnthropicProviderAdapter", () => {
     expect(JSON.parse(init.body as string)).toEqual({
       model: "claude-sonnet-4-5",
       max_tokens: 256,
-      system: "You are precise.",
+      system: [
+        {
+          type: "text",
+          text: "You are precise."
+        }
+      ],
       metadata: "request",
       messages: [
         {
@@ -1082,7 +1304,12 @@ describe("AnthropicProviderAdapter", () => {
     expect(JSON.parse(init.body as string)).toEqual({
       model: "claude-sonnet-4-5",
       max_tokens: 256,
-      system: "You are precise.",
+      system: [
+        {
+          type: "text",
+          text: "You are precise."
+        }
+      ],
       metadata: {
         user_id: "user_123"
       },

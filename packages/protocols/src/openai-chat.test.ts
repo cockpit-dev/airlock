@@ -1627,6 +1627,40 @@ describe("anthropicMessagesRequestSchema", () => {
     });
   });
 
+  it("accepts anthropic system text blocks", () => {
+    const parsed = anthropicMessagesRequestSchema.parse({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      system: [
+        {
+          type: "text",
+          text: "You are precise."
+        },
+        {
+          type: "text",
+          text: "Prefer terse answers."
+        }
+      ],
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+
+    expect(parsed.system).toEqual([
+      {
+        type: "text",
+        text: "You are precise."
+      },
+      {
+        type: "text",
+        text: "Prefer terse answers."
+      }
+    ]);
+  });
+
   it("accepts an optional airlock request shaping extension", () => {
     const parsed = anthropicMessagesRequestSchema.parse({
       model: "claude-sonnet-4-5",
@@ -1822,6 +1856,55 @@ describe("anthropicMessagesRequestSchema", () => {
     });
 
     expect(Array.isArray(parsed.messages)).toBe(true);
+  });
+
+  it("accepts anthropic tool_result content as text blocks", () => {
+    const parsed = anthropicMessagesRequestSchema.parse({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call_123",
+              content: [
+                {
+                  type: "text",
+                  text: "26C"
+                },
+                {
+                  type: "text",
+                  text: "and sunny"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(parsed.messages[0]).toMatchObject({
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "call_123",
+          content: [
+            {
+              type: "text",
+              text: "26C"
+            },
+            {
+              type: "text",
+              text: "and sunny"
+            }
+          ]
+        }
+      ]
+    });
   });
 });
 

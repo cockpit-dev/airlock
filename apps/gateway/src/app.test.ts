@@ -25485,11 +25485,88 @@ describe("gateway app", () => {
     expect(JSON.parse(init.body as string)).toEqual({
       model: "claude-sonnet-4-5",
       max_tokens: 256,
-      system: "You are precise.",
+      system: [
+        {
+          type: "text",
+          text: "You are precise."
+        }
+      ],
       metadata: {
         source: "request"
       },
       messages: [{ role: "user", content: "hi" }]
+    });
+  });
+
+  it("accepts anthropic system text blocks and forwards them upstream", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          system: [
+            {
+              type: "text",
+              text: "You are precise."
+            },
+            {
+              type: "text",
+              text: "Prefer terse answers."
+            }
+          ],
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      system: [
+        {
+          type: "text",
+          text: "You are precise.\nPrefer terse answers."
+        }
+      ]
     });
   });
 
@@ -26796,6 +26873,89 @@ describe("gateway app", () => {
         {
           type: "text",
           text: "The temperature is 26C."
+        }
+      ]
+    });
+  });
+
+  it("accepts anthropic tool_result text blocks and forwards them upstream", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "The temperature is 26C."
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "call_123",
+                  content: [
+                    {
+                      type: "text",
+                      text: "26C"
+                    },
+                    {
+                      type: "text",
+                      text: "and sunny"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call_123",
+              content: "26C\nand sunny"
+            }
+          ]
         }
       ]
     });
