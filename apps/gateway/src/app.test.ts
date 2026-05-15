@@ -21092,6 +21092,131 @@ describe("gateway app", () => {
     expect(body).toContain("data: [DONE]");
   });
 
+  it("streams responses tool replay history through gemini and preserves the final assistant answer", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"role":"model","parts":[{"text":"The temperature is 26C."}]}}]}\n\n',
+                  'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[]}}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":6,"totalTokenCount":18}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          stream: true,
+          tools: [
+            {
+              type: "function",
+              name: "lookup_weather",
+              parameters: {
+                type: "object"
+              }
+            }
+          ],
+          input: [
+            {
+              type: "message",
+              role: "user",
+              content: [{ type: "input_text", text: "Weather in Shanghai?" }]
+            },
+            {
+              type: "function_call",
+              call_id: "call_123",
+              name: "lookup_weather",
+              arguments: "{\"city\":\"Shanghai\"}"
+            },
+            {
+              type: "function_call_output",
+              call_id: "call_123",
+              output: "{\"temperature_c\":26}"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: "Weather in Shanghai?"
+            }
+          ]
+        },
+        {
+          role: "model",
+          parts: [
+            {
+              functionCall: {
+                name: "lookup_weather",
+                args: {
+                  city: "Shanghai"
+                }
+              }
+            }
+          ]
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: "lookup_weather",
+                response: {
+                  temperature_c: 26
+                }
+              }
+            }
+          ]
+        }
+      ]
+    });
+    const body = await readText(response);
+
+    expect(body).toContain('"type":"response.output_text.delta"');
+    expect(body).toContain('"delta":"The temperature is 26C."');
+    expect(body).toContain('"type":"response.completed"');
+    expect(body).toContain("data: [DONE]");
+  });
+
   it("preserves zero-argument streamed responses tool starts through gemini", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi.fn().mockResolvedValue(
@@ -23116,6 +23241,146 @@ describe("gateway app", () => {
     expect(body).toContain('"name":"lookup_weather"');
     expect(body).toContain('"partial_json":"{\\"city\\":\\"Shanghai\\"}"');
     expect(body).toContain('"stop_reason":"tool_use"');
+  });
+
+  it("streams anthropic tool replay history through gemini on /v1/messages", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"content":{"role":"model","parts":[{"text":"The temperature is 26C."}]}}]}\n\n',
+                  'data: {"responseId":"gemini-response-123","modelVersion":"gemini-2.5-flash","candidates":[{"finishReason":"STOP","content":{"role":"model","parts":[]}}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":6,"totalTokenCount":18}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          max_tokens: 256,
+          stream: true,
+          tool_choice: {
+            type: "auto"
+          },
+          tools: [
+            {
+              name: "lookup_weather",
+              input_schema: {
+                type: "object"
+              }
+            }
+          ],
+          messages: [
+            {
+              role: "user",
+              content: "Weather in Shanghai?"
+            },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: "call_123",
+                  name: "lookup_weather",
+                  input: {
+                    city: "Shanghai"
+                  }
+                }
+              ]
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "call_123",
+                  content: "{\"temperature_c\":26}"
+                }
+              ]
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: "Weather in Shanghai?"
+            }
+          ]
+        },
+        {
+          role: "model",
+          parts: [
+            {
+              functionCall: {
+                name: "lookup_weather",
+                args: {
+                  city: "Shanghai"
+                }
+              }
+            }
+          ]
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: "lookup_weather",
+                response: {
+                  temperature_c: 26
+                }
+              }
+            }
+          ]
+        }
+      ]
+    });
+    const body = await readText(response);
+
+    expect(body).toContain("event: content_block_delta");
+    expect(body).toContain('"type":"text_delta"');
+    expect(body).toContain('"text":"The temperature is 26C."');
+    expect(body).toContain('"stop_reason":"end_turn"');
   });
 
   it("preserves distinct text and tool block indexes in mixed anthropic messages streaming", async () => {
