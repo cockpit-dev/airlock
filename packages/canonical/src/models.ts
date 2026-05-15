@@ -123,6 +123,7 @@ export interface CanonicalUsage {
 export interface CanonicalResponse {
   id: string;
   model: string;
+  createdAt?: number;
   outputText: string;
   finishReason: "stop" | "max_tokens" | "tool_calls";
   metadata?: Record<string, string>;
@@ -144,6 +145,7 @@ export type CanonicalStreamEvent =
       type: "response_started";
       responseId: string;
       model: string;
+      createdAt?: number;
       parallelToolCalls?: boolean;
       metadata?: Record<string, string>;
       systemFingerprint?: string;
@@ -158,6 +160,7 @@ export type CanonicalStreamEvent =
       type: "tool_call_delta";
       responseId: string;
       model: string;
+      createdAt?: number;
       systemFingerprint?: string;
       toolCallId: string;
       toolIndex: number;
@@ -168,6 +171,7 @@ export type CanonicalStreamEvent =
       type: "output_text_delta";
       responseId: string;
       model: string;
+      createdAt?: number;
       systemFingerprint?: string;
       delta: string;
     }
@@ -175,6 +179,7 @@ export type CanonicalStreamEvent =
       type: "reasoning_summary_delta";
       responseId: string;
       model: string;
+      createdAt?: number;
       systemFingerprint?: string;
       delta: string;
     }
@@ -182,6 +187,7 @@ export type CanonicalStreamEvent =
       type: "response_completed";
       responseId: string;
       model: string;
+      createdAt?: number;
       finishReason: "stop" | "max_tokens" | "tool_calls";
       usage?: CanonicalUsage;
       parallelToolCalls?: boolean;

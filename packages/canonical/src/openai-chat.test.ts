@@ -550,6 +550,18 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
     });
   });
 
+  it("preserves canonical createdAt in an OpenAI chat response", () => {
+    const encoded = encodeCanonicalToOpenAIChatResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      createdAt: 1,
+      outputText: "hello there",
+      finishReason: "stop"
+    });
+
+    expect(encoded.created).toBe(1);
+  });
+
   it("encodes canonical serviceTier=scale into an OpenAI chat response", () => {
     const encoded = encodeCanonicalToOpenAIChatResponse({
       id: "resp_123",
@@ -697,6 +709,41 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
           finish_reason: null
         }
       ]
+    });
+  });
+
+  it("preserves createdAt in OpenAI chat stream chunks", async () => {
+    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIChatStreamChunk(
+        {
+          type: "response_started",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          createdAt: 1
+        },
+        "chatcmpl-stream-123"
+      )
+    ).toMatchObject({
+      created: 1
+    });
+
+    expect(
+      encodeCanonicalToOpenAIChatStreamChunk(
+        {
+          type: "response_completed",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          createdAt: 1,
+          finishReason: "stop"
+        },
+        "chatcmpl-stream-123"
+      )
+    ).toMatchObject({
+      created: 1
     });
   });
 
@@ -1733,6 +1780,18 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
     });
   });
 
+  it("preserves canonical createdAt in an OpenAI responses payload", () => {
+    const encoded = encodeCanonicalToOpenAIResponsesResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      createdAt: 1,
+      outputText: "hello there",
+      finishReason: "stop"
+    });
+
+    expect(encoded.created_at).toBe(1);
+  });
+
   it("encodes canonical conversation and response text controls into an OpenAI responses payload", () => {
     const encoded = encodeCanonicalToOpenAIResponsesResponse({
       id: "resp_123",
@@ -1926,6 +1985,70 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
         }
       ],
       nextSequenceNumber: 2
+    });
+  });
+
+  it("preserves createdAt on responses lifecycle stream events", async () => {
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIResponsesStreamEvent(
+        {
+          type: "response_started",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          createdAt: 1
+        },
+        { sequenceNumber: 0, outputIndex: 0, contentIndex: 0 }
+      )
+    ).toMatchObject({
+      events: [
+        {
+          type: "response.created",
+          response: {
+            created_at: 1
+          }
+        },
+        {
+          type: "response.in_progress",
+          response: {
+            created_at: 1
+          }
+        }
+      ]
+    });
+
+    const completedEncoding = encodeCanonicalToOpenAIResponsesStreamEvent(
+      {
+        type: "response_completed",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        createdAt: 1,
+        finishReason: "stop"
+      },
+      {
+        sequenceNumber: 0,
+        outputIndex: 0,
+        contentIndex: 0,
+        outputText: "hello"
+      }
+    );
+    const completedEvent = completedEncoding.events.find((event) => {
+      return (
+        typeof event === "object" &&
+        event !== null &&
+        "type" in event &&
+        event.type === "response.completed"
+      );
+    });
+
+    expect(completedEvent).toMatchObject({
+      type: "response.completed",
+      response: {
+        created_at: 1
+      }
     });
   });
 

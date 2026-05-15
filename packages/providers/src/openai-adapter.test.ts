@@ -97,6 +97,7 @@ describe("OpenAIProviderAdapter", () => {
     });
     expect(response.outputText).toBe("hello there");
     expect(response.model).toBe("gpt-4.1-mini");
+    expect(response.createdAt).toBe(1);
     expect(response.usage).toEqual({
       inputTokens: 12,
       outputTokens: 8,
@@ -751,6 +752,7 @@ describe("OpenAIProviderAdapter", () => {
       parallel_tool_calls: false
     });
     expect(response.parallelToolCalls).toBe(false);
+    expect(response.createdAt).toBe(1);
   });
 
   it("forwards parallel_tool_calls=false through streamed native openai responses requests", async () => {
@@ -817,12 +819,14 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_started",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         parallelToolCalls: false
       },
       {
         type: "response_completed",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         finishReason: "stop",
         parallelToolCalls: false
       }
@@ -1120,6 +1124,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_started",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         parallelToolCalls: true,
         metadata: {
           tenant: "acme"
@@ -1147,6 +1152,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_completed",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         finishReason: "stop",
         parallelToolCalls: true,
         reasoningSummary: "The model checked the answer.",
@@ -1336,6 +1342,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_started",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         parallelToolCalls: true
       },
       {
@@ -1372,6 +1379,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_completed",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         finishReason: "tool_calls",
         parallelToolCalls: true,
         reasoningSummary: "The model checked the answer."
@@ -1440,6 +1448,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_started",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         parallelToolCalls: true
       },
       {
@@ -1455,6 +1464,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_completed",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         finishReason: "tool_calls",
         parallelToolCalls: true,
         usage: {
@@ -1526,6 +1536,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_started",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         parallelToolCalls: true
       },
       {
@@ -1547,6 +1558,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_completed",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         finishReason: "tool_calls",
         parallelToolCalls: true,
         usage: {
@@ -1619,6 +1631,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_started",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         parallelToolCalls: true
       },
       {
@@ -1646,6 +1659,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_completed",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         finishReason: "tool_calls",
         parallelToolCalls: true,
         reasoningSummary: "The model checked the answer.",
@@ -1982,6 +1996,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_started",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         parallelToolCalls: true
       },
       {
@@ -2000,6 +2015,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_completed",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         finishReason: "stop",
         parallelToolCalls: true,
         usage: {
@@ -2063,12 +2079,14 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_started",
         responseId: "chatcmpl_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         systemFingerprint: "fp_123"
       },
       {
         type: "output_text_delta",
         responseId: "chatcmpl_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         systemFingerprint: "fp_123",
         delta: "hello"
       },
@@ -2076,6 +2094,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_completed",
         responseId: "chatcmpl_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         systemFingerprint: "fp_123",
         finishReason: "stop"
       }
@@ -3074,24 +3093,28 @@ describe("OpenAIProviderAdapter", () => {
       {
         type: "response_started",
         responseId: "chatcmpl_123",
-        model: "gpt-4.1-mini"
+        model: "gpt-4.1-mini",
+        createdAt: 1
       },
       {
         type: "output_text_delta",
         responseId: "chatcmpl_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         delta: "hel"
       },
       {
         type: "output_text_delta",
         responseId: "chatcmpl_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         delta: "lo"
       },
       {
         type: "response_completed",
         responseId: "chatcmpl_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         finishReason: "stop",
         usage: {
           inputTokens: 12,
@@ -3216,12 +3239,14 @@ describe("OpenAIProviderAdapter", () => {
       {
         type: "response_started",
         responseId: "chatcmpl_123",
-        model: "gpt-4.1-mini"
+        model: "gpt-4.1-mini",
+        createdAt: 1
       },
       {
         type: "tool_call_delta",
         responseId: "chatcmpl_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         toolCallId: "call_123",
         toolIndex: 0,
         toolName: "lookup_weather",
@@ -3231,6 +3256,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "tool_call_delta",
         responseId: "chatcmpl_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         toolCallId: "call_123",
         toolIndex: 0,
         toolName: "lookup_weather",
@@ -3240,6 +3266,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_completed",
         responseId: "chatcmpl_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         finishReason: "tool_calls",
         usage: {
           inputTokens: 12,
@@ -3307,12 +3334,14 @@ describe("OpenAIProviderAdapter", () => {
       {
         type: "response_started",
         responseId: "chatcmpl_123",
-        model: "gpt-4.1-mini"
+        model: "gpt-4.1-mini",
+        createdAt: 1
       },
       {
         type: "tool_call_delta",
         responseId: "chatcmpl_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         toolCallId: "call_123",
         toolIndex: 0,
         toolName: "lookup_weather",
@@ -3322,6 +3351,7 @@ describe("OpenAIProviderAdapter", () => {
         type: "response_completed",
         responseId: "chatcmpl_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         finishReason: "tool_calls",
         usage: {
           inputTokens: 12,

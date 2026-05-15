@@ -691,6 +691,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
 
     const payload = (await response.json()) as {
       id: string;
+      created?: number;
       model: string;
       system_fingerprint?: string;
       metadata?: Record<string, string>;
@@ -719,6 +720,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     return {
       id: payload.id,
       model: payload.model,
+      ...(payload.created !== undefined ? { createdAt: payload.created } : {}),
       outputText: normalizeOpenAIMessageContent(
         payload.choices[0]?.message.content
       ),
@@ -934,6 +936,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
 
             const payload = JSON.parse(data) as {
               id?: string;
+              created?: number;
               model?: string;
               system_fingerprint?: string;
               choices?: Array<{
@@ -961,6 +964,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
             const choice = payload.choices?.[0];
             const responseId = payload.id ?? `chatcmpl_${context.requestId}`;
             const model = payload.model ?? request.model;
+            const createdAt = payload.created;
             streamSystemFingerprint ??= payload.system_fingerprint;
 
             if (!hasStarted) {
@@ -969,6 +973,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 type: "response_started",
                 responseId,
                 model,
+                ...(createdAt !== undefined ? { createdAt } : {}),
                 ...(streamSystemFingerprint !== undefined
                   ? { systemFingerprint: streamSystemFingerprint }
                   : {})
@@ -980,6 +985,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 type: "output_text_delta",
                 responseId,
                 model,
+                ...(createdAt !== undefined ? { createdAt } : {}),
                 ...(streamSystemFingerprint !== undefined
                   ? { systemFingerprint: streamSystemFingerprint }
                   : {}),
@@ -1012,6 +1018,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   type: "tool_call_delta",
                   responseId,
                   model,
+                  ...(createdAt !== undefined ? { createdAt } : {}),
                   ...(streamSystemFingerprint !== undefined
                     ? { systemFingerprint: streamSystemFingerprint }
                     : {}),
@@ -1032,6 +1039,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 type: "response_completed",
                 responseId,
                 model,
+                ...(createdAt !== undefined ? { createdAt } : {}),
                 ...(streamSystemFingerprint !== undefined
                   ? { systemFingerprint: streamSystemFingerprint }
                   : {}),
@@ -1341,6 +1349,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
 
     const payload = (await response.json()) as {
       id: string;
+      created_at?: number;
       model: string;
       choices?: Array<{
         finish_reason: "stop" | "length" | "tool_calls";
@@ -1390,6 +1399,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       return {
         id: payload.id,
         model: payload.model,
+        ...(payload.created_at !== undefined
+          ? { createdAt: payload.created_at }
+          : {}),
         outputText: normalizeOpenAIMessageContent(payload.choices[0]?.message.content),
         ...(payload.service_tier !== undefined
           ? { serviceTier: payload.service_tier }
@@ -1455,6 +1467,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     return {
       id: payload.id,
       model: payload.model,
+      ...(payload.created_at !== undefined
+        ? { createdAt: payload.created_at }
+        : {}),
       outputText: extractOutputTextFromOpenAIResponsesOutput(payload.output),
       ...(payload.service_tier !== undefined
         ? { serviceTier: payload.service_tier }
@@ -1896,6 +1911,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               };
               response?: {
                 id?: string;
+                created_at?: number;
                 model?: string;
                 status?: string;
                 parallel_tool_calls?: boolean;
@@ -2035,6 +2051,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   type: "response_started",
                   responseId,
                   model,
+                  ...(payload.response.created_at !== undefined
+                    ? { createdAt: payload.response.created_at }
+                    : {}),
                   ...(payload.response.parallel_tool_calls !== undefined
                     ? {
                         parallelToolCalls: payload.response.parallel_tool_calls
@@ -2314,6 +2333,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   type: "response_started",
                   responseId,
                   model,
+                  ...(payload.response.created_at !== undefined
+                    ? { createdAt: payload.response.created_at }
+                    : {}),
                   ...(payload.response.parallel_tool_calls !== undefined
                     ? {
                         parallelToolCalls: payload.response.parallel_tool_calls
@@ -2439,6 +2461,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 type: "response_completed",
                 responseId,
                 model,
+                ...(payload.response.created_at !== undefined
+                  ? { createdAt: payload.response.created_at }
+                  : {}),
                 finishReason: normalizeOpenAIResponsesFinishReason(
                   payload.response.status,
                   payload.response.incomplete_details?.reason,

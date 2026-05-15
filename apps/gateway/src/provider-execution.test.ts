@@ -1803,18 +1803,21 @@ describe("executeRoutedRequest", () => {
       {
         type: "response_started",
         responseId: "chatcmpl_half_open_stream",
-        model: "gpt-4.1-mini"
+        model: "gpt-4.1-mini",
+        createdAt: 1
       },
       {
         type: "output_text_delta",
         responseId: "chatcmpl_half_open_stream",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         delta: "half-open stream"
       },
       {
         type: "response_completed",
         responseId: "chatcmpl_half_open_stream",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         finishReason: "stop"
       }
     ]);
@@ -2068,18 +2071,21 @@ describe("executeRoutedRequest", () => {
       {
         type: "response_started",
         responseId: "chatcmpl_retry_stream",
-        model: "gpt-4.1-mini"
+        model: "gpt-4.1-mini",
+        createdAt: 1
       },
       {
         type: "output_text_delta",
         responseId: "chatcmpl_retry_stream",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         delta: "retry stream"
       },
       {
         type: "response_completed",
         responseId: "chatcmpl_retry_stream",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         finishReason: "stop"
       }
     ]);

@@ -231,12 +231,13 @@ function createOpenAIResponsesBaseResponse(
   responseId: string,
   model: string,
   status: "in_progress" | "completed",
+  createdAt = 0,
   parallelToolCalls?: boolean
 ) {
   return {
     id: responseId,
     object: "response" as const,
-    created_at: 0,
+    created_at: createdAt,
     model,
     status,
     output: [],
@@ -917,7 +918,7 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
     return {
       id: streamId,
       object: "chat.completion.chunk" as const,
-      created: 0,
+      created: event.createdAt ?? 0,
       model: event.model,
       ...(event.systemFingerprint !== undefined
         ? { system_fingerprint: event.systemFingerprint }
@@ -938,7 +939,7 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
     return {
       id: streamId,
       object: "chat.completion.chunk" as const,
-      created: 0,
+      created: event.createdAt ?? 0,
       model: event.model,
       ...(event.systemFingerprint !== undefined
         ? { system_fingerprint: event.systemFingerprint }
@@ -959,7 +960,7 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
     return {
       id: streamId,
       object: "chat.completion.chunk" as const,
-      created: 0,
+      created: event.createdAt ?? 0,
       model: event.model,
       ...(event.systemFingerprint !== undefined
         ? { system_fingerprint: event.systemFingerprint }
@@ -978,7 +979,7 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
     return {
       id: streamId,
       object: "chat.completion.chunk" as const,
-      created: 0,
+      created: event.createdAt ?? 0,
       model: event.model,
       ...(event.systemFingerprint !== undefined
         ? { system_fingerprint: event.systemFingerprint }
@@ -1012,7 +1013,7 @@ export function encodeCanonicalToOpenAIChatStreamChunk(
   return {
     id: streamId,
     object: "chat.completion.chunk" as const,
-    created: 0,
+    created: event.createdAt ?? 0,
     model: event.model,
     ...(event.systemFingerprint !== undefined
       ? { system_fingerprint: event.systemFingerprint }
@@ -1036,7 +1037,7 @@ export function encodeCanonicalToOpenAIChatResponse(
   return {
     id: response.id,
     object: "chat.completion",
-    created: 0,
+    created: response.createdAt ?? 0,
     model: response.model,
     ...(response.systemFingerprint !== undefined
       ? { system_fingerprint: response.systemFingerprint }
@@ -1105,7 +1106,7 @@ export function encodeCanonicalToOpenAIResponsesResponse(
   return {
     id: response.id,
     object: "response",
-    created_at: 0,
+    created_at: response.createdAt ?? 0,
     model: response.model,
     status: encodeCanonicalResponsesStatus(response.finishReason),
     ...(response.metadata !== undefined
@@ -1170,6 +1171,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
       event.responseId,
       event.model,
       "in_progress",
+      event.createdAt ?? 0,
       event.parallelToolCalls ?? state.parallelToolCalls
     );
     const response = addOpenAIResponsesEnvelopeFields(baseResponse, event);
@@ -1346,6 +1348,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
       event.responseId,
       event.model,
       responseStatus === "incomplete" ? "completed" : responseStatus,
+      event.createdAt ?? 0,
       event.parallelToolCalls ?? state.parallelToolCalls
     ),
     status: responseStatus,
