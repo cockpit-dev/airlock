@@ -17475,6 +17475,152 @@ describe("gateway app", () => {
     });
   });
 
+  it("preserves original route order when priority routing signals are otherwise tied in the app", async () => {
+    const routeFetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_app_priority_route_order_tie",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello from openai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher: routeFetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "prefer primary on exact tie" }]
+        })
+      },
+      {
+        ...createBindings(),
+        ANTHROPIC_API_KEY: "anthropic-secret",
+        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "priority",
+            costs: {
+              "openai:gpt-4.1-mini": 1,
+              "anthropic:claude-haiku-4-5": 1
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(routeFetcher).toHaveBeenCalledTimes(1);
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+  });
+
+  it("preserves original route order when lowest-cost routing signals are otherwise tied in the app", async () => {
+    const routeFetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_app_lowest_cost_route_order_tie",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello from openai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher: routeFetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "prefer primary on lowest-cost tie" }]
+        })
+      },
+      {
+        ...createBindings(),
+        ANTHROPIC_API_KEY: "anthropic-secret",
+        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "lowest_cost",
+            costs: {
+              "openai:gpt-4.1-mini": 1,
+              "anthropic:claude-haiku-4-5": 1
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(routeFetcher).toHaveBeenCalledTimes(1);
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+  });
+
   it("treats stale observed token cost memory as neutral when applying lowest-cost routing in the app", async () => {
     const currentTime = Date.now();
     const routeFetcher = vi.fn().mockResolvedValueOnce(

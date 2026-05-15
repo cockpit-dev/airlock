@@ -124,6 +124,29 @@ function buildAttemptRequest(
   };
 }
 
+function getOriginalTargetOrder(
+  targets: ProviderTarget[]
+): Map<string, number> {
+  return new Map(
+    targets.map((target, index) => [serializeProviderTarget(target), index])
+  );
+}
+
+function compareByOriginalRouteOrder(
+  leftKey: string,
+  rightKey: string,
+  originalOrder: Map<string, number>
+): number {
+  const leftIndex = originalOrder.get(leftKey);
+  const rightIndex = originalOrder.get(rightKey);
+
+  if (leftIndex !== undefined && rightIndex !== undefined && leftIndex !== rightIndex) {
+    return leftIndex - rightIndex;
+  }
+
+  return leftKey.localeCompare(rightKey);
+}
+
 export function assertProviderSupportsCanonicalRequest(
   descriptor: ProviderCapabilityDescriptor,
   request: CanonicalRequest,
@@ -383,6 +406,7 @@ function reorderTargetsForRoute(
   healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
 ): ProviderTarget[] {
   const targetSelection = route.targetSelection;
+  const originalOrder = getOriginalTargetOrder(targets);
 
   if (!targetSelection) {
     return targets;
@@ -390,6 +414,8 @@ function reorderTargetsForRoute(
 
   if (targetSelection.strategy === "health_priority") {
     return [...targets].sort((left, right) => {
+      const leftKey = serializeProviderTarget(left);
+      const rightKey = serializeProviderTarget(right);
       const leftHealth = healthByTarget?.get(serializeProviderTarget(left)) ?? {
         isOpen: false,
         consecutiveRetryableFailures: 0
@@ -417,7 +443,7 @@ function reorderTargetsForRoute(
         );
       }
 
-      return 0;
+      return compareByOriginalRouteOrder(leftKey, rightKey, originalOrder);
     });
   }
 
@@ -450,7 +476,7 @@ function reorderTargetsForRoute(
         return leftCost - rightCost;
       }
 
-      return leftKey.localeCompare(rightKey);
+      return compareByOriginalRouteOrder(leftKey, rightKey, originalOrder);
     });
   }
 
@@ -475,8 +501,10 @@ function reorderTargetsForRoute(
       return rightScore - leftScore;
     }
 
-    return serializeProviderTarget(left).localeCompare(
-      serializeProviderTarget(right)
+    return compareByOriginalRouteOrder(
+      serializeProviderTarget(left),
+      serializeProviderTarget(right),
+      originalOrder
     );
   });
 }
@@ -579,6 +607,7 @@ function reorderTargetsForPrioritySelection(
   healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
 ): ProviderTarget[] {
   const PRIORITY_RECOVERY_WINDOW_MS = 30_000;
+  const originalOrder = getOriginalTargetOrder(targets);
 
   function getPriorityRecoveryPenalty(
     health: {
@@ -699,7 +728,7 @@ function reorderTargetsForPrioritySelection(
       return leftCost - rightCost;
     }
 
-    return leftKey.localeCompare(rightKey);
+    return compareByOriginalRouteOrder(leftKey, rightKey, originalOrder);
   });
 }
 

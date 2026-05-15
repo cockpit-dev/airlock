@@ -3865,6 +3865,200 @@ describe("executeRoutedRequest", () => {
     expect(response.model).toBe("claude-haiku-4-5");
   });
 
+  it("preserves original route order when priority targets are otherwise tied", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ],
+      targetSelection: {
+        strategy: "priority",
+        costs: {
+          "openai:gpt-4.1-mini": 1,
+          "anthropic:claude-haiku-4-5": 1
+        }
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_priority_route_order_tie",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello from openai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const response = await executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
+        providerCircuitBreakerThreshold: 3,
+        providerCircuitBreakerCooldownMs: 60_000,
+        providerCircuitBreakerPersistent: true,
+        modelGroups: {},
+        gatewayApiKeys: [],
+        modelAliases: [],
+        anthropic: {
+          apiKey: "anthropic-secret",
+          baseUrl: "https://api.anthropic.com/v1",
+          defaultMaxTokens: 256
+        },
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_priority_route_order_tie",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(response.model).toBe("gpt-4.1-mini");
+  });
+
+  it("preserves original route order when lowest-cost targets are otherwise tied", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ],
+      targetSelection: {
+        strategy: "lowest_cost",
+        costs: {
+          "openai:gpt-4.1-mini": 1,
+          "anthropic:claude-haiku-4-5": 1
+        }
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_lowest_cost_route_order_tie",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello from openai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const response = await executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
+        providerCircuitBreakerThreshold: 3,
+        providerCircuitBreakerCooldownMs: 60_000,
+        providerCircuitBreakerPersistent: true,
+        modelGroups: {},
+        gatewayApiKeys: [],
+        modelAliases: [],
+        anthropic: {
+          apiKey: "anthropic-secret",
+          baseUrl: "https://api.anthropic.com/v1",
+          defaultMaxTokens: 256
+        },
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_lowest_cost_route_order_tie",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(response.model).toBe("gpt-4.1-mini");
+  });
+
   it("treats stale observed token cost memory as neutral for lowest-cost routing", async () => {
     const route: ModelRoute = {
       externalModel: "assistant-default",
