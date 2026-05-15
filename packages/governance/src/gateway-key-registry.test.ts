@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { GatewayKeyRegistryStoredDynamicKey } from "./gateway-key-registry.js";
 import {
   createStoredGatewayRegistryDynamicKey,
   createStoredGatewayRegistryFieldDiffs,
@@ -966,9 +967,10 @@ describe("registry actor metadata helpers", () => {
 });
 
 describe("doesDynamicKeyMatchValueHash", () => {
-  const baseKey = {
-    keyId: "key-1",
-    name: "Test Key",
+  const baseKey: GatewayKeyRegistryStoredDynamicKey = {
+    id: "key-1",
+    label: "Test Key",
+    status: "active",
     valueHash: "hash-abc",
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z"
@@ -1020,25 +1022,28 @@ describe("doesDynamicKeyMatchValueHash", () => {
 });
 
 describe("findDynamicKeyByValueHash", () => {
-  const keys = [
+  const keys: GatewayKeyRegistryStoredDynamicKey[] = [
     {
-      keyId: "key-1",
-      name: "Active Key",
+      id: "key-1",
+      label: "Active Key",
+      status: "active",
       valueHash: "hash-a",
       createdAt: "2026-01-01T00:00:00Z",
       updatedAt: "2026-01-01T00:00:00Z"
     },
     {
-      keyId: "key-2",
-      name: "Archived Key",
+      id: "key-2",
+      label: "Archived Key",
+      status: "active",
       valueHash: "hash-b",
       archivedAt: "2026-01-02T00:00:00Z",
       createdAt: "2026-01-01T00:00:00Z",
       updatedAt: "2026-01-02T00:00:00Z"
     },
     {
-      keyId: "key-3",
-      name: "Rotated Key",
+      id: "key-3",
+      label: "Rotated Key",
+      status: "active",
       valueHash: "hash-c-new",
       previousValueHash: "hash-c-old",
       previousValueHashExpiresAt: new Date(200_000).toISOString(),
@@ -1049,7 +1054,7 @@ describe("findDynamicKeyByValueHash", () => {
 
   it("finds key by current valueHash", () => {
     const found = findDynamicKeyByValueHash(keys, "hash-a", Date.now());
-    expect(found?.keyId).toBe("key-1");
+    expect(found?.id).toBe("key-1");
   });
 
   it("skips archived key even if hash matches", () => {
@@ -1059,7 +1064,7 @@ describe("findDynamicKeyByValueHash", () => {
 
   it("finds key by previousValueHash within overlap", () => {
     const found = findDynamicKeyByValueHash(keys, "hash-c-old", 100_000);
-    expect(found?.keyId).toBe("key-3");
+    expect(found?.id).toBe("key-3");
   });
 
   it("returns undefined when no key matches", () => {
