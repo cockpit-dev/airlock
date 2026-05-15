@@ -31,11 +31,17 @@ export interface PriorityRouteTargetSelection {
   costs?: Record<string, number>;
 }
 
+export interface HealthScoreRouteTargetSelection {
+  strategy: "health_score";
+  latencySloMs?: Record<string, number>;
+}
+
 export type RouteTargetSelection =
   | WeightedRouteTargetSelection
   | LowestCostRouteTargetSelection
   | HealthPriorityRouteTargetSelection
-  | PriorityRouteTargetSelection;
+  | PriorityRouteTargetSelection
+  | HealthScoreRouteTargetSelection;
 
 export interface ModelRoute {
   externalModel: string;
@@ -472,6 +478,24 @@ export function parseRouteTargetSelection(
       continue;
     }
 
+    if (strategy === "health_score") {
+      const selectionRecord = selection as Record<string, unknown>;
+      const latencySloValue = selectionRecord.latencySloMs;
+      const latencySloMs =
+        latencySloValue !== undefined
+          ? parsePositiveTargetNumberMap(
+              latencySloValue,
+              "Health-score target selection latencySloMs"
+            )
+          : undefined;
+
+      targetSelectionByRoute[externalModel] = {
+        strategy: "health_score",
+        ...(latencySloMs ? { latencySloMs } : {})
+      };
+      continue;
+    }
+
     throw createInvalidRouteTargetSelectionError(
       "Route target selection strategy must be supported"
     );
@@ -582,6 +606,10 @@ function listTargetSelectionKeys(
         ...Object.keys(targetSelection.costs ?? {})
       ])
     );
+  }
+
+  if (targetSelection.strategy === "health_score") {
+    return Object.keys(targetSelection.latencySloMs ?? {});
   }
 
   return [];

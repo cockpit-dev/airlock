@@ -11,6 +11,8 @@ import {
   getPriorityLatencyDeltaRatio,
   getPriorityEffectiveCost,
   getPriorityRecoveryPenalty,
+  getTargetHealthScore,
+  compareTargetsByHealthScore,
   type RoutingScoringContext
 } from "./routing-strategy-comparators.js";
 import type { ProviderTargetHealthSnapshot } from "./provider-target-health.js";
@@ -546,5 +548,137 @@ describe("computeAdjustedWeight", () => {
       healthByTarget: new Map([["a", makeHealth()]])
     });
     expect(computeAdjustedWeight(10, "a", ctx)).toBe(10);
+  });
+});
+
+// ── getTargetHealthScore ────────────────────────────────────────────────
+
+describe("getTargetHealthScore", () => {
+  it("returns tier 0 for open target", () => {
+    const ctx = makeCtx({
+      healthByTarget: new Map([["a", makeHealth({ isOpen: true })]])
+    });
+    const score = getTargetHealthScore("a", ctx);
+    expect(score.tier).toBe(0);
+  });
+
+  it("returns tier 4 for healthy target with default health", () => {
+    const ctx = makeCtx({
+      healthByTarget: new Map([["a", makeHealth()]])
+    });
+    const score = getTargetHealthScore("a", ctx);
+    expect(score.tier).toBe(4);
+  });
+
+  it("uses latency SLO from provided map", () => {
+    const ctx = makeCtx({
+      healthByTarget: new Map([
+        [
+          "a",
+          makeHealth({
+            smoothedSuccessLatencyMs: 300,
+            lastSuccessAt: 9000
+          })
+        ]
+      ])
+    });
+    const score = getTargetHealthScore("a", ctx, { a: 200 });
+    expect(score.tier).toBe(4);
+    // Exceeding SLO → subScore < 1
+    expect(score.subScore).toBeLessThan(1);
+  });
+
+  it("returns tier 4 for unknown target (default health)", () => {
+    const ctx = makeCtx();
+    const score = getTargetHealthScore("unknown", ctx);
+    expect(score.tier).toBe(4);
+  });
+});
+
+// ── compareTargetsByHealthScore ─────────────────────────────────────────
+
+describe("compareTargetsByHealthScore", () => {
+  it("prefers healthy over open", () => {
+    const ctx = makeCtx({
+      healthByTarget: new Map([
+        ["a", makeHealth({ isOpen: true })],
+        ["b", makeHealth()]
+      ])
+    });
+    expect(compareTargetsByHealthScore("a", "b", ctx)).toBeGreaterThan(0);
+  });
+
+  it("prefers healthy over degraded", () => {
+    const ctx = makeCtx({
+      healthByTarget: new Map([
+        [
+          "a",
+          makeHealth({ consecutiveRetryableFailures: 3, lastFailureAt: 9000 })
+        ],
+        ["b", makeHealth()]
+      ])
+    });
+    expect(compareTargetsByHealthScore("a", "b", ctx)).toBeGreaterThan(0);
+  });
+
+  it("prefers degraded over half-open", () => {
+    const ctx = makeCtx({
+      healthByTarget: new Map([
+        [
+          "a",
+          makeHealth({ isHalfOpen: true, consecutiveRetryableFailures: 1 })
+        ],
+        [
+          "b",
+          makeHealth({ consecutiveRetryableFailures: 1, lastFailureAt: 9000 })
+        ]
+      ])
+    });
+    expect(compareTargetsByHealthScore("a", "b", ctx)).toBeGreaterThan(0);
+  });
+
+  it("prefers fewer failures within degraded tier", () => {
+    const ctx = makeCtx({
+      healthByTarget: new Map([
+        [
+          "a",
+          makeHealth({ consecutiveRetryableFailures: 5, lastFailureAt: 9000 })
+        ],
+        [
+          "b",
+          makeHealth({ consecutiveRetryableFailures: 1, lastFailureAt: 9000 })
+        ]
+      ])
+    });
+    // Both tier 2, but b has fewer failures → higher subScore
+    expect(compareTargetsByHealthScore("a", "b", ctx)).toBeGreaterThan(0);
+  });
+
+  it("prefers lower latency within healthy tier", () => {
+    const ctx = makeCtx({
+      healthByTarget: new Map([
+        [
+          "a",
+          makeHealth({ smoothedSuccessLatencyMs: 300, lastSuccessAt: 9000 })
+        ],
+        [
+          "b",
+          makeHealth({ smoothedSuccessLatencyMs: 100, lastSuccessAt: 9000 })
+        ]
+      ])
+    });
+    expect(
+      compareTargetsByHealthScore("a", "b", ctx, { a: 200, b: 200 })
+    ).toBeGreaterThan(0);
+  });
+
+  it("falls back to route order when scores are equal", () => {
+    const ctx = makeCtx({
+      healthByTarget: new Map([
+        ["a", makeHealth()],
+        ["b", makeHealth()]
+      ])
+    });
+    expect(compareTargetsByHealthScore("a", "b", ctx)).toBeLessThan(0);
   });
 });

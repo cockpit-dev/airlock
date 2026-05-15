@@ -17,6 +17,7 @@ import {
   compareTargetsByHealthPriority,
   compareTargetsByLowestCost,
   compareTargetsByPriority,
+  compareTargetsByHealthScore,
   computeAdjustedWeight,
   compareByOriginalRouteOrder,
   type ProviderTargetHealthSnapshot,
@@ -498,6 +499,17 @@ function reorderTargetsForRoute(
         serializeProviderTarget(right),
         ctx,
         targetSelection
+      )
+    );
+  }
+
+  if (targetSelection.strategy === "health_score") {
+    return [...targets].sort((left, right) =>
+      compareTargetsByHealthScore(
+        serializeProviderTarget(left),
+        serializeProviderTarget(right),
+        ctx,
+        targetSelection.latencySloMs
       )
     );
   }

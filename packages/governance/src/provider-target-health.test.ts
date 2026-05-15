@@ -9,6 +9,8 @@ import {
   getRecoveryScore,
   getFreshObservedTokenCostMultiplier,
   adjustWeightForFailures,
+  computeHierarchicalHealthScore,
+  compareHierarchicalHealthScores,
   type ProviderTargetHealthSnapshot
 } from "./provider-target-health.js";
 
@@ -335,5 +337,213 @@ describe("adjustWeightForFailures", () => {
         30_000
       )
     ).toBe(0);
+  });
+});
+
+const defaultWindows = {
+  latencyFreshnessMs: 30_000,
+  costFreshnessMs: 30_000,
+  failureFreshnessMs: 30_000,
+  recoveryWindowMs: 30_000
+};
+
+describe("computeHierarchicalHealthScore", () => {
+  it("returns tier 0 for open circuit", () => {
+    const score = computeHierarchicalHealthScore(
+      { isOpen: true, consecutiveRetryableFailures: 5 },
+      now,
+      defaultWindows
+    );
+    expect(score.tier).toBe(0);
+    expect(score.subScore).toBe(0);
+  });
+
+  it("returns tier 1 for half-open circuit", () => {
+    const score = computeHierarchicalHealthScore(
+      { isOpen: false, isHalfOpen: true, consecutiveRetryableFailures: 3 },
+      now,
+      defaultWindows
+    );
+    expect(score.tier).toBe(1);
+    expect(score.subScore).toBe(0.5);
+  });
+
+  it("returns tier 2 for degraded target with fresh failures", () => {
+    const score = computeHierarchicalHealthScore(
+      {
+        isOpen: false,
+        consecutiveRetryableFailures: 2,
+        lastFailureAt: now - 1000
+      },
+      now,
+      defaultWindows
+    );
+    expect(score.tier).toBe(2);
+    expect(score.subScore).toBeCloseTo(1 / 3);
+  });
+
+  it("returns tier 2 subScore approaching 1 for single failure", () => {
+    const score = computeHierarchicalHealthScore(
+      {
+        isOpen: false,
+        consecutiveRetryableFailures: 1,
+        lastFailureAt: now - 1000
+      },
+      now,
+      defaultWindows
+    );
+    expect(score.tier).toBe(2);
+    expect(score.subScore).toBeCloseTo(0.5);
+  });
+
+  it("returns tier 3 for recovering target with 0 successes", () => {
+    const score = computeHierarchicalHealthScore(
+      {
+        isOpen: false,
+        consecutiveRetryableFailures: 0,
+        recoverySuccessCount: 0
+      },
+      now,
+      defaultWindows
+    );
+    expect(score.tier).toBe(3);
+    expect(score.subScore).toBe(0);
+  });
+
+  it("returns tier 3 for recovering target with 1 success", () => {
+    const score = computeHierarchicalHealthScore(
+      {
+        isOpen: false,
+        consecutiveRetryableFailures: 0,
+        recoverySuccessCount: 1
+      },
+      now,
+      defaultWindows
+    );
+    expect(score.tier).toBe(3);
+    expect(score.subScore).toBe(0.5);
+  });
+
+  it("returns tier 4 for fully healthy target", () => {
+    const score = computeHierarchicalHealthScore(
+      {
+        isOpen: false,
+        consecutiveRetryableFailures: 0,
+        smoothedSuccessLatencyMs: 100,
+        lastSuccessAt: now - 1000
+      },
+      now,
+      defaultWindows
+    );
+    expect(score.tier).toBe(4);
+    expect(score.subScore).toBe(1); // fresh latency, no error rate, no SLO
+  });
+
+  it("penalizes healthy tier with stale latency data", () => {
+    const score = computeHierarchicalHealthScore(
+      {
+        isOpen: false,
+        consecutiveRetryableFailures: 0,
+        smoothedSuccessLatencyMs: 100,
+        lastSuccessAt: now - 60_000
+      },
+      now,
+      defaultWindows
+    );
+    expect(score.tier).toBe(4);
+    // errorRateFactor=1 (no data), latencyFactor=0.5 (stale)
+    expect(score.subScore).toBeCloseTo(1 * 0.4 + 0.5 * 0.6);
+  });
+
+  it("penalizes healthy tier with high error rate", () => {
+    const score = computeHierarchicalHealthScore(
+      {
+        isOpen: false,
+        consecutiveRetryableFailures: 0,
+        smoothedSuccessLatencyMs: 100,
+        lastSuccessAt: now - 1000,
+        windowedTotalAttempts: 10,
+        windowedFailures: 5
+      },
+      now,
+      defaultWindows
+    );
+    expect(score.tier).toBe(4);
+    // errorRateFactor=0.5, latencyFactor=1 (fresh, no SLO)
+    expect(score.subScore).toBeCloseTo(0.5 * 0.4 + 1 * 0.6);
+  });
+
+  it("penalizes healthy tier for exceeding latency SLO", () => {
+    const score = computeHierarchicalHealthScore(
+      {
+        isOpen: false,
+        consecutiveRetryableFailures: 0,
+        smoothedSuccessLatencyMs: 300,
+        lastSuccessAt: now - 1000
+      },
+      now,
+      defaultWindows,
+      200 // SLO = 200ms
+    );
+    expect(score.tier).toBe(4);
+    // errorRateFactor=1, latencyFactor=max(0, 1-(300-200)/200) = max(0, 0.5) = 0.5
+    expect(score.subScore).toBeCloseTo(1 * 0.4 + 0.5 * 0.6);
+  });
+
+  it("rewards healthy tier for being within latency SLO", () => {
+    const score = computeHierarchicalHealthScore(
+      {
+        isOpen: false,
+        consecutiveRetryableFailures: 0,
+        smoothedSuccessLatencyMs: 100,
+        lastSuccessAt: now - 1000
+      },
+      now,
+      defaultWindows,
+      200 // SLO = 200ms
+    );
+    expect(score.tier).toBe(4);
+    // errorRateFactor=1, latencyFactor=max(0, 1-(100-200)/200) = max(0, 1.5) capped by Math.min(1,...)
+    expect(score.subScore).toBe(1);
+  });
+
+  it("skips degraded tier when failures are stale", () => {
+    const score = computeHierarchicalHealthScore(
+      {
+        isOpen: false,
+        consecutiveRetryableFailures: 3,
+        lastFailureAt: now - 60_000
+      },
+      now,
+      defaultWindows
+    );
+    // Failures outside freshness window → treated as no failures → healthy tier
+    expect(score.tier).toBe(4);
+  });
+});
+
+describe("compareHierarchicalHealthScores", () => {
+  it("higher tier wins", () => {
+    const left = { tier: 3, subScore: 0 };
+    const right = { tier: 4, subScore: 0.9 };
+    expect(compareHierarchicalHealthScores(left, right)).toBeGreaterThan(0);
+  });
+
+  it("lower tier loses", () => {
+    const left = { tier: 1, subScore: 0.5 };
+    const right = { tier: 2, subScore: 0.1 };
+    expect(compareHierarchicalHealthScores(left, right)).toBeGreaterThan(0);
+  });
+
+  it("same tier: higher subScore wins", () => {
+    const left = { tier: 4, subScore: 0.3 };
+    const right = { tier: 4, subScore: 0.8 };
+    expect(compareHierarchicalHealthScores(left, right)).toBeGreaterThan(0);
+  });
+
+  it("identical scores return 0", () => {
+    const left = { tier: 3, subScore: 0.5 };
+    const right = { tier: 3, subScore: 0.5 };
+    expect(compareHierarchicalHealthScores(left, right)).toBe(0);
   });
 });

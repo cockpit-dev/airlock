@@ -418,6 +418,46 @@ describe("parseRouteTargetSelection", () => {
       )
     ).toThrow(GatewayError);
   });
+
+  it("parses health-score target selection", () => {
+    expect(
+      parseRouteTargetSelection(
+        JSON.stringify({
+          "assistant-default": {
+            strategy: "health_score",
+            latencySloMs: {
+              "openai:gpt-4.1-mini": 300,
+              "anthropic:claude-haiku-4-5": 800
+            }
+          }
+        })
+      )
+    ).toEqual({
+      "assistant-default": {
+        strategy: "health_score",
+        latencySloMs: {
+          "openai:gpt-4.1-mini": 300,
+          "anthropic:claude-haiku-4-5": 800
+        }
+      }
+    });
+  });
+
+  it("parses health-score target selection without latencySloMs", () => {
+    expect(
+      parseRouteTargetSelection(
+        JSON.stringify({
+          "assistant-default": {
+            strategy: "health_score"
+          }
+        })
+      )
+    ).toEqual({
+      "assistant-default": {
+        strategy: "health_score"
+      }
+    });
+  });
 });
 
 describe("parseRouteKeyAccessPolicy", () => {

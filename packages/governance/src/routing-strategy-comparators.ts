@@ -1,11 +1,13 @@
-import type { ProviderTargetHealthSnapshot, RoutingFreshnessWindows } from "./provider-target-health.js";
+import type { ProviderTargetHealthSnapshot, RoutingFreshnessWindows, HierarchicalHealthScore } from "./provider-target-health.js";
 import {
   getFreshRetryableFailureCount,
   getFreshSmoothedLatency,
   getSlidingWindowErrorRate,
   getRecoveryScore,
   getFreshObservedTokenCostMultiplier,
-  adjustWeightForFailures
+  adjustWeightForFailures,
+  computeHierarchicalHealthScore,
+  compareHierarchicalHealthScores
 } from "./provider-target-health.js";
 
 /**
@@ -475,4 +477,42 @@ export function computeAdjustedWeight(
     ctx.now,
     ctx.windows.failureFreshnessMs
   );
+}
+
+/**
+ * Computes the hierarchical health score for a target within a routing context.
+ */
+export function getTargetHealthScore(
+  targetKey: string,
+  ctx: RoutingScoringContext,
+  latencySloMs?: Readonly<Record<string, number>>
+): HierarchicalHealthScore {
+  const health = getHealthForTarget(targetKey, ctx.healthByTarget);
+  const slo = latencySloMs?.[targetKey];
+  return computeHierarchicalHealthScore(health, ctx.now, ctx.windows, slo);
+}
+
+/**
+ * Hierarchical health score strategy comparator.
+ *
+ * Uses a composite tier + sub-score that combines circuit state, failure
+ * count, recovery progress, error rate, and latency SLO into a single
+ * sortable metric. Targets are ranked by tier first, then sub-score.
+ * Falls back to original route order when scores are identical.
+ */
+export function compareTargetsByHealthScore(
+  leftKey: string,
+  rightKey: string,
+  ctx: RoutingScoringContext,
+  latencySloMs?: Readonly<Record<string, number>>
+): number {
+  const leftScore = getTargetHealthScore(leftKey, ctx, latencySloMs);
+  const rightScore = getTargetHealthScore(rightKey, ctx, latencySloMs);
+
+  const cmp = compareHierarchicalHealthScores(leftScore, rightScore);
+  if (cmp !== 0) {
+    return cmp;
+  }
+
+  return compareByOriginalRouteOrder(leftKey, rightKey, ctx.originalOrder);
 }

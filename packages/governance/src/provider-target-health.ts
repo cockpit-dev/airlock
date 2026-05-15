@@ -222,3 +222,110 @@ export function adjustWeightForFailures(
 
   return Math.max(0, weight - freshFailureCount);
 }
+
+/**
+ * Hierarchical health score combining multiple signals into a single
+ * sortable metric with dominant tier and fine-grained sub-score.
+ *
+ * Tiers (dominant ordering):
+ *   4 = healthy    — closed, no fresh failures
+ *   3 = recovering — closed, past failures with successful recovery
+ *   2 = degraded   — closed, has fresh failures
+ *   1 = probing    — half-open circuit
+ *   0 = unavailable — open circuit
+ *
+ * Sub-score (0–1 within tier, for tie-breaking):
+ *   Healthy:    penalizes stale latency data and high error rate
+ *   Recovering: scales with recovery success count
+ *   Degraded:   inversely scales with failure count
+ *   Probing:    always 0.5
+ *   Unavailable: always 0
+ */
+export interface HierarchicalHealthScore {
+  /** Health tier (0–4, higher is healthier) */
+  tier: number;
+  /** Sub-score within tier (0–1, higher is better) */
+  subScore: number;
+}
+
+/**
+ * Computes a hierarchical health score for a target.
+ *
+ * @param health    The target's health snapshot
+ * @param now       Current wall-clock time (ms since epoch)
+ * @param windows   Freshness windows for signal staleness
+ * @param latencySloMs  Optional latency SLO in ms for the healthy-tier sub-score
+ */
+export function computeHierarchicalHealthScore(
+  health: ProviderTargetHealthSnapshot,
+  now: number,
+  windows: RoutingFreshnessWindows,
+  latencySloMs?: number
+): HierarchicalHealthScore {
+  // Tier 0: open circuit — completely unavailable
+  if (health.isOpen) {
+    return { tier: 0, subScore: 0 };
+  }
+
+  // Tier 1: half-open — probing only
+  if (health.isHalfOpen) {
+    return { tier: 1, subScore: 0.5 };
+  }
+
+  const freshFailures = getFreshRetryableFailureCount(
+    health,
+    now,
+    windows.failureFreshnessMs
+  );
+
+  // Tier 2: degraded — has fresh failures
+  if (freshFailures > 0) {
+    const subScore = 1 / (1 + freshFailures);
+    return { tier: 2, subScore };
+  }
+
+  const recoveryScore = getRecoveryScore(health);
+
+  // Tier 3: recovering — past failures, building confidence
+  if (recoveryScore < 2) {
+    const count = health.recoverySuccessCount ?? 0;
+    // 0 successes → 0.0, 1 success → 0.5
+    const subScore = count >= 1 ? 0.5 : 0;
+    return { tier: 3, subScore };
+  }
+
+  // Tier 4: healthy — combine error rate and latency signals
+  const errorRate = getSlidingWindowErrorRate(health);
+  const errorRateFactor = 1 - Math.min(errorRate, 1);
+
+  const latency = getFreshSmoothedLatency(health, now, windows.latencyFreshnessMs);
+  let latencyFactor: number;
+  if (latency === Number.POSITIVE_INFINITY) {
+    // No latency data — neutral sub-score component
+    latencyFactor = 0.5;
+  } else if (latencySloMs !== undefined && latencySloMs > 0) {
+    // Within SLO → 1.0, up to 2× SLO → scales toward 0
+    latencyFactor = Math.max(0, 1 - (latency - latencySloMs) / latencySloMs);
+  } else {
+    // No SLO defined — fresh latency data is a positive signal
+    latencyFactor = 1;
+  }
+
+  // Weighted combination: error rate 40%, latency 60%
+  const subScore = Math.min(1, errorRateFactor * 0.4 + latencyFactor * 0.6);
+  return { tier: 4, subScore };
+}
+
+/**
+ * Compares two hierarchical health scores.
+ * Higher tier wins; within the same tier, higher sub-score wins.
+ */
+export function compareHierarchicalHealthScores(
+  left: HierarchicalHealthScore,
+  right: HierarchicalHealthScore
+): number {
+  if (left.tier !== right.tier) {
+    return right.tier - left.tier;
+  }
+  return right.subScore - left.subScore;
+}
