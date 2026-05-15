@@ -2021,6 +2021,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 model?: string;
                 status?: string;
                 parallel_tool_calls?: boolean;
+                metadata?: Record<string, string>;
                 output?: Array<{
                   type?: string;
                   summary?: Array<{
@@ -2142,7 +2143,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 yield {
                   type: "response_started",
                   responseId,
-                  model
+                  model,
+                  ...(payload.response.metadata !== undefined
+                    ? { metadata: payload.response.metadata }
+                    : {})
                 };
               }
 
@@ -2276,6 +2280,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   payload.response.incomplete_details?.reason,
                   streamedToolCalls.size > 0
                 ),
+                ...(payload.response.metadata !== undefined
+                  ? { metadata: payload.response.metadata }
+                  : {}),
                 ...(payload.response.parallel_tool_calls !== undefined
                   ? {
                       parallelToolCalls: payload.response.parallel_tool_calls

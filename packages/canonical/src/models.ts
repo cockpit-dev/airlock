@@ -137,6 +137,7 @@ export type CanonicalStreamEvent =
       responseId: string;
       model: string;
       parallelToolCalls?: boolean;
+      metadata?: Record<string, string>;
     }
   | {
       type: "tool_call_delta";
@@ -167,4 +168,5 @@ export type CanonicalStreamEvent =
       usage?: CanonicalUsage;
       parallelToolCalls?: boolean;
       reasoningSummary?: string;
+      metadata?: Record<string, string>;
     };

@@ -1024,12 +1024,22 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
         {
           type: "response.created" as const,
           sequence_number: state.sequenceNumber,
-          response: baseResponse
+          response: {
+            ...baseResponse,
+            ...(event.metadata !== undefined
+              ? { metadata: event.metadata }
+              : {})
+          }
         },
         {
           type: "response.in_progress" as const,
           sequence_number: state.sequenceNumber + 1,
-          response: baseResponse
+          response: {
+            ...baseResponse,
+            ...(event.metadata !== undefined
+              ? { metadata: event.metadata }
+              : {})
+          }
         }
       ],
       nextSequenceNumber: state.sequenceNumber + 2
@@ -1200,6 +1210,9 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
             event.finishReason
           )
         }
+      : {}),
+    ...(event.metadata !== undefined
+      ? { metadata: event.metadata }
       : {}),
     output: [
       ...(reasoningSummary.length > 0
