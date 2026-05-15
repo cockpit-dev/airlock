@@ -15714,10 +15714,76 @@ describe("gateway app", () => {
       })
     },
     {
+      title: "chat frequency_penalty is sent to Gemini",
+      model: "gemini-2.5-flash",
+      payload: {
+        frequency_penalty: 0.5
+      },
+      createEnv: () => ({
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      })
+    },
+    {
+      title: "chat presence_penalty is sent to Anthropic",
+      model: "claude-sonnet-4-5",
+      payload: {
+        presence_penalty: 0.5
+      },
+      createEnv: () => createBindings()
+    },
+    {
       title: "chat seed is sent to Anthropic",
       model: "claude-sonnet-4-5",
       payload: {
         seed: 1234
+      },
+      createEnv: () => createBindings()
+    },
+    {
+      title: "chat service_tier is sent to Gemini",
+      model: "gemini-2.5-flash",
+      payload: {
+        service_tier: "flex"
+      },
+      createEnv: () => ({
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      })
+    },
+    {
+      title: "chat store is sent to Gemini",
+      model: "gemini-2.5-flash",
+      payload: {
+        store: true
+      },
+      createEnv: () => ({
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      })
+    },
+    {
+      title: "chat prompt_cache_key is sent to Anthropic",
+      model: "claude-sonnet-4-5",
+      payload: {
+        prompt_cache_key: "cache-key-123"
+      },
+      createEnv: () => createBindings()
+    },
+    {
+      title: "chat prompt_cache_retention is sent to Anthropic",
+      model: "claude-sonnet-4-5",
+      payload: {
+        prompt_cache_retention: "24h"
       },
       createEnv: () => createBindings()
     }
@@ -22242,6 +22308,50 @@ describe("gateway app", () => {
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       })
+    },
+    {
+      title: "responses service_tier is sent to Gemini",
+      model: "gemini-2.5-flash",
+      payload: {
+        service_tier: "priority"
+      },
+      createEnv: () => ({
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      })
+    },
+    {
+      title: "responses store is sent to Gemini",
+      model: "gemini-2.5-flash",
+      payload: {
+        store: true
+      },
+      createEnv: () => ({
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      })
+    },
+    {
+      title: "responses prompt_cache_key is sent to Anthropic",
+      model: "claude-sonnet-4-5",
+      payload: {
+        prompt_cache_key: "cache-key-123"
+      },
+      createEnv: () => createBindings()
+    },
+    {
+      title: "responses prompt_cache_retention is sent to Anthropic",
+      model: "claude-sonnet-4-5",
+      payload: {
+        prompt_cache_retention: "24h"
+      },
+      createEnv: () => createBindings()
     }
   ]) {
     it(`fails closed when ${testCase.title}`, async () => {
