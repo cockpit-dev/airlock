@@ -66,6 +66,40 @@ describe("applyRequestShaping", () => {
     });
   });
 
+  it("deep merges nested jsonBody objects instead of replacing them wholesale", () => {
+    expect(
+      applyRequestShaping(createOutboundRequestShape(), {
+        jsonBody: {
+          metadata: {
+            source: "route",
+            nested: {
+              trace: true
+            }
+          }
+        }
+      })
+    ).toEqual({
+      path: "/chat/completions",
+      method: "POST",
+      headers: {
+        authorization: "Bearer secret",
+        "content-type": "application/json"
+      },
+      query: {
+        existing: "1"
+      },
+      jsonBody: {
+        model: "gpt-4.1-mini",
+        metadata: {
+          source: "route",
+          nested: {
+            trace: true
+          }
+        }
+      }
+    });
+  });
+
   it("rejects reserved auth-controlled headers", () => {
     expect(() =>
       applyRequestShaping(createOutboundRequestShape(), {
@@ -569,6 +603,45 @@ describe("mergeRequestShapingProfiles", () => {
       jsonBody: {
         temperature: 0.8,
         metadata: "route"
+      }
+    });
+  });
+
+  it("deep merges nested jsonBody objects across merged shaping profiles", () => {
+    expect(
+      mergeRequestShapingProfiles(
+        {
+          jsonBody: {
+            metadata: {
+              source: "route",
+              nested: {
+                trace: true,
+                level: 1
+              }
+            }
+          }
+        },
+        {
+          jsonBody: {
+            metadata: {
+              nested: {
+                level: 2,
+                span: "request"
+              }
+            }
+          }
+        }
+      )
+    ).toEqual({
+      jsonBody: {
+        metadata: {
+          source: "route",
+          nested: {
+            trace: true,
+            level: 2,
+            span: "request"
+          }
+        }
       }
     });
   });

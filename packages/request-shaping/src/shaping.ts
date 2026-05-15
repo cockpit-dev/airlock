@@ -111,6 +111,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function deepMergeRecords(
+  base: Record<string, unknown> | undefined,
+  override: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (!base && !override) {
+    return undefined;
+  }
+
+  if (!base) {
+    return { ...override };
+  }
+
+  if (!override) {
+    return { ...base };
+  }
+
+  const merged: Record<string, unknown> = { ...base };
+
+  for (const [key, overrideValue] of Object.entries(override)) {
+    const baseValue = merged[key];
+
+    if (isRecord(baseValue) && isRecord(overrideValue)) {
+      merged[key] = deepMergeRecords(baseValue, overrideValue) ?? {};
+      continue;
+    }
+
+    merged[key] = overrideValue;
+  }
+
+  return merged;
+}
+
 function assertNoReservedHeaders(
   headers: Record<string, string>,
   createError: (message: string) => GatewayError
@@ -458,10 +490,8 @@ export function mergeRequestShapingProfiles(
       : {}),
     ...(base?.jsonBody || override?.jsonBody
       ? {
-          jsonBody: {
-            ...(base?.jsonBody ?? {}),
-            ...(override?.jsonBody ?? {})
-          }
+          jsonBody:
+            deepMergeRecords(base?.jsonBody, override?.jsonBody) ?? {}
         }
       : {}),
     ...(resolvedSigning
@@ -530,8 +560,7 @@ export function applyRequestShaping(
       ...(shaping.query ?? {})
     },
     jsonBody: {
-      ...request.jsonBody,
-      ...(shaping.jsonBody ?? {})
+      ...(deepMergeRecords(request.jsonBody, shaping.jsonBody) ?? {})
     }
   };
 }
