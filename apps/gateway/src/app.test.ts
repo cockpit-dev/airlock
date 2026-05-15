@@ -29594,6 +29594,83 @@ describe("gateway app", () => {
     expect(body).toContain("data: [DONE]");
   });
 
+  it("backfills sparse native openai responses completed output into responses streaming events in reasoning-text-tool order", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
+                  'data: {"type":"response.completed","sequence_number":1,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"type":"reasoning","id":"rs_123","summary":[{"type":"summary_text","text":"The model checked the answer."}]},{"id":"msg_123","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Let me check that.","annotations":[]}]},{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"}],"parallel_tool_calls":true,"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "Weather in Shanghai?",
+          stream: true,
+          reasoning: {
+            summary: "auto"
+          },
+          tool_choice: "auto",
+          tools: [
+            {
+              type: "function",
+              name: "lookup_weather",
+              parameters: {
+                type: "object"
+              }
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const body = await readText(response);
+
+    const reasoningIndex = body.indexOf('"type":"response.reasoning_summary_text.delta"');
+    const textIndex = body.indexOf('"type":"response.output_text.delta"');
+    const toolIndex = body.indexOf('"type":"response.function_call_arguments.delta"');
+
+    expect(reasoningIndex).toBeGreaterThanOrEqual(0);
+    expect(textIndex).toBeGreaterThan(reasoningIndex);
+    expect(toolIndex).toBeGreaterThan(textIndex);
+    expect(body).toContain('"delta":"The model checked the answer."');
+    expect(body).toContain('"delta":"Let me check that."');
+    expect(body).toContain('"delta":"{\\"city\\":\\"Shanghai\\"}"');
+    expect(body).toContain('"output_index":0');
+    expect(body).toContain('"output_index":1');
+    expect(body).toContain('"output_index":2');
+    expect(body).toContain("data: [DONE]");
+  });
+
   it("backfills sparse native openai responses completed output into messages streaming tool blocks", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi.fn().mockResolvedValueOnce(
