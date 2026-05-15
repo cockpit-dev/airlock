@@ -479,6 +479,43 @@ describe("assertProviderSupportsCanonicalRequest", () => {
     );
   });
 
+  it("throws a typed error when the provider descriptor lacks OpenAI-native request metadata envelope support", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      serviceTier: "priority",
+      store: false,
+      promptCacheKey: "cache-key-123",
+      promptCacheRetention: "in_memory",
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    expect(() =>
+      assertProviderSupportsCanonicalRequest(
+        getProviderCapabilityDescriptor("anthropic"),
+        request,
+        "req_123"
+      )
+    ).toThrow(
+      new GatewayError(
+        "Provider anthropic does not support required capability: openai_request_metadata",
+        {
+          code: "provider_capability_not_supported",
+          category: "routing",
+          httpStatus: 400,
+          retryable: false,
+          provider: "anthropic",
+          requestId: "req_123"
+        }
+      )
+    );
+  });
+
   it("allows buffered tool replay requests for gemini", () => {
     const request: CanonicalRequest = {
       model: "gemini-2.5-flash",

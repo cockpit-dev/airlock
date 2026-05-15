@@ -38,6 +38,10 @@ export function getCanonicalRequestCapabilityRequirements(
     requiresParallelToolCallControl:
       request.allowParallelToolCalls !== undefined,
     requiresOpenAIRequestMetadata:
+      request.serviceTier !== undefined ||
+      request.store !== undefined ||
+      request.promptCacheKey !== undefined ||
+      request.promptCacheRetention !== undefined ||
       request.providerMetadata?.openai?.metadata !== undefined ||
       request.providerMetadata?.openai?.frequencyPenalty !== undefined ||
       request.providerMetadata?.openai?.presencePenalty !== undefined ||

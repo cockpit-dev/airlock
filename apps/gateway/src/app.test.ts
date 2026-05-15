@@ -14950,6 +14950,86 @@ describe("gateway app", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it("fails closed when chat service_tier is sent to Anthropic", async () => {
+    const fetcher = vi.fn();
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          service_tier: "flex",
+          messages: [
+            {
+              role: "user",
+              content: "hello"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "provider_capability_not_supported",
+        message:
+          "Provider anthropic does not support required capability: openai_request_metadata"
+      }
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when chat prompt_cache_retention is sent to Gemini", async () => {
+    const fetcher = vi.fn();
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          prompt_cache_retention: "24h",
+          messages: [
+            {
+              role: "user",
+              content: "hello"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "provider_capability_not_supported",
+        message:
+          "Provider gemini does not support required capability: openai_request_metadata"
+      }
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("maps chat user into Anthropic metadata.user_id", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -20295,6 +20375,76 @@ describe("gateway app", () => {
         code: "provider_capability_not_supported",
         message:
           "Provider anthropic does not support required capability: openai_request_metadata"
+      }
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when responses service_tier is sent to Anthropic", async () => {
+    const fetcher = vi.fn();
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          input: "hello",
+          service_tier: "priority"
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "provider_capability_not_supported",
+        message:
+          "Provider anthropic does not support required capability: openai_request_metadata"
+      }
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when responses prompt_cache_key is sent to Gemini", async () => {
+    const fetcher = vi.fn();
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          input: "hello",
+          prompt_cache_key: "cache-key-123"
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "provider_capability_not_supported",
+        message:
+          "Provider gemini does not support required capability: openai_request_metadata"
       }
     });
     expect(fetcher).not.toHaveBeenCalled();
