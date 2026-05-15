@@ -214,10 +214,10 @@ describe("getGatewayAdminKeyEvents", () => {
 });
 
 describe("getGatewayAdminKeyOperationEvents", () => {
-  it("returns operation-correlated events newest-first", async () => {
+  it("returns merged registry + revocation operation-correlated events newest-first", async () => {
     await expect(
       getGatewayAdminKeyOperationEvents("req_bulk_123", "req_read_123", {
-        getOperationEvents: vi.fn().mockResolvedValue([
+        getRegistryOperationEvents: vi.fn().mockResolvedValue([
           {
             keyId: "key_1",
             kind: "updated",
@@ -236,6 +236,17 @@ describe("getGatewayAdminKeyOperationEvents", () => {
             actor: "ops@example.com",
             actorSource: "credential"
           }
+        ]),
+        getRevocationOperationEvents: vi.fn().mockResolvedValue([
+          {
+            keyId: "key_1",
+            kind: "revoked",
+            ownership: "registry",
+            occurredAt: "2026-05-13T01:00:00.000Z",
+            operationId: "req_bulk_123",
+            actor: "ops@example.com",
+            actorSource: "credential"
+          }
         ])
       })
     ).resolves.toEqual({
@@ -244,8 +255,8 @@ describe("getGatewayAdminKeyOperationEvents", () => {
         operationId: "req_bulk_123",
         keyIds: ["key_1", "key_2"],
         keyCount: 2,
-        eventCount: 2,
-        eventKinds: ["updated"],
+        eventCount: 3,
+        eventKinds: ["revoked", "updated"],
         ownerships: ["registry"],
         firstOccurredAt: "2026-05-13T00:00:00.000Z",
         lastOccurredAt: "2026-05-14T00:00:00.000Z",
@@ -264,6 +275,15 @@ describe("getGatewayAdminKeyOperationEvents", () => {
         },
         {
           keyId: "key_1",
+          kind: "revoked",
+          ownership: "registry",
+          occurredAt: "2026-05-13T01:00:00.000Z",
+          operationId: "req_bulk_123",
+          actor: "ops@example.com",
+          actorSource: "credential"
+        },
+        {
+          keyId: "key_1",
           kind: "updated",
           ownership: "registry",
           occurredAt: "2026-05-13T00:00:00.000Z",
@@ -275,10 +295,75 @@ describe("getGatewayAdminKeyOperationEvents", () => {
     });
   });
 
-  it("rejects operation reads when the port returns no events", async () => {
+  it("returns registry-only events when revocation returns empty", async () => {
+    await expect(
+      getGatewayAdminKeyOperationEvents("req_bulk_123", "req_read_123", {
+        getRegistryOperationEvents: vi.fn().mockResolvedValue([
+          {
+            keyId: "key_1",
+            kind: "created",
+            ownership: "registry",
+            occurredAt: "2026-05-13T00:00:00.000Z",
+            operationId: "req_bulk_123"
+          }
+        ]),
+        getRevocationOperationEvents: vi.fn().mockResolvedValue([])
+      })
+    ).resolves.toMatchObject({
+      operationId: "req_bulk_123",
+      events: [
+        {
+          keyId: "key_1",
+          kind: "created",
+          operationId: "req_bulk_123"
+        }
+      ]
+    });
+  });
+
+  it("falls back to revocation events when registry returns gateway_key_not_found", async () => {
+    await expect(
+      getGatewayAdminKeyOperationEvents("req_revoke_123", "req_read_123", {
+        getRegistryOperationEvents: vi.fn().mockRejectedValue({
+          code: "gateway_key_not_found",
+          message: "not found"
+        }),
+        getRevocationOperationEvents: vi.fn().mockResolvedValue([
+          {
+            keyId: "key_1",
+            kind: "revoked",
+            ownership: "registry",
+            occurredAt: "2026-05-13T00:00:00.000Z",
+            operationId: "req_revoke_123"
+          }
+        ])
+      })
+    ).resolves.toMatchObject({
+      operationId: "req_revoke_123",
+      events: [
+        {
+          keyId: "key_1",
+          kind: "revoked"
+        }
+      ]
+    });
+  });
+
+  it("propagates non-not-found registry errors", async () => {
+    const registryError = new Error("storage unavailable");
+    await expect(
+      getGatewayAdminKeyOperationEvents("req_bulk_123", "req_read_123", {
+        getRegistryOperationEvents: vi.fn().mockRejectedValue(registryError),
+        getRevocationOperationEvents: vi.fn().mockResolvedValue([])
+      })
+    ).rejects.toBe(registryError);
+  });
+
+  it("rejects operation reads when both ports return empty", async () => {
     await expect(
       getGatewayAdminKeyOperationEvents("req_bulk_missing", "req_read_404", {
-        getOperationEvents: vi.fn().mockResolvedValue([])
+        getRegistryOperationEvents: vi.fn().mockResolvedValue([]),
+        getRevocationOperationEvents: vi.fn().mockResolvedValue([])
       })
     ).rejects.toMatchObject({
       code: "gateway_key_not_found"

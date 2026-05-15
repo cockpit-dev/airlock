@@ -380,21 +380,49 @@ describe("createAdminKeyGovernanceRuntime", () => {
     );
   });
 
-  it("returns an empty operation event list when registry support is disabled", async () => {
+  it("delegates registry operation events to the registry transport", async () => {
     const env = createEnv();
     const runtime = createAdminKeyGovernanceRuntime(
       env,
       "req_123"
     );
 
-    runtimeMocks.getGatewayRegistryOperationEvents.mockResolvedValue([]);
+    runtimeMocks.getGatewayRegistryOperationEvents.mockResolvedValue([
+      {
+        keyId: "key_registry",
+        kind: "deleted",
+        ownership: "registry",
+        occurredAt: "2026-05-14T00:00:00.000Z",
+        operationId: "req_op_123"
+      }
+    ]);
 
     await expect(
-      runtime.read.getOperationEvents("req_bulk_missing")
+      runtime.read.getRegistryOperationEvents("req_op_123")
+    ).resolves.toEqual([
+      {
+        keyId: "key_registry",
+        kind: "deleted",
+        ownership: "registry",
+        occurredAt: "2026-05-14T00:00:00.000Z",
+        operationId: "req_op_123"
+      }
+    ]);
+  });
+
+  it("returns empty revocation operation events when revocation DO is absent", async () => {
+    const env = createEnv();
+    const runtime = createAdminKeyGovernanceRuntime(
+      env,
+      "req_123"
+    );
+
+    await expect(
+      runtime.read.getRevocationOperationEvents("req_op_123")
     ).resolves.toEqual([]);
   });
 
-  it("merges registry and revocation operation events", async () => {
+  it("delegates revocation operation events when revocation DO is present", async () => {
     const env = {
       ...createEnv(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: {
@@ -413,15 +441,6 @@ describe("createAdminKeyGovernanceRuntime", () => {
       "req_123"
     );
 
-    runtimeMocks.getGatewayRegistryOperationEvents.mockResolvedValue([
-      {
-        keyId: "key_registry",
-        kind: "deleted",
-        ownership: "registry",
-        occurredAt: "2026-05-14T00:00:00.000Z",
-        operationId: "req_op_123"
-      }
-    ]);
     runtimeMocks.getGatewayKeyRevocationOperationEvents.mockResolvedValue([
       {
         keyId: "key_registry",
@@ -433,15 +452,8 @@ describe("createAdminKeyGovernanceRuntime", () => {
     ]);
 
     await expect(
-      runtime.read.getOperationEvents("req_op_123")
+      runtime.read.getRevocationOperationEvents("req_op_123")
     ).resolves.toEqual([
-      {
-        keyId: "key_registry",
-        kind: "deleted",
-        ownership: "registry",
-        occurredAt: "2026-05-14T00:00:00.000Z",
-        operationId: "req_op_123"
-      },
       {
         keyId: "key_registry",
         kind: "revoked",

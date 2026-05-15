@@ -49,7 +49,8 @@ export interface GatewayAdminKeyEventsReadPort {
 }
 
 export interface GatewayAdminKeyOperationEventsReadPort {
-  getOperationEvents(operationId: string): Promise<GatewayKeyAuditEvent[]>;
+  getRegistryOperationEvents(operationId: string): Promise<GatewayKeyAuditEvent[]>;
+  getRevocationOperationEvents(operationId: string): Promise<GatewayKeyAuditEvent[]>;
 }
 
 export interface GatewayAdminConfiguredKeyRegistryViewPort {
@@ -183,7 +184,23 @@ export async function getGatewayAdminKeyOperationEvents(
   summary: ReturnType<typeof createGatewayKeyOperationSummary>;
   events: GatewayKeyAuditEvent[];
 }> {
-  const events = await port.getOperationEvents(operationId);
+  const [registryEvents, revocationEvents] = await Promise.all([
+    port.getRegistryOperationEvents(operationId).catch((error: unknown) => {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "gateway_key_not_found"
+      ) {
+        return [];
+      }
+
+      throw error;
+    }),
+    port.getRevocationOperationEvents(operationId)
+  ]);
+
+  const events = [...registryEvents, ...revocationEvents];
 
   if (events.length === 0) {
     throw createGatewayKeyNotFoundError(requestId);
@@ -292,6 +309,20 @@ export function toGatewayAdminKeyEventsReadPort(
     getRegistryEvents,
     getRevocationEvents,
     assertKeyExists
+  };
+}
+
+export function toGatewayAdminKeyOperationEventsReadPort(
+  getRegistryOperationEvents: (
+    operationId: string
+  ) => Promise<GatewayKeyAuditEvent[]>,
+  getRevocationOperationEvents: (
+    operationId: string
+  ) => Promise<GatewayKeyAuditEvent[]>
+): GatewayAdminKeyOperationEventsReadPort {
+  return {
+    getRegistryOperationEvents,
+    getRevocationOperationEvents
   };
 }
 
