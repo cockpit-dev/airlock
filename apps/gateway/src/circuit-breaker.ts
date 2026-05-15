@@ -13,6 +13,8 @@ export interface ProviderCircuitState {
   halfOpenRetryableFailureCount?: number;
   lastSuccessLatencyMs?: number;
   smoothedSuccessLatencyMs?: number;
+  lastSuccessTotalTokens?: number;
+  smoothedSuccessTotalTokens?: number;
   lastSuccessAt?: number;
   lastFailureAt?: number;
 }
@@ -27,6 +29,7 @@ export interface ProviderCircuitBreakerBackend {
   recordSuccess(
     target: ProviderTarget,
     latencyMs?: number,
+    totalTokensOrNow?: number,
     now?: number
   ): Promise<void>;
   recordRetryableFailure(
@@ -75,6 +78,39 @@ function computeSmoothedSuccessLatency(
   );
 }
 
+function computeSmoothedSuccessTotalTokens(
+  previous: number | undefined,
+  current: number
+): number {
+  if (previous === undefined) {
+    return current;
+  }
+
+  return Math.round(
+    previous * LATENCY_SMOOTHING_PREVIOUS_WEIGHT +
+      current * LATENCY_SMOOTHING_CURRENT_WEIGHT
+  );
+}
+
+function normalizeRecordSuccessArguments(
+  totalTokensOrNow: number | undefined,
+  now: number | undefined
+): {
+  totalTokens?: number;
+  now?: number;
+} {
+  if (now === undefined) {
+    return {
+      ...(totalTokensOrNow !== undefined ? { now: totalTokensOrNow } : {})
+    };
+  }
+
+  return {
+    ...(totalTokensOrNow !== undefined ? { totalTokens: totalTokensOrNow } : {}),
+    now
+  };
+}
+
 function computeEffectiveCooldownMs(
   policy: ProviderCircuitBreakerPolicy,
   state: Pick<ProviderCircuitState, "halfOpenRetryableFailureCount">
@@ -114,7 +150,8 @@ export function createInMemoryCircuitBreakerBackend(): ProviderCircuitBreakerBac
       state.probeStartedAt = now;
       return Promise.resolve(true);
     },
-    recordSuccess(target, latencyMs, now) {
+    recordSuccess(target, latencyMs, totalTokensOrNow, now) {
+      const normalized = normalizeRecordSuccessArguments(totalTokensOrNow, now);
       const existing = providerCircuitStates.get(getCircuitKey(target));
       providerCircuitStates.set(getCircuitKey(target), {
         consecutiveRetryableFailures: 0,
@@ -128,7 +165,18 @@ export function createInMemoryCircuitBreakerBackend(): ProviderCircuitBreakerBac
               )
             }
           : {}),
-        ...(now !== undefined ? { lastSuccessAt: now } : {}),
+        ...(normalized.totalTokens !== undefined
+          ? { lastSuccessTotalTokens: normalized.totalTokens }
+          : {}),
+        ...(normalized.totalTokens !== undefined
+          ? {
+              smoothedSuccessTotalTokens: computeSmoothedSuccessTotalTokens(
+                existing?.smoothedSuccessTotalTokens,
+                normalized.totalTokens
+              )
+            }
+          : {}),
+        ...(normalized.now !== undefined ? { lastSuccessAt: normalized.now } : {}),
         ...(existing?.lastFailureAt !== undefined
           ? { lastFailureAt: existing.lastFailureAt }
           : {})
@@ -209,6 +257,8 @@ function parseProviderCircuitState(value: unknown): ProviderCircuitState {
   const {
     lastSuccessLatencyMs,
     smoothedSuccessLatencyMs,
+    lastSuccessTotalTokens,
+    smoothedSuccessTotalTokens,
     lastSuccessAt,
     lastFailureAt
   } = value;
@@ -229,6 +279,24 @@ function parseProviderCircuitState(value: unknown): ProviderCircuitState {
       smoothedSuccessLatencyMs < 0)
   ) {
     throw new Error("Provider circuit state smoothedSuccessLatencyMs is invalid");
+  }
+
+  if (
+    lastSuccessTotalTokens !== undefined &&
+    (typeof lastSuccessTotalTokens !== "number" ||
+      !Number.isFinite(lastSuccessTotalTokens) ||
+      lastSuccessTotalTokens < 0)
+  ) {
+    throw new Error("Provider circuit state lastSuccessTotalTokens is invalid");
+  }
+
+  if (
+    smoothedSuccessTotalTokens !== undefined &&
+    (typeof smoothedSuccessTotalTokens !== "number" ||
+      !Number.isFinite(smoothedSuccessTotalTokens) ||
+      smoothedSuccessTotalTokens < 0)
+  ) {
+    throw new Error("Provider circuit state smoothedSuccessTotalTokens is invalid");
   }
 
   if (
@@ -255,6 +323,12 @@ function parseProviderCircuitState(value: unknown): ProviderCircuitState {
     ...(lastSuccessLatencyMs !== undefined ? { lastSuccessLatencyMs } : {}),
     ...(smoothedSuccessLatencyMs !== undefined
       ? { smoothedSuccessLatencyMs }
+      : {}),
+    ...(lastSuccessTotalTokens !== undefined
+      ? { lastSuccessTotalTokens }
+      : {}),
+    ...(smoothedSuccessTotalTokens !== undefined
+      ? { smoothedSuccessTotalTokens }
       : {}),
     ...(lastSuccessAt !== undefined ? { lastSuccessAt } : {}),
     ...(lastFailureAt !== undefined ? { lastFailureAt } : {})
@@ -287,6 +361,7 @@ export class ProviderCircuitBreakerDurableObject {
         threshold?: number;
         cooldownMs?: number;
         latencyMs?: number;
+        totalTokens?: number;
         now?: number;
       };
       const current =
@@ -302,6 +377,13 @@ export class ProviderCircuitBreakerDurableObject {
                 body.latencyMs
               )
             : undefined;
+        const nextSmoothedTotalTokens =
+          body.totalTokens !== undefined
+            ? computeSmoothedSuccessTotalTokens(
+                current.smoothedSuccessTotalTokens,
+                body.totalTokens
+              )
+            : undefined;
         const next = {
           consecutiveRetryableFailures: 0,
           halfOpenRetryableFailureCount: 0,
@@ -310,6 +392,12 @@ export class ProviderCircuitBreakerDurableObject {
             : {}),
           ...(nextSmoothedLatencyMs !== undefined
             ? { smoothedSuccessLatencyMs: nextSmoothedLatencyMs }
+            : {}),
+          ...(body.totalTokens !== undefined
+            ? { lastSuccessTotalTokens: body.totalTokens }
+            : {}),
+          ...(nextSmoothedTotalTokens !== undefined
+            ? { smoothedSuccessTotalTokens: nextSmoothedTotalTokens }
             : {}),
           ...(body.now !== undefined ? { lastSuccessAt: body.now } : {}),
           ...(current.lastFailureAt !== undefined
@@ -375,6 +463,12 @@ export class ProviderCircuitBreakerDurableObject {
         ...(current.smoothedSuccessLatencyMs !== undefined
           ? { smoothedSuccessLatencyMs: current.smoothedSuccessLatencyMs }
           : {}),
+        ...(current.lastSuccessTotalTokens !== undefined
+          ? { lastSuccessTotalTokens: current.lastSuccessTotalTokens }
+          : {}),
+        ...(current.smoothedSuccessTotalTokens !== undefined
+          ? { smoothedSuccessTotalTokens: current.smoothedSuccessTotalTokens }
+          : {}),
         ...(current.lastSuccessAt !== undefined
           ? { lastSuccessAt: current.lastSuccessAt }
           : {}),
@@ -431,7 +525,8 @@ export function createPersistentCircuitBreakerBackend(namespace: {
       const body = (await response.json()) as { claimed?: boolean };
       return body.claimed === true;
     },
-    async recordSuccess(target, latencyMs, now) {
+    async recordSuccess(target, latencyMs, totalTokensOrNow, now) {
+      const normalized = normalizeRecordSuccessArguments(totalTokensOrNow, now);
       await namespace
         .get(namespace.idFromName(getCircuitKey(target)))
         .fetch(
@@ -443,7 +538,10 @@ export function createPersistentCircuitBreakerBackend(namespace: {
             body: JSON.stringify({
               kind: "success",
               ...(latencyMs !== undefined ? { latencyMs } : {}),
-              ...(now !== undefined ? { now } : {})
+              ...(normalized.totalTokens !== undefined
+                ? { totalTokens: normalized.totalTokens }
+                : {}),
+              ...(normalized.now !== undefined ? { now: normalized.now } : {})
             })
           })
         );

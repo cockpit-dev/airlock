@@ -372,6 +372,8 @@ function reorderTargetsForRoute(
       consecutiveRetryableFailures: number;
       lastSuccessLatencyMs?: number;
       smoothedSuccessLatencyMs?: number;
+      lastSuccessTotalTokens?: number;
+      smoothedSuccessTotalTokens?: number;
       lastSuccessAt?: number;
       lastFailureAt?: number;
     }
@@ -418,17 +420,30 @@ function reorderTargetsForRoute(
 
   if (targetSelection.strategy === "lowest_cost") {
     return [...targets].sort((left, right) => {
-      const leftCost = targetSelection.costs[serializeProviderTarget(left)] ?? 1;
+      const leftKey = serializeProviderTarget(left);
+      const rightKey = serializeProviderTarget(right);
+      const leftConfiguredCost = targetSelection.costs[leftKey] ?? 1;
+      const rightConfiguredCost = targetSelection.costs[rightKey] ?? 1;
+      const leftObservedMultiplier =
+        healthByTarget?.get(leftKey)?.smoothedSuccessTotalTokens ??
+        healthByTarget?.get(leftKey)?.lastSuccessTotalTokens;
+      const rightObservedMultiplier =
+        healthByTarget?.get(rightKey)?.smoothedSuccessTotalTokens ??
+        healthByTarget?.get(rightKey)?.lastSuccessTotalTokens;
+      const leftCost =
+        leftObservedMultiplier !== undefined
+          ? leftConfiguredCost * leftObservedMultiplier
+          : leftConfiguredCost;
       const rightCost =
-        targetSelection.costs[serializeProviderTarget(right)] ?? 1;
+        rightObservedMultiplier !== undefined
+          ? rightConfiguredCost * rightObservedMultiplier
+          : rightConfiguredCost;
 
       if (leftCost !== rightCost) {
         return leftCost - rightCost;
       }
 
-      return serializeProviderTarget(left).localeCompare(
-        serializeProviderTarget(right)
-      );
+      return leftKey.localeCompare(rightKey);
     });
   }
 
@@ -471,6 +486,8 @@ function getPriorityLatencyStatus(
       consecutiveRetryableFailures: number;
       lastSuccessLatencyMs?: number;
       smoothedSuccessLatencyMs?: number;
+      lastSuccessTotalTokens?: number;
+      smoothedSuccessTotalTokens?: number;
       lastSuccessAt?: number;
     }
   >
@@ -496,6 +513,41 @@ function getPriorityLatencyStatus(
   return observedLatency <= latencySlo ? 0 : 2;
 }
 
+function getPriorityEffectiveCost(
+  targetKey: string,
+  selection: PriorityRouteTargetSelection,
+  healthByTarget?: Map<
+    string,
+    {
+      isOpen: boolean;
+      isHalfOpen?: boolean;
+      consecutiveRetryableFailures: number;
+      lastSuccessLatencyMs?: number;
+      smoothedSuccessLatencyMs?: number;
+      lastSuccessTotalTokens?: number;
+      smoothedSuccessTotalTokens?: number;
+      lastSuccessAt?: number;
+      lastFailureAt?: number;
+    }
+  >
+): number | undefined {
+  const configuredCost = selection.costs?.[targetKey];
+
+  if (configuredCost === undefined) {
+    return undefined;
+  }
+
+  const observedMultiplier =
+    healthByTarget?.get(targetKey)?.smoothedSuccessTotalTokens ??
+    healthByTarget?.get(targetKey)?.lastSuccessTotalTokens;
+
+  if (observedMultiplier === undefined) {
+    return configuredCost;
+  }
+
+  return configuredCost * observedMultiplier;
+}
+
 function reorderTargetsForPrioritySelection(
   targets: ProviderTarget[],
   selection: PriorityRouteTargetSelection,
@@ -508,6 +560,8 @@ function reorderTargetsForPrioritySelection(
       consecutiveRetryableFailures: number;
       lastSuccessLatencyMs?: number;
       smoothedSuccessLatencyMs?: number;
+      lastSuccessTotalTokens?: number;
+      smoothedSuccessTotalTokens?: number;
       lastSuccessAt?: number;
       lastFailureAt?: number;
     }
@@ -595,8 +649,12 @@ function reorderTargetsForPrioritySelection(
       return leftLatencyStatus - rightLatencyStatus;
     }
 
-    const leftCost = selection.costs?.[leftKey];
-    const rightCost = selection.costs?.[rightKey];
+    const leftCost = getPriorityEffectiveCost(leftKey, selection, healthByTarget);
+    const rightCost = getPriorityEffectiveCost(
+      rightKey,
+      selection,
+      healthByTarget
+    );
 
     if (leftCost !== undefined && rightCost !== undefined && leftCost !== rightCost) {
       return leftCost - rightCost;
@@ -616,6 +674,8 @@ function promoteHalfOpenProbeTarget(
       consecutiveRetryableFailures: number;
       lastSuccessLatencyMs?: number;
       smoothedSuccessLatencyMs?: number;
+      lastSuccessTotalTokens?: number;
+      smoothedSuccessTotalTokens?: number;
       lastSuccessAt?: number;
       lastFailureAt?: number;
     }
@@ -668,6 +728,8 @@ function selectEligibleTargets(
         consecutiveRetryableFailures: number;
         lastSuccessLatencyMs?: number;
         smoothedSuccessLatencyMs?: number;
+        lastSuccessTotalTokens?: number;
+        smoothedSuccessTotalTokens?: number;
         lastSuccessAt?: number;
         lastFailureAt?: number;
       }
@@ -722,6 +784,12 @@ function selectEligibleTargets(
           : {}),
         ...(circuitState?.smoothedSuccessLatencyMs !== undefined
           ? { smoothedSuccessLatencyMs: circuitState.smoothedSuccessLatencyMs }
+          : {}),
+        ...(circuitState?.lastSuccessTotalTokens !== undefined
+          ? { lastSuccessTotalTokens: circuitState.lastSuccessTotalTokens }
+          : {}),
+        ...(circuitState?.smoothedSuccessTotalTokens !== undefined
+          ? { smoothedSuccessTotalTokens: circuitState.smoothedSuccessTotalTokens }
           : {}),
         ...(circuitState?.lastSuccessAt !== undefined
           ? { lastSuccessAt: circuitState.lastSuccessAt }
@@ -849,6 +917,7 @@ export async function executeRoutedRequest(
         await circuitBreakerBackend.recordSuccess(
           target,
           now() - currentAttemptStartedAt,
+          response.usage?.totalTokens,
           now()
         );
 
@@ -995,49 +1064,83 @@ export async function* executeRoutedStreamRequest(
     }
 
     let yieldedAnyEvent = false;
+    let streamAttempt = 0;
 
-    try {
-      for await (const event of adapter.stream(currentAttemptRequest, {
-        requestId,
-        timeoutMs: currentRemainingTimeoutMs,
-        requestMode,
-        ...(requestShaping ? { requestShaping } : {})
-      })) {
-        yieldedAnyEvent = true;
-        yield event;
-      }
+    while (true) {
+      try {
+        onAttemptTarget?.(target);
+        const currentStreamAttemptRequest =
+          streamAttempt === 0 ? currentAttemptRequest : createAttemptRequest(request, target);
 
-      await circuitBreakerBackend.recordSuccess(
-        target,
-        now() - currentAttemptStartedAt,
-        now()
-      );
+        for await (const event of adapter.stream(currentStreamAttemptRequest, {
+          requestId,
+          timeoutMs: deadline - now(),
+          requestMode,
+          ...(requestShaping ? { requestShaping } : {})
+        })) {
+          yieldedAnyEvent = true;
+          yield event;
+        }
 
-      return;
-    } catch (error) {
-      lastError = error;
-
-      if (
-        error instanceof GatewayError &&
-        error.category === "provider" &&
-        error.retryable
-      ) {
-        await circuitBreakerBackend.recordRetryableFailure(
+        await circuitBreakerBackend.recordSuccess(
           target,
-          circuitBreakerPolicy,
-          currentAttemptStartedAt
+          now() - currentAttemptStartedAt,
+          undefined,
+          now()
         );
-      }
 
-      const shouldFailOver =
-        !yieldedAnyEvent &&
-        error instanceof GatewayError &&
-        error.category === "provider" &&
-        error.retryable &&
-        index < targets.length - 1;
+        return;
+      } catch (error) {
+        lastError = error;
 
-      if (!shouldFailOver) {
-        throw error;
+        if (
+          error instanceof GatewayError &&
+          error.category === "provider" &&
+          error.retryable
+        ) {
+          await circuitBreakerBackend.recordRetryableFailure(
+            target,
+            circuitBreakerPolicy,
+            currentAttemptStartedAt
+          );
+        }
+
+        const shouldRetrySameTarget =
+          error instanceof GatewayError &&
+          error.category === "provider" &&
+          error.retryable &&
+          !yieldedAnyEvent &&
+          streamAttempt < config.providerMaxRetries &&
+          deadline - now() > 0;
+
+        if (shouldRetrySameTarget) {
+          const retryBackoffMs = config.providerRetryBackoffMs;
+          const remainingBeforeBackoff = deadline - now();
+
+          if (retryBackoffMs > 0) {
+            if (remainingBeforeBackoff < retryBackoffMs) {
+              throw createProviderTimeoutError(requestId);
+            }
+
+            await sleep(retryBackoffMs);
+          }
+
+          streamAttempt += 1;
+          continue;
+        }
+
+        const shouldFailOver =
+          !yieldedAnyEvent &&
+          error instanceof GatewayError &&
+          error.category === "provider" &&
+          error.retryable &&
+          index < targets.length - 1;
+
+        if (!shouldFailOver) {
+          throw error;
+        }
+
+        break;
       }
     }
   }

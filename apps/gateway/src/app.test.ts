@@ -704,6 +704,8 @@ function createPersistentBreakerNamespace() {
       halfOpenRetryableFailureCount?: number;
       lastSuccessLatencyMs?: number;
       smoothedSuccessLatencyMs?: number;
+      lastSuccessTotalTokens?: number;
+      smoothedSuccessTotalTokens?: number;
       lastSuccessAt?: number;
       lastFailureAt?: number;
     }
@@ -730,6 +732,7 @@ function createPersistentBreakerNamespace() {
               threshold?: number;
               cooldownMs?: number;
               latencyMs?: number;
+              totalTokens?: number;
               smoothedLatencyMs?: number;
               now?: number;
             };
@@ -744,6 +747,15 @@ function createPersistentBreakerNamespace() {
                       )
                     : body.latencyMs
                   : body.smoothedLatencyMs;
+              const nextSmoothedTotalTokens =
+                body.totalTokens !== undefined
+                  ? current.smoothedSuccessTotalTokens !== undefined
+                    ? Math.round(
+                        current.smoothedSuccessTotalTokens * 0.7 +
+                          body.totalTokens * 0.3
+                      )
+                    : body.totalTokens
+                  : undefined;
               const next = {
                 consecutiveRetryableFailures: 0,
                 halfOpenRetryableFailureCount: 0,
@@ -752,6 +764,12 @@ function createPersistentBreakerNamespace() {
                   : {}),
                 ...(nextSmoothedLatencyMs !== undefined
                   ? { smoothedSuccessLatencyMs: nextSmoothedLatencyMs }
+                  : {}),
+                ...(body.totalTokens !== undefined
+                  ? { lastSuccessTotalTokens: body.totalTokens }
+                  : {}),
+                ...(nextSmoothedTotalTokens !== undefined
+                  ? { smoothedSuccessTotalTokens: nextSmoothedTotalTokens }
                   : {}),
                 ...(body.now !== undefined ? { lastSuccessAt: body.now } : {}),
                 ...(current.lastFailureAt !== undefined
@@ -801,6 +819,8 @@ function createPersistentBreakerNamespace() {
               halfOpenRetryableFailureCount?: number;
               lastSuccessLatencyMs?: number;
               smoothedSuccessLatencyMs?: number;
+              lastSuccessTotalTokens?: number;
+              smoothedSuccessTotalTokens?: number;
               lastSuccessAt?: number;
               lastFailureAt?: number;
             } = {
@@ -813,6 +833,12 @@ function createPersistentBreakerNamespace() {
                 : {}),
               ...(current.smoothedSuccessLatencyMs !== undefined
                 ? { smoothedSuccessLatencyMs: current.smoothedSuccessLatencyMs }
+                : {}),
+              ...(current.lastSuccessTotalTokens !== undefined
+                ? { lastSuccessTotalTokens: current.lastSuccessTotalTokens }
+                : {}),
+              ...(current.smoothedSuccessTotalTokens !== undefined
+                ? { smoothedSuccessTotalTokens: current.smoothedSuccessTotalTokens }
                 : {}),
               ...(current.lastSuccessAt !== undefined
                 ? { lastSuccessAt: current.lastSuccessAt }
@@ -17097,6 +17123,236 @@ describe("gateway app", () => {
             costs: {
               "openai:gpt-4.1-mini": 1,
               "anthropic:claude-haiku-4-5": 10
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(routeFetcher).toHaveBeenCalledTimes(1);
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "claude-haiku-4-5"
+    });
+  });
+
+  it("uses observed token cost memory when applying lowest-cost routing in the app", async () => {
+    const currentTime = Date.now();
+    const routeFetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "msg_app_dynamic_cost",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello from anthropic"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const breakerNamespace = createPersistentBreakerNamespace();
+    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, currentTime - 1_000);
+    breakerNamespace.seedSuccess(
+      "anthropic:claude-haiku-4-5",
+      200,
+      currentTime - 1_000
+    );
+    const openAiState = await breakerNamespace
+      .get(breakerNamespace.idFromName("openai:gpt-4.1-mini"))
+      .fetch(
+        new Request("https://airlock.internal/provider-circuit-breaker", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            kind: "success",
+            totalTokens: 500,
+            now: currentTime - 1_000
+          })
+        })
+      );
+    expect(openAiState.status).toBe(200);
+    const anthropicState = await breakerNamespace
+      .get(breakerNamespace.idFromName("anthropic:claude-haiku-4-5"))
+      .fetch(
+        new Request("https://airlock.internal/provider-circuit-breaker", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            kind: "success",
+            totalTokens: 50,
+            now: currentTime - 1_000
+          })
+        })
+      );
+    expect(anthropicState.status).toBe(200);
+
+    const app = createApp({ fetcher: routeFetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "prefer observed lower cost" }]
+        })
+      },
+      {
+        ...createBindings(),
+        ANTHROPIC_API_KEY: "anthropic-secret",
+        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER: breakerNamespace,
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "lowest_cost",
+            costs: {
+              "openai:gpt-4.1-mini": 1,
+              "anthropic:claude-haiku-4-5": 2
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(routeFetcher).toHaveBeenCalledTimes(1);
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "claude-haiku-4-5"
+    });
+  });
+
+  it("uses observed token cost memory to break priority ties in the app", async () => {
+    const currentTime = Date.now();
+    const routeFetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "msg_app_dynamic_priority_cost",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello from anthropic"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const breakerNamespace = createPersistentBreakerNamespace();
+    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 200, currentTime - 1_000);
+    breakerNamespace.seedSuccess(
+      "anthropic:claude-haiku-4-5",
+      200,
+      currentTime - 1_000
+    );
+    await breakerNamespace
+      .get(breakerNamespace.idFromName("openai:gpt-4.1-mini"))
+      .fetch(
+        new Request("https://airlock.internal/provider-circuit-breaker", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            kind: "success",
+            totalTokens: 500,
+            now: currentTime - 1_000
+          })
+        })
+      );
+    await breakerNamespace
+      .get(breakerNamespace.idFromName("anthropic:claude-haiku-4-5"))
+      .fetch(
+        new Request("https://airlock.internal/provider-circuit-breaker", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            kind: "success",
+            totalTokens: 50,
+            now: currentTime - 1_000
+          })
+        })
+      );
+
+    const app = createApp({ fetcher: routeFetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "break cost tie with observed usage" }]
+        })
+      },
+      {
+        ...createBindings(),
+        ANTHROPIC_API_KEY: "anthropic-secret",
+        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER: breakerNamespace,
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "priority",
+            latencySloMs: {
+              "openai:gpt-4.1-mini": 600,
+              "anthropic:claude-haiku-4-5": 600
+            },
+            costs: {
+              "openai:gpt-4.1-mini": 1,
+              "anthropic:claude-haiku-4-5": 2
             }
           }
         })

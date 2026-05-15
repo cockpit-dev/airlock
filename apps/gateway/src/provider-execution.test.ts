@@ -49,6 +49,8 @@ function createPersistentBreakerNamespace() {
       halfOpenRetryableFailureCount?: number;
       lastSuccessLatencyMs?: number;
       smoothedSuccessLatencyMs?: number;
+      lastSuccessTotalTokens?: number;
+      smoothedSuccessTotalTokens?: number;
       lastSuccessAt?: number;
       lastFailureAt?: number;
     }
@@ -75,6 +77,7 @@ function createPersistentBreakerNamespace() {
               threshold?: number;
               cooldownMs?: number;
               latencyMs?: number;
+              totalTokens?: number;
               smoothedLatencyMs?: number;
               now?: number;
             };
@@ -87,6 +90,13 @@ function createPersistentBreakerNamespace() {
                       body.latencyMs
                     )
                   : body.smoothedLatencyMs;
+              const nextSmoothedTotalTokens =
+                body.totalTokens !== undefined
+                  ? computeSmoothedLatency(
+                      current.smoothedSuccessTotalTokens,
+                      body.totalTokens
+                    )
+                  : undefined;
               const next = {
                 consecutiveRetryableFailures: 0,
                 halfOpenRetryableFailureCount: 0,
@@ -95,6 +105,12 @@ function createPersistentBreakerNamespace() {
                   : {}),
                 ...(nextSmoothedLatencyMs !== undefined
                   ? { smoothedSuccessLatencyMs: nextSmoothedLatencyMs }
+                  : {}),
+                ...(body.totalTokens !== undefined
+                  ? { lastSuccessTotalTokens: body.totalTokens }
+                  : {}),
+                ...(nextSmoothedTotalTokens !== undefined
+                  ? { smoothedSuccessTotalTokens: nextSmoothedTotalTokens }
                   : {}),
                 ...(body.now !== undefined ? { lastSuccessAt: body.now } : {}),
                 ...(current.lastFailureAt !== undefined
@@ -144,6 +160,8 @@ function createPersistentBreakerNamespace() {
               halfOpenRetryableFailureCount?: number;
               lastSuccessLatencyMs?: number;
               smoothedSuccessLatencyMs?: number;
+              lastSuccessTotalTokens?: number;
+              smoothedSuccessTotalTokens?: number;
               lastSuccessAt?: number;
               lastFailureAt?: number;
             } = {
@@ -156,6 +174,12 @@ function createPersistentBreakerNamespace() {
                 : {}),
               ...(current.smoothedSuccessLatencyMs !== undefined
                 ? { smoothedSuccessLatencyMs: current.smoothedSuccessLatencyMs }
+                : {}),
+              ...(current.lastSuccessTotalTokens !== undefined
+                ? { lastSuccessTotalTokens: current.lastSuccessTotalTokens }
+                : {}),
+              ...(current.smoothedSuccessTotalTokens !== undefined
+                ? { smoothedSuccessTotalTokens: current.smoothedSuccessTotalTokens }
                 : {}),
               ...(current.lastSuccessAt !== undefined
                 ? { lastSuccessAt: current.lastSuccessAt }
@@ -1762,6 +1786,135 @@ describe("executeRoutedRequest", () => {
     ]);
   });
 
+  it("retries the same streaming target before falling back to the next target", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "assistant-default",
+      stream: true,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const encoder = new TextEncoder();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: "rate limited"
+            }
+          }),
+          {
+            status: 429,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  [
+                    'data: {"id":"chatcmpl_retry_stream","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                    'data: {"id":"chatcmpl_retry_stream","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"retry stream"},"finish_reason":null}]}\n\n',
+                    'data: {"id":"chatcmpl_retry_stream","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+                    "data: [DONE]\n\n"
+                  ].join("")
+                )
+              );
+              controller.close();
+            }
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream"
+            }
+          }
+        )
+      );
+    const config = {
+      mode: "free" as const,
+      providerTimeoutMs: 1000,
+      providerMaxRetries: 1,
+      providerRetryBackoffMs: 0,
+      providerCircuitBreakerThreshold: 3,
+      providerCircuitBreakerCooldownMs: 60_000,
+      modelGroups: {},
+      gatewayApiKeys: [],
+      modelAliases: [],
+      anthropic: {
+        apiKey: "anthropic-secret",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultMaxTokens: 256
+      },
+      openAI: {
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    };
+
+    const events: CanonicalStreamEvent[] = [];
+
+    for await (const event of executeRoutedStreamRequest(route, request, {
+      config,
+      requestId: "req_stream_retry",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher
+    })) {
+      events.push(event);
+    }
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "chatcmpl_retry_stream",
+        model: "gpt-4.1-mini"
+      },
+      {
+        type: "output_text_delta",
+        responseId: "chatcmpl_retry_stream",
+        model: "gpt-4.1-mini",
+        delta: "retry stream"
+      },
+      {
+        type: "response_completed",
+        responseId: "chatcmpl_retry_stream",
+        model: "gpt-4.1-mini",
+        finishReason: "stop"
+      }
+    ]);
+  });
+
   it("returns a typed routing error when every otherwise-eligible target is open", async () => {
     const route: ModelRoute = {
       externalModel: "assistant-default",
@@ -3268,6 +3421,254 @@ describe("executeRoutedRequest", () => {
         }
       },
       requestId: "req_priority_cost",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 2000,
+      circuitBreakerBackend: backend
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(response.model).toBe("claude-haiku-4-5");
+  });
+
+  it("uses observed token cost memory to reorder lowest-cost routing", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ],
+      targetSelection: {
+        strategy: "lowest_cost",
+        costs: {
+          "openai:gpt-4.1-mini": 1,
+          "anthropic:claude-haiku-4-5": 2
+        }
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const backend = createPersistentCircuitBreakerBackend(
+      createPersistentBreakerNamespace()
+    );
+
+    await backend.recordSuccess(
+      {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      200,
+      500,
+      1000
+    );
+    await backend.recordSuccess(
+      {
+        provider: "anthropic",
+        providerModel: "claude-haiku-4-5"
+      },
+      200,
+      50,
+      1000
+    );
+
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "msg_dynamic_cost",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello from anthropic"
+            }
+          ],
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const response = await executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
+        providerCircuitBreakerThreshold: 3,
+        providerCircuitBreakerCooldownMs: 60_000,
+        providerCircuitBreakerPersistent: true,
+        modelGroups: {},
+        gatewayApiKeys: [],
+        modelAliases: [],
+        anthropic: {
+          apiKey: "anthropic-secret",
+          baseUrl: "https://api.anthropic.com/v1",
+          defaultMaxTokens: 256
+        },
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_dynamic_lowest_cost",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 2000,
+      circuitBreakerBackend: backend
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(response.model).toBe("claude-haiku-4-5");
+  });
+
+  it("uses observed token cost memory to break priority cost ties", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ],
+      targetSelection: {
+        strategy: "priority",
+        latencySloMs: {
+          "openai:gpt-4.1-mini": 600,
+          "anthropic:claude-haiku-4-5": 600
+        },
+        costs: {
+          "openai:gpt-4.1-mini": 1,
+          "anthropic:claude-haiku-4-5": 2
+        }
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const backend = createPersistentCircuitBreakerBackend(
+      createPersistentBreakerNamespace()
+    );
+
+    await backend.recordSuccess(
+      {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      200,
+      500,
+      1000
+    );
+    await backend.recordSuccess(
+      {
+        provider: "anthropic",
+        providerModel: "claude-haiku-4-5"
+      },
+      200,
+      50,
+      1000
+    );
+
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "msg_dynamic_priority_cost",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello from anthropic"
+            }
+          ],
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const response = await executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
+        providerCircuitBreakerThreshold: 3,
+        providerCircuitBreakerCooldownMs: 60_000,
+        providerCircuitBreakerPersistent: true,
+        modelGroups: {},
+        gatewayApiKeys: [],
+        modelAliases: [],
+        anthropic: {
+          apiKey: "anthropic-secret",
+          baseUrl: "https://api.anthropic.com/v1",
+          defaultMaxTokens: 256
+        },
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_dynamic_priority_cost",
       gatewayApiKey: {
         id: "key_any",
         label: "Any Provider",
