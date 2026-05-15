@@ -4,7 +4,9 @@ import {
   applyCircuitBreakerSuccess,
   isCircuitBreakerOpen,
   parseProviderCircuitState,
-  shouldAttemptHalfOpenRecovery
+  shouldAttemptHalfOpenRecovery,
+  shouldPromoteHalfOpenToClosed,
+  computeHalfOpenTrafficRamp
 } from "./provider-circuit-breaker.js";
 
 describe("applyCircuitBreakerRetryableFailure with sliding window", () => {
@@ -515,6 +517,152 @@ describe("shouldAttemptHalfOpenRecovery", () => {
         50_000
       )
     ).toBe(true);
+  });
+});
+
+// ── shouldPromoteHalfOpenToClosed ─────────────────────────────────────
+
+describe("shouldPromoteHalfOpenToClosed", () => {
+  it("returns false when circuit has no openedAt", () => {
+    expect(
+      shouldPromoteHalfOpenToClosed(
+        { consecutiveRetryableFailures: 0 },
+        {}
+      )
+    ).toBe(false);
+  });
+
+  it("returns false when no recovery attempts yet", () => {
+    expect(
+      shouldPromoteHalfOpenToClosed(
+        { consecutiveRetryableFailures: 0, openedAt: 1000 },
+        {}
+      )
+    ).toBe(false);
+  });
+
+  it("returns true with default policy after 1 success and no failures", () => {
+    expect(
+      shouldPromoteHalfOpenToClosed(
+        { consecutiveRetryableFailures: 0, openedAt: 1000, recoverySuccessCount: 1 },
+        {}
+      )
+    ).toBe(true);
+  });
+
+  it("returns false when success count below required threshold", () => {
+    expect(
+      shouldPromoteHalfOpenToClosed(
+        { consecutiveRetryableFailures: 0, openedAt: 1000, recoverySuccessCount: 1 },
+        { halfOpenPromotionSuccesses: 3 }
+      )
+    ).toBe(false);
+  });
+
+  it("returns true when success count meets required threshold", () => {
+    expect(
+      shouldPromoteHalfOpenToClosed(
+        { consecutiveRetryableFailures: 0, openedAt: 1000, recoverySuccessCount: 3 },
+        { halfOpenPromotionSuccesses: 3 }
+      )
+    ).toBe(true);
+  });
+
+  it("returns false when success rate is below required threshold", () => {
+    // 1 success, 1 failure = 1/2 = 0.5, required 0.8, window=2
+    expect(
+      shouldPromoteHalfOpenToClosed(
+        {
+          consecutiveRetryableFailures: 0,
+          openedAt: 1000,
+          recoverySuccessCount: 1,
+          halfOpenRetryableFailureCount: 1
+        },
+        { halfOpenPromotionSuccesses: 2, halfOpenPromotionSuccessRate: 0.8 }
+      )
+    ).toBe(false);
+  });
+
+  it("returns true when success rate meets required threshold", () => {
+    // 4 successes, 1 failure = 4/5 = 0.8, required 0.8
+    expect(
+      shouldPromoteHalfOpenToClosed(
+        {
+          consecutiveRetryableFailures: 0,
+          openedAt: 1000,
+          recoverySuccessCount: 4,
+          halfOpenRetryableFailureCount: 1
+        },
+        { halfOpenPromotionSuccesses: 3, halfOpenPromotionSuccessRate: 0.8 }
+      )
+    ).toBe(true);
+  });
+
+  it("respects promotion window for success rate evaluation", () => {
+    // 5 successes, 3 failures total. Window=4: last 4 attempts could be 1 success + 3 failures = 0.25
+    // But we use min(successes, window)/min(total, window)
+    // windowedSuccesses = min(5, 4) = 4, windowedAttempts = min(8, 4) = 4, rate = 1.0
+    expect(
+      shouldPromoteHalfOpenToClosed(
+        {
+          consecutiveRetryableFailures: 0,
+          openedAt: 1000,
+          recoverySuccessCount: 5,
+          halfOpenRetryableFailureCount: 3
+        },
+        { halfOpenPromotionSuccesses: 3, halfOpenPromotionSuccessRate: 0.8, halfOpenPromotionWindow: 4 }
+      )
+    ).toBe(true);
+  });
+});
+
+// ── computeHalfOpenTrafficRamp ────────────────────────────────────────
+
+describe("computeHalfOpenTrafficRamp", () => {
+  it("returns 1 for non-open circuit", () => {
+    expect(
+      computeHalfOpenTrafficRamp(
+        { consecutiveRetryableFailures: 0 },
+        {}
+      )
+    ).toBe(1);
+  });
+
+  it("returns 0 for open circuit with no successes", () => {
+    expect(
+      computeHalfOpenTrafficRamp(
+        { consecutiveRetryableFailures: 0, openedAt: 1000 },
+        {}
+      )
+    ).toBe(0);
+  });
+
+  it("returns 1 for open circuit with 1 success and default policy", () => {
+    expect(
+      computeHalfOpenTrafficRamp(
+        { consecutiveRetryableFailures: 0, openedAt: 1000, recoverySuccessCount: 1 },
+        {}
+      )
+    ).toBe(1);
+  });
+
+  it("returns graduated ramp with multi-success policy", () => {
+    // 1 out of 3 required = 0.333
+    expect(
+      computeHalfOpenTrafficRamp(
+        { consecutiveRetryableFailures: 0, openedAt: 1000, recoverySuccessCount: 1 },
+        { halfOpenPromotionSuccesses: 3 }
+      )
+    ).toBeCloseTo(1 / 3);
+  });
+
+  it("returns capped at 1 when successes exceed requirement", () => {
+    expect(
+      computeHalfOpenTrafficRamp(
+        { consecutiveRetryableFailures: 0, openedAt: 1000, recoverySuccessCount: 5 },
+        { halfOpenPromotionSuccesses: 3 }
+      )
+    ).toBe(1);
   });
 });
 

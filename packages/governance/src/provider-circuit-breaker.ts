@@ -6,6 +6,12 @@ export interface ProviderCircuitBreakerPolicy {
   errorRateWindowMs?: number;
   errorRateThreshold?: number;
   minAttemptsInWindow?: number;
+  /** Number of consecutive successes required to promote from half-open to closed (default: 1) */
+  halfOpenPromotionSuccesses?: number;
+  /** Success-rate threshold (0–1) over recent half-open attempts required for promotion (default: 1.0 = 100%) */
+  halfOpenPromotionSuccessRate?: number;
+  /** Number of recent half-open attempts to consider for success-rate gating (default: halfOpenPromotionSuccesses) */
+  halfOpenPromotionWindow?: number;
 }
 
 export interface ProviderCircuitState {
@@ -435,6 +441,91 @@ export function isCircuitBreakerOpen(
   }
 
   return true;
+}
+
+/**
+ * Pure decision: determines whether a half-open circuit should be promoted
+ * to fully closed based on configurable success-count and success-rate thresholds.
+ *
+ * Promotion requires:
+ * 1. `recoverySuccessCount` >= `halfOpenPromotionSuccesses` (default: 1)
+ * 2. Success rate over the promotion window >= `halfOpenPromotionSuccessRate` (default: 1.0)
+ *
+ * The success rate is computed as:
+ *   recoverySuccessCount / (recoverySuccessCount + halfOpenRetryableFailureCount)
+ * over the most recent `halfOpenPromotionWindow` attempts (default: same as success count).
+ *
+ * Returns false when the circuit is not in a recoverable state (no openedAt,
+ * or no recovery attempts yet).
+ */
+export function shouldPromoteHalfOpenToClosed(
+  state: ProviderCircuitState,
+  policy: Pick<
+    ProviderCircuitBreakerPolicy,
+    | "halfOpenPromotionSuccesses"
+    | "halfOpenPromotionSuccessRate"
+    | "halfOpenPromotionWindow"
+  >
+): boolean {
+  if (state.openedAt === undefined) {
+    return false;
+  }
+
+  const successes = state.recoverySuccessCount ?? 0;
+  const failures = state.halfOpenRetryableFailureCount ?? 0;
+  const totalAttempts = successes + failures;
+
+  if (totalAttempts === 0) {
+    return false;
+  }
+
+  const requiredSuccesses = policy.halfOpenPromotionSuccesses ?? 1;
+
+  if (successes < requiredSuccesses) {
+    return false;
+  }
+
+  const requiredRate = policy.halfOpenPromotionSuccessRate ?? 1.0;
+  const window = policy.halfOpenPromotionWindow ?? requiredSuccesses;
+
+  // Evaluate success rate over the configured window of recent attempts
+  const windowedAttempts = Math.min(totalAttempts, window);
+  const windowedSuccesses = Math.min(successes, window);
+  const successRate = windowedSuccesses / windowedAttempts;
+
+  return successRate >= requiredRate;
+}
+
+/**
+ * Computes the traffic ramp factor for a half-open target.
+ * Returns a value between 0 and 1 representing how much traffic the target
+ * should receive based on its recovery progress.
+ *
+ * Ramp progression:
+ * - 0 successes → 0.0 (probe only)
+ * - 1 success → 1 / requiredSuccesses
+ * - N successes → N / requiredSuccesses (capped at 1.0)
+ *
+ * When no promotion threshold is configured (default), returns a fixed
+ * 0.5 factor for any target in half-open state (backward compatible).
+ */
+export function computeHalfOpenTrafficRamp(
+  state: ProviderCircuitState,
+  policy: Pick<ProviderCircuitBreakerPolicy, "halfOpenPromotionSuccesses">
+): number {
+  if (state.openedAt === undefined) {
+    return 1;
+  }
+
+  const successes = state.recoverySuccessCount ?? 0;
+
+  if (successes === 0) {
+    return 0;
+  }
+
+  const requiredSuccesses = policy.halfOpenPromotionSuccesses ?? 1;
+
+  return Math.min(1, successes / requiredSuccesses);
 }
 
 /**
