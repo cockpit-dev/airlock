@@ -35,6 +35,10 @@ export function getCanonicalRequestCapabilityRequirements(
     requiresStructuredOutputs:
       request.outputFormat !== undefined &&
       request.outputFormat.type !== "text",
+    requiresStreamingStructuredOutputs:
+      request.stream &&
+      request.outputFormat !== undefined &&
+      request.outputFormat.type !== "text",
     requiresParallelToolCallControl:
       request.allowParallelToolCalls !== undefined,
     requiresOpenAIRequestMetadata:

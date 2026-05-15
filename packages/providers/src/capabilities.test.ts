@@ -23,6 +23,7 @@ describe("provider capability descriptors", () => {
         supportsPrompt: true,
         supportsReasoning: true,
         supportsStructuredOutputs: true,
+        supportsStreamingStructuredOutputs: true,
         supportsParallelToolCallControl: true,
         supportsOpenAIRequestMetadata: true,
         supportsOpenAIResponsesTextControls: true,
@@ -44,6 +45,7 @@ describe("provider capability descriptors", () => {
         supportsPrompt: false,
         supportsReasoning: false,
         supportsStructuredOutputs: false,
+        supportsStreamingStructuredOutputs: false,
         supportsParallelToolCallControl: false,
         supportsOpenAIRequestMetadata: false,
         supportsOpenAIResponsesTextControls: false,
@@ -65,6 +67,7 @@ describe("provider capability descriptors", () => {
         supportsPrompt: false,
         supportsReasoning: false,
         supportsStructuredOutputs: true,
+        supportsStreamingStructuredOutputs: false,
         supportsParallelToolCallControl: false,
         supportsOpenAIRequestMetadata: false,
         supportsOpenAIResponsesTextControls: false,
@@ -90,6 +93,7 @@ describe("provider capability descriptors", () => {
       supportsPrompt: false,
       supportsReasoning: false,
       supportsStructuredOutputs: true,
+      supportsStreamingStructuredOutputs: false,
       supportsParallelToolCallControl: false,
       supportsOpenAIRequestMetadata: false,
       supportsOpenAIResponsesTextControls: false,
@@ -110,6 +114,7 @@ describe("provider capability descriptors", () => {
       supportsPrompt: true,
       supportsReasoning: true,
       supportsStructuredOutputs: true,
+      supportsStreamingStructuredOutputs: true,
       supportsParallelToolCallControl: true,
       supportsOpenAIRequestMetadata: true,
       supportsOpenAIResponsesTextControls: true
@@ -138,7 +143,9 @@ describe("provider capability descriptors", () => {
       provider: "gemini",
       supportsTools: true,
       supportsToolReplay: true,
-      supportsStreamingTools: true
+      supportsStreamingTools: true,
+      supportsStructuredOutputs: true,
+      supportsStreamingStructuredOutputs: false
     });
   });
 });

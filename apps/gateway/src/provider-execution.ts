@@ -283,6 +283,17 @@ export function assertProviderSupportsCanonicalRequest(
   }
 
   if (
+    requirements.requiresStreamingStructuredOutputs &&
+    !descriptor.supportsStreamingStructuredOutputs
+  ) {
+    throw createUnsupportedCapabilityError(
+      descriptor.provider,
+      "streaming_structured_outputs",
+      requestId
+    );
+  }
+
+  if (
     requirements.requiresParallelToolCallControl &&
     !descriptor.supportsParallelToolCallControl
   ) {

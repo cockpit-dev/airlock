@@ -278,6 +278,7 @@ describe("assertProviderSupportsCanonicalRequest", () => {
           supportsPrompt: false,
           supportsReasoning: false,
           supportsStructuredOutputs: false,
+          supportsStreamingStructuredOutputs: false,
           supportsParallelToolCallControl: false,
           supportsOpenAIRequestMetadata: false,
           supportsOpenAIResponsesTextControls: false,
@@ -358,6 +359,47 @@ describe("assertProviderSupportsCanonicalRequest", () => {
         "req_123"
       )
     ).not.toThrow();
+  });
+
+  it("throws a typed error when the provider descriptor lacks streaming structured output support", () => {
+    const request: CanonicalRequest = {
+      model: "gemini-2.5-flash",
+      stream: true,
+      outputFormat: {
+        type: "json_schema",
+        name: "weather",
+        schema: {
+          type: "object"
+        },
+        strict: true
+      },
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    expect(() =>
+      assertProviderSupportsCanonicalRequest(
+        getProviderCapabilityDescriptor("gemini"),
+        request,
+        "req_123"
+      )
+    ).toThrow(
+      new GatewayError(
+        "Provider gemini does not support required capability: streaming_structured_outputs",
+        {
+          code: "provider_capability_not_supported",
+          category: "routing",
+          httpStatus: 400,
+          retryable: false,
+          provider: "gemini",
+          requestId: "req_123"
+        }
+      )
+    );
   });
 
   it("throws a typed error when the provider descriptor lacks parallel tool call control support", () => {
@@ -2567,6 +2609,7 @@ describe("executeRoutedRequest", () => {
             supportsPrompt: false,
             supportsReasoning: false,
             supportsStructuredOutputs: false,
+            supportsStreamingStructuredOutputs: false,
             supportsParallelToolCallControl: false,
             supportsOpenAIRequestMetadata: false,
             supportsOpenAIResponsesTextControls: false,

@@ -5529,6 +5529,52 @@ describe("gateway app", () => {
     });
   });
 
+  it("fails closed when chat response_format.type=json_schema is streamed to gemini", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          stream: true,
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "weather",
+              schema: {
+                type: "object"
+              }
+            }
+          },
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider gemini does not support required capability: streaming_structured_outputs",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
   it("rejects unsupported chat semantics like modalities", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -25089,6 +25135,52 @@ describe("gateway app", () => {
         responseJsonSchema: {
           type: "object"
         }
+      }
+    });
+  });
+
+  it("fails closed when responses text.format.type=json_schema is streamed to gemini", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          stream: true,
+          input: "hi",
+          text: {
+            format: {
+              type: "json_schema",
+              name: "weather",
+              schema: {
+                type: "object"
+              }
+            }
+          }
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider gemini does not support required capability: streaming_structured_outputs",
+        type: "routing",
+        code: "provider_capability_not_supported"
       }
     });
   });

@@ -107,6 +107,7 @@ export interface CanonicalRequestCapabilityRequirements {
   requiresPrompt: boolean;
   requiresReasoning: boolean;
   requiresStructuredOutputs: boolean;
+  requiresStreamingStructuredOutputs: boolean;
   requiresParallelToolCallControl: boolean;
   requiresOpenAIRequestMetadata: boolean;
   requiresOpenAIResponsesTextControls: boolean;

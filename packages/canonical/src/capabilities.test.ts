@@ -34,6 +34,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -65,6 +66,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -104,6 +106,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -146,6 +149,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -178,6 +182,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -211,6 +216,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -241,6 +247,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: true,
       requiresReasoning: true,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -268,6 +275,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: true,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -307,6 +315,47 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: true,
+      requiresStreamingStructuredOutputs: false,
+      requiresParallelToolCallControl: false,
+      requiresOpenAIRequestMetadata: false,
+      requiresOpenAIResponsesTextControls: false
+    });
+  });
+
+  it("marks streaming structured output requirements when structured outputs are requested on stream=true", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: true,
+      outputFormat: {
+        type: "json_schema",
+        name: "weather",
+        schema: {
+          type: "object"
+        },
+        strict: true
+      },
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: true,
+      requiresTools: false,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresEndUserId: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false,
+      requiresStructuredOutputs: true,
+      requiresStreamingStructuredOutputs: true,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -341,6 +390,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: true,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -381,6 +431,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: true,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -421,6 +472,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: true,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -460,6 +512,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -502,6 +555,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -540,6 +594,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: true,
       requiresOpenAIResponsesTextControls: false
@@ -578,6 +633,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: true,
       requiresOpenAIResponsesTextControls: false
@@ -613,6 +669,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: true,
       requiresOpenAIResponsesTextControls: false
@@ -649,6 +706,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: true,
       requiresOpenAIResponsesTextControls: false
@@ -681,6 +739,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: false
@@ -714,6 +773,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresPrompt: false,
       requiresReasoning: false,
       requiresStructuredOutputs: false,
+      requiresStreamingStructuredOutputs: false,
       requiresParallelToolCallControl: false,
       requiresOpenAIRequestMetadata: false,
       requiresOpenAIResponsesTextControls: true

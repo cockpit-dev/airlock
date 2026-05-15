@@ -23,6 +23,7 @@ export interface ProviderCapabilityDescriptor {
   supportsPrompt: boolean;
   supportsReasoning: boolean;
   supportsStructuredOutputs: boolean;
+  supportsStreamingStructuredOutputs: boolean;
   supportsParallelToolCallControl: boolean;
   supportsOpenAIRequestMetadata: boolean;
   supportsOpenAIResponsesTextControls: boolean;
