@@ -1928,6 +1928,87 @@ describe("gateway app", () => {
     });
   });
 
+  it("returns not ready from /readyz when model shaping uses a reserved signing output header", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_MODEL_SHAPING: JSON.stringify({
+        "gpt-4.1-mini": {
+          signing: {
+            type: "hmac_sha256_header",
+            headerName: "authorization",
+            secret: {
+              secretRef: "openai-signing-secret"
+            },
+            components: ["method", "path"]
+          }
+        }
+      })
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when model shaping uses a self-referential signing header", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_MODEL_SHAPING: JSON.stringify({
+        "gpt-4.1-mini": {
+          signing: {
+            type: "hmac_sha256_header",
+            headerName: "x-airlock-signature",
+            secret: {
+              secretRef: "openai-signing-secret"
+            },
+            components: ["method", "header:x-airlock-signature"]
+          }
+        }
+      })
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
+  it("returns not ready from /readyz when model shaping collides with its signing output header", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      ...createBindings(),
+      AIRLOCK_MODEL_SHAPING: JSON.stringify({
+        "gpt-4.1-mini": {
+          headers: {
+            "x-airlock-signature": "override"
+          },
+          signing: {
+            type: "hmac_sha256_header",
+            headerName: "x-airlock-signature",
+            secret: {
+              secretRef: "openai-signing-secret"
+            },
+            components: ["method", "path"]
+          }
+        }
+      })
+    });
+
+    expect(response.status).toBe(503);
+    await expect(readJson(response)).resolves.toMatchObject({
+      ok: false,
+      ready: false
+    });
+  });
+
   it("returns not ready from /readyz when model shaping targets an unknown route", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
