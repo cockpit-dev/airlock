@@ -934,6 +934,135 @@ describe("GeminiProviderAdapter", () => {
     });
   });
 
+  it("preserves canonical user text around tool replay when encoding Gemini contents", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              finishReason: "STOP",
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "done"
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        model: "gemini-2.5-flash",
+        stream: false,
+        tools: [
+          {
+            name: "lookup_weather",
+            inputSchema: {
+              type: "object"
+            }
+          }
+        ],
+        messages: [
+          {
+            role: "assistant",
+            content: "",
+            toolCalls: [
+              {
+                id: "call_123",
+                name: "lookup_weather",
+                arguments: "{\"city\":\"Shanghai\"}"
+              }
+            ]
+          },
+          {
+            role: "user",
+            content: "Please use this tool result."
+          },
+          {
+            role: "tool",
+            toolCallId: "call_123",
+            content: "{\"temperature_c\":26}"
+          },
+          {
+            role: "user",
+            content: "Now summarize it."
+          }
+        ]
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      contents: [
+        {
+          role: "model",
+          parts: [
+            {
+              functionCall: {
+                name: "lookup_weather",
+                args: {
+                  city: "Shanghai"
+                }
+              }
+            }
+          ]
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              text: "Please use this tool result."
+            }
+          ]
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: "lookup_weather",
+                response: {
+                  temperature_c: 26
+                }
+              }
+            }
+          ]
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              text: "Now summarize it."
+            }
+          ]
+        }
+      ]
+    });
+  });
+
   it("maps upstream failures into a gateway error", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

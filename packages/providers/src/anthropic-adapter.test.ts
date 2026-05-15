@@ -947,6 +947,89 @@ describe("AnthropicProviderAdapter", () => {
     });
   });
 
+  it("regroups adjacent canonical user text and tool replay into one anthropic user turn", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "done"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new AnthropicProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultMaxTokens: 256,
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        model: "claude-sonnet-4-5",
+        stream: false,
+        messages: [
+          {
+            role: "user",
+            content: "Please use this tool result."
+          },
+          {
+            role: "tool",
+            content: "{\"temperature_c\":26}",
+            toolCallId: "call_123"
+          },
+          {
+            role: "user",
+            content: "Now summarize it."
+          }
+        ]
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Please use this tool result."
+            },
+            {
+              type: "tool_result",
+              tool_use_id: "call_123",
+              content: "{\"temperature_c\":26}"
+            },
+            {
+              type: "text",
+              text: "Now summarize it."
+            }
+          ]
+        }
+      ]
+    });
+  });
+
   it("returns canonical tool calls with empty output text for tool_use responses", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

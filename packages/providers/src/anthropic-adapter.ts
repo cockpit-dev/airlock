@@ -92,49 +92,123 @@ function buildAnthropicMessages(
   request: CanonicalRequest,
   requestId: string
 ) {
-  return request.messages
-    .filter((message) => message.role !== "system")
-    .map((message) => {
-      if (message.role === "tool") {
-        return {
-          role: "user" as const,
-          content: [
-            {
-              type: "tool_result" as const,
-              tool_use_id: message.toolCallId,
-              content: message.content
-            }
-          ]
-        };
+  const sourceMessages = request.messages.filter((message) => message.role !== "system");
+  const outboundMessages: Array<
+    | {
+        role: "user";
+        content:
+          | string
+          | Array<
+              | {
+                  type: "text";
+                  text: string;
+                }
+              | {
+                  type: "tool_result";
+                  tool_use_id: string;
+                  content: string;
+                }
+            >;
       }
-
-      if (message.role === "assistant" && message.toolCalls?.length) {
-        return {
-          role: "assistant" as const,
-          content: [
-            ...(message.content.length > 0
-              ? [
-                  {
-                    type: "text" as const,
-                    text: message.content
-                  }
-                ]
-              : []),
-            ...message.toolCalls.map((toolCall) => ({
-              type: "tool_use" as const,
-              id: toolCall.id,
-              name: toolCall.name,
-              input: parseAnthropicToolInput(toolCall.arguments, requestId)
-            }))
-          ]
-        };
+    | {
+        role: "assistant";
+        content:
+          | string
+          | Array<
+              | {
+                  type: "text";
+                  text: string;
+                }
+              | {
+                  type: "tool_use";
+                  id: string;
+                  name: string;
+                  input: JsonValue;
+                }
+            >;
       }
+  > = [];
 
-      return {
-        role: message.role === "assistant" ? "assistant" : "user",
-        content: message.content
-      };
+  let pendingUserContentBlocks: Array<
+    | {
+        type: "text";
+        text: string;
+      }
+    | {
+        type: "tool_result";
+        tool_use_id: string;
+        content: string;
+      }
+  > = [];
+
+  const flushPendingUserContentBlocks = () => {
+    if (pendingUserContentBlocks.length === 0) {
+      return;
+    }
+
+    outboundMessages.push({
+      role: "user",
+      content:
+        pendingUserContentBlocks.length === 1 &&
+        pendingUserContentBlocks[0]?.type === "text"
+          ? pendingUserContentBlocks[0].text
+          : pendingUserContentBlocks
     });
+    pendingUserContentBlocks = [];
+  };
+
+  for (const message of sourceMessages) {
+    if (message.role === "tool") {
+      pendingUserContentBlocks.push({
+        type: "tool_result",
+        tool_use_id: message.toolCallId,
+        content: message.content
+      });
+      continue;
+    }
+
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      flushPendingUserContentBlocks();
+      outboundMessages.push({
+        role: "assistant",
+        content: [
+          ...(message.content.length > 0
+            ? [
+                {
+                  type: "text" as const,
+                  text: message.content
+                }
+              ]
+            : []),
+          ...message.toolCalls.map((toolCall) => ({
+            type: "tool_use" as const,
+            id: toolCall.id,
+            name: toolCall.name,
+            input: parseAnthropicToolInput(toolCall.arguments, requestId)
+          }))
+        ]
+      });
+      continue;
+    }
+
+    if (message.role === "user") {
+      pendingUserContentBlocks.push({
+        type: "text",
+        text: message.content
+      });
+      continue;
+    }
+
+    flushPendingUserContentBlocks();
+    outboundMessages.push({
+      role: "assistant",
+      content: message.content
+    });
+  }
+
+  flushPendingUserContentBlocks();
+
+  return outboundMessages;
 }
 
 export interface AnthropicProviderAdapterOptions {

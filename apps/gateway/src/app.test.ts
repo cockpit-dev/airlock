@@ -21354,6 +21354,158 @@ describe("gateway app", () => {
     });
   });
 
+  it("preserves mixed anthropic user text and tool replay order through gemini on /v1/messages", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              finishReason: "STOP",
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "done"
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          max_tokens: 256,
+          tools: [
+            {
+              name: "lookup_weather",
+              input_schema: {
+                type: "object"
+              }
+            }
+          ],
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: "call_123",
+                  name: "lookup_weather",
+                  input: {
+                    city: "Shanghai"
+                  }
+                }
+              ]
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Please use this tool result."
+                },
+                {
+                  type: "tool_result",
+                  tool_use_id: "call_123",
+                  content: "{\"temperature_c\":26}"
+                },
+                {
+                  type: "text",
+                  text: "Now summarize it."
+                }
+              ]
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      contents: [
+        {
+          role: "model",
+          parts: [
+            {
+              functionCall: {
+                name: "lookup_weather",
+                args: {
+                  city: "Shanghai"
+                }
+              }
+            }
+          ]
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              text: "Please use this tool result."
+            }
+          ]
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: "lookup_weather",
+                response: {
+                  temperature_c: 26
+                }
+              }
+            }
+          ]
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              text: "Now summarize it."
+            }
+          ]
+        }
+      ]
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      content: [
+        {
+          type: "text",
+          text: "done"
+        }
+      ]
+    });
+  });
+
   it("fails closed when chat tool replay is sent to gemini without a matching declared tool definition", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -26954,6 +27106,96 @@ describe("gateway app", () => {
               type: "tool_result",
               tool_use_id: "call_123",
               content: "26C\nand sunny"
+            }
+          ]
+        }
+      ]
+    });
+  });
+
+  it("preserves mixed anthropic user text and tool_result block order through messages ingress", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "done"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Please use this tool result."
+                },
+                {
+                  type: "tool_result",
+                  tool_use_id: "call_123",
+                  content: "{\"temperature_c\":26}"
+                },
+                {
+                  type: "text",
+                  text: "Now summarize it."
+                }
+              ]
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Please use this tool result."
+            },
+            {
+              type: "tool_result",
+              tool_use_id: "call_123",
+              content: "{\"temperature_c\":26}"
+            },
+            {
+              type: "text",
+              text: "Now summarize it."
             }
           ]
         }

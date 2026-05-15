@@ -3316,6 +3316,50 @@ describe("normalizeAnthropicMessagesRequest", () => {
       }
     ]);
   });
+
+  it("preserves mixed anthropic user text and tool_result block order", () => {
+    const canonical = normalizeAnthropicMessagesRequest({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Please use this tool result."
+            },
+            {
+              type: "tool_result",
+              tool_use_id: "call_123",
+              content: "{\"temperature_c\":26}"
+            },
+            {
+              type: "text",
+              text: "Now summarize it."
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      {
+        role: "user",
+        content: "Please use this tool result."
+      },
+      {
+        role: "tool",
+        content: "{\"temperature_c\":26}",
+        toolCallId: "call_123"
+      },
+      {
+        role: "user",
+        content: "Now summarize it."
+      }
+    ]);
+  });
 });
 
 describe("encodeCanonicalToAnthropicMessagesResponse", () => {

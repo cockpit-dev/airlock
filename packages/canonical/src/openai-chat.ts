@@ -737,6 +737,26 @@ export function normalizeOpenAIResponsesRequest(
 export function normalizeAnthropicMessagesRequest(
   request: AnthropicMessagesRequest
 ): CanonicalRequest {
+  function joinAnthropicTextBlocks(
+    blocks: Array<{
+      type: "text";
+      text: string;
+    }>
+  ) {
+    return blocks.map((block) => block.text).join("\n");
+  }
+
+  function normalizeAnthropicToolResultContent(
+    content:
+      | string
+      | Array<{
+          type: "text";
+          text: string;
+        }>
+  ) {
+    return typeof content === "string" ? content : joinAnthropicTextBlocks(content);
+  }
+
   const systemMessages = request.system
     ? [
         {
@@ -744,16 +764,18 @@ export function normalizeAnthropicMessagesRequest(
           content:
             typeof request.system === "string"
               ? request.system
-              : request.system.map((block) => block.text).join("\n")
+              : joinAnthropicTextBlocks(request.system)
         }
       ]
     : [];
-  const messages = request.messages.map((message) => {
+  const messages = request.messages.flatMap((message) => {
     if (typeof message.content === "string") {
-      return {
-        role: message.role,
-        content: message.content
-      };
+      return [
+        {
+          role: message.role,
+          content: message.content
+        }
+      ];
     }
 
     const toolUseBlocks = message.content.filter((block) => {
@@ -761,45 +783,69 @@ export function normalizeAnthropicMessagesRequest(
     });
 
     if (message.role === "assistant" && toolUseBlocks.length > 0) {
-      return {
-        role: "assistant" as const,
-        content: message.content
-          .filter((block) => block.type === "text")
-          .map((block) => block.text)
-          .join("\n"),
-        toolCalls: toolUseBlocks.map((block) => ({
-          id: block.id,
-          name: block.name,
-          arguments: JSON.stringify(block.input)
-        }))
-      };
+      return [
+        {
+          role: "assistant" as const,
+          content: joinAnthropicTextBlocks(
+            message.content.filter((block) => block.type === "text")
+          ),
+          toolCalls: toolUseBlocks.map((block) => ({
+            id: block.id,
+            name: block.name,
+            arguments: JSON.stringify(block.input)
+          }))
+        }
+      ];
     }
 
-    const toolResultBlocks = message.content.filter((block) => {
-      return block.type === "tool_result";
-    });
+    if (message.role === "user") {
+      const normalizedMessages: Array<CanonicalRequest["messages"][number]> = [];
+      let pendingTextBlocks: Array<{
+        type: "text";
+        text: string;
+      }> = [];
 
-    if (message.role === "user" && toolResultBlocks.length > 0) {
-      return {
-        role: "tool" as const,
-        content: toolResultBlocks
-          .map((block) => {
-            return typeof block.content === "string"
-              ? block.content
-              : block.content.map((contentBlock) => contentBlock.text).join("\n");
-          })
-          .join("\n"),
-        toolCallId: toolResultBlocks[0]?.tool_use_id ?? ""
+      const flushPendingTextBlocks = () => {
+        if (pendingTextBlocks.length === 0) {
+          return;
+        }
+
+        normalizedMessages.push({
+          role: "user",
+          content: joinAnthropicTextBlocks(pendingTextBlocks)
+        });
+        pendingTextBlocks = [];
       };
+
+      for (const block of message.content) {
+        if (block.type === "text") {
+          pendingTextBlocks.push(block);
+          continue;
+        }
+
+        if (block.type === "tool_result") {
+          flushPendingTextBlocks();
+          normalizedMessages.push({
+            role: "tool",
+            content: normalizeAnthropicToolResultContent(block.content),
+            toolCallId: block.tool_use_id
+          });
+        }
+      }
+
+      flushPendingTextBlocks();
+
+      return normalizedMessages;
     }
 
-    return {
-      role: message.role,
-      content: message.content
-        .filter((block) => block.type === "text")
-        .map((block) => block.text)
-        .join("\n")
-    };
+    return [
+      {
+        role: message.role,
+        content: joinAnthropicTextBlocks(
+          message.content.filter((block) => block.type === "text")
+        )
+      }
+    ];
   });
 
   return {
