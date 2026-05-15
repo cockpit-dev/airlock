@@ -41,6 +41,21 @@ type ProviderCapabilityDescriptorResolver = (
   provider: ProviderTarget["provider"]
 ) => ProviderCapabilityDescriptor;
 
+type ProviderTargetHealthSnapshot = {
+  isOpen: boolean;
+  isHalfOpen?: boolean;
+  consecutiveRetryableFailures: number;
+  lastSuccessLatencyMs?: number;
+  smoothedSuccessLatencyMs?: number;
+  lastSuccessTotalTokens?: number;
+  smoothedSuccessTotalTokens?: number;
+  lastSuccessAt?: number;
+  lastFailureAt?: number;
+};
+
+const PRIORITY_LATENCY_FRESHNESS_WINDOW_MS = 30_000;
+const OBSERVED_TOKEN_COST_FRESHNESS_WINDOW_MS = 30_000;
+
 function createUnsupportedCapabilityError(
   provider: string,
   capability: string,
@@ -364,20 +379,7 @@ function reorderTargetsForRoute(
   targets: ProviderTarget[],
   requestId: string,
   now: () => number,
-  healthByTarget?: Map<
-    string,
-    {
-      isOpen: boolean;
-      isHalfOpen?: boolean;
-      consecutiveRetryableFailures: number;
-      lastSuccessLatencyMs?: number;
-      smoothedSuccessLatencyMs?: number;
-      lastSuccessTotalTokens?: number;
-      smoothedSuccessTotalTokens?: number;
-      lastSuccessAt?: number;
-      lastFailureAt?: number;
-    }
-  >
+  healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
 ): ProviderTarget[] {
   const targetSelection = route.targetSelection;
 
@@ -424,12 +426,16 @@ function reorderTargetsForRoute(
       const rightKey = serializeProviderTarget(right);
       const leftConfiguredCost = targetSelection.costs[leftKey] ?? 1;
       const rightConfiguredCost = targetSelection.costs[rightKey] ?? 1;
-      const leftObservedMultiplier =
-        healthByTarget?.get(leftKey)?.smoothedSuccessTotalTokens ??
-        healthByTarget?.get(leftKey)?.lastSuccessTotalTokens;
-      const rightObservedMultiplier =
-        healthByTarget?.get(rightKey)?.smoothedSuccessTotalTokens ??
-        healthByTarget?.get(rightKey)?.lastSuccessTotalTokens;
+      const leftObservedMultiplier = getFreshObservedTokenCostMultiplier(
+        leftKey,
+        now,
+        healthByTarget
+      );
+      const rightObservedMultiplier = getFreshObservedTokenCostMultiplier(
+        rightKey,
+        now,
+        healthByTarget
+      );
       const leftCost =
         leftObservedMultiplier !== undefined
           ? leftConfiguredCost * leftObservedMultiplier
@@ -478,21 +484,8 @@ function getPriorityLatencyStatus(
   targetKey: string,
   selection: PriorityRouteTargetSelection,
   now: () => number,
-  healthByTarget?: Map<
-    string,
-    {
-      isOpen: boolean;
-      isHalfOpen?: boolean;
-      consecutiveRetryableFailures: number;
-      lastSuccessLatencyMs?: number;
-      smoothedSuccessLatencyMs?: number;
-      lastSuccessTotalTokens?: number;
-      smoothedSuccessTotalTokens?: number;
-      lastSuccessAt?: number;
-    }
-  >
+  healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
 ): number {
-  const PRIORITY_LATENCY_FRESHNESS_WINDOW_MS = 30_000;
   const latencySlo = selection.latencySloMs?.[targetKey];
   const health = healthByTarget?.get(targetKey);
   const observedLatency =
@@ -517,22 +510,8 @@ function getPriorityLatencyDeltaRatio(
   targetKey: string,
   selection: PriorityRouteTargetSelection,
   now: () => number,
-  healthByTarget?: Map<
-    string,
-    {
-      isOpen: boolean;
-      isHalfOpen?: boolean;
-      consecutiveRetryableFailures: number;
-      lastSuccessLatencyMs?: number;
-      smoothedSuccessLatencyMs?: number;
-      lastSuccessTotalTokens?: number;
-      smoothedSuccessTotalTokens?: number;
-      lastSuccessAt?: number;
-      lastFailureAt?: number;
-    }
-  >
+  healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
 ): number | undefined {
-  const PRIORITY_LATENCY_FRESHNESS_WINDOW_MS = 30_000;
   const latencySlo = selection.latencySloMs?.[targetKey];
   const health = healthByTarget?.get(targetKey);
   const observedLatency =
@@ -550,23 +529,28 @@ function getPriorityLatencyDeltaRatio(
   return (observedLatency - latencySlo) / latencySlo;
 }
 
+function getFreshObservedTokenCostMultiplier(
+  targetKey: string,
+  now: () => number,
+  healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
+): number | undefined {
+  const health = healthByTarget?.get(targetKey);
+
+  if (
+    health?.lastSuccessAt === undefined ||
+    now() - health.lastSuccessAt > OBSERVED_TOKEN_COST_FRESHNESS_WINDOW_MS
+  ) {
+    return undefined;
+  }
+
+  return health.smoothedSuccessTotalTokens ?? health.lastSuccessTotalTokens;
+}
+
 function getPriorityEffectiveCost(
   targetKey: string,
   selection: PriorityRouteTargetSelection,
-  healthByTarget?: Map<
-    string,
-    {
-      isOpen: boolean;
-      isHalfOpen?: boolean;
-      consecutiveRetryableFailures: number;
-      lastSuccessLatencyMs?: number;
-      smoothedSuccessLatencyMs?: number;
-      lastSuccessTotalTokens?: number;
-      smoothedSuccessTotalTokens?: number;
-      lastSuccessAt?: number;
-      lastFailureAt?: number;
-    }
-  >
+  now: () => number,
+  healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
 ): number | undefined {
   const configuredCost = selection.costs?.[targetKey];
 
@@ -574,9 +558,11 @@ function getPriorityEffectiveCost(
     return undefined;
   }
 
-  const observedMultiplier =
-    healthByTarget?.get(targetKey)?.smoothedSuccessTotalTokens ??
-    healthByTarget?.get(targetKey)?.lastSuccessTotalTokens;
+  const observedMultiplier = getFreshObservedTokenCostMultiplier(
+    targetKey,
+    now,
+    healthByTarget
+  );
 
   if (observedMultiplier === undefined) {
     return configuredCost;
@@ -589,20 +575,7 @@ function reorderTargetsForPrioritySelection(
   targets: ProviderTarget[],
   selection: PriorityRouteTargetSelection,
   now: () => number,
-  healthByTarget?: Map<
-    string,
-    {
-      isOpen: boolean;
-      isHalfOpen?: boolean;
-      consecutiveRetryableFailures: number;
-      lastSuccessLatencyMs?: number;
-      smoothedSuccessLatencyMs?: number;
-      lastSuccessTotalTokens?: number;
-      smoothedSuccessTotalTokens?: number;
-      lastSuccessAt?: number;
-      lastFailureAt?: number;
-    }
-  >
+  healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
 ): ProviderTarget[] {
   const PRIORITY_RECOVERY_WINDOW_MS = 30_000;
 
@@ -707,10 +680,16 @@ function reorderTargetsForPrioritySelection(
       return leftLatencyDeltaRatio - rightLatencyDeltaRatio;
     }
 
-    const leftCost = getPriorityEffectiveCost(leftKey, selection, healthByTarget);
+    const leftCost = getPriorityEffectiveCost(
+      leftKey,
+      selection,
+      now,
+      healthByTarget
+    );
     const rightCost = getPriorityEffectiveCost(
       rightKey,
       selection,
+      now,
       healthByTarget
     );
 
@@ -724,20 +703,7 @@ function reorderTargetsForPrioritySelection(
 
 function promoteHalfOpenProbeTarget(
   targets: ProviderTarget[],
-  healthByTarget?: Map<
-    string,
-    {
-      isOpen: boolean;
-      isHalfOpen?: boolean;
-      consecutiveRetryableFailures: number;
-      lastSuccessLatencyMs?: number;
-      smoothedSuccessLatencyMs?: number;
-      lastSuccessTotalTokens?: number;
-      smoothedSuccessTotalTokens?: number;
-      lastSuccessAt?: number;
-      lastFailureAt?: number;
-    }
-  >
+  healthByTarget?: Map<string, ProviderTargetHealthSnapshot>
 ): ProviderTarget[] {
   // Preserve ordinary health ordering, but give one cooled-down target a real
   // recovery probe so it cannot starve behind permanently healthy peers.
@@ -778,20 +744,7 @@ function selectEligibleTargets(
   let skippedOpenCircuitCount = 0;
 
   return (async () => {
-    const healthByTarget = new Map<
-      string,
-      {
-        isOpen: boolean;
-        isHalfOpen?: boolean;
-        consecutiveRetryableFailures: number;
-        lastSuccessLatencyMs?: number;
-        smoothedSuccessLatencyMs?: number;
-        lastSuccessTotalTokens?: number;
-        smoothedSuccessTotalTokens?: number;
-        lastSuccessAt?: number;
-        lastFailureAt?: number;
-      }
-    >();
+    const healthByTarget = new Map<string, ProviderTargetHealthSnapshot>();
 
     for (const target of candidates) {
       if (!target) {
