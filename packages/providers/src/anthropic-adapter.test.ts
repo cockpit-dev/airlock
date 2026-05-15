@@ -1544,6 +1544,23 @@ describe("AnthropicProviderAdapter", () => {
       events.push(event);
     }
 
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stream: true,
+      tools: [
+        {
+          name: "lookup_weather",
+          input_schema: {
+            type: "object"
+          }
+        }
+      ],
+      tool_choice: {
+        type: "auto"
+      }
+    });
+
     expect(events).toEqual([
       {
         type: "response_started",

@@ -82,8 +82,22 @@ export const anthropicMessagesResponseSchema = z.object({
   type: z.literal("message"),
   role: z.literal("assistant"),
   model: z.string().min(1),
-  stop_reason: z.literal("end_turn"),
-  content: z.array(anthropicTextContentBlockSchema).min(1)
+  stop_reason: z.enum(["end_turn", "tool_use", "max_tokens"]),
+  stop_sequence: z.string().nullable().optional(),
+  usage: z
+    .object({
+      input_tokens: z.number().int().nonnegative(),
+      output_tokens: z.number().int().nonnegative()
+    })
+    .optional(),
+  content: z
+    .array(
+      z.union([
+        anthropicTextContentBlockSchema,
+        anthropicToolUseContentBlockSchema
+      ])
+    )
+    .min(1)
 });
 
 export type AnthropicMessagesRequest = z.infer<

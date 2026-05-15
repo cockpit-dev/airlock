@@ -211,6 +211,60 @@ function buildAnthropicMessages(
   return outboundMessages;
 }
 
+function buildAnthropicRequestBody(
+  request: CanonicalRequest,
+  defaultMaxTokens: number,
+  requestId: string,
+  stream: boolean
+) {
+  const systemMessage = request.messages.find((message) => {
+    return message.role === "system";
+  });
+  const messages = buildAnthropicMessages(request, requestId);
+  const toolChoice = mapCanonicalToolChoiceToAnthropic(request.toolChoice);
+
+  return {
+    model: request.model,
+    max_tokens: request.maxOutputTokens ?? defaultMaxTokens,
+    ...(stream ? { stream: true } : {}),
+    ...(systemMessage
+      ? {
+          system: [
+            {
+              type: "text" as const,
+              text: systemMessage.content
+            }
+          ]
+        }
+      : {}),
+    ...(request.endUserId !== undefined
+      ? {
+          metadata: {
+            user_id: request.endUserId
+          }
+        }
+      : {}),
+    ...(request.temperature !== undefined
+      ? { temperature: request.temperature }
+      : {}),
+    ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+    ...(request.stopSequences !== undefined
+      ? { stop_sequences: request.stopSequences }
+      : {}),
+    ...(request.tools !== undefined
+      ? {
+          tools: request.tools.map((tool) => ({
+            name: tool.name,
+            ...(tool.description ? { description: tool.description } : {}),
+            input_schema: tool.inputSchema
+          }))
+        }
+      : {}),
+    ...(toolChoice ? { tool_choice: toolChoice } : {}),
+    messages
+  };
+}
+
 export interface AnthropicProviderAdapterOptions {
   apiKey: string;
   baseUrl: string;
@@ -244,10 +298,12 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     request: CanonicalRequest,
     context: ProviderRequestContext
   ): Promise<CanonicalResponse> {
-    const systemMessage = request.messages.find((message) => {
-      return message.role === "system";
-    });
-    const messages = buildAnthropicMessages(request, context.requestId);
+    const requestBody = buildAnthropicRequestBody(
+      request,
+      this.#defaultMaxTokens,
+      context.requestId,
+      false
+    );
 
     const authStrategy: OutboundAuthStrategy = {
       type: "header_value",
@@ -268,53 +324,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                   "content-type": "application/json"
                 },
                 query: {},
-                jsonBody: {
-                  model: request.model,
-                  max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
-                  ...(systemMessage
-                    ? {
-                        system: [
-                          {
-                            type: "text" as const,
-                            text: systemMessage.content
-                          }
-                        ]
-                      }
-                    : {}),
-                  ...(request.endUserId !== undefined
-                    ? {
-                        metadata: {
-                          user_id: request.endUserId
-                        }
-                      }
-                    : {}),
-                  ...(request.temperature !== undefined
-                    ? { temperature: request.temperature }
-                    : {}),
-                  ...(request.topP !== undefined ? { top_p: request.topP } : {}),
-                  ...(request.stopSequences !== undefined
-                    ? { stop_sequences: request.stopSequences }
-                    : {}),
-                  ...(request.tools !== undefined
-                    ? {
-                        tools: request.tools.map((tool) => ({
-                          name: tool.name,
-                          ...(tool.description
-                            ? { description: tool.description }
-                            : {}),
-                          input_schema: tool.inputSchema
-                        }))
-                      }
-                    : {}),
-                  ...(mapCanonicalToolChoiceToAnthropic(request.toolChoice)
-                    ? {
-                        tool_choice: mapCanonicalToolChoiceToAnthropic(
-                          request.toolChoice
-                        )
-                      }
-                    : {}),
-                  messages
-                }
+                jsonBody: requestBody
               },
               authStrategy,
               {
@@ -336,51 +346,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                 "content-type": "application/json"
               },
               query: {},
-              jsonBody: {
-                model: request.model,
-                max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
-                ...(systemMessage
-                  ? {
-                      system: [
-                        {
-                          type: "text" as const,
-                          text: systemMessage.content
-                        }
-                      ]
-                    }
-                  : {}),
-                ...(request.endUserId !== undefined
-                  ? {
-                      metadata: {
-                        user_id: request.endUserId
-                      }
-                    }
-                  : {}),
-                ...(request.temperature !== undefined
-                  ? { temperature: request.temperature }
-                  : {}),
-                ...(request.topP !== undefined ? { top_p: request.topP } : {}),
-                ...(request.stopSequences !== undefined
-                  ? { stop_sequences: request.stopSequences }
-                  : {}),
-                ...(request.tools !== undefined
-                  ? {
-                      tools: request.tools.map((tool) => ({
-                        name: tool.name,
-                        ...(tool.description ? { description: tool.description } : {}),
-                        input_schema: tool.inputSchema
-                      }))
-                    }
-                  : {}),
-                ...(mapCanonicalToolChoiceToAnthropic(request.toolChoice)
-                  ? {
-                      tool_choice: mapCanonicalToolChoiceToAnthropic(
-                        request.toolChoice
-                      )
-                    }
-                  : {}),
-                messages
-              }
+              jsonBody: requestBody
             },
             authStrategy,
             {
@@ -500,10 +466,12 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     request: CanonicalRequest,
     context: ProviderRequestContext
   ): AsyncIterable<CanonicalStreamEvent> {
-    const systemMessage = request.messages.find((message) => {
-      return message.role === "system";
-    });
-    const messages = buildAnthropicMessages(request, context.requestId);
+    const requestBody = buildAnthropicRequestBody(
+      request,
+      this.#defaultMaxTokens,
+      context.requestId,
+      true
+    );
 
     const authStrategy: OutboundAuthStrategy = {
       type: "header_value",
@@ -524,36 +492,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                   "content-type": "application/json"
                 },
                 query: {},
-                  jsonBody: {
-                    model: request.model,
-                    max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
-                    stream: true,
-                    ...(systemMessage
-                      ? {
-                          system: [
-                            {
-                              type: "text" as const,
-                              text: systemMessage.content
-                            }
-                          ]
-                        }
-                      : {}),
-                  ...(request.endUserId !== undefined
-                    ? {
-                        metadata: {
-                          user_id: request.endUserId
-                        }
-                      }
-                    : {}),
-                  ...(request.temperature !== undefined
-                    ? { temperature: request.temperature }
-                    : {}),
-                  ...(request.topP !== undefined ? { top_p: request.topP } : {}),
-                  ...(request.stopSequences !== undefined
-                    ? { stop_sequences: request.stopSequences }
-                    : {}),
-                  messages
-                }
+                jsonBody: requestBody
               },
               authStrategy,
               {
@@ -575,36 +514,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                 "content-type": "application/json"
               },
               query: {},
-                jsonBody: {
-                  model: request.model,
-                  max_tokens: request.maxOutputTokens ?? this.#defaultMaxTokens,
-                  stream: true,
-                  ...(systemMessage
-                    ? {
-                        system: [
-                          {
-                            type: "text" as const,
-                            text: systemMessage.content
-                          }
-                        ]
-                      }
-                    : {}),
-                ...(request.endUserId !== undefined
-                  ? {
-                      metadata: {
-                        user_id: request.endUserId
-                      }
-                    }
-                  : {}),
-                ...(request.temperature !== undefined
-                  ? { temperature: request.temperature }
-                  : {}),
-                ...(request.topP !== undefined ? { top_p: request.topP } : {}),
-                ...(request.stopSequences !== undefined
-                  ? { stop_sequences: request.stopSequences }
-                  : {}),
-                messages
-              }
+              jsonBody: requestBody
             },
             authStrategy,
             {

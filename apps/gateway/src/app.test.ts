@@ -33190,6 +33190,21 @@ describe("gateway app", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stream: true,
+      tools: [
+        {
+          name: "lookup_weather",
+          input_schema: {
+            type: "object"
+          }
+        }
+      ],
+      tool_choice: {
+        type: "auto"
+      }
+    });
     const body = await readText(response);
 
     expect(body).toContain("event: message_start");

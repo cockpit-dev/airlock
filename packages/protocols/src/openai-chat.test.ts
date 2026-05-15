@@ -1986,4 +1986,104 @@ describe("anthropicMessagesResponseSchema", () => {
 
     expect(parsed.type).toBe("message");
   });
+
+  it("accepts an anthropic messages response that ends in tool_use", () => {
+    const parsed = anthropicMessagesResponseSchema.parse({
+      id: "msg_123",
+      type: "message",
+      role: "assistant",
+      model: "claude-sonnet-4-5",
+      stop_reason: "tool_use",
+      stop_sequence: null,
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_123",
+          name: "lookup_weather",
+          input: {
+            city: "Shanghai"
+          }
+        }
+      ]
+    });
+
+    expect(parsed.stop_reason).toBe("tool_use");
+    expect(parsed.content).toEqual([
+      {
+        type: "tool_use",
+        id: "toolu_123",
+        name: "lookup_weather",
+        input: {
+          city: "Shanghai"
+        }
+      }
+    ]);
+  });
+
+  it("accepts mixed text and tool_use anthropic messages responses with usage", () => {
+    const parsed = anthropicMessagesResponseSchema.parse({
+      id: "msg_123",
+      type: "message",
+      role: "assistant",
+      model: "claude-sonnet-4-5",
+      stop_reason: "tool_use",
+      stop_sequence: null,
+      usage: {
+        input_tokens: 12,
+        output_tokens: 8
+      },
+      content: [
+        {
+          type: "text",
+          text: "Let me check that."
+        },
+        {
+          type: "tool_use",
+          id: "toolu_123",
+          name: "lookup_weather",
+          input: {
+            city: "Shanghai"
+          }
+        }
+      ]
+    });
+
+    expect(parsed.usage).toEqual({
+      input_tokens: 12,
+      output_tokens: 8
+    });
+    expect(parsed.content).toEqual([
+      {
+        type: "text",
+        text: "Let me check that."
+      },
+      {
+        type: "tool_use",
+        id: "toolu_123",
+        name: "lookup_weather",
+        input: {
+          city: "Shanghai"
+        }
+      }
+    ]);
+  });
+
+  it("accepts max_tokens anthropic messages responses", () => {
+    const parsed = anthropicMessagesResponseSchema.parse({
+      id: "msg_123",
+      type: "message",
+      role: "assistant",
+      model: "claude-sonnet-4-5",
+      stop_reason: "max_tokens",
+      stop_sequence: null,
+      content: [
+        {
+          type: "text",
+          text: "hello there"
+        }
+      ]
+    });
+
+    expect(parsed.stop_reason).toBe("max_tokens");
+  });
 });
