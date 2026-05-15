@@ -67,6 +67,8 @@ export interface CanonicalRequest {
       frequencyPenalty?: number;
       logprobs?: boolean;
       presencePenalty?: number;
+      responsesOutputTextLogprobs?: boolean;
+      responsesTopLogprobs?: number;
       seed?: number;
       topLogprobs?: number;
       chatIncludeUsage?: true;
@@ -189,6 +191,7 @@ export type CanonicalStreamEvent =
       createdAt?: number;
       systemFingerprint?: string;
       delta: string;
+      outputTextLogprobs?: CanonicalOutputTextLogprobs;
     }
   | {
       type: "reasoning_summary_delta";
@@ -204,6 +207,7 @@ export type CanonicalStreamEvent =
       model: string;
       createdAt?: number;
       finishReason: "stop" | "max_tokens" | "tool_calls";
+      outputTextLogprobs?: CanonicalOutputTextLogprobs;
       usage?: CanonicalUsage;
       parallelToolCalls?: boolean;
       reasoningSummary?: string;

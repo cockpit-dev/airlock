@@ -1399,6 +1399,23 @@ describe("normalizeOpenAIResponsesRequest", () => {
     });
   });
 
+  it("normalizes responses output-text logprobs controls into canonical OpenAI-native request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: "hello",
+      include: ["message.output_text.logprobs"],
+      top_logprobs: 5
+    });
+
+    expect(canonical.providerMetadata).toEqual({
+      openai: {
+        responsesOutputTextLogprobs: true,
+        responsesTopLogprobs: 5
+      }
+    });
+  });
+
   it("normalizes responses metadata into canonical OpenAI-native request fields", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",
@@ -1898,6 +1915,53 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
     });
   });
 
+  it("encodes canonical responses outputTextLogprobs into output_text logprobs fields", () => {
+    const encoded = encodeCanonicalToOpenAIResponsesResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      outputText: "hello",
+      finishReason: "stop",
+      outputTextLogprobs: {
+        content: [
+          {
+            token: "hello",
+            logprob: -0.1,
+            topLogprobs: [
+              {
+                token: "hello",
+                logprob: -0.1
+              }
+            ]
+          }
+        ]
+      }
+    });
+
+    expect(encoded.output[0]).toMatchObject({
+      type: "message",
+      content: [
+        {
+          type: "output_text",
+          text: "hello",
+          logprobs: {
+            content: [
+              {
+                token: "hello",
+                logprob: -0.1,
+                top_logprobs: [
+                  {
+                    token: "hello",
+                    logprob: -0.1
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    });
+  });
+
   it("encodes a max_tokens canonical response into an incomplete OpenAI responses payload", () => {
     const encoded = encodeCanonicalToOpenAIResponsesResponse({
       id: "resp_123",
@@ -2163,8 +2227,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           item_id: "resp_123_output_0",
           output_index: 0,
           content_index: 0,
-          delta: "hel",
-          logprobs: []
+          delta: "hel"
         }
       ],
       nextSequenceNumber: 5
@@ -2211,8 +2274,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           item_id: "resp_123_output_0",
           output_index: 0,
           content_index: 0,
-          text: "hello",
-          logprobs: []
+          text: "hello"
         },
         {
           type: "response.content_part.done",
@@ -2928,8 +2990,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           item_id: "resp_123_output_0",
           output_index: 0,
           content_index: 0,
-          text: "Let me check that.",
-          logprobs: []
+          text: "Let me check that."
         },
         {
           type: "response.content_part.done",
@@ -3090,8 +3151,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           item_id: "resp_123_output_0",
           output_index: 1,
           content_index: 0,
-          text: "Let me check that.",
-          logprobs: []
+          text: "Let me check that."
         },
         {
           type: "response.content_part.done",

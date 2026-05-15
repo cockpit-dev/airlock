@@ -98,6 +98,10 @@ const openAIResponsesStreamOptionsSchema = z.object({
   include_obfuscation: z.literal(false)
 });
 
+const openAIResponsesIncludeSchema = z
+  .array(z.literal("message.output_text.logprobs"))
+  .min(1);
+
 const openAIResponsesOutputTextContentBlockSchema = z.object({
   type: z.literal("output_text"),
   text: z.string().min(1)
@@ -179,6 +183,8 @@ export const openAIResponsesRequestSchema = z
   instructions: z.string().min(1).optional(),
   reasoning: openAIResponsesReasoningSchema.optional(),
   text: openAIResponsesTextConfigSchema.optional(),
+  include: openAIResponsesIncludeSchema.optional(),
+  top_logprobs: z.number().int().min(0).max(20).optional(),
   stream_options: openAIResponsesStreamOptionsSchema.optional(),
   parallel_tool_calls: z.boolean().optional(),
   tools: z.array(openAIResponsesFunctionToolSchema).min(1).optional(),
@@ -236,6 +242,18 @@ export const openAIResponsesRequestSchema = z
         code: z.ZodIssueCode.custom,
         message: "OpenAI Responses stream_options requires stream=true",
         path: ["stream_options"]
+      });
+    }
+
+    if (
+      value.top_logprobs !== undefined &&
+      !value.include?.includes("message.output_text.logprobs")
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "top_logprobs requires include to contain message.output_text.logprobs",
+        path: ["top_logprobs"]
       });
     }
   });

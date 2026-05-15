@@ -243,6 +243,24 @@ function mapCanonicalOpenAIRequestMetadata(
   };
 }
 
+function mapCanonicalOpenAIResponsesLogprobs(
+  request: CanonicalRequest
+) {
+  if (
+    request.providerMetadata?.openai?.responsesOutputTextLogprobs !== true &&
+    request.providerMetadata?.openai?.responsesTopLogprobs === undefined
+  ) {
+    return undefined;
+  }
+
+  return {
+    include: ["message.output_text.logprobs"] as const,
+    ...(request.providerMetadata?.openai?.responsesTopLogprobs !== undefined
+      ? { top_logprobs: request.providerMetadata.openai.responsesTopLogprobs }
+      : {})
+  };
+}
+
 function mapCanonicalOpenAIResponsesConversation(
   conversationId: CanonicalRequest["conversationId"]
 ) {
@@ -576,6 +594,28 @@ function extractOutputTextFromOpenAIResponsesOutput(
         content?: Array<{
           type?: string;
           text?: string;
+          logprobs?: {
+            content?: Array<{
+              token?: string;
+              logprob?: number;
+              bytes?: number[];
+              top_logprobs?: Array<{
+                token?: string;
+                logprob?: number;
+                bytes?: number[];
+              }>;
+            }>;
+            refusal?: Array<{
+              token?: string;
+              logprob?: number;
+              bytes?: number[];
+              top_logprobs?: Array<{
+                token?: string;
+                logprob?: number;
+                bytes?: number[];
+              }>;
+            }>;
+          };
         }>;
       }>
     | undefined
@@ -588,6 +628,47 @@ function extractOutputTextFromOpenAIResponsesOutput(
       .map((part) => part.text ?? "")
       .join("") ?? ""
   );
+}
+
+function extractOutputTextLogprobsFromOpenAIResponsesOutput(
+  output:
+    | Array<{
+        type?: string;
+        role?: string;
+        content?: Array<{
+          type?: string;
+          logprobs?: {
+            content?: Array<{
+              token?: string;
+              logprob?: number;
+              bytes?: number[];
+              top_logprobs?: Array<{
+                token?: string;
+                logprob?: number;
+                bytes?: number[];
+              }>;
+            }>;
+            refusal?: Array<{
+              token?: string;
+              logprob?: number;
+              bytes?: number[];
+              top_logprobs?: Array<{
+                token?: string;
+                logprob?: number;
+                bytes?: number[];
+              }>;
+            }>;
+          };
+        }>;
+      }>
+    | undefined
+) {
+  const outputTextPart = output
+    ?.filter((item) => item.type === "message" && item.role === "assistant")
+    .flatMap((item) => item.content ?? [])
+    .find((part) => part.type === "output_text");
+
+  return normalizeOpenAIOutputTextLogprobs(outputTextPart?.logprobs);
 }
 
 function extractToolCallsFromOpenAIResponsesOutput(
@@ -1254,6 +1335,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                         }
                       }
                     : {}),
+                  ...(mapCanonicalOpenAIResponsesLogprobs(request) ?? {}),
                   ...mapCanonicalOpenAIRequestMetadata(request),
                   ...(request.previousResponseId !== undefined
                     ? { previous_response_id: request.previousResponseId }
@@ -1356,6 +1438,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                       }
                     }
                   : {}),
+                ...(mapCanonicalOpenAIResponsesLogprobs(request) ?? {}),
                 ...mapCanonicalOpenAIRequestMetadata(request),
                 ...(request.previousResponseId !== undefined
                   ? { previous_response_id: request.previousResponseId }
@@ -1521,6 +1604,28 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         content?: Array<{
           type?: string;
           text?: string;
+          logprobs?: {
+            content?: Array<{
+              token?: string;
+              logprob?: number;
+              bytes?: number[];
+              top_logprobs?: Array<{
+                token?: string;
+                logprob?: number;
+                bytes?: number[];
+              }>;
+            }>;
+            refusal?: Array<{
+              token?: string;
+              logprob?: number;
+              bytes?: number[];
+              top_logprobs?: Array<{
+                token?: string;
+                logprob?: number;
+                bytes?: number[];
+              }>;
+            }>;
+          };
         }>;
       }>;
       parallel_tool_calls?: boolean;
@@ -1594,6 +1699,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     const reasoningSummary = extractReasoningSummaryFromOpenAIResponsesOutput(
       payload.output
     );
+    const outputTextLogprobs = extractOutputTextLogprobsFromOpenAIResponsesOutput(
+      payload.output
+    );
 
     return {
       id: payload.id,
@@ -1629,6 +1737,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
           }
         : {}),
       ...(reasoningSummary.length > 0 ? { reasoningSummary } : {}),
+      ...(outputTextLogprobs !== undefined
+        ? { outputTextLogprobs }
+        : {}),
       ...(toolCalls ? { toolCalls } : {}),
       finishReason: normalizeOpenAIResponsesFinishReason(
         payload.status,
@@ -1701,6 +1812,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                         }
                       }
                     : {}),
+                  ...(mapCanonicalOpenAIResponsesLogprobs(request) ?? {}),
                   ...mapCanonicalOpenAIRequestMetadata(request),
                   ...(request.previousResponseId !== undefined
                     ? { previous_response_id: request.previousResponseId }
@@ -1808,6 +1920,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                       }
                     }
                   : {}),
+                ...(mapCanonicalOpenAIResponsesLogprobs(request) ?? {}),
                 ...mapCanonicalOpenAIRequestMetadata(request),
                 ...(request.previousResponseId !== undefined
                   ? { previous_response_id: request.previousResponseId }
@@ -1956,6 +2069,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     let buffer = "";
     let hasStarted = false;
     const responseIdToModel = new Map<string, string>();
+    const responseIdToCreatedAt = new Map<string, number>();
     const streamedToolCalls = new Map<
       string,
       {
@@ -1974,6 +2088,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       }
     >();
     let streamedOutputText = "";
+    let streamedOutputTextLogprobs: CanonicalOutputTextLogprobs | undefined;
     let streamedReasoningSummary = "";
 
     try {
@@ -2085,6 +2200,16 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               item_id?: string;
               output_index?: number;
               delta?: string;
+              logprobs?: Array<{
+                token?: string;
+                logprob?: number;
+                bytes?: number[];
+                top_logprobs?: Array<{
+                  token?: string;
+                  logprob?: number;
+                  bytes?: number[];
+                }>;
+              }>;
             };
 
             if (payload.choices) {
@@ -2175,6 +2300,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               const responseId = payload.response.id;
               const model = payload.response.model ?? request.model;
               responseIdToModel.set(responseId, model);
+              if (payload.response.created_at !== undefined) {
+                responseIdToCreatedAt.set(responseId, payload.response.created_at);
+              }
 
               if (!hasStarted) {
                 hasStarted = true;
@@ -2233,8 +2361,56 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   `resp_${context.requestId}`,
                   request.model
                 ];
+              const createdAt = responseIdToCreatedAt.get(responseId);
 
               streamedOutputText += payload.delta;
+              const deltaLogprobs =
+                payload.logprobs && payload.logprobs.length > 0
+                  ? {
+                      content: payload.logprobs
+                        .filter((entry) => {
+                          return (
+                            typeof entry.token === "string" &&
+                            typeof entry.logprob === "number"
+                          );
+                        })
+                        .map((entry) => ({
+                          token: entry.token as string,
+                          logprob: entry.logprob as number,
+                          ...(entry.bytes !== undefined ? { bytes: entry.bytes } : {}),
+                          ...(entry.top_logprobs !== undefined
+                            ? {
+                                topLogprobs: entry.top_logprobs
+                                  .filter((candidate) => {
+                                    return (
+                                      typeof candidate.token === "string" &&
+                                      typeof candidate.logprob === "number"
+                                    );
+                                  })
+                                  .map((candidate) => ({
+                                    token: candidate.token as string,
+                                    logprob: candidate.logprob as number,
+                                    ...(candidate.bytes !== undefined
+                                      ? { bytes: candidate.bytes }
+                                      : {})
+                                  }))
+                              }
+                            : {})
+                        }))
+                    }
+                  : undefined;
+
+              if (deltaLogprobs?.content?.length) {
+                streamedOutputTextLogprobs = {
+                  content: [
+                    ...(streamedOutputTextLogprobs?.content ?? []),
+                    ...deltaLogprobs.content
+                  ],
+                  ...(streamedOutputTextLogprobs?.refusal !== undefined
+                    ? { refusal: streamedOutputTextLogprobs.refusal }
+                    : {})
+                };
+              }
 
               if (!hasStarted) {
                 hasStarted = true;
@@ -2249,7 +2425,11 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 type: "output_text_delta",
                 responseId,
                 model,
-                delta: payload.delta
+                ...(createdAt !== undefined ? { createdAt } : {}),
+                delta: payload.delta,
+                ...(deltaLogprobs?.content?.length
+                  ? { outputTextLogprobs: deltaLogprobs }
+                  : {})
               };
               continue;
             }
@@ -2457,6 +2637,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 extractReasoningSummaryFromOpenAIResponsesOutput(
                   payload.response.output
                 ) || streamedReasoningSummary;
+              const completedOutputTextLogprobs =
+                extractOutputTextLogprobsFromOpenAIResponsesOutput(payload.response.output) ??
+                streamedOutputTextLogprobs;
 
               if (!hasStarted) {
                 hasStarted = true;
@@ -2622,6 +2805,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ? {
                       responseTextVerbosity: payload.response.text.verbosity
                     }
+                  : {}),
+                ...(completedOutputTextLogprobs !== undefined
+                  ? { outputTextLogprobs: completedOutputTextLogprobs }
                   : {}),
                 ...(payload.response.conversation !== undefined
                   ? {

@@ -20596,6 +20596,113 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts responses output-text logprobs controls and preserves upstream output-text logprobs for OpenAI", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello",
+                  annotations: [],
+                  logprobs: {
+                    content: [
+                      {
+                        token: "hello",
+                        logprob: -0.1,
+                        top_logprobs: [
+                          {
+                            token: "hello",
+                            logprob: -0.1
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8,
+            total_tokens: 20
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          include: ["message.output_text.logprobs"],
+          top_logprobs: 5
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      include: ["message.output_text.logprobs"],
+      top_logprobs: 5
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      output: [
+        {
+          type: "message",
+          content: [
+            {
+              type: "output_text",
+              text: "hello",
+              logprobs: {
+                content: [
+                  {
+                    token: "hello",
+                    logprob: -0.1,
+                    top_logprobs: [
+                      {
+                        token: "hello",
+                        logprob: -0.1
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    });
+  });
+
   it("fails closed when responses metadata is sent to Anthropic", async () => {
     const fetcher = vi.fn();
     const app = createApp({ fetcher });
@@ -20614,6 +20721,39 @@ describe("gateway app", () => {
           metadata: {
             tenant: "acme"
           }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "provider_capability_not_supported",
+        message:
+          "Provider anthropic does not support required capability: openai_request_metadata"
+      }
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when responses output-text logprobs controls are sent to Anthropic", async () => {
+    const fetcher = vi.fn();
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          input: "hello",
+          include: ["message.output_text.logprobs"],
+          top_logprobs: 5
         })
       },
       createBindings()
@@ -25632,7 +25772,7 @@ describe("gateway app", () => {
               encoder.encode(
                 [
                   'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":false,"tools":[]}}\n\n',
-                  'data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"hello","logprobs":[]}\n\n',
+                  'data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"hello"}\n\n',
                   'data: {"type":"response.completed","sequence_number":2,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[],"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
                   "data: [DONE]\n\n"
                 ].join("")
@@ -25677,6 +25817,74 @@ describe("gateway app", () => {
       '"type":"response.completed","sequence_number":8,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"id":"resp_123_output_0","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello","annotations":[]}]}],"parallel_tool_calls":false,"tools":[],"output_text":"hello","usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}'
     );
     expect(body).toContain("data: [DONE]");
+  });
+
+  it("preserves native openai responses output-text logprobs in streaming events when explicitly requested", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n',
+                  'data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"hello","logprobs":[{"token":"hello","logprob":-0.1,"top_logprobs":[{"token":"hello","logprob":-0.1}]}]}\n\n',
+                  'data: {"type":"response.completed","sequence_number":2,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"id":"msg_123","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello","annotations":[],"logprobs":{"content":[{"token":"hello","logprob":-0.1,"top_logprobs":[{"token":"hello","logprob":-0.1}]}]}}]}],"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          stream: true,
+          include: ["message.output_text.logprobs"],
+          top_logprobs: 5
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      stream: true,
+      include: ["message.output_text.logprobs"],
+      top_logprobs: 5
+    });
+    const body = await readText(response);
+
+    expect(body).toContain(
+      '"type":"response.output_text.delta","sequence_number":4,"item_id":"resp_123_output_0","output_index":0,"content_index":0,"delta":"hello","logprobs":[{"token":"hello","logprob":-0.1,"top_logprobs":[{"token":"hello","logprob":-0.1}]}]}'
+    );
+    expect(body).toContain(
+      '"type":"response.output_text.done","sequence_number":5,"item_id":"resp_123_output_0","output_index":0,"content_index":0,"text":"hello","logprobs":[{"token":"hello","logprob":-0.1,"top_logprobs":[{"token":"hello","logprob":-0.1}]}]}'
+    );
+    expect(body).toContain(
+      '"logprobs":{"content":[{"token":"hello","logprob":-0.1,"top_logprobs":[{"token":"hello","logprob":-0.1}]}]}'
+    );
   });
 
   it("fails closed when responses stream_options include_obfuscation is sent to Anthropic", async () => {
@@ -28991,7 +29199,7 @@ describe("gateway app", () => {
                   'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
                   'data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"id":"msg_123","type":"message","role":"assistant","status":"in_progress","content":[]}}\n\n',
                   'data: {"type":"response.content_part.added","sequence_number":2,"item_id":"msg_123","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}\n\n',
-                  'data: {"type":"response.output_text.delta","sequence_number":3,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"Let me check that.","logprobs":[]}\n\n',
+                  'data: {"type":"response.output_text.delta","sequence_number":3,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"Let me check that."}\n\n',
                   'data: {"type":"response.output_item.added","sequence_number":4,"output_index":1,"item":{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"","status":"in_progress"}}\n\n',
                   'data: {"type":"response.function_call_arguments.delta","sequence_number":5,"item_id":"call_123","output_index":1,"delta":"{\\"city\\":\\"Shanghai\\"}"}\n\n',
                   'data: {"type":"response.completed","sequence_number":6,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"id":"msg_123","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Let me check that.","annotations":[]}]},{"type":"function_call","call_id":"call_123","name":"lookup_weather","arguments":"{\\"city\\":\\"Shanghai\\"}","status":"completed"}],"parallel_tool_calls":true,"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',

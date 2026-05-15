@@ -997,6 +997,101 @@ describe("OpenAIProviderAdapter", () => {
     });
   });
 
+  it("forwards responses output-text logprobs controls and preserves buffered output-text logprobs", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello",
+                  annotations: [],
+                  logprobs: {
+                    content: [
+                      {
+                        token: "hello",
+                        logprob: -0.1,
+                        top_logprobs: [
+                          {
+                            token: "hello",
+                            logprob: -0.1
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8,
+            total_tokens: 20
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const response = await adapter.complete(
+      {
+        ...createCanonicalRequest(),
+        providerMetadata: {
+          openai: {
+            responsesOutputTextLogprobs: true,
+            responsesTopLogprobs: 5
+          }
+        }
+      },
+      {
+        requestId: "req_123",
+        requestMode: "openai_responses"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      include: ["message.output_text.logprobs"],
+      top_logprobs: 5
+    });
+    expect(response.outputTextLogprobs).toEqual({
+      content: [
+        {
+          token: "hello",
+          logprob: -0.1,
+          topLogprobs: [
+            {
+              token: "hello",
+              logprob: -0.1
+            }
+          ]
+        }
+      ]
+    });
+  });
+
   it("forwards conversation object, truncation, and text verbosity through the native openai responses endpoint", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -2031,8 +2126,8 @@ describe("OpenAIProviderAdapter", () => {
               'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
               'data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"id":"msg_123","type":"message","role":"assistant","status":"in_progress","content":[]}}\n\n',
               'data: {"type":"response.content_part.added","sequence_number":2,"item_id":"msg_123","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}\n\n',
-              'data: {"type":"response.output_text.delta","sequence_number":3,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"hel","logprobs":[]}\n\n',
-              'data: {"type":"response.output_text.delta","sequence_number":4,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"lo","logprobs":[]}\n\n',
+              'data: {"type":"response.output_text.delta","sequence_number":3,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"hel"}\n\n',
+              'data: {"type":"response.output_text.delta","sequence_number":4,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"lo"}\n\n',
               'data: {"type":"response.completed","sequence_number":5,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[],"parallel_tool_calls":true,"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
               "data: [DONE]\n\n"
             ].join("")
@@ -2088,12 +2183,14 @@ describe("OpenAIProviderAdapter", () => {
         type: "output_text_delta",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         delta: "hel"
       },
       {
         type: "output_text_delta",
         responseId: "resp_123",
         model: "gpt-4.1-mini",
+        createdAt: 1,
         delta: "lo"
       },
       {
@@ -2103,6 +2200,115 @@ describe("OpenAIProviderAdapter", () => {
         createdAt: 1,
         finishReason: "stop",
         parallelToolCalls: true,
+        usage: {
+          inputTokens: 12,
+          outputTokens: 8,
+          totalTokens: 20
+        }
+      }
+    ]);
+  });
+
+  it("parses upstream responses SSE output-text logprobs when requestMode=openai_responses", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n',
+              'data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"msg_123","output_index":0,"content_index":0,"delta":"hello","logprobs":[{"token":"hello","logprob":-0.1,"top_logprobs":[{"token":"hello","logprob":-0.1}]}]}\n\n',
+              'data: {"type":"response.completed","sequence_number":2,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"id":"msg_123","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello","annotations":[],"logprobs":{"content":[{"token":"hello","logprob":-0.1,"top_logprobs":[{"token":"hello","logprob":-0.1}]}]}}]}],"tools":[],"usage":{"input_tokens":12,"output_tokens":8,"total_tokens":20}}}\n\n',
+              "data: [DONE]\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true,
+        providerMetadata: {
+          openai: {
+            responsesOutputTextLogprobs: true,
+            responsesTopLogprobs: 5
+          }
+        }
+      },
+      {
+        requestId: "req_stream_123",
+        requestMode: "openai_responses"
+      }
+    )) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        createdAt: 1
+      },
+      {
+        type: "output_text_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        createdAt: 1,
+        delta: "hello",
+        outputTextLogprobs: {
+          content: [
+            {
+              token: "hello",
+              logprob: -0.1,
+              topLogprobs: [
+                {
+                  token: "hello",
+                  logprob: -0.1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        type: "response_completed",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        createdAt: 1,
+        finishReason: "stop",
+        outputTextLogprobs: {
+          content: [
+            {
+              token: "hello",
+              logprob: -0.1,
+              topLogprobs: [
+                {
+                  token: "hello",
+                  logprob: -0.1
+                }
+              ]
+            }
+          ]
+        },
         usage: {
           inputTokens: 12,
           outputTokens: 8,

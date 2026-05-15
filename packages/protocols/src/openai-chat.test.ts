@@ -1304,6 +1304,18 @@ describe("openAIResponsesRequestSchema", () => {
     });
   });
 
+  it("accepts responses output-text logprobs controls", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      include: ["message.output_text.logprobs"],
+      top_logprobs: 5
+    });
+
+    expect(parsed.include).toEqual(["message.output_text.logprobs"]);
+    expect(parsed.top_logprobs).toBe(5);
+  });
+
   it("rejects responses stream_options when stream is false", () => {
     const result = openAIResponsesRequestSchema.safeParse({
       model: "gpt-4.1-mini",
@@ -1315,6 +1327,22 @@ describe("openAIResponsesRequestSchema", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("rejects responses top_logprobs without output-text logprobs include", () => {
+    const result = openAIResponsesRequestSchema.safeParse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      top_logprobs: 5
+    });
+
+    expect(result.success).toBe(false);
+    if (result.success) {
+      throw new Error("Expected top_logprobs without include to fail");
+    }
+    expect(result.error.issues[0]?.message).toBe(
+      "top_logprobs requires include to contain message.output_text.logprobs"
+    );
   });
 
   it("accepts responses stream_options when stream is true", () => {

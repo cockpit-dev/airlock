@@ -219,13 +219,23 @@ function encodeCanonicalOpenAIOutputTextLogprobs(
   };
 }
 
+function encodeCanonicalOpenAIOutputTextLogprobsContent(
+  logprobs: CanonicalResponse["outputTextLogprobs"]
+) {
+  return encodeCanonicalOpenAIOutputTextLogprobs(logprobs)?.content;
+}
+
 function createOpenAIResponsesOutputTextPart(
-  text: string
+  text: string,
+  logprobs?: CanonicalResponse["outputTextLogprobs"]
 ) {
   return {
     type: "output_text" as const,
     text,
-    annotations: []
+    annotations: [],
+    ...(encodeCanonicalOpenAIOutputTextLogprobs(logprobs)
+      ? { logprobs: encodeCanonicalOpenAIOutputTextLogprobs(logprobs) }
+      : {})
   };
 }
 
@@ -233,14 +243,17 @@ function createOpenAIResponsesOutputMessage(
   responseId: string,
   text: string,
   status: "in_progress" | "completed",
-  includeContent: boolean
+  includeContent: boolean,
+  outputTextLogprobs?: CanonicalResponse["outputTextLogprobs"]
 ) {
   return {
     id: `${responseId}_output_0`,
     type: "message" as const,
     role: "assistant" as const,
     status,
-    content: includeContent ? [createOpenAIResponsesOutputTextPart(text)] : []
+    content: includeContent
+      ? [createOpenAIResponsesOutputTextPart(text, outputTextLogprobs)]
+      : []
   };
 }
 
@@ -720,23 +733,23 @@ export function normalizeOpenAIResponsesRequest(
     ...(request.safety_identifier !== undefined
       ? { endUserId: request.safety_identifier }
       : {}),
-    ...(request.metadata !== undefined
+    ...((request.metadata !== undefined ||
+      request.stream_options?.include_obfuscation === false ||
+      request.include?.includes("message.output_text.logprobs") ||
+      request.top_logprobs !== undefined)
       ? {
           providerMetadata: {
             openai: {
-              metadata: request.metadata
-            }
-          }
-        }
-      : {}),
-    ...(request.stream_options?.include_obfuscation === false
-      ? {
-          providerMetadata: {
-            openai: {
-              ...(request.metadata !== undefined
-                ? { metadata: request.metadata }
+              ...(request.metadata !== undefined ? { metadata: request.metadata } : {}),
+              ...(request.include?.includes("message.output_text.logprobs")
+                ? { responsesOutputTextLogprobs: true }
                 : {}),
-              responsesIncludeObfuscation: false
+              ...(request.top_logprobs !== undefined
+                ? { responsesTopLogprobs: request.top_logprobs }
+                : {}),
+              ...(request.stream_options?.include_obfuscation === false
+                ? { responsesIncludeObfuscation: false }
+                : {})
             }
           }
         }
@@ -1154,7 +1167,8 @@ export function encodeCanonicalToOpenAIResponsesResponse(
             response.id,
             response.outputText,
             "completed",
-            true
+            true,
+            response.outputTextLogprobs
           )
         ]
       : []),
@@ -1229,6 +1243,10 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
 ): OpenAIResponsesEncodedEventBatch {
   const itemId = `${event.responseId}_output_0`;
   const textOutputIndex = state.startedReasoningOutput ? 1 : state.outputIndex;
+  const outputTextLogprobsContent =
+    event.type === "output_text_delta" || event.type === "response_completed"
+      ? encodeCanonicalOpenAIOutputTextLogprobsContent(event.outputTextLogprobs)
+      : undefined;
 
   if (event.type === "response_started") {
     const baseResponse = createOpenAIResponsesBaseResponse(
@@ -1287,7 +1305,9 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
             output_index: textOutputIndex,
             content_index: state.contentIndex,
             delta: event.delta,
-            logprobs: []
+            ...(outputTextLogprobsContent !== undefined
+              ? { logprobs: outputTextLogprobsContent }
+              : {})
           }
         ],
         nextSequenceNumber: state.sequenceNumber + 3
@@ -1303,7 +1323,9 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
           output_index: textOutputIndex,
           content_index: state.contentIndex,
           delta: event.delta,
-          logprobs: []
+          ...(outputTextLogprobsContent !== undefined
+            ? { logprobs: outputTextLogprobsContent }
+            : {})
         }
       ],
       nextSequenceNumber: state.sequenceNumber + 1
@@ -1471,7 +1493,8 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
                 event.responseId,
                 outputText,
                 "completed",
-                true
+                true,
+                event.outputTextLogprobs
               )
             ]
           : [])
@@ -1532,7 +1555,9 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
               output_index: state.startedReasoningOutput ? 1 : 0,
               content_index: state.contentIndex,
               text: outputText,
-              logprobs: []
+              ...(outputTextLogprobsContent !== undefined
+                ? { logprobs: outputTextLogprobsContent }
+                : {})
             },
             {
               type: "response.content_part.done" as const,
@@ -1550,7 +1575,8 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
                 event.responseId,
                 outputText,
                 "completed",
-                true
+                true,
+                event.outputTextLogprobs
               )
             }
           ]
@@ -1605,7 +1631,8 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
                       event.responseId,
                       outputText,
                       "completed",
-                      true
+                      true,
+                      event.outputTextLogprobs
                     )
                   ]
                 : []),
@@ -1665,7 +1692,9 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
             output_index: state.startedReasoningOutput ? 1 : state.outputIndex,
             content_index: state.contentIndex,
             text: outputText,
-            logprobs: []
+            ...(outputTextLogprobsContent !== undefined
+              ? { logprobs: outputTextLogprobsContent }
+              : {})
           },
           {
             type: "response.content_part.done" as const,
@@ -1685,7 +1714,8 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
               event.responseId,
               outputText,
               "completed",
-              true
+              true,
+              event.outputTextLogprobs
             )
           }
         ]

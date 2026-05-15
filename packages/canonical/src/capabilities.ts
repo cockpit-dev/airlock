@@ -50,6 +50,8 @@ export function getCanonicalRequestCapabilityRequirements(
       request.providerMetadata?.openai?.frequencyPenalty !== undefined ||
       request.providerMetadata?.openai?.logprobs === true ||
       request.providerMetadata?.openai?.presencePenalty !== undefined ||
+      request.providerMetadata?.openai?.responsesOutputTextLogprobs === true ||
+      request.providerMetadata?.openai?.responsesTopLogprobs !== undefined ||
       request.providerMetadata?.openai?.seed !== undefined ||
       request.providerMetadata?.openai?.topLogprobs !== undefined ||
       request.providerMetadata?.openai?.responsesIncludeObfuscation === false,
