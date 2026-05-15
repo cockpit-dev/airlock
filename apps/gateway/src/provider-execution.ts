@@ -513,6 +513,43 @@ function getPriorityLatencyStatus(
   return observedLatency <= latencySlo ? 0 : 2;
 }
 
+function getPriorityLatencyDeltaRatio(
+  targetKey: string,
+  selection: PriorityRouteTargetSelection,
+  now: () => number,
+  healthByTarget?: Map<
+    string,
+    {
+      isOpen: boolean;
+      isHalfOpen?: boolean;
+      consecutiveRetryableFailures: number;
+      lastSuccessLatencyMs?: number;
+      smoothedSuccessLatencyMs?: number;
+      lastSuccessTotalTokens?: number;
+      smoothedSuccessTotalTokens?: number;
+      lastSuccessAt?: number;
+      lastFailureAt?: number;
+    }
+  >
+): number | undefined {
+  const PRIORITY_LATENCY_FRESHNESS_WINDOW_MS = 30_000;
+  const latencySlo = selection.latencySloMs?.[targetKey];
+  const health = healthByTarget?.get(targetKey);
+  const observedLatency =
+    health?.smoothedSuccessLatencyMs ?? health?.lastSuccessLatencyMs;
+
+  if (
+    latencySlo === undefined ||
+    observedLatency === undefined ||
+    health?.lastSuccessAt === undefined ||
+    now() - health.lastSuccessAt > PRIORITY_LATENCY_FRESHNESS_WINDOW_MS
+  ) {
+    return undefined;
+  }
+
+  return (observedLatency - latencySlo) / latencySlo;
+}
+
 function getPriorityEffectiveCost(
   targetKey: string,
   selection: PriorityRouteTargetSelection,
@@ -647,6 +684,27 @@ function reorderTargetsForPrioritySelection(
 
     if (leftLatencyStatus !== rightLatencyStatus) {
       return leftLatencyStatus - rightLatencyStatus;
+    }
+
+    const leftLatencyDeltaRatio = getPriorityLatencyDeltaRatio(
+      leftKey,
+      selection,
+      now,
+      healthByTarget
+    );
+    const rightLatencyDeltaRatio = getPriorityLatencyDeltaRatio(
+      rightKey,
+      selection,
+      now,
+      healthByTarget
+    );
+
+    if (
+      leftLatencyDeltaRatio !== undefined &&
+      rightLatencyDeltaRatio !== undefined &&
+      leftLatencyDeltaRatio !== rightLatencyDeltaRatio
+    ) {
+      return leftLatencyDeltaRatio - rightLatencyDeltaRatio;
     }
 
     const leftCost = getPriorityEffectiveCost(leftKey, selection, healthByTarget);

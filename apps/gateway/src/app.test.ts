@@ -17367,6 +17367,95 @@ describe("gateway app", () => {
     });
   });
 
+  it("prefers the target that is closer to its slo when all priority targets are out of slo in the app", async () => {
+    const currentTime = Date.now();
+    const routeFetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_app_priority_closer_slo",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello from openai"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const breakerNamespace = createPersistentBreakerNamespace();
+    breakerNamespace.seedSuccess("openai:gpt-4.1-mini", 320, currentTime - 1_000);
+    breakerNamespace.seedSuccess(
+      "anthropic:claude-haiku-4-5",
+      900,
+      currentTime - 1_000
+    );
+
+    const app = createApp({ fetcher: routeFetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "prefer closer slo miss" }]
+        })
+      },
+      {
+        ...createBindings(),
+        ANTHROPIC_API_KEY: "anthropic-secret",
+        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+        AIRLOCK_PROVIDER_CIRCUIT_BREAKER: breakerNamespace,
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "priority",
+            latencySloMs: {
+              "openai:gpt-4.1-mini": 300,
+              "anthropic:claude-haiku-4-5": 300
+            },
+            costs: {
+              "openai:gpt-4.1-mini": 50,
+              "anthropic:claude-haiku-4-5": 1
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(routeFetcher).toHaveBeenCalledTimes(1);
+    expect(routeFetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+  });
+
   it("uses streaming completion usage to influence later lowest-cost routing in the app", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi
