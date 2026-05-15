@@ -18894,6 +18894,189 @@ describe("gateway app", () => {
     });
   });
 
+  it("does not refresh stale observed token cost memory with a later usage-free success in the app", async () => {
+    const breakerNamespace = createPersistentBreakerNamespace();
+    await breakerNamespace
+      .get(breakerNamespace.idFromName("openai:gpt-4.1-mini"))
+      .fetch(
+        new Request("https://airlock.internal/provider-circuit-breaker", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            kind: "success",
+            latencyMs: 200,
+            totalTokens: 500,
+            now: 1_000
+          })
+        })
+      );
+    await breakerNamespace
+      .get(breakerNamespace.idFromName("openai:gpt-4.1-mini"))
+      .fetch(
+        new Request("https://airlock.internal/provider-circuit-breaker", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            kind: "success",
+            latencyMs: 120,
+            now: 69_000
+          })
+        })
+      );
+    await breakerNamespace
+      .get(breakerNamespace.idFromName("anthropic:claude-haiku-4-5"))
+      .fetch(
+        new Request("https://airlock.internal/provider-circuit-breaker", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            kind: "success",
+            latencyMs: 200,
+            totalTokens: 50,
+            now: 60_000
+          })
+        })
+      );
+
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_usage_free_refresh",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "usage-free success"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_after_stale_usage",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "stale observed cost ignored"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+
+    let currentNow = 69_000;
+    const app = createApp({
+      fetcher,
+      now: () => currentNow
+    });
+    const bindings = {
+      ...createBindings(),
+      ANTHROPIC_API_KEY: "anthropic-secret",
+      ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER: breakerNamespace,
+      AIRLOCK_MODEL_ALIASES:
+        "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+      AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+        "assistant-default": ["anthropic:claude-haiku-4-5"]
+      }),
+      AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+        "assistant-default": {
+          strategy: "lowest_cost",
+          costs: {
+            "openai:gpt-4.1-mini": 1,
+            "anthropic:claude-haiku-4-5": 10
+          }
+        }
+      })
+    };
+
+    const firstResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "record usage-free success" }]
+        })
+      },
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+    await expect(readJson(firstResponse)).resolves.toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+
+    currentNow = 70_000;
+    const secondResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "stale observed cost should stay stale" }]
+        })
+      },
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.openai.com/v1/chat/completions");
+    await expect(readJson(secondResponse)).resolves.toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+  });
+
   it("treats stale observed token cost memory as neutral when applying priority routing in the app", async () => {
     const currentTime = Date.now();
     const routeFetcher = vi.fn().mockResolvedValueOnce(
