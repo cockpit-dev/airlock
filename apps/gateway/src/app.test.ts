@@ -20374,19 +20374,26 @@ describe("gateway app", () => {
     });
   });
 
-  it("rejects cross-provider fallback at request time when request-scoped shaping lacks a target-scoped shaping contract", async () => {
+  it("strips per-request shaping for cross-provider fallback targets", async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          error: {
-            message: "rate limited"
-          }
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: "hello" }
+            }
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 }
         }),
         {
-          status: 429,
-          headers: {
-            "content-type": "application/json"
-          }
+          status: 200,
+          headers: { "content-type": "application/json" }
         }
       )
     );
@@ -20425,13 +20432,8 @@ describe("gateway app", () => {
       }
     );
 
-    expect(response.status).toBe(400);
-    await expect(readJson(response)).resolves.toMatchObject({
-      error: {
-        code: "request_invalid_request_shaping"
-      }
-    });
-    expect(fetcher).toHaveBeenCalledTimes(0);
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("returns not ready when target selection references a target outside the route chain", async () => {

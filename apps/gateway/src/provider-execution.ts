@@ -431,38 +431,20 @@ function createAttemptRequest(
   return buildAttemptRequest(request, target);
 }
 
-function assertCrossProviderRequestShapingSafety(
-  route: ModelRoute,
+function resolvePerRequestShapingForTarget(
   requestShaping: RequestShapingProfile | undefined,
-  requestId: string
-) {
-  if (!requestShaping || !route.fallbacks?.length) {
-    return;
+  route: ModelRoute,
+  target: ProviderTarget
+): RequestShapingProfile | undefined {
+  if (!requestShaping) {
+    return undefined;
   }
 
-  const hasCrossProviderFallback = route.fallbacks.some((target) => {
-    return target.provider !== route.target.provider;
-  });
-
-  if (!hasCrossProviderFallback) {
-    return;
+  if (target.provider === route.target.provider) {
+    return requestShaping;
   }
 
-  const hasTargetScopedShaping =
-    route.shaping !== undefined && "targets" in route.shaping;
-
-  if (!hasTargetScopedShaping) {
-    throw new GatewayError(
-      "Request-scoped shaping cannot be used with cross-provider fallback without target-scoped route shaping",
-      {
-        code: "request_invalid_request_shaping",
-        category: "request",
-        httpStatus: 400,
-        retryable: false,
-        requestId
-      }
-    );
-  }
+  return undefined;
 }
 
 function hashString(value: string): number {
@@ -1084,7 +1066,6 @@ export async function executeRoutedRequest(
     circuitBreakerBackend = createInMemoryCircuitBreakerBackend()
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
-  assertCrossProviderRequestShapingSafety(route, requestShaping, requestId);
   const targets = await selectEligibleTargets(
     route,
     request,
@@ -1127,11 +1108,12 @@ export async function executeRoutedRequest(
       );
 
       try {
+        const targetRequestShaping = resolvePerRequestShapingForTarget(requestShaping, route, target);
         const response = await adapter.complete(currentAttemptRequest, {
           requestId,
           timeoutMs: currentRemainingTimeoutMs,
           requestMode,
-          ...(requestShaping ? { requestShaping } : {})
+          ...(targetRequestShaping ? { requestShaping: targetRequestShaping } : {})
         });
         await circuitBreakerBackend.recordSuccess(
           target,
@@ -1232,7 +1214,6 @@ export async function* executeRoutedStreamRequest(
     circuitBreakerBackend = createInMemoryCircuitBreakerBackend()
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
-  assertCrossProviderRequestShapingSafety(route, requestShaping, requestId);
   const targets = (
     await selectEligibleTargets(
       route,
@@ -1304,11 +1285,12 @@ export async function* executeRoutedStreamRequest(
             ? currentAttemptRequest
             : createAttemptRequest(request, target);
 
+        const streamTargetShaping = resolvePerRequestShapingForTarget(requestShaping, route, target);
         for await (const event of adapter.stream(currentStreamAttemptRequest, {
           requestId,
           timeoutMs: deadline - now(),
           requestMode,
-          ...(requestShaping ? { requestShaping } : {})
+          ...(streamTargetShaping ? { requestShaping: streamTargetShaping } : {})
         })) {
           if (event.type === "response_completed") {
             completedUsageTotalTokens = event.usage?.totalTokens;
