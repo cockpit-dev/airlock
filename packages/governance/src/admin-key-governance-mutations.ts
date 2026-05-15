@@ -1,5 +1,3 @@
-import { GatewayError } from "@airlock/shared";
-
 import type { GatewayApiKeyMetadataOverride } from "./gateway-auth.js";
 import type { GatewayKeyAuditActorContext } from "./gateway-key-audit.js";
 import type {
@@ -11,16 +9,7 @@ import type {
   GatewayKeyRegistryDeleteResponse,
   GatewayKeyRegistryDynamicKeyView
 } from "./gateway-key-registry.js";
-
-function createGatewayKeyNotRegistryOwnedError(requestId: string): GatewayError {
-  return new GatewayError("Gateway API key is not registry owned", {
-    code: "gateway_key_not_registry_owned",
-    category: "governance",
-    httpStatus: 409,
-    retryable: false,
-    requestId
-  });
-}
+import { createGatewayKeyNotRegistryOwnedError } from "./gateway-key-registry-validation.js";
 
 export interface CreateGatewayAdminKeyPort {
   createRegistryKey(

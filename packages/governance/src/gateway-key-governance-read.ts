@@ -1,5 +1,3 @@
-import { GatewayError } from "@airlock/shared";
-
 import type {
   GatewayApiKeyLifecycleStatus,
   GatewayApiKeyRecord,
@@ -13,6 +11,7 @@ import {
 import type {
   GatewayKeyRegistryDynamicKeyView
 } from "./gateway-key-registry.js";
+import { createGatewayKeyNotFoundError } from "./gateway-key-registry-validation.js";
 
 export interface GatewayAdminKeyInventoryFilters {
   acceptedNow?: boolean;
@@ -59,15 +58,7 @@ export interface GatewayAdminConfiguredKeyRegistryViewPort {
   ): Promise<GatewayApiKeyRegistrySnapshot>;
 }
 
-function createGatewayKeyNotFoundError(requestId: string): GatewayError {
-  return new GatewayError("Gateway API key not found", {
-    code: "gateway_key_not_found",
-    category: "governance",
-    httpStatus: 404,
-    retryable: false,
-    requestId
-  });
-}
+
 
 export function parseGatewayAdminKeyInventoryFilters(
   query: URLSearchParams
