@@ -17489,10 +17489,10 @@ describe("gateway app", () => {
             controller.enqueue(
               encoder.encode(
                 [
-                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[],"metadata":{"tenant":"acme"}}}\n\n',
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[],"metadata":{"tenant":"acme"},"service_tier":"priority","prompt_cache_key":"cache-key-123","prompt_cache_retention":"in_memory","truncation":"disabled","text":{"verbosity":"high"},"conversation":{"id":"conv_123"}}}\n\n',
                   'data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"reasoning","id":"rs_123","summary":[]}}\n\n',
                   'data: {"type":"response.reasoning_summary_text.delta","sequence_number":2,"output_index":0,"summary_index":0,"delta":"The model checked"}\n\n',
-                  'data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"type":"reasoning","id":"rs_123","summary":[{"type":"summary_text","text":"The model checked the answer."}]}],"parallel_tool_calls":true,"tools":[],"metadata":{"tenant":"acme"}}}\n\n',
+                  'data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"type":"reasoning","id":"rs_123","summary":[{"type":"summary_text","text":"The model checked the answer."}]}],"parallel_tool_calls":true,"tools":[],"metadata":{"tenant":"acme"},"service_tier":"priority","prompt_cache_key":"cache-key-123","prompt_cache_retention":"in_memory","truncation":"disabled","text":{"verbosity":"high"},"conversation":{"id":"conv_123"}}}\n\n',
                   "data: [DONE]\n\n"
                 ].join("")
               )
@@ -17542,6 +17542,12 @@ describe("gateway app", () => {
     expect(body).toContain('"type":"response.output_item.done"');
     expect(body).toContain('"type":"response.completed"');
     expect(body).toContain('"metadata":{"tenant":"acme"}');
+    expect(body).toContain('"service_tier":"priority"');
+    expect(body).toContain('"prompt_cache_key":"cache-key-123"');
+    expect(body).toContain('"prompt_cache_retention":"in_memory"');
+    expect(body).toContain('"truncation":"disabled"');
+    expect(body).toContain('"verbosity":"high"');
+    expect(body).toContain('"conversation":{"id":"conv_123"}');
     expect(body).toContain("data: [DONE]");
   });
 

@@ -138,6 +138,12 @@ export type CanonicalStreamEvent =
       model: string;
       parallelToolCalls?: boolean;
       metadata?: Record<string, string>;
+      serviceTier?: "auto" | "default" | "flex" | "priority" | "scale";
+      promptCacheKey?: string;
+      promptCacheRetention?: "in_memory" | "24h";
+      responseTruncation?: "auto" | "disabled";
+      responseTextVerbosity?: "low" | "medium" | "high";
+      conversationId?: string;
     }
   | {
       type: "tool_call_delta";
@@ -169,4 +175,10 @@ export type CanonicalStreamEvent =
       parallelToolCalls?: boolean;
       reasoningSummary?: string;
       metadata?: Record<string, string>;
+      serviceTier?: "auto" | "default" | "flex" | "priority" | "scale";
+      promptCacheKey?: string;
+      promptCacheRetention?: "in_memory" | "24h";
+      responseTruncation?: "auto" | "disabled";
+      responseTextVerbosity?: "low" | "medium" | "high";
+      conversationId?: string;
     };

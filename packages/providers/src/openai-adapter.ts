@@ -2022,6 +2022,18 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 status?: string;
                 parallel_tool_calls?: boolean;
                 metadata?: Record<string, string>;
+                service_tier?: CanonicalResponse["serviceTier"];
+                prompt_cache_key?: string;
+                prompt_cache_retention?: CanonicalResponse["promptCacheRetention"];
+                truncation?: CanonicalResponse["responseTruncation"];
+                text?: {
+                  verbosity?: CanonicalResponse["responseTextVerbosity"];
+                };
+                conversation?:
+                  | {
+                      id?: string;
+                    }
+                  | string;
                 output?: Array<{
                   type?: string;
                   summary?: Array<{
@@ -2146,6 +2158,34 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   model,
                   ...(payload.response.metadata !== undefined
                     ? { metadata: payload.response.metadata }
+                    : {}),
+                  ...(payload.response.service_tier !== undefined
+                    ? { serviceTier: payload.response.service_tier }
+                    : {}),
+                  ...(payload.response.prompt_cache_key !== undefined
+                    ? { promptCacheKey: payload.response.prompt_cache_key }
+                    : {}),
+                  ...(payload.response.prompt_cache_retention !== undefined
+                    ? {
+                        promptCacheRetention:
+                          payload.response.prompt_cache_retention
+                      }
+                    : {}),
+                  ...(payload.response.truncation !== undefined
+                    ? { responseTruncation: payload.response.truncation }
+                    : {}),
+                  ...(payload.response.text?.verbosity !== undefined
+                    ? {
+                        responseTextVerbosity: payload.response.text.verbosity
+                      }
+                    : {}),
+                  ...(payload.response.conversation !== undefined
+                    ? {
+                        conversationId:
+                          typeof payload.response.conversation === "string"
+                            ? payload.response.conversation
+                            : payload.response.conversation.id
+                      }
                     : {})
                 };
               }
@@ -2282,6 +2322,34 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ),
                 ...(payload.response.metadata !== undefined
                   ? { metadata: payload.response.metadata }
+                  : {}),
+                ...(payload.response.service_tier !== undefined
+                  ? { serviceTier: payload.response.service_tier }
+                  : {}),
+                ...(payload.response.prompt_cache_key !== undefined
+                  ? { promptCacheKey: payload.response.prompt_cache_key }
+                  : {}),
+                ...(payload.response.prompt_cache_retention !== undefined
+                  ? {
+                      promptCacheRetention:
+                        payload.response.prompt_cache_retention
+                    }
+                  : {}),
+                ...(payload.response.truncation !== undefined
+                  ? { responseTruncation: payload.response.truncation }
+                  : {}),
+                ...(payload.response.text?.verbosity !== undefined
+                  ? {
+                      responseTextVerbosity: payload.response.text.verbosity
+                    }
+                  : {}),
+                ...(payload.response.conversation !== undefined
+                  ? {
+                      conversationId:
+                        typeof payload.response.conversation === "string"
+                          ? payload.response.conversation
+                          : payload.response.conversation.id
+                    }
                   : {}),
                 ...(payload.response.parallel_tool_calls !== undefined
                   ? {

@@ -86,6 +86,11 @@ interface OpenAIResponsesEncodedEventBatch {
   nextSequenceNumber: number;
 }
 
+type OpenAIResponsesEnvelopeStreamEvent = Extract<
+  CanonicalStreamEvent,
+  { type: "response_started" | "response_completed" }
+>;
+
 function encodeCanonicalOpenAIFinishReason(
   finishReason: CanonicalResponse["finishReason"]
 ) {
@@ -237,6 +242,42 @@ function createOpenAIResponsesBaseResponse(
     output: [],
     parallel_tool_calls: parallelToolCalls,
     tools: []
+  };
+}
+
+function addOpenAIResponsesEnvelopeFields(
+  response: ReturnType<typeof createOpenAIResponsesBaseResponse>,
+  event: OpenAIResponsesEnvelopeStreamEvent
+) {
+  return {
+    ...response,
+    ...(event.metadata !== undefined ? { metadata: event.metadata } : {}),
+    ...(event.serviceTier !== undefined
+      ? { service_tier: event.serviceTier }
+      : {}),
+    ...(event.promptCacheKey !== undefined
+      ? { prompt_cache_key: event.promptCacheKey }
+      : {}),
+    ...(event.promptCacheRetention !== undefined
+      ? { prompt_cache_retention: event.promptCacheRetention }
+      : {}),
+    ...(event.responseTruncation !== undefined
+      ? { truncation: event.responseTruncation }
+      : {}),
+    ...(event.responseTextVerbosity !== undefined
+      ? {
+          text: {
+            verbosity: event.responseTextVerbosity
+          }
+        }
+      : {}),
+    ...(event.conversationId !== undefined
+      ? {
+          conversation: {
+            id: event.conversationId
+          }
+        }
+      : {})
   };
 }
 
@@ -1018,28 +1059,19 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
       "in_progress",
       event.parallelToolCalls ?? state.parallelToolCalls ?? true
     );
+    const response = addOpenAIResponsesEnvelopeFields(baseResponse, event);
 
     return {
       events: [
         {
           type: "response.created" as const,
           sequence_number: state.sequenceNumber,
-          response: {
-            ...baseResponse,
-            ...(event.metadata !== undefined
-              ? { metadata: event.metadata }
-              : {})
-          }
+          response
         },
         {
           type: "response.in_progress" as const,
           sequence_number: state.sequenceNumber + 1,
-          response: {
-            ...baseResponse,
-            ...(event.metadata !== undefined
-              ? { metadata: event.metadata }
-              : {})
-          }
+          response
         }
       ],
       nextSequenceNumber: state.sequenceNumber + 2
@@ -1213,6 +1245,32 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
       : {}),
     ...(event.metadata !== undefined
       ? { metadata: event.metadata }
+      : {}),
+    ...(event.serviceTier !== undefined
+      ? { service_tier: event.serviceTier }
+      : {}),
+    ...(event.promptCacheKey !== undefined
+      ? { prompt_cache_key: event.promptCacheKey }
+      : {}),
+    ...(event.promptCacheRetention !== undefined
+      ? { prompt_cache_retention: event.promptCacheRetention }
+      : {}),
+    ...(event.responseTruncation !== undefined
+      ? { truncation: event.responseTruncation }
+      : {}),
+    ...(event.responseTextVerbosity !== undefined
+      ? {
+          text: {
+            verbosity: event.responseTextVerbosity
+          }
+        }
+      : {}),
+    ...(event.conversationId !== undefined
+      ? {
+          conversation: {
+            id: event.conversationId
+          }
+        }
       : {}),
     output: [
       ...(reasoningSummary.length > 0

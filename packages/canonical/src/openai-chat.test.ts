@@ -1842,6 +1842,12 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           responseId: "resp_123",
           model: "gpt-4.1-mini",
           finishReason: "stop",
+          serviceTier: "priority",
+          promptCacheKey: "cache-key-123",
+          promptCacheRetention: "in_memory",
+          responseTruncation: "disabled",
+          responseTextVerbosity: "high",
+          conversationId: "conv_123",
           usage: {
             inputTokens: 12,
             outputTokens: 8,
@@ -1906,6 +1912,16 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
             created_at: 0,
             model: "gpt-4.1-mini",
             status: "completed",
+            service_tier: "priority",
+            prompt_cache_key: "cache-key-123",
+            prompt_cache_retention: "in_memory",
+            truncation: "disabled",
+            text: {
+              verbosity: "high"
+            },
+            conversation: {
+              id: "conv_123"
+            },
             output: [
               {
                 id: "resp_123_output_0",
@@ -2063,6 +2079,95 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
         }
       ],
       nextSequenceNumber: 9
+    });
+  });
+
+  it("encodes response_started events with responses envelope fidelity fields", async () => {
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
+      "./openai-chat.js"
+    );
+
+    expect(
+      encodeCanonicalToOpenAIResponsesStreamEvent(
+        {
+          type: "response_started",
+          responseId: "resp_123",
+          model: "gpt-4.1-mini",
+          parallelToolCalls: false,
+          metadata: {
+            tenant: "acme"
+          },
+          serviceTier: "scale",
+          promptCacheKey: "cache-key-123",
+          promptCacheRetention: "24h",
+          responseTruncation: "auto",
+          responseTextVerbosity: "medium",
+          conversationId: "conv_123"
+        },
+        {
+          sequenceNumber: 0,
+          outputIndex: 0,
+          contentIndex: 0
+        }
+      )
+    ).toEqual({
+      events: [
+        {
+          type: "response.created",
+          sequence_number: 0,
+          response: {
+            id: "resp_123",
+            object: "response",
+            created_at: 0,
+            model: "gpt-4.1-mini",
+            status: "in_progress",
+            metadata: {
+              tenant: "acme"
+            },
+            service_tier: "scale",
+            prompt_cache_key: "cache-key-123",
+            prompt_cache_retention: "24h",
+            truncation: "auto",
+            text: {
+              verbosity: "medium"
+            },
+            conversation: {
+              id: "conv_123"
+            },
+            output: [],
+            parallel_tool_calls: false,
+            tools: []
+          }
+        },
+        {
+          type: "response.in_progress",
+          sequence_number: 1,
+          response: {
+            id: "resp_123",
+            object: "response",
+            created_at: 0,
+            model: "gpt-4.1-mini",
+            status: "in_progress",
+            metadata: {
+              tenant: "acme"
+            },
+            service_tier: "scale",
+            prompt_cache_key: "cache-key-123",
+            prompt_cache_retention: "24h",
+            truncation: "auto",
+            text: {
+              verbosity: "medium"
+            },
+            conversation: {
+              id: "conv_123"
+            },
+            output: [],
+            parallel_tool_calls: false,
+            tools: []
+          }
+        }
+      ],
+      nextSequenceNumber: 2
     });
   });
 
