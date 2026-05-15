@@ -479,6 +479,24 @@ function scoreWeightedTarget(
   return hash * weight;
 }
 
+function adjustWeightForFailures(
+  weight: number,
+  health: ProviderTargetHealthSnapshot,
+  now: () => number
+): number {
+  if (health.isOpen) {
+    return 0;
+  }
+
+  const failures = getFreshRetryableFailureCount(health, now);
+
+  if (failures <= 0) {
+    return weight;
+  }
+
+  return Math.max(0, weight - failures);
+}
+
 function reorderTargetsForRoute(
   route: ModelRoute,
   targets: ProviderTarget[],
@@ -603,10 +621,24 @@ function reorderTargetsForRoute(
   }
 
   return [...targets].sort((left, right) => {
-    const leftWeight =
-      targetSelection.weights[serializeProviderTarget(left)] ?? 1;
-    const rightWeight =
-      targetSelection.weights[serializeProviderTarget(right)] ?? 1;
+    const leftKey = serializeProviderTarget(left);
+    const rightKey = serializeProviderTarget(right);
+    const leftRawWeight = targetSelection.weights[leftKey] ?? 1;
+    const rightRawWeight = targetSelection.weights[rightKey] ?? 1;
+    const leftHealth = healthByTarget?.get(leftKey) ?? {
+      isOpen: false,
+      consecutiveRetryableFailures: 0
+    };
+    const rightHealth = healthByTarget?.get(rightKey) ?? {
+      isOpen: false,
+      consecutiveRetryableFailures: 0
+    };
+    const leftWeight = adjustWeightForFailures(leftRawWeight, leftHealth, now);
+    const rightWeight = adjustWeightForFailures(
+      rightRawWeight,
+      rightHealth,
+      now
+    );
     const rightScore = scoreWeightedTarget(
       route,
       right,
@@ -619,11 +651,7 @@ function reorderTargetsForRoute(
       return rightScore - leftScore;
     }
 
-    return compareByOriginalRouteOrder(
-      serializeProviderTarget(left),
-      serializeProviderTarget(right),
-      originalOrder
-    );
+    return compareByOriginalRouteOrder(leftKey, rightKey, originalOrder);
   });
 }
 
