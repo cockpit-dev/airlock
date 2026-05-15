@@ -25268,28 +25268,27 @@ describe("gateway app", () => {
   });
 
   it("accepts supported responses stream_options include_obfuscation=false", async () => {
-    const fetcher = vi.fn().mockResolvedValue(
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
       new Response(
-        JSON.stringify({
-          id: "chatcmpl_123",
-          object: "chat.completion",
-          created: 1,
-          model: "gpt-4.1-mini",
-          choices: [
-            {
-              index: 0,
-              finish_reason: "stop",
-              message: {
-                role: "assistant",
-                content: "hello there"
-              }
-            }
-          ]
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
+                  'data: {"type":"response.completed","sequence_number":1,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[],"parallel_tool_calls":true,"tools":[]}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
         }),
         {
           status: 200,
           headers: {
-            "content-type": "application/json"
+            "content-type": "text/event-stream"
           }
         }
       )
@@ -25317,9 +25316,87 @@ describe("gateway app", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
     const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toMatchObject({
-      model: "gpt-4.1-mini"
+      model: "gpt-4.1-mini",
+      stream_options: {
+        include_obfuscation: false
+      }
+    });
+  });
+
+  it("fails closed when responses stream_options include_obfuscation is sent to Anthropic", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          input: "hello",
+          stream: true,
+          stream_options: {
+            include_obfuscation: false
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider anthropic does not support required capability: openai_request_metadata",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
+  it("fails closed when responses stream_options include_obfuscation is sent to Gemini", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash",
+          input: "hello",
+          stream: true,
+          stream_options: {
+            include_obfuscation: false
+          }
+        })
+      },
+      {
+        ...createBindings(),
+        GEMINI_API_KEY: "gemini-secret",
+        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider gemini does not support required capability: openai_request_metadata",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
     });
   });
 

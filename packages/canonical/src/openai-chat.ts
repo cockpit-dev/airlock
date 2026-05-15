@@ -665,6 +665,18 @@ export function normalizeOpenAIResponsesRequest(
           }
         }
       : {}),
+    ...(request.stream_options?.include_obfuscation === false
+      ? {
+          providerMetadata: {
+            openai: {
+              ...(request.metadata !== undefined
+                ? { metadata: request.metadata }
+                : {}),
+              responsesIncludeObfuscation: false
+            }
+          }
+        }
+      : {}),
     ...(request.service_tier !== undefined
       ? { serviceTier: request.service_tier }
       : {}),

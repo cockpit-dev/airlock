@@ -619,6 +619,42 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
     });
   });
 
+  it("marks OpenAI-native metadata requirements when responses include_obfuscation is present", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: true,
+      providerMetadata: {
+        openai: {
+          responsesIncludeObfuscation: false
+        }
+      },
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+
+    expect(getCanonicalRequestCapabilityRequirements(request)).toEqual({
+      requiresStreaming: true,
+      requiresTools: false,
+      requiresToolReplay: false,
+      requiresStreamingTools: false,
+      requiresMultimodalInput: false,
+      requiresSystemMessages: false,
+      requiresEndUserId: false,
+      requiresPreviousResponseId: false,
+      requiresConversationId: false,
+      requiresPrompt: false,
+      requiresReasoning: false,
+      requiresStructuredOutputs: false,
+      requiresParallelToolCallControl: false,
+      requiresOpenAIRequestMetadata: true,
+      requiresOpenAIResponsesTextControls: false
+    });
+  });
+
   it("marks end-user requirements when canonical requests include an end-user id", () => {
     const request: CanonicalRequest = {
       model: "gpt-4.1-mini",

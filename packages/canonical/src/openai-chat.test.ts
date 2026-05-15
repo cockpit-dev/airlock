@@ -1217,6 +1217,23 @@ describe("normalizeOpenAIResponsesRequest", () => {
     expect(canonical.promptCacheRetention).toBe("in_memory");
   });
 
+  it("normalizes responses stream_options.include_obfuscation into canonical OpenAI-native request fields", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: true,
+      stream_options: {
+        include_obfuscation: false
+      }
+    });
+
+    expect(canonical.providerMetadata).toEqual({
+      openai: {
+        responsesIncludeObfuscation: false
+      }
+    });
+  });
+
   it("normalizes responses metadata into canonical OpenAI-native request fields", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",

@@ -67,6 +67,7 @@ export interface CanonicalRequest {
       frequencyPenalty?: number;
       presencePenalty?: number;
       seed?: number;
+      responsesIncludeObfuscation?: false;
     };
     anthropic?: {
       user_id: string;
