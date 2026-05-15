@@ -21633,6 +21633,116 @@ describe("gateway app", () => {
     });
   });
 
+  for (const unsupportedField of [
+    {
+      field: "user",
+      payload: {
+        user: "user_123"
+      }
+    }
+  ]) {
+    it(`rejects unsupported responses end-user alias ${unsupportedField.field}`, async () => {
+      const app = createApp({ fetcher: vi.fn() });
+
+      const response = await app.request(
+        "http://localhost/v1/responses",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer gateway-secret"
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            input: "hello",
+            ...unsupportedField.payload
+          })
+        },
+        createBindings()
+      );
+
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toEqual({
+        error: {
+          message:
+            unsupportedField.field === "user"
+              ? "Unsupported OpenAI Responses semantic field: user"
+              : "Unsupported OpenAI Responses semantic field: metadata",
+          type: "request",
+          code: "request_unsupported_openai_semantics"
+        }
+      });
+    });
+  }
+
+  it("preserves responses metadata.user_id as ordinary metadata instead of reinterpreting it as safety_identifier", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          metadata: {
+            user_id: "metadata-user-123",
+            tenant: "acme"
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    const upstreamBody = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(upstreamBody).toMatchObject({
+      metadata: {
+        user_id: "metadata-user-123",
+        tenant: "acme"
+      }
+    });
+    expect(upstreamBody).not.toHaveProperty("safety_identifier");
+  });
+
   it("accepts responses OpenAI-native request metadata and forwards it upstream for OpenAI", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
