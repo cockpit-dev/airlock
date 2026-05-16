@@ -120,6 +120,35 @@ describe("processTelemetryQueueBatch", () => {
     expect(retry).not.toHaveBeenCalled();
   });
 
+  it("acks messages that include routing signal fields", async () => {
+    const ack = vi.fn();
+    const retry = vi.fn();
+    const writeDataPoint = vi.fn();
+
+    await processTelemetryQueueBatch(
+      {
+        messages: [
+          {
+            body: createSuccessEvent({
+              routingStrategy: "health_priority",
+              attemptCount: 2,
+              primaryTargetOpen: true
+            }),
+            ack,
+            retry
+          }
+        ]
+      },
+      {
+        writeDataPoint
+      }
+    );
+
+    expect(writeDataPoint).toHaveBeenCalledTimes(1);
+    expect(ack).toHaveBeenCalledTimes(1);
+    expect(retry).not.toHaveBeenCalled();
+  });
+
   it("retries messages when analytics-engine writing fails", async () => {
     const ack = vi.fn();
     const retry = vi.fn();

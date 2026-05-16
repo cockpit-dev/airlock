@@ -6202,4 +6202,213 @@ describe("executeRoutedRequest", () => {
 
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
+
+  it("populates routingMetadata with attemptCount and primaryTargetOpen", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: { message: "rate limited" }
+          }),
+          { status: 429, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_123",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [{ type: "text", text: "fallback" }]
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      );
+
+    const routingMetadata: { primaryTargetOpen?: boolean; attemptCount?: number } = {};
+
+    await executeRoutedRequest(route, request, {
+      config: {
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
+        modelGroups: {},
+        gatewayApiKeys: [],
+        routingLatencyFreshnessMs: 30_000,
+        routingCostFreshnessMs: 30_000,
+        routingFailureFreshnessMs: 30_000,
+        routingRecoveryWindowMs: 30_000,
+        modelAliases: [],
+        anthropic: {
+          apiKey: "anthropic-secret",
+          baseUrl: "https://api.anthropic.com/v1",
+          defaultMaxTokens: 256
+        },
+        openAI: {
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          defaultModel: "gpt-4.1-mini"
+        }
+      },
+      requestId: "req_metadata",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      routingMetadata
+    });
+
+    expect(routingMetadata.attemptCount).toBe(2);
+    expect(routingMetadata.primaryTargetOpen).toBe(false);
+  });
+
+  it("reports primaryTargetOpen when the primary target circuit is open", async () => {
+    const route: ModelRoute = {
+      externalModel: "assistant-default",
+      target: {
+        provider: "openai",
+        providerModel: "gpt-4.1-mini"
+      },
+      fallbacks: [
+        {
+          provider: "anthropic",
+          providerModel: "claude-haiku-4-5"
+        }
+      ]
+    };
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        {
+          role: "user",
+          content: "Say hi."
+        }
+      ]
+    };
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: { message: "rate limited" }
+          }),
+          { status: 429, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_breaker_1",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [{ type: "text", text: "fallback" }]
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "msg_breaker_2",
+            type: "message",
+            role: "assistant",
+            model: "claude-haiku-4-5",
+            stop_reason: "end_turn",
+            content: [{ type: "text", text: "fallback after circuit" }]
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      );
+
+    const baseConfig = {
+      mode: "free" as const,
+      providerTimeoutMs: 1000,
+      providerMaxRetries: 0,
+      providerRetryBackoffMs: 0,
+      providerCircuitBreakerThreshold: 1,
+      providerCircuitBreakerCooldownMs: 60_000,
+      modelGroups: {},
+      gatewayApiKeys: [],
+      routingLatencyFreshnessMs: 30_000,
+      routingCostFreshnessMs: 30_000,
+      routingFailureFreshnessMs: 30_000,
+      routingRecoveryWindowMs: 30_000,
+      modelAliases: [],
+      anthropic: {
+        apiKey: "anthropic-secret",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultMaxTokens: 256
+      },
+      openAI: {
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    };
+
+    await executeRoutedRequest(route, request, {
+      config: baseConfig,
+      requestId: "req_circuit_open_1",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 1000
+    });
+
+    const routingMetadata: { primaryTargetOpen?: boolean; attemptCount?: number } = {};
+
+    await executeRoutedRequest(route, request, {
+      config: baseConfig,
+      requestId: "req_circuit_open_2",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher,
+      now: () => 2000,
+      routingMetadata
+    });
+
+    expect(routingMetadata.primaryTargetOpen).toBe(true);
+    expect(routingMetadata.attemptCount).toBe(1);
+  });
 });

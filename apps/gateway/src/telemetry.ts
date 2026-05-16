@@ -26,6 +26,9 @@ export interface RequestTelemetryContext {
   providerTarget?: ProviderTarget | undefined;
   fallbackUsed?: boolean | undefined;
   usage?: TokenUsage | undefined;
+  routingStrategy?: string | undefined;
+  attemptCount?: number | undefined;
+  primaryTargetOpen?: boolean | undefined;
 }
 
 function getTelemetryNow(): number {
@@ -55,7 +58,12 @@ function createBaseEvent(
     ...(context.fallbackUsed !== undefined
       ? { fallbackUsed: context.fallbackUsed }
       : {}),
-    ...(context.usage ? { usage: context.usage } : {})
+    ...(context.usage ? { usage: context.usage } : {}),
+    ...(context.routingStrategy ? { routingStrategy: context.routingStrategy } : {}),
+    ...(context.attemptCount !== undefined ? { attemptCount: context.attemptCount } : {}),
+    ...(context.primaryTargetOpen !== undefined
+      ? { primaryTargetOpen: context.primaryTargetOpen }
+      : {})
   };
 }
 

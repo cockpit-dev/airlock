@@ -34,7 +34,8 @@ import {
 } from "../gateway-key-token-quota.js";
 import {
   executeRoutedRequest,
-  executeRoutedStreamRequest
+  executeRoutedStreamRequest,
+  type RoutingMetadataAccumulator
 } from "../provider-execution.js";
 import { parseRequestShapingExtension } from "../request-extensions.js";
 import {
@@ -141,6 +142,12 @@ export async function handleMessages(
   const fetcher = context.get("fetcher");
   const now = context.get("now");
   let attemptedTarget: ProviderTarget | undefined;
+  const routingMetadata: RoutingMetadataAccumulator = {};
+  const routingSignals = () => ({
+    routingStrategy: route.targetSelection?.strategy,
+    attemptCount: routingMetadata.attemptCount,
+    primaryTargetOpen: routingMetadata.primaryTargetOpen
+  });
 
   if (canonicalRequest.stream) {
     const encoder = new TextEncoder();
@@ -165,6 +172,7 @@ export async function handleMessages(
       onAttemptTarget(target) {
         attemptedTarget = target;
       },
+      routingMetadata,
       ...(now ? { now } : {}),
       ...(requestShaping ? { requestShaping } : {}),
       ...(fetcher ? { fetcher } : {})
@@ -198,7 +206,8 @@ export async function handleMessages(
             gatewayApiKey,
             externalModel: route.externalModel,
             providerTarget: attemptedTarget,
-            fallbackUsed: didUseFallback()
+            fallbackUsed: didUseFallback(),
+            ...routingSignals()
           },
           error
         );
@@ -291,7 +300,8 @@ export async function handleMessages(
             externalModel: route.externalModel,
             providerTarget: attemptedTarget,
             fallbackUsed: didUseFallback(),
-            ...(streamUsage ? { usage: streamUsage } : {})
+            ...(streamUsage ? { usage: streamUsage } : {}),
+            ...routingSignals()
           });
           controller.close();
         } catch (error) {
@@ -332,6 +342,7 @@ export async function handleMessages(
       onAttemptTarget(target) {
         attemptedTarget = target;
       },
+      routingMetadata,
       ...(now ? { now } : {}),
       ...(requestShaping ? { requestShaping } : {}),
       ...(fetcher ? { fetcher } : {})
@@ -360,7 +371,8 @@ export async function handleMessages(
           fallbackUsed:
             attemptedTarget !== undefined &&
             (attemptedTarget.provider !== route.target.provider ||
-              attemptedTarget.providerModel !== route.target.providerModel)
+              attemptedTarget.providerModel !== route.target.providerModel),
+          ...routingSignals()
         },
         error
       );
@@ -406,7 +418,8 @@ export async function handleMessages(
       attemptedTarget !== undefined &&
       (attemptedTarget.provider !== route.target.provider ||
         attemptedTarget.providerModel !== route.target.providerModel),
-    usage: canonicalResponse.usage
+    usage: canonicalResponse.usage,
+    ...routingSignals()
   });
 
   return context.json(

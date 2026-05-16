@@ -45,6 +45,11 @@ import {
 } from "./circuit-breaker.js";
 import type { GatewayConfig } from "./config.js";
 
+export type RoutingMetadataAccumulator = {
+  primaryTargetOpen?: boolean;
+  attemptCount?: number;
+};
+
 const DEFAULT_PROVIDER_CIRCUIT_BREAKER_THRESHOLD = 3;
 const DEFAULT_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS = 30_000;
 
@@ -582,7 +587,8 @@ function selectEligibleTargets(
   circuitBreakerPolicy: ProviderCircuitBreakerPolicy,
   now: () => number,
   circuitBreakerBackend: ProviderCircuitBreakerBackend,
-  windows: RoutingFreshnessWindows
+  windows: RoutingFreshnessWindows,
+  routingMetadataRef?: RoutingMetadataAccumulator
 ): Promise<ProviderTarget[]> {
   const candidates = [route.target, ...(route.fallbacks ?? [])];
   const eligibleTargets: ProviderTarget[] = [];
@@ -649,6 +655,12 @@ function selectEligibleTargets(
       eligibleTargets.push(target);
     }
 
+    if (routingMetadataRef) {
+      routingMetadataRef.primaryTargetOpen =
+        healthByTarget.get(serializeProviderTarget(route.target))?.isOpen ===
+        true;
+    }
+
     if (eligibleTargets.length > 0) {
       return promoteHalfOpenProbeTarget(
         reorderTargetsForRoute(
@@ -695,6 +707,7 @@ export async function executeRoutedRequest(
     getProviderDescriptor?: ProviderCapabilityDescriptorResolver;
     onAttemptTarget?: (target: ProviderTarget) => void;
     circuitBreakerBackend?: ProviderCircuitBreakerBackend;
+    routingMetadata?: RoutingMetadataAccumulator;
   }
 ): Promise<CanonicalResponse> {
   const {
@@ -707,7 +720,8 @@ export async function executeRoutedRequest(
     now = Date.now,
     getProviderDescriptor = getProviderCapabilityDescriptor,
     onAttemptTarget,
-    circuitBreakerBackend = createInMemoryCircuitBreakerBackend()
+    circuitBreakerBackend = createInMemoryCircuitBreakerBackend(),
+    routingMetadata: routingMetadataRef
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
   const windows: RoutingFreshnessWindows = {
@@ -728,10 +742,12 @@ export async function executeRoutedRequest(
     circuitBreakerPolicy,
     now,
     circuitBreakerBackend,
-    windows
+    windows,
+    routingMetadataRef
   );
   const deadline = now() + config.providerTimeoutMs;
   let lastError: unknown;
+  let attemptCount = 0;
 
   for (let index = 0; index < targets.length; index += 1) {
     const target = targets[index];
@@ -743,6 +759,10 @@ export async function executeRoutedRequest(
 
     while (true) {
       onAttemptTarget?.(target);
+      attemptCount += 1;
+      if (routingMetadataRef) {
+        routingMetadataRef.attemptCount = attemptCount;
+      }
       const currentAttemptRequest = createAttemptRequest(request, target);
       const currentAttemptStartedAt = now();
       const currentRemainingTimeoutMs = deadline - currentAttemptStartedAt;
@@ -859,6 +879,7 @@ export async function* executeRoutedStreamRequest(
     getProviderDescriptor?: ProviderCapabilityDescriptorResolver;
     onAttemptTarget?: (target: ProviderTarget) => void;
     circuitBreakerBackend?: ProviderCircuitBreakerBackend;
+    routingMetadata?: RoutingMetadataAccumulator;
   }
 ): AsyncIterable<CanonicalStreamEvent> {
   const {
@@ -871,7 +892,8 @@ export async function* executeRoutedStreamRequest(
     now = Date.now,
     getProviderDescriptor = getProviderCapabilityDescriptor,
     onAttemptTarget,
-    circuitBreakerBackend = createInMemoryCircuitBreakerBackend()
+    circuitBreakerBackend = createInMemoryCircuitBreakerBackend(),
+    routingMetadata: routingMetadataRef
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
   const streamWindows: RoutingFreshnessWindows = {
@@ -893,7 +915,8 @@ export async function* executeRoutedStreamRequest(
       circuitBreakerPolicy,
       now,
       circuitBreakerBackend,
-      streamWindows
+      streamWindows,
+      routingMetadataRef
     )
   ).filter((target) => {
     return getProviderDescriptor(target.provider).supportsStreaming;
@@ -908,6 +931,7 @@ export async function* executeRoutedStreamRequest(
 
   const deadline = now() + config.providerTimeoutMs;
   let lastError: unknown;
+  let attemptCount = 0;
 
   for (let index = 0; index < targets.length; index += 1) {
     const target = targets[index];
@@ -950,6 +974,10 @@ export async function* executeRoutedStreamRequest(
     while (true) {
       try {
         onAttemptTarget?.(target);
+        attemptCount += 1;
+        if (routingMetadataRef) {
+          routingMetadataRef.attemptCount = attemptCount;
+        }
         const currentStreamAttemptRequest =
           streamAttempt === 0
             ? currentAttemptRequest

@@ -21,7 +21,10 @@ const gatewayRequestTelemetryBaseSchema = z.object({
   provider: z.enum(providerIds).optional(),
   providerModel: z.string().min(1).optional(),
   fallbackUsed: z.boolean().optional(),
-  usage: tokenUsageSchema.optional()
+  usage: tokenUsageSchema.optional(),
+  routingStrategy: z.string().min(1).optional(),
+  attemptCount: z.number().int().min(1).optional(),
+  primaryTargetOpen: z.boolean().optional()
 });
 
 const gatewayRequestTelemetrySuccessSchema =

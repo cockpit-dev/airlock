@@ -20,7 +20,8 @@ export function createAnalyticsEngineTelemetryDataPoint(
       event.provider ?? "",
       event.providerModel ?? "",
       event.externalModel ?? "",
-      event.gatewayKeyId ?? ""
+      event.gatewayKeyId ?? "",
+      event.routingStrategy ?? ""
     ],
     doubles: [
       event.durationMs,
@@ -28,7 +29,9 @@ export function createAnalyticsEngineTelemetryDataPoint(
       event.fallbackUsed ? 1 : 0,
       event.usage?.inputTokens ?? 0,
       event.usage?.outputTokens ?? 0,
-      event.usage?.totalTokens ?? 0
+      event.usage?.totalTokens ?? 0,
+      event.attemptCount ?? 0,
+      event.primaryTargetOpen ? 1 : 0
     ]
   };
 }
