@@ -18,7 +18,7 @@ import {
   toNotFoundResponse
 } from "./errors.js";
 import type { GatewayBindings } from "./env.js";
-import { createRequestId } from "./request-id.js";
+import { createRequestId, resolveRequestId } from "./request-id.js";
 import { logRequest } from "./request-logger.js";
 import { getMetricsCollector } from "./metrics.js";
 import { registerAdminConfigRoutes } from "./routes/admin-config.js";
@@ -129,7 +129,10 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   app.use("*", async (context, next) => {
-    context.set("requestId", createRequestId());
+    context.set(
+      "requestId",
+      resolveRequestId(context.req.header("x-request-id"))
+    );
     context.set("fetcher", options.fetcher);
     context.set("now", options.now);
     context.set("requestStartedAt", getRequestStartTime());
