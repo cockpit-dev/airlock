@@ -37,7 +37,7 @@ import {
   type ModelRoute,
   type ProviderTarget
 } from "@airlock/routing";
-import { GatewayError } from "@airlock/shared";
+import { ErrorCodes, GatewayError } from "@airlock/shared";
 
 import { assertGatewayKeyAllowsProvider } from "./auth.js";
 import {
@@ -104,7 +104,7 @@ function createProviderEmptyStreamError(
   return new GatewayError(
     `Provider ${provider} returned an empty stream for model ${providerModel}`,
     {
-      code: "provider_empty_stream",
+      code: ErrorCodes.PROVIDER_EMPTY_STREAM,
       category: "provider",
       httpStatus: 502,
       retryable: true,

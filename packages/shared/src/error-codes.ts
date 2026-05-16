@@ -94,6 +94,7 @@ export const ErrorCodes = {
   // Provider
   PROVIDER_TIMEOUT: "provider_timeout",
   PROVIDER_UPSTREAM_ERROR: "provider_upstream_error",
+  PROVIDER_EMPTY_STREAM: "provider_empty_stream",
 
   // Rate limit
   QUOTA_REQUESTS_EXCEEDED: "quota_requests_exceeded",
@@ -132,7 +133,8 @@ export const ErrorCategories = {
   PROVIDER: "provider",
   RATE_LIMIT: "rate_limit",
   REQUEST: "request",
-  ROUTING: "routing"
+  ROUTING: "routing",
+  INTERNAL: "internal"
 } as const;
 
 export type ErrorCategory =
