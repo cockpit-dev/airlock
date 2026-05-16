@@ -3,6 +3,11 @@ import type { TelemetrySink } from "@airlock/telemetry";
 import { GatewayError } from "@airlock/shared";
 
 import {
+  corsHeaders,
+  createPreflightResponse,
+  parseCorsOrigins
+} from "./cors.js";
+import {
   toErrorResponse,
   toMethodNotAllowedResponse,
   toNotFoundResponse
@@ -113,6 +118,27 @@ export function createApp(options: CreateAppOptions = {}) {
     context.header("x-request-id", context.get("requestId"));
   });
 
+  // CORS preflight for /v1/* public API endpoints
+  app.options("/v1/*", (context) => {
+    const config = parseCorsOrigins(context.env.AIRLOCK_CORS_ORIGINS);
+    if (!config.allowedOrigins) {
+      return new Response(null, { status: 405 });
+    }
+    return createPreflightResponse(context.req.header("Origin"), config);
+  });
+
+  // CORS headers on all /v1/* responses
+  app.use("/v1/*", async (context, next) => {
+    await next();
+    const config = parseCorsOrigins(context.env.AIRLOCK_CORS_ORIGINS);
+    if (config.allowedOrigins) {
+      const headers = corsHeaders(context.req.header("Origin"), config);
+      for (const [key, value] of Object.entries(headers)) {
+        context.header(key, value);
+      }
+    }
+  });
+
   app.get("/healthz", handleHealth);
   app.get("/readyz", handleReady);
   registerAdminKeyGovernanceRoutes(app);
@@ -127,13 +153,13 @@ export function createApp(options: CreateAppOptions = {}) {
   app.post("/v1/messages", handleMessages);
   app.post("/v1/responses", handleResponses);
 
-  // Return 405 for non-POST methods on write endpoints
+  // Return 405 for non-POST methods on write endpoints (excluding OPTIONS — handled by CORS)
   for (const path of [
     "/v1/chat/completions",
     "/v1/messages",
     "/v1/responses"
   ]) {
-    app.on(["GET", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"], path, (c) => {
+    app.on(["GET", "PUT", "PATCH", "DELETE", "HEAD"], path, (c) => {
       const requestId = c.get("requestId");
       return toMethodNotAllowedResponse(requestId, path);
     });

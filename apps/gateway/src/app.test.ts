@@ -37037,6 +37037,151 @@ describe("GET /_airlock/routing/health", () => {
     expect(freshnessWindows.costFreshnessMs).toBe(120000);
   });
 
+  describe("CORS", () => {
+    it("returns CORS headers on /v1/* when AIRLOCK_CORS_ORIGINS is set to *", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const response = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://example.com",
+            authorization: "Bearer gateway-secret"
+          },
+          body: JSON.stringify({ model: "gpt-4.1-mini", messages: [] })
+        },
+        { ...createBindings(), AIRLOCK_CORS_ORIGINS: "*" }
+      );
+
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+      expect(response.headers.get("Access-Control-Allow-Methods")).toBe(
+        "GET, POST, OPTIONS"
+      );
+      expect(response.headers.get("Access-Control-Allow-Headers")).toBeTruthy();
+      expect(
+        response.headers.get("Access-Control-Expose-Headers")
+      ).toBeTruthy();
+    });
+
+    it("handles preflight OPTIONS with wildcard origin", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const response = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "OPTIONS",
+          headers: { origin: "https://example.com" }
+        },
+        { ...createBindings(), AIRLOCK_CORS_ORIGINS: "*" }
+      );
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+      expect(response.headers.get("Access-Control-Max-Age")).toBe("86400");
+    });
+
+    it("handles preflight OPTIONS with specific allowed origin", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const response = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "OPTIONS",
+          headers: { origin: "https://myapp.example.com" }
+        },
+        {
+          ...createBindings(),
+          AIRLOCK_CORS_ORIGINS:
+            "https://myapp.example.com,https://other.example.com"
+        }
+      );
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        "https://myapp.example.com"
+      );
+    });
+
+    it("rejects preflight OPTIONS from disallowed origin", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const response = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "OPTIONS",
+          headers: { origin: "https://evil.example.com" }
+        },
+        {
+          ...createBindings(),
+          AIRLOCK_CORS_ORIGINS: "https://myapp.example.com"
+        }
+      );
+
+      expect(response.status).toBe(403);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    });
+
+    it("returns 405 for OPTIONS without AIRLOCK_CORS_ORIGINS", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const response = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "OPTIONS",
+          headers: { origin: "https://example.com" }
+        },
+        createBindings()
+      );
+
+      expect(response.status).toBe(405);
+    });
+
+    it("does not add CORS headers when AIRLOCK_CORS_ORIGINS is not set", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const response = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://example.com",
+            authorization: "Bearer gateway-secret"
+          },
+          body: JSON.stringify({ model: "gpt-4.1-mini", messages: [] })
+        },
+        createBindings()
+      );
+
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    });
+
+    it("adds CORS headers to /v1/models GET responses", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const response = await app.request(
+        "http://localhost/v1/models",
+        {
+          headers: {
+            origin: "https://example.com",
+            authorization: "Bearer gateway-secret"
+          }
+        },
+        { ...createBindings(), AIRLOCK_CORS_ORIGINS: "*" }
+      );
+
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    });
+
+    it("does not add CORS headers to non-/v1/* paths", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const response = await app.request(
+        "http://localhost/healthz",
+        {
+          headers: { origin: "https://example.com" }
+        },
+        { ...createBindings(), AIRLOCK_CORS_ORIGINS: "*" }
+      );
+
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    });
+  });
+
   describe("405 Method Not Allowed", () => {
     it("returns 405 for GET /v1/chat/completions", async () => {
       const app = createApp({ fetcher: vi.fn() });
