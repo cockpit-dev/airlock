@@ -1869,7 +1869,7 @@ describe("gateway app", () => {
     }
 
     expect(payload.data.map((model) => model.id)).toEqual(
-      expect.arrayContaining(["gpt-4.1-mini", "claude-sonnet-4-5"])
+      expect.arrayContaining(["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4-5"])
     );
   });
 
@@ -1889,14 +1889,46 @@ describe("gateway app", () => {
     const app = createApp({ fetcher: vi.fn() });
 
     const response = await app.request(
-      "http://localhost/v1/models/gpt-4.1-mini",
+      "http://localhost/v1/models/openai/gpt-4.1-mini",
       { headers: { authorization: "Bearer gateway-secret" } },
       createBindings()
     );
 
     expect(response.status).toBe(200);
     await expect(readJson(response)).resolves.toMatchObject({
-      id: "gpt-4.1-mini",
+      id: "openai/gpt-4.1-mini",
+      object: "model"
+    });
+  });
+
+  it("resolves provider/model format for model detail", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/models/anthropic/claude-sonnet-4-5",
+      { headers: { authorization: "Bearer gateway-secret" } },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson(response)).resolves.toMatchObject({
+      id: "anthropic/claude-sonnet-4-5",
+      object: "model"
+    });
+  });
+
+  it("creates synthetic route for unknown provider/model", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/models/gemini/gemini-2.5-pro",
+      { headers: { authorization: "Bearer gateway-secret" } },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson(response)).resolves.toMatchObject({
+      id: "gemini/gemini-2.5-pro",
       object: "model"
     });
   });

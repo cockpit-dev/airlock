@@ -229,6 +229,7 @@ export function createApp(options: CreateAppOptions = {}) {
   );
   app.get("/v1/models", handleModels);
   app.get("/v1/models/:model", handleModelById);
+  app.get("/v1/models/:provider/:model", handleModelById);
   app.post("/v1/chat/completions", handleChatCompletions);
   app.post("/v1/messages", handleMessages);
   app.post("/v1/responses", handleResponses);

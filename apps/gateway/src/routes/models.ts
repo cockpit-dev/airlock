@@ -39,6 +39,22 @@ export async function handleModels(
   });
 }
 
+function resolveModelIdFromContext(context: Context): string {
+  const provider = context.req.param("provider");
+  const model = context.req.param("model");
+
+  if (provider && model) {
+    return `${provider}/${model}`;
+  }
+
+  const modelOnly = context.req.param("model");
+  if (modelOnly) {
+    return modelOnly;
+  }
+
+  return "";
+}
+
 export async function handleModelById(
   context: Context<{
     Bindings: GatewayBindings;
@@ -50,7 +66,7 @@ export async function handleModelById(
   }>
 ) {
   const config = resolveGatewayConfig(context.env);
-  const modelId = context.req.param("model");
+  const modelId = resolveModelIdFromContext(context);
   const requestId = context.get("requestId");
 
   await requireGatewayAuthorization(context, config, requestId);

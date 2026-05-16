@@ -1002,28 +1002,88 @@ export function attachRouteKeyAccessPolicy(
   });
 }
 
+function parseProviderRouteAddress(
+  address: string
+): { provider: ProviderId; model: string } | null {
+  const separatorIndex = address.indexOf("/");
+  if (separatorIndex <= 0 || separatorIndex === address.length - 1) {
+    return null;
+  }
+
+  const providerPart = address.slice(0, separatorIndex);
+  const modelPart = address.slice(separatorIndex + 1);
+
+  if (
+    providerPart !== "openai" &&
+    providerPart !== "anthropic" &&
+    providerPart !== "gemini"
+  ) {
+    return null;
+  }
+
+  return { provider: providerPart, model: modelPart };
+}
+
+export function getProviderModelId(route: ModelRoute): string {
+  return `${route.target.provider}/${route.target.providerModel}`;
+}
+
 export function resolveModelRoute(
   externalModel: string,
   routes: ModelRouteDirectory,
   requestId?: string
-) {
-  const route = routes.find((candidate) => {
-    return candidate.externalModel === externalModel;
-  });
-
-  if (!route) {
-    throw new GatewayError("Model not found", {
-      code: "model_not_found",
-      category: "routing",
-      httpStatus: 404,
-      retryable: false,
-      ...(requestId ? { requestId } : {})
-    });
+): ModelRoute {
+  // 1. Exact match on externalModel (backward compat)
+  const exactMatch = routes.find(
+    (candidate) => candidate.externalModel === externalModel
+  );
+  if (exactMatch) {
+    return exactMatch;
   }
 
-  return route;
+  // 2. Try provider/model addressing format
+  const providerAddress = parseProviderRouteAddress(externalModel);
+  if (providerAddress) {
+    // Find a route whose target matches the provider/model pair
+    const targetMatch = routes.find(
+      (candidate) =>
+        candidate.target.provider === providerAddress.provider &&
+        candidate.target.providerModel === providerAddress.model
+    );
+    if (targetMatch) {
+      return targetMatch;
+    }
+
+    // Create a synthetic route for direct provider addressing
+    return {
+      externalModel,
+      target: {
+        provider: providerAddress.provider,
+        providerModel: providerAddress.model
+      }
+    };
+  }
+
+  throw new GatewayError("Model not found", {
+    code: "model_not_found",
+    category: "routing",
+    httpStatus: 404,
+    retryable: false,
+    ...(requestId ? { requestId } : {})
+  });
 }
 
-export function listExternalModels(routes: ModelRouteDirectory) {
-  return routes.map((route) => route.externalModel);
+export function listExternalModels(routes: ModelRouteDirectory): string[] {
+  const seen = new Set<string>();
+  const models: string[] = [];
+
+  for (const route of routes) {
+    const providerModelId = getProviderModelId(route);
+    if (!seen.has(providerModelId)) {
+      seen.add(providerModelId);
+      models.push(providerModelId);
+    }
+  }
+
+  return models;
 }

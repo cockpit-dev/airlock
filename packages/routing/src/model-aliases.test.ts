@@ -7,6 +7,7 @@ import {
   attachRouteKeyAccessPolicy,
   attachRouteRequestShaping,
   attachRouteTargetSelection,
+  getProviderModelId,
   listExternalModels,
   parseModelAliases,
   parseRouteFallbacks,
@@ -146,10 +147,85 @@ describe("resolveModelRoute", () => {
       ])
     ).toThrow(GatewayError);
   });
+
+  it("resolves provider/model format by matching route target", () => {
+    const routes = [
+      {
+        externalModel: "gpt-4.1-mini",
+        target: { provider: "openai" as const, providerModel: "gpt-4.1-mini" }
+      },
+      {
+        externalModel: "claude-sonnet-4-5",
+        target: {
+          provider: "anthropic" as const,
+          providerModel: "claude-sonnet-4-5"
+        }
+      }
+    ];
+
+    const route = resolveModelRoute("anthropic/claude-sonnet-4-5", routes);
+    expect(route.externalModel).toBe("claude-sonnet-4-5");
+    expect(route.target).toEqual({
+      provider: "anthropic",
+      providerModel: "claude-sonnet-4-5"
+    });
+  });
+
+  it("creates a synthetic route for provider/model with no matching route", () => {
+    const routes = [
+      {
+        externalModel: "gpt-4.1-mini",
+        target: { provider: "openai" as const, providerModel: "gpt-4.1-mini" }
+      }
+    ];
+
+    const route = resolveModelRoute("gemini/gemini-2.5-pro", routes);
+    expect(route).toEqual({
+      externalModel: "gemini/gemini-2.5-pro",
+      target: {
+        provider: "gemini",
+        providerModel: "gemini-2.5-pro"
+      }
+    });
+  });
+
+  it("prefers exact externalModel match over provider/model format", () => {
+    const routes = [
+      {
+        externalModel: "openai/gpt-4.1-mini",
+        target: { provider: "anthropic" as const, providerModel: "claude-sonnet-4-5" }
+      }
+    ];
+
+    const route = resolveModelRoute("openai/gpt-4.1-mini", routes);
+    expect(route.externalModel).toBe("openai/gpt-4.1-mini");
+    expect(route.target.provider).toBe("anthropic");
+  });
+
+  it("rejects provider/model with unsupported provider", () => {
+    expect(() =>
+      resolveModelRoute("vertex/gemini-2.5-pro", [
+        {
+          externalModel: "gpt-4.1-mini",
+          target: { provider: "openai" as const, providerModel: "gpt-4.1-mini" }
+        }
+      ])
+    ).toThrow(GatewayError);
+  });
+
+  it("includes requestId in model_not_found error", () => {
+    try {
+      resolveModelRoute("unknown", [], "req-123");
+      expect.fail("Should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(GatewayError);
+      expect((e as GatewayError).requestId).toBe("req-123");
+    }
+  });
 });
 
 describe("listExternalModels", () => {
-  it("returns external model names in insertion order", () => {
+  it("returns provider/model format derived from route targets", () => {
     expect(
       listExternalModels([
         {
@@ -162,12 +238,44 @@ describe("listExternalModels", () => {
         {
           externalModel: "claude-sonnet-4-5",
           target: {
+            provider: "anthropic",
+            providerModel: "claude-sonnet-4-5"
+          }
+        }
+      ])
+    ).toEqual(["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4-5"]);
+  });
+
+  it("deduplicates routes that share the same provider target", () => {
+    expect(
+      listExternalModels([
+        {
+          externalModel: "gpt-4.1-mini",
+          target: {
+            provider: "openai",
+            providerModel: "gpt-4.1-mini"
+          }
+        },
+        {
+          externalModel: "fast-chat",
+          target: {
             provider: "openai",
             providerModel: "gpt-4.1-mini"
           }
         }
       ])
-    ).toEqual(["gpt-4.1-mini", "claude-sonnet-4-5"]);
+    ).toEqual(["openai/gpt-4.1-mini"]);
+  });
+});
+
+describe("getProviderModelId", () => {
+  it("returns provider/model format from a route target", () => {
+    expect(
+      getProviderModelId({
+        externalModel: "gpt-4.1-mini",
+        target: { provider: "openai", providerModel: "gpt-4.1-mini" }
+      })
+    ).toBe("openai/gpt-4.1-mini");
   });
 });
 
