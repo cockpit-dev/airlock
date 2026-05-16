@@ -3949,4 +3949,203 @@ describe("OpenAIProviderAdapter", () => {
       retryable: true
     });
   });
+
+  describe("streaming error mapping", () => {
+    it("maps streaming timeout into a retryable provider_timeout gateway error", async () => {
+      const fetcher = vi.fn().mockImplementation(async (_input, init?: RequestInit) => {
+        const signal = init?.signal;
+
+        return await new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        });
+      });
+
+      const adapter = new OpenAIProviderAdapter({
+        apiKey: "test-key",
+        baseUrl: "https://api.openai.com/v1",
+        fetcher
+      });
+
+      await expect(
+        (async () => {
+          for await (const _event of adapter.stream(
+            { ...createCanonicalRequest(), stream: true },
+            { requestId: "req_stream_timeout", timeoutMs: 1 }
+          )) {
+            // drain
+          }
+        })()
+      ).rejects.toMatchObject({
+        code: "provider_timeout",
+        category: "provider",
+        httpStatus: 504,
+        retryable: true
+      });
+    });
+
+    it("maps streaming 403 upstream response into a non-retryable provider_upstream_error", async () => {
+      const fetcher = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: { message: "Incorrect API key provided" }
+          }),
+          { status: 403 }
+        )
+      );
+
+      const adapter = new OpenAIProviderAdapter({
+        apiKey: "test-key",
+        baseUrl: "https://api.openai.com/v1",
+        fetcher
+      });
+
+      await expect(
+        (async () => {
+          for await (const _event of adapter.stream(
+            { ...createCanonicalRequest(), stream: true },
+            { requestId: "req_stream_403" }
+          )) {
+            // drain
+          }
+        })()
+      ).rejects.toMatchObject({
+        code: "provider_upstream_error",
+        category: "provider",
+        httpStatus: 403,
+        retryable: false,
+        message: "Incorrect API key provided"
+      });
+    });
+
+    it("maps streaming 500 upstream response into a retryable provider_upstream_error", async () => {
+      const fetcher = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: { message: "Internal server error" }
+          }),
+          { status: 500 }
+        )
+      );
+
+      const adapter = new OpenAIProviderAdapter({
+        apiKey: "test-key",
+        baseUrl: "https://api.openai.com/v1",
+        fetcher
+      });
+
+      await expect(
+        (async () => {
+          for await (const _event of adapter.stream(
+            { ...createCanonicalRequest(), stream: true },
+            { requestId: "req_stream_500" }
+          )) {
+            // drain
+          }
+        })()
+      ).rejects.toMatchObject({
+        code: "provider_upstream_error",
+        category: "provider",
+        httpStatus: 500,
+        retryable: true,
+        message: "Internal server error"
+      });
+    });
+
+    it("maps streaming empty body into a retryable provider_upstream_error with 502", async () => {
+      const fetcher = vi.fn().mockResolvedValue(
+        new Response(null, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" }
+        })
+      );
+
+      const adapter = new OpenAIProviderAdapter({
+        apiKey: "test-key",
+        baseUrl: "https://api.openai.com/v1",
+        fetcher
+      });
+
+      await expect(
+        (async () => {
+          for await (const _event of adapter.stream(
+            { ...createCanonicalRequest(), stream: true },
+            { requestId: "req_stream_empty_body" }
+          )) {
+            // drain
+          }
+        })()
+      ).rejects.toMatchObject({
+        code: "provider_upstream_error",
+        category: "provider",
+        httpStatus: 502,
+        retryable: true,
+        message: "Upstream provider returned an empty stream body"
+      });
+    });
+
+    it("maps streaming 429 upstream response into a retryable provider_upstream_error", async () => {
+      const fetcher = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: { message: "Rate limit exceeded" }
+          }),
+          { status: 429 }
+        )
+      );
+
+      const adapter = new OpenAIProviderAdapter({
+        apiKey: "test-key",
+        baseUrl: "https://api.openai.com/v1",
+        fetcher
+      });
+
+      await expect(
+        (async () => {
+          for await (const _event of adapter.stream(
+            { ...createCanonicalRequest(), stream: true },
+            { requestId: "req_stream_429" }
+          )) {
+            // drain
+          }
+        })()
+      ).rejects.toMatchObject({
+        code: "provider_upstream_error",
+        category: "provider",
+        httpStatus: 429,
+        retryable: true,
+        message: "Rate limit exceeded"
+      });
+    });
+
+    it("maps streaming non-200 without error message into a generic provider_upstream_error", async () => {
+      const fetcher = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({}), { status: 503 })
+      );
+
+      const adapter = new OpenAIProviderAdapter({
+        apiKey: "test-key",
+        baseUrl: "https://api.openai.com/v1",
+        fetcher
+      });
+
+      await expect(
+        (async () => {
+          for await (const _event of adapter.stream(
+            { ...createCanonicalRequest(), stream: true },
+            { requestId: "req_stream_503_no_msg" }
+          )) {
+            // drain
+          }
+        })()
+      ).rejects.toMatchObject({
+        code: "provider_upstream_error",
+        category: "provider",
+        httpStatus: 503,
+        retryable: true,
+        message: "Upstream provider error"
+      });
+    });
+  });
 });
