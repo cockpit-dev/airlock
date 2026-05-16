@@ -37365,6 +37365,86 @@ describe("GET /_airlock/status", () => {
   });
 });
 
+describe("GET /_airlock/metrics", () => {
+  it("requires admin authentication", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/metrics",
+      {
+        headers: { authorization: "Bearer wrong-token" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it("returns request metrics snapshot", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/metrics",
+      {
+        headers: { authorization: "Bearer admin-secret" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await readJson(response)) as Record<string, unknown>;
+
+    expect(body).toHaveProperty("window");
+    expect(body).toHaveProperty("requests");
+    expect(body).toHaveProperty("errors");
+    expect(body).toHaveProperty("errorRate");
+    expect(body).toHaveProperty("avgDurationMs");
+    expect(body).toHaveProperty("statusCodes");
+    expect(body).toHaveProperty("byRoute");
+
+    const window = body.window as Record<string, unknown>;
+    expect(window).toHaveProperty("durationMs");
+    expect(window).toHaveProperty("collectedSince");
+  });
+
+  it("records metrics from middleware", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    // Make a request that will be recorded
+    await app.request(
+      "http://localhost/healthz",
+      {},
+      createBindings()
+    );
+
+    const response = await app.request(
+      "http://localhost/_airlock/metrics",
+      {
+        headers: { authorization: "Bearer admin-secret" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await readJson(response)) as Record<string, unknown>;
+
+    // At least the metrics request itself should be recorded
+    expect(body.requests).toBeGreaterThan(0);
+  });
+});
+
 describe("request-class-aware routing affinity", () => {
   const openaiBufferedResponse = new Response(
     JSON.stringify({

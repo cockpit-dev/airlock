@@ -15,8 +15,10 @@ import {
 import type { GatewayBindings } from "./env.js";
 import { createRequestId } from "./request-id.js";
 import { logRequest } from "./request-logger.js";
+import { getMetricsCollector } from "./metrics.js";
 import { registerAdminKeyGovernanceRoutes } from "./routes/admin-key-governance.js";
 import { registerAdminGatewayStatusRoutes } from "./routes/admin-gateway-status.js";
+import { registerAdminMetricsRoutes } from "./routes/admin-metrics.js";
 import { registerAdminRoutingHealthRoutes } from "./routes/admin-routing-health.js";
 import { handleChatCompletions } from "./routes/chat-completions.js";
 import { handleHealth } from "./routes/health.js";
@@ -118,23 +120,31 @@ export function createApp(options: CreateAppOptions = {}) {
     context.header("request-id", context.get("requestId"));
     context.header("x-request-id", context.get("requestId"));
 
-    // Structured request logging when enabled
+    let pathname: string;
+    try {
+      pathname = new URL(context.req.url).pathname;
+    } catch {
+      pathname = context.req.path ?? "/unknown";
+    }
+
+    const durationMs = Math.round(
+      getRequestStartTime() - context.get("requestStartedAt")
+    );
+
+    getMetricsCollector().record({
+      routePath: pathname,
+      statusCode: context.res.status,
+      durationMs
+    });
+
     if (context.env.AIRLOCK_REQUEST_LOGGING) {
-      let pathname: string;
-      try {
-        pathname = new URL(context.req.url).pathname;
-      } catch {
-        pathname = context.req.path ?? "/unknown";
-      }
       logRequest({
         msg: "gateway_request",
         requestId: context.get("requestId"),
         method: context.req.method,
         path: pathname,
         status: context.res.status,
-        durationMs: Math.round(
-          getRequestStartTime() - context.get("requestStartedAt")
-        )
+        durationMs
       });
     }
   });
@@ -164,6 +174,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.get("/readyz", handleReady);
   registerAdminKeyGovernanceRoutes(app);
   registerAdminGatewayStatusRoutes(app);
+  registerAdminMetricsRoutes(app);
   registerAdminRoutingHealthRoutes(
     app,
     options.now ? () => options.now! : undefined
