@@ -2,6 +2,8 @@ import type { Context } from "hono";
 import { listExternalModels, resolveModelRoute } from "@airlock/routing";
 import { GatewayError } from "@airlock/shared";
 
+import { requireGatewayAuthorization } from "../auth.js";
+import type { CreateAppOptions } from "../app.js";
 import { resolveGatewayConfig } from "../config.js";
 import type { GatewayBindings } from "../env.js";
 
@@ -14,8 +16,20 @@ function createModelDescriptor(modelId: string) {
   };
 }
 
-export function handleModels(context: Context) {
-  const config = resolveGatewayConfig(context.env as GatewayBindings);
+export async function handleModels(
+  context: Context<{
+    Bindings: GatewayBindings;
+    Variables: {
+      requestId: string;
+      fetcher?: CreateAppOptions["fetcher"];
+      requestStartedAt: number;
+    };
+  }>
+) {
+  const config = resolveGatewayConfig(context.env);
+  const requestId = context.get("requestId");
+
+  await requireGatewayAuthorization(context, config, requestId);
 
   return context.json({
     object: "list",
@@ -25,10 +39,21 @@ export function handleModels(context: Context) {
   });
 }
 
-export function handleModelById(context: Context) {
-  const config = resolveGatewayConfig(context.env as GatewayBindings);
+export async function handleModelById(
+  context: Context<{
+    Bindings: GatewayBindings;
+    Variables: {
+      requestId: string;
+      fetcher?: CreateAppOptions["fetcher"];
+      requestStartedAt: number;
+    };
+  }>
+) {
+  const config = resolveGatewayConfig(context.env);
   const modelId = context.req.param("model");
-  const requestId = context.get("requestId") as string;
+  const requestId = context.get("requestId");
+
+  await requireGatewayAuthorization(context, config, requestId);
 
   if (!modelId) {
     throw new GatewayError("Model route parameter is required", {

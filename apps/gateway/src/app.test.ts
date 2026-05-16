@@ -1852,7 +1852,9 @@ describe("gateway app", () => {
 
     const response = await app.request(
       "http://localhost/v1/models",
-      undefined,
+      {
+        headers: { authorization: "Bearer gateway-secret" }
+      },
       createBindings()
     );
 
@@ -1869,12 +1871,24 @@ describe("gateway app", () => {
     );
   });
 
+  it("requires authentication for /v1/models", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/models",
+      undefined,
+      createBindings()
+    );
+
+    expect(response.status).toBe(401);
+  });
+
   it("returns a configured model from /v1/models/:model", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
     const response = await app.request(
       "http://localhost/v1/models/gpt-4.1-mini",
-      undefined,
+      { headers: { authorization: "Bearer gateway-secret" } },
       createBindings()
     );
 
@@ -1890,7 +1904,7 @@ describe("gateway app", () => {
 
     const response = await app.request(
       "http://localhost/v1/models/unknown-model",
-      undefined,
+      { headers: { authorization: "Bearer gateway-secret" } },
       createBindings()
     );
 
