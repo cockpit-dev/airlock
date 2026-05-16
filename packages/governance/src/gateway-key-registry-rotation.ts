@@ -130,7 +130,10 @@ export function assertRotationIsCancelable(
   requestId: string,
   now = Date.now()
 ) {
-  if (now >= Date.parse(key.previousValueHashExpiresAt!)) {
+  if (!key.previousValueHashExpiresAt) {
+    throw createGatewayKeyRotationNotStagedError(requestId);
+  }
+  if (now >= Date.parse(key.previousValueHashExpiresAt)) {
     throw createGatewayKeyRotationNotCancelableError(requestId);
   }
 }

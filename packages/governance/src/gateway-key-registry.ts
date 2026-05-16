@@ -833,6 +833,15 @@ export function parseGatewayKeyRegistryCreateRequest(
     };
   }
 
+  const actorContext =
+    value.actor !== undefined
+      ? parseRequiredGatewayKeyRegistryActorContext(
+          value.actor,
+          "actorSource" in value ? value.actorSource : undefined,
+          "Gateway dynamic key create payload is invalid"
+        )
+      : undefined;
+
   return {
     key,
     auditMetadata: {
@@ -844,26 +853,11 @@ export function parseGatewayKeyRegistryCreateRequest(
             )
           }
         : {}),
-      ...(value.actor !== undefined
-        ? {
-            actor: parseRequiredGatewayKeyRegistryActorContext(
-              value.actor,
-              "actorSource" in value ? value.actorSource : undefined,
-              "Gateway dynamic key create payload is invalid"
-            ).actor,
-            actorSource: parseRequiredGatewayKeyRegistryActorContext(
-              value.actor,
-              "actorSource" in value ? value.actorSource : undefined,
-              "Gateway dynamic key create payload is invalid"
-            ).actorSource
-          }
+      ...(actorContext !== undefined
+        ? { actor: actorContext.actor, actorSource: actorContext.actorSource }
         : {})
     },
-    actorContext: parseRequiredGatewayKeyRegistryActorContext(
-      value.actor,
-      "actorSource" in value ? value.actorSource : undefined,
-      "Gateway dynamic key create payload is invalid"
-    )
+    ...(actorContext !== undefined ? { actorContext } : {})
   };
 }
 
@@ -922,6 +916,15 @@ export function parseGatewayKeyRegistryBulkCreateRequest(
     };
   }
 
+  const actorContext =
+    value.actor !== undefined
+      ? parseRequiredGatewayKeyRegistryActorContext(
+          value.actor,
+          "actorSource" in value ? value.actorSource : undefined,
+          message
+        )
+      : undefined;
+
   return {
     keys,
     auditMetadata: {
@@ -930,26 +933,11 @@ export function parseGatewayKeyRegistryBulkCreateRequest(
             reason: parseRequiredGatewayKeyRegistryReason(value.reason, message)
           }
         : {}),
-      ...(value.actor !== undefined
-        ? {
-            actor: parseRequiredGatewayKeyRegistryActorContext(
-              value.actor,
-              "actorSource" in value ? value.actorSource : undefined,
-              message
-            ).actor,
-            actorSource: parseRequiredGatewayKeyRegistryActorContext(
-              value.actor,
-              "actorSource" in value ? value.actorSource : undefined,
-              message
-            ).actorSource
-          }
+      ...(actorContext !== undefined
+        ? { actor: actorContext.actor, actorSource: actorContext.actorSource }
         : {})
     },
-    actorContext: parseRequiredGatewayKeyRegistryActorContext(
-      value.actor,
-      "actorSource" in value ? value.actorSource : undefined,
-      message
-    )
+    ...(actorContext !== undefined ? { actorContext } : {})
   };
 }
 

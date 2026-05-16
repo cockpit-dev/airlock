@@ -564,7 +564,7 @@ function parseGatewayApiKeyPolicy(value: unknown): GatewayApiKeyPolicy | undefin
     };
   }
 
-  return Object.keys(policy).length > 0 ? policy : {};
+  return Object.keys(policy).length > 0 ? policy : undefined;
 }
 
 export function parseGatewayApiKeyMetadataOverride(

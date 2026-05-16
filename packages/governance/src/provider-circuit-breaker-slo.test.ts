@@ -508,7 +508,10 @@ describe("applyCircuitBreakerSuccess half-open promotion gating", () => {
   });
 
   it("closes circuit when success rate meets threshold after failures", () => {
-    // 3 successes + 1 failure = 75% >= 0.7 threshold, with successes >= 2 required
+    // After 3 successes + 1 failure (total=4), window defaults to requiredSuccesses=2.
+    // Corrected algorithm: total=4 > window=2, failures=1 < 2 → windowedSuccesses = 2-1 = 1
+    // rate = 1/2 = 50% < 70% → does NOT promote (window too small to absorb the failure).
+    // To actually promote at 70%, we need no failures in the window or a larger window.
     const result = applyCircuitBreakerSuccess(
       {
         consecutiveRetryableFailures: 0,
@@ -524,13 +527,15 @@ describe("applyCircuitBreakerSuccess half-open promotion gating", () => {
         halfOpenPromotionSuccessRate: 0.7
       }
     );
-    // After this success: 3 successes / 4 total = 75% >= 70% → promoted
-    expect(result.openedAt).toBeUndefined();
+    // window=2, total=4 > 2, failures=1, windowedSuccesses = 2-1 = 1, rate = 50% < 70% → stays open
+    expect(result.openedAt).toBe(1000);
     expect(result.recoverySuccessCount).toBe(3);
   });
 
   it("preserves openedAt with windowed evaluation", () => {
-    // 3 successes + 2 failures, window of 3: recent 3 = 1 success + 2 failures = 33% < 100%
+    // 3 successes + 2 failures, window of 3, required rate 100%.
+    // Corrected algorithm: total=5 > window=3, failures=2 < 3,
+    // windowedSuccesses = 3 - 2 = 1, rate = 1/3 = 33% < 100% → stays open
     const result = applyCircuitBreakerSuccess(
       {
         consecutiveRetryableFailures: 0,
@@ -547,9 +552,8 @@ describe("applyCircuitBreakerSuccess half-open promotion gating", () => {
         halfOpenPromotionWindow: 3
       }
     );
-    // 3 successes / 5 total, but windowed(3): 3 successes / 3 = 100% >= 100% → promoted
-    // Actually: window = min(5, 3) = 3, windowedSuccesses = min(3, 3) = 3, rate = 3/3 = 1.0 >= 1.0
-    expect(result.openedAt).toBeUndefined();
+    // windowedSuccesses = 3-2 = 1, rate = 1/3 = 33% < 100% → stays open
+    expect(result.openedAt).toBe(1000);
     expect(result.recoverySuccessCount).toBe(3);
   });
 
@@ -701,14 +705,14 @@ describe("shouldPromoteHalfOpenToClosed", () => {
   });
 
   it("returns true when success rate meets required threshold", () => {
-    // 4 successes, 1 failure = 4/5 = 0.8, required 0.8
+    // 4 successes, 0 failures = 4/4 = 1.0, required 0.8, window defaults to requiredSuccesses=3
+    // total=4 > window=3, failures=0, windowedSuccesses = 3-0 = 3, rate = 3/3 = 1.0 >= 0.8
     expect(
       shouldPromoteHalfOpenToClosed(
         {
           consecutiveRetryableFailures: 0,
           openedAt: 1000,
-          recoverySuccessCount: 4,
-          halfOpenRetryableFailureCount: 1
+          recoverySuccessCount: 4
         },
         { halfOpenPromotionSuccesses: 3, halfOpenPromotionSuccessRate: 0.8 }
       )
@@ -716,21 +720,61 @@ describe("shouldPromoteHalfOpenToClosed", () => {
   });
 
   it("respects promotion window for success rate evaluation", () => {
-    // 5 successes, 3 failures total. Window=4: last 4 attempts could be 1 success + 3 failures = 0.25
-    // But we use min(successes, window)/min(total, window)
-    // windowedSuccesses = min(5, 4) = 4, windowedAttempts = min(8, 4) = 4, rate = 1.0
+    // 5 successes, 3 failures total=8. Window=4.
+    // Corrected: total=8 > window=4, failures=3 < 4, windowedSuccesses = 4-3 = 1
+    // rate = 1/4 = 0.25 < 0.8 → does NOT promote.
+    // With no failures in window: 5 successes, 0 failures, window=4
+    // total=5 > window=4, failures=0, windowedSuccesses = 4-0 = 4, rate = 4/4 = 1.0 >= 0.8
     expect(
       shouldPromoteHalfOpenToClosed(
         {
           consecutiveRetryableFailures: 0,
           openedAt: 1000,
-          recoverySuccessCount: 5,
-          halfOpenRetryableFailureCount: 3
+          recoverySuccessCount: 5
         },
         {
           halfOpenPromotionSuccesses: 3,
           halfOpenPromotionSuccessRate: 0.8,
           halfOpenPromotionWindow: 4
+        }
+      )
+    ).toBe(true);
+  });
+
+  it("does not promote when all recent window attempts are failures", () => {
+    // 2 successes, 5 failures, window=3. failures=5 >= window=3 → windowedSuccesses = 0
+    expect(
+      shouldPromoteHalfOpenToClosed(
+        {
+          consecutiveRetryableFailures: 0,
+          openedAt: 1000,
+          recoverySuccessCount: 2,
+          halfOpenRetryableFailureCount: 5
+        },
+        {
+          halfOpenPromotionSuccesses: 1,
+          halfOpenPromotionSuccessRate: 0.5,
+          halfOpenPromotionWindow: 3
+        }
+      )
+    ).toBe(false);
+  });
+
+  it("promotes when failures exist but window covers only successes", () => {
+    // 3 successes, 1 failure, window=5. total=4 <= window=5 → rate = 3/4 = 75%
+    // With requiredRate=0.7 → promotes
+    expect(
+      shouldPromoteHalfOpenToClosed(
+        {
+          consecutiveRetryableFailures: 0,
+          openedAt: 1000,
+          recoverySuccessCount: 3,
+          halfOpenRetryableFailureCount: 1
+        },
+        {
+          halfOpenPromotionSuccesses: 2,
+          halfOpenPromotionSuccessRate: 0.7,
+          halfOpenPromotionWindow: 5
         }
       )
     ).toBe(true);

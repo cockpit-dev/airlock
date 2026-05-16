@@ -519,9 +519,26 @@ export function shouldPromoteHalfOpenToClosed(
   const requiredRate = policy.halfOpenPromotionSuccessRate ?? 1.0;
   const window = policy.halfOpenPromotionWindow ?? requiredSuccesses;
 
-  // Evaluate success rate over the configured window of recent attempts
-  const windowedAttempts = Math.min(totalAttempts, window);
-  const windowedSuccesses = Math.min(successes, window);
+  // When total attempts exceed the window, compute the success rate of
+  // the most recent `window` attempts by subtracting the oldest ones.
+  // This avoids the bug of capping successes and attempts independently
+  // (which inflates the rate when early probes succeeded but recent failed).
+  let windowedAttempts: number;
+  let windowedSuccesses: number;
+
+  if (totalAttempts <= window) {
+    windowedAttempts = totalAttempts;
+    windowedSuccesses = successes;
+  } else {
+    const failures = totalAttempts - successes;
+    windowedAttempts = window;
+    if (failures >= window) {
+      windowedSuccesses = 0;
+    } else {
+      windowedSuccesses = window - failures;
+    }
+  }
+
   const successRate = windowedSuccesses / windowedAttempts;
 
   return successRate >= requiredRate;
