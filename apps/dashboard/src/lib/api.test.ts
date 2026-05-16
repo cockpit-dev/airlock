@@ -141,6 +141,16 @@ describe("AirlockClient", () => {
       );
     });
 
+    it("encodes special characters in keyId", async () => {
+      mockFetch(jsonRes({ ok: true }));
+      const c = new AirlockClient("http://host", "tok");
+      await c.getKey("key/with/slashes");
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "http://host/_airlock/keys/key%2Fwith%2Fslashes",
+        expect.anything()
+      );
+    });
+
     it("rotateKey sends POST to rotate endpoint", async () => {
       mockFetch(jsonRes({ ok: true }));
       const c = new AirlockClient("http://host", "tok");
@@ -199,6 +209,52 @@ describe("AirlockClient", () => {
         "http://host/_airlock/keys/k1/events",
         expect.anything()
       );
+    });
+
+    describe("Config Store API", () => {
+      it("getConfigStoreSnapshot sends GET to manage endpoint", async () => {
+        mockFetch(jsonRes({ sections: {} }));
+        const c = new AirlockClient("http://host", "tok");
+        const res = await c.getConfigStoreSnapshot();
+        expect(res).toEqual({ sections: {} });
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+          "http://host/_airlock/config/manage",
+          expect.anything()
+        );
+      });
+
+      it("getConfigStoreSection encodes section name", async () => {
+        mockFetch(jsonRes({ data: {} }));
+        const c = new AirlockClient("http://host", "tok");
+        await c.getConfigStoreSection("providers/config");
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+          "http://host/_airlock/config/manage/providers%2Fconfig",
+          expect.anything()
+        );
+      });
+
+      it("putConfigStoreSection sends PUT with data", async () => {
+        mockFetch(jsonRes({ written: true }));
+        const c = new AirlockClient("http://host", "tok");
+        await c.putConfigStoreSection("accounts", [{ email: "a@b.c" }]);
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+          "http://host/_airlock/config/manage/accounts",
+          expect.objectContaining({
+            method: "PUT",
+            body: JSON.stringify([{ email: "a@b.c" }])
+          })
+        );
+      });
+
+      it("deleteConfigStoreSection sends DELETE with encoded section", async () => {
+        mockFetch(jsonRes({ deleted: true, section: "test" }));
+        const c = new AirlockClient("http://host", "tok");
+        await c.deleteConfigStoreSection("test");
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+          "http://host/_airlock/config/manage/test",
+          expect.objectContaining({ method: "DELETE" })
+        );
+      });
     });
   });
 });
