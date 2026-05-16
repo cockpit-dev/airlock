@@ -37750,3 +37750,208 @@ describe("request-class-aware routing affinity", () => {
     );
   });
 });
+
+describe("health_score target selection strategy", () => {
+  const openaiResponse = new Response(
+    JSON.stringify({
+      id: "chatcmpl_123",
+      object: "chat.completion",
+      created: 1,
+      model: "gpt-4.1-mini",
+      choices: [
+        {
+          index: 0,
+          finish_reason: "stop",
+          message: { role: "assistant", content: "hello from openai" }
+        }
+      ],
+      usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 }
+    }),
+    { status: 200, headers: { "content-type": "application/json" } }
+  );
+
+  const anthropicResponse = new Response(
+    JSON.stringify({
+      id: "msg_123",
+      type: "message",
+      role: "assistant",
+      model: "claude-haiku-4-5",
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: "hello from anthropic" }],
+      usage: { input_tokens: 5, output_tokens: 3 }
+    }),
+    { status: 200, headers: { "content-type": "application/json" } }
+  );
+
+  it("routes to the healthier target using health_score strategy", async () => {
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("openai")) {
+        return Promise.resolve(openaiResponse.clone());
+      }
+      return Promise.resolve(anthropicResponse.clone());
+    });
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "health_score"
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    // Both healthy → default order (openai primary)
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+  });
+
+  it("routes around an open circuit to the healthier fallback target", async () => {
+    // Use same app instance to preserve in-memory circuit breaker state
+    const fetcher = vi.fn();
+    fetcher
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ error: { message: "rate limited" } }),
+          { status: 429, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(anthropicResponse.clone())
+      .mockResolvedValueOnce(anthropicResponse.clone());
+
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_MODEL_ALIASES:
+        "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+      AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+        "assistant-default": ["anthropic:claude-haiku-4-5"]
+      }),
+      AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+        "assistant-default": {
+          strategy: "health_score"
+        }
+      }),
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "1",
+      AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000"
+    };
+
+    const request = {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer gateway-secret"
+      },
+      body: JSON.stringify({
+        model: "assistant-default",
+        stream: false,
+        messages: [{ role: "user", content: "hi" }]
+      })
+    };
+
+    // First request: openai returns 429 → fallback to anthropic succeeds
+    const firstResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      request,
+      bindings
+    );
+
+    expect(firstResponse.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
+
+    // Second request: openai circuit is open → health_score routes to anthropic directly
+    const secondResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      request,
+      bindings
+    );
+
+    expect(secondResponse.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    // Third call is anthropic (only healthy target, not openai)
+    expect(fetcher.mock.calls[2]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
+  });
+
+  it("applies latency SLO hints via health_score strategy", async () => {
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("openai")) {
+        return Promise.resolve(openaiResponse.clone());
+      }
+      return Promise.resolve(anthropicResponse.clone());
+    });
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "health_score",
+            latencySloMs: {
+              "openai:gpt-4.1-mini": 500,
+              "anthropic:claude-haiku-4-5": 1000
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    // Both healthy with SLO hints → default order still applies
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+  });
+});
