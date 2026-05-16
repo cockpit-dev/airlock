@@ -717,6 +717,7 @@ export async function executeRoutedRequest(
     onAttemptTarget?: (target: ProviderTarget) => void;
     circuitBreakerBackend?: ProviderCircuitBreakerBackend;
     routingMetadata?: RoutingMetadataAccumulator;
+    signal?: AbortSignal;
   }
 ): Promise<CanonicalResponse> {
   const {
@@ -730,7 +731,8 @@ export async function executeRoutedRequest(
     getProviderDescriptor = getProviderCapabilityDescriptor,
     onAttemptTarget,
     circuitBreakerBackend = createInMemoryCircuitBreakerBackend(),
-    routingMetadata: routingMetadataRef
+    routingMetadata: routingMetadataRef,
+    signal
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
   const windows: RoutingFreshnessWindows = {
@@ -801,6 +803,7 @@ export async function executeRoutedRequest(
             requestId,
             timeoutMs: currentRemainingTimeoutMs,
             requestMode,
+            ...(signal ? { signal } : {}),
             ...(targetRequestShaping
               ? { requestShaping: targetRequestShaping }
               : {})
@@ -900,6 +903,7 @@ export async function* executeRoutedStreamRequest(
     onAttemptTarget?: (target: ProviderTarget) => void;
     circuitBreakerBackend?: ProviderCircuitBreakerBackend;
     routingMetadata?: RoutingMetadataAccumulator;
+    signal?: AbortSignal;
   }
 ): AsyncIterable<CanonicalStreamEvent> {
   const {
@@ -913,7 +917,8 @@ export async function* executeRoutedStreamRequest(
     getProviderDescriptor = getProviderCapabilityDescriptor,
     onAttemptTarget,
     circuitBreakerBackend = createInMemoryCircuitBreakerBackend(),
-    routingMetadata: routingMetadataRef
+    routingMetadata: routingMetadataRef,
+    signal
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
   const streamWindows: RoutingFreshnessWindows = {
@@ -1015,6 +1020,7 @@ export async function* executeRoutedStreamRequest(
             streamIdleTimeoutMs: config.providerStreamIdleTimeoutMs,
             requestMode,
             malformedSseEventCount: 0,
+            ...(signal ? { signal } : {}),
             ...(streamTargetShaping
               ? { requestShaping: streamTargetShaping }
               : {})

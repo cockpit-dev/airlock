@@ -228,6 +228,7 @@ export async function handleChatCompletions(
         config,
         gatewayApiKey,
         requestId,
+        signal: context.req.raw.signal,
         ...(quota.circuitBreakerBackend
           ? { circuitBreakerBackend: quota.circuitBreakerBackend }
           : {}),
@@ -386,6 +387,7 @@ export async function handleChatCompletions(
       config,
       gatewayApiKey,
       requestId,
+      signal: context.req.raw.signal,
       ...(quota.circuitBreakerBackend
         ? { circuitBreakerBackend: quota.circuitBreakerBackend }
         : {}),

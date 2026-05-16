@@ -37,6 +37,8 @@ export interface ProviderCapabilityDescriptor {
 
 export interface ProviderRequestContext {
   requestId: string;
+  /** Client abort signal. When the client disconnects, this signal is aborted, which also aborts the upstream fetch. */
+  signal?: AbortSignal;
   timeoutMs?: number;
   /** Per-read idle timeout for streaming responses. Resets on each successful reader.read(). */
   streamIdleTimeoutMs?: number;

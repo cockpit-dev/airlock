@@ -199,6 +199,7 @@ export async function handleMessages(
         gatewayApiKey,
         requestId,
         requestMode: "openai_responses",
+        signal: context.req.raw.signal,
         ...(quota.circuitBreakerBackend
           ? { circuitBreakerBackend: quota.circuitBreakerBackend }
           : {}),
@@ -358,6 +359,7 @@ export async function handleMessages(
       gatewayApiKey,
       requestId,
       requestMode: "openai_responses",
+      signal: context.req.raw.signal,
       ...(quota.circuitBreakerBackend
         ? { circuitBreakerBackend: quota.circuitBreakerBackend }
         : {}),
