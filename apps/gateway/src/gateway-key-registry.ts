@@ -492,35 +492,26 @@ export class GatewayKeyRegistryDurableObject {
           return [entry.id, entry] as const;
         })
       );
-      const rotationPlan = bulkRequest.rotations.map((entry) => {
+      const rotationEntries: {
+        previousKey: GatewayKeyRegistryStoredDynamicKey;
+        valueHash: string;
+        overlapSeconds?: number;
+      }[] = [];
+
+      for (const entry of bulkRequest.rotations) {
         const existingKey = existingKeysById.get(entry.keyId);
 
         if (!existingKey) {
-          return null;
+          return new Response("Not found", { status: 404 });
         }
 
-        return {
-          entry,
-          existingKey,
-          nextKey:
-            entry.overlapSeconds && entry.overlapSeconds > 0
-              ? {
-                  ...existingKey,
-                  valueHash: entry.valueHash,
-                  previousValueHash: existingKey.valueHash,
-                  previousValueHashExpiresAt: new Date(
-                    Date.now() + entry.overlapSeconds * 1000
-                  ).toISOString()
-                }
-              : {
-                  ...existingKey,
-                  valueHash: entry.valueHash
-                }
-        };
-      });
-
-      if (rotationPlan.some((entry) => entry === null)) {
-        return new Response("Not found", { status: 404 });
+        rotationEntries.push({
+          previousKey: existingKey,
+          valueHash: entry.valueHash,
+          ...(entry.overlapSeconds !== undefined
+            ? { overlapSeconds: entry.overlapSeconds }
+            : {})
+        });
       }
 
       const actorContext = gatewayKeyAuditActorContextFromRegistryRequest(
@@ -528,21 +519,7 @@ export class GatewayKeyRegistryDurableObject {
       );
       const transitionNow = new Date().toISOString();
       const rotateTransitions = buildBulkRotateGatewayRegistryKeyTransitions(
-        rotationPlan
-          .filter(
-            (entry): entry is NonNullable<(typeof rotationPlan)[number]> => {
-              return entry !== null;
-            }
-          )
-          .map((entry) => {
-            return {
-              previousKey: entry.existingKey,
-              valueHash: entry.entry.valueHash,
-              ...(entry.entry.overlapSeconds !== undefined
-                ? { overlapSeconds: entry.entry.overlapSeconds }
-                : {})
-            };
-          }),
+        rotationEntries,
         {
           ...(operationId ? { operationId } : {}),
           ...(bulkRequest.auditMetadata.reason
