@@ -1033,6 +1033,18 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
             abortController.abort();
           }, context.timeoutMs)
         : undefined;
+    let idleTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const resetIdleTimeout = (): void => {
+      if (idleTimeoutHandle !== undefined) {
+        clearTimeout(idleTimeoutHandle);
+      }
+      if (context.streamIdleTimeoutMs !== undefined) {
+        idleTimeoutHandle = setTimeout(() => {
+          abortController.abort();
+        }, context.streamIdleTimeoutMs);
+      }
+    };
+    resetIdleTimeout();
 
     let response: Response;
 
@@ -1076,6 +1088,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
       }
+      if (idleTimeoutHandle !== undefined) {
+        clearTimeout(idleTimeoutHandle);
+      }
 
       throw new GatewayError(errorMessage, {
         code: "provider_upstream_error",
@@ -1090,6 +1105,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     if (!response.body) {
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
+      }
+      if (idleTimeoutHandle !== undefined) {
+        clearTimeout(idleTimeoutHandle);
       }
 
       throw new GatewayError(
@@ -1133,6 +1151,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         if (!chunk) {
           continue;
         }
+
+        resetIdleTimeout();
 
         buffer += decoder.decode(chunk, { stream: true });
 
@@ -1364,6 +1384,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     } finally {
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
+      }
+      if (idleTimeoutHandle !== undefined) {
+        clearTimeout(idleTimeoutHandle);
       }
       reader.releaseLock();
     }
@@ -2105,6 +2128,18 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
             abortController.abort();
           }, context.timeoutMs)
         : undefined;
+    let idleTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const resetIdleTimeout = (): void => {
+      if (idleTimeoutHandle !== undefined) {
+        clearTimeout(idleTimeoutHandle);
+      }
+      if (context.streamIdleTimeoutMs !== undefined) {
+        idleTimeoutHandle = setTimeout(() => {
+          abortController.abort();
+        }, context.streamIdleTimeoutMs);
+      }
+    };
+    resetIdleTimeout();
 
     let response: Response;
 
@@ -2148,6 +2183,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
       }
+      if (idleTimeoutHandle !== undefined) {
+        clearTimeout(idleTimeoutHandle);
+      }
 
       throw new GatewayError(errorMessage, {
         code: "provider_upstream_error",
@@ -2162,6 +2200,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     if (!response.body) {
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
+      }
+      if (idleTimeoutHandle !== undefined) {
+        clearTimeout(idleTimeoutHandle);
       }
 
       throw new GatewayError(
@@ -2218,6 +2259,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         if (!chunk) {
           continue;
         }
+
+        resetIdleTimeout();
 
         buffer += decoder.decode(chunk, { stream: true });
 
@@ -2995,6 +3038,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     } finally {
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
+      }
+      if (idleTimeoutHandle !== undefined) {
+        clearTimeout(idleTimeoutHandle);
       }
       reader.releaseLock();
     }

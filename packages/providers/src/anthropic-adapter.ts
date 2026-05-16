@@ -542,6 +542,18 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
             abortController.abort();
           }, context.timeoutMs)
         : undefined;
+    let idleTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const resetIdleTimeout = (): void => {
+      if (idleTimeoutHandle !== undefined) {
+        clearTimeout(idleTimeoutHandle);
+      }
+      if (context.streamIdleTimeoutMs !== undefined) {
+        idleTimeoutHandle = setTimeout(() => {
+          abortController.abort();
+        }, context.streamIdleTimeoutMs);
+      }
+    };
+    resetIdleTimeout();
 
     let response: Response;
 
@@ -585,6 +597,9 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
       }
+      if (idleTimeoutHandle !== undefined) {
+        clearTimeout(idleTimeoutHandle);
+      }
 
       throw new GatewayError(errorMessage, {
         code: "provider_upstream_error",
@@ -599,6 +614,9 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     if (!response.body) {
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
+      }
+      if (idleTimeoutHandle !== undefined) {
+        clearTimeout(idleTimeoutHandle);
       }
 
       throw new GatewayError(
@@ -649,6 +667,8 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
         if (!chunk) {
           continue;
         }
+
+        resetIdleTimeout();
 
         buffer += decoder.decode(chunk, { stream: true });
 
@@ -841,6 +861,9 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     } finally {
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
+      }
+      if (idleTimeoutHandle !== undefined) {
+        clearTimeout(idleTimeoutHandle);
       }
       reader.releaseLock();
     }

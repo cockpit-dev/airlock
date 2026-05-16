@@ -979,6 +979,7 @@ export async function* executeRoutedStreamRequest(
         for await (const event of adapter.stream(currentStreamAttemptRequest, {
           requestId,
           timeoutMs: deadline - now(),
+          streamIdleTimeoutMs: config.providerStreamIdleTimeoutMs,
           requestMode,
           ...(streamTargetShaping
             ? { requestShaping: streamTargetShaping }

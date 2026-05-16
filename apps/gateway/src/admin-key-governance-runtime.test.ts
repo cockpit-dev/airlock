@@ -95,9 +95,7 @@ vi.mock("./gateway-key-revocation.js", () => ({
   clearGatewayKeyRevocationById: runtimeMocks.clearGatewayKeyRevocationById
 }));
 
-import {
-  createAdminKeyGovernanceRuntime
-} from "./admin-key-governance-runtime.js";
+import { createAdminKeyGovernanceRuntime } from "./admin-key-governance-runtime.js";
 
 const gatewaySecretHash =
   "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6";
@@ -111,6 +109,7 @@ function createEnv(): GatewayBindings {
     AIRLOCK_PROVIDER_TIMEOUT_MS: 1000,
     AIRLOCK_PROVIDER_MAX_RETRIES: 0,
     AIRLOCK_PROVIDER_RETRY_BACKOFF_MS: 0,
+    AIRLOCK_PROVIDER_STREAM_IDLE_TIMEOUT_MS: 15_000,
     AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: 3,
     AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: 30000,
     AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: false,
@@ -152,10 +151,7 @@ describe("createAdminKeyGovernanceRuntime", () => {
       updatedAt: "2026-05-14T00:00:00.000Z"
     });
 
-    const runtime = createAdminKeyGovernanceRuntime(
-      env,
-      "req_123"
-    );
+    const runtime = createAdminKeyGovernanceRuntime(env, "req_123");
 
     expect(runtime.gatewayApiKeys).toHaveLength(1);
     expect(runtime.isConfiguredKey("key_configured")).toBe(true);
@@ -299,7 +295,9 @@ describe("createAdminKeyGovernanceRuntime", () => {
     );
 
     await runtime.read.getKeyStatusSnapshot("key_registry");
-    expect(runtimeMocks.resolveGatewayApiKeyByIdWithRegistry).toHaveBeenCalledWith(
+    expect(
+      runtimeMocks.resolveGatewayApiKeyByIdWithRegistry
+    ).toHaveBeenCalledWith(
       env,
       runtime.gatewayApiKeys,
       "key_registry",
@@ -316,10 +314,12 @@ describe("createAdminKeyGovernanceRuntime", () => {
       "req_123"
     );
 
-    await expect(runtime.write.updateRegistryOverride("key_configured", {
-      label: "Updated",
-      reason: "incident mitigation"
-    })).resolves.toMatchObject({
+    await expect(
+      runtime.write.updateRegistryOverride("key_configured", {
+        label: "Updated",
+        reason: "incident mitigation"
+      })
+    ).resolves.toMatchObject({
       keyId: "key_configured",
       override: {
         label: "Updated",
@@ -346,9 +346,11 @@ describe("createAdminKeyGovernanceRuntime", () => {
     );
     expect(runtimeMocks.resolveGatewayApiKeyById).not.toHaveBeenCalled();
 
-    await expect(runtime.write.clearRegistryOverride("key_configured", {
-      reason: "rollback"
-    })).resolves.toMatchObject({
+    await expect(
+      runtime.write.clearRegistryOverride("key_configured", {
+        reason: "rollback"
+      })
+    ).resolves.toMatchObject({
       keyId: "key_configured",
       override: null,
       auditEvent: {
@@ -386,10 +388,7 @@ describe("createAdminKeyGovernanceRuntime", () => {
 
   it("delegates registry operation events to the registry transport", async () => {
     const env = createEnv();
-    const runtime = createAdminKeyGovernanceRuntime(
-      env,
-      "req_123"
-    );
+    const runtime = createAdminKeyGovernanceRuntime(env, "req_123");
 
     runtimeMocks.getGatewayRegistryOperationEvents.mockResolvedValue([
       {
@@ -416,10 +415,7 @@ describe("createAdminKeyGovernanceRuntime", () => {
 
   it("returns empty revocation operation events when revocation DO is absent", async () => {
     const env = createEnv();
-    const runtime = createAdminKeyGovernanceRuntime(
-      env,
-      "req_123"
-    );
+    const runtime = createAdminKeyGovernanceRuntime(env, "req_123");
 
     await expect(
       runtime.read.getRevocationOperationEvents("req_op_123")
@@ -440,10 +436,7 @@ describe("createAdminKeyGovernanceRuntime", () => {
         }
       }
     } satisfies GatewayBindings;
-    const runtime = createAdminKeyGovernanceRuntime(
-      env,
-      "req_123"
-    );
+    const runtime = createAdminKeyGovernanceRuntime(env, "req_123");
 
     runtimeMocks.getGatewayKeyRevocationOperationEvents.mockResolvedValue([
       {

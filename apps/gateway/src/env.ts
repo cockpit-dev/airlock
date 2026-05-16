@@ -27,6 +27,11 @@ export const gatewayEnvSchema = z.object({
     .default(30_000),
   AIRLOCK_PROVIDER_MAX_RETRIES: z.coerce.number().int().min(0).default(0),
   AIRLOCK_PROVIDER_RETRY_BACKOFF_MS: z.coerce.number().int().min(0).default(0),
+  AIRLOCK_PROVIDER_STREAM_IDLE_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(15_000),
   AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: z.coerce
     .number()
     .int()

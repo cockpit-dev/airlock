@@ -38,6 +38,8 @@ export interface ProviderCapabilityDescriptor {
 export interface ProviderRequestContext {
   requestId: string;
   timeoutMs?: number;
+  /** Per-read idle timeout for streaming responses. Resets on each successful reader.read(). */
+  streamIdleTimeoutMs?: number;
   requestShaping?: RequestShapingProfile;
   requestMode?: "default" | "openai_responses";
 }

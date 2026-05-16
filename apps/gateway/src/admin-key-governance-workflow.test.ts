@@ -12,12 +12,11 @@ vi.mock("./admin-key-governance-runtime.js", () => ({
 }));
 
 vi.mock("./admin-actor.js", () => ({
-  resolveAdminMutationActorCommand: workflowMocks.resolveAdminMutationActorCommand
+  resolveAdminMutationActorCommand:
+    workflowMocks.resolveAdminMutationActorCommand
 }));
 
-import {
-  createAdminKeyGovernanceWorkflow
-} from "./admin-key-governance-workflow.js";
+import { createAdminKeyGovernanceWorkflow } from "./admin-key-governance-workflow.js";
 
 function createEnv(): GatewayBindings {
   return {
@@ -28,6 +27,7 @@ function createEnv(): GatewayBindings {
     AIRLOCK_PROVIDER_TIMEOUT_MS: 1000,
     AIRLOCK_PROVIDER_MAX_RETRIES: 0,
     AIRLOCK_PROVIDER_RETRY_BACKOFF_MS: 0,
+    AIRLOCK_PROVIDER_STREAM_IDLE_TIMEOUT_MS: 15_000,
     AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: 3,
     AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: 30000,
     AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: false,
@@ -64,7 +64,9 @@ describe("createAdminKeyGovernanceWorkflow", () => {
 
     expect(first).toBe(readRuntime);
     expect(second).toBe(readRuntime);
-    expect(workflowMocks.createAdminKeyGovernanceRuntime).toHaveBeenCalledTimes(1);
+    expect(workflowMocks.createAdminKeyGovernanceRuntime).toHaveBeenCalledTimes(
+      1
+    );
     expect(workflowMocks.createAdminKeyGovernanceRuntime).toHaveBeenCalledWith(
       createEnv(),
       "req_123"
@@ -91,7 +93,9 @@ describe("createAdminKeyGovernanceWorkflow", () => {
       actorContext,
       payload: mutationPayload
     });
-    workflowMocks.createAdminKeyGovernanceRuntime.mockReturnValue(mutationRuntime);
+    workflowMocks.createAdminKeyGovernanceRuntime.mockReturnValue(
+      mutationRuntime
+    );
 
     const workflow = createAdminKeyGovernanceWorkflow(env, "req_123");
 
