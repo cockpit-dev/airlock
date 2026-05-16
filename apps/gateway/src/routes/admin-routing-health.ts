@@ -81,6 +81,9 @@ interface TargetHealthEntry {
 interface RouteEntry {
   strategy: string;
   targets: string[];
+  healthStatus: "healthy" | "degraded" | "down";
+  healthyTargetCount: number;
+  totalTargetCount: number;
   costs?: Record<string, number>;
   weights?: Record<string, number>;
   latencySloMs?: Record<string, number>;
@@ -120,9 +123,11 @@ export function buildRoutingHealthResponse(
   };
 
   const targets: Record<string, TargetHealthEntry> = {};
+  const healthSnapshots = new Map<string, ProviderTargetHealthSnapshot>();
 
   for (const [targetKey, circuitState] of allStates) {
     const healthSnapshot = deriveProviderTargetHealthSnapshot(circuitState);
+    healthSnapshots.set(targetKey, healthSnapshot);
     const latencyFreshMs =
       healthSnapshot.lastSuccessAt !== undefined
         ? Math.max(0, now - healthSnapshot.lastSuccessAt)
@@ -154,9 +159,24 @@ export function buildRoutingHealthResponse(
       serializeProviderTarget(t)
     );
 
+    const healthyTargetCount = allTargets.filter((targetKey) => {
+      const snapshot = healthSnapshots.get(targetKey);
+      return !snapshot || !snapshot.isOpen;
+    }).length;
+
+    const healthStatus: RouteEntry["healthStatus"] =
+      healthyTargetCount === allTargets.length
+        ? "healthy"
+        : healthyTargetCount > 0
+          ? "degraded"
+          : "down";
+
     const entry: RouteEntry = {
       strategy: route.targetSelection?.strategy ?? "ordered",
-      targets: allTargets
+      targets: allTargets,
+      healthStatus,
+      healthyTargetCount,
+      totalTargetCount: allTargets.length
     };
 
     if (route.targetSelection) {

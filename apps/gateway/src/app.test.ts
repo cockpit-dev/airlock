@@ -37067,6 +37067,40 @@ describe("GET /_airlock/routing/health", () => {
     expect(freshnessWindows.costFreshnessMs).toBe(120000);
   });
 
+  it("includes route-level health status", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/routing/health",
+      {
+        headers: { authorization: "Bearer admin-secret" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await readJson(response)) as Record<string, unknown>;
+    const routes = body.routes as Record<string, Record<string, unknown>>;
+
+    // Every route should have health fields
+    for (const route of Object.values(routes)) {
+      expect(route).toHaveProperty("healthStatus");
+      expect(route).toHaveProperty("healthyTargetCount");
+      expect(route).toHaveProperty("totalTargetCount");
+      expect(["healthy", "degraded", "down"]).toContain(route.healthStatus);
+      expect(route.totalTargetCount).toBeGreaterThanOrEqual(1);
+    }
+
+    // With no traffic, all routes should be healthy (no circuit breaker state)
+    const gptRoute = routes["gpt-4.1-mini"]!;
+    expect(gptRoute.healthStatus).toBe("healthy");
+    expect(gptRoute.healthyTargetCount).toBe(gptRoute.totalTargetCount);
+  });
+
   describe("CORS", () => {
     it("returns CORS headers on /v1/* when AIRLOCK_CORS_ORIGINS is set to *", async () => {
       const app = createApp({ fetcher: vi.fn() });
