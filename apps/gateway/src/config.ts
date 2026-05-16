@@ -267,7 +267,81 @@ function parseRequestSigningSecrets(
   return secrets;
 }
 
+/**
+ * Compute a fingerprint from the config-relevant env strings.
+ * If these values haven't changed, the parsed config is identical.
+ */
+function computeConfigFingerprint(bindings: GatewayBindings): string {
+  return [
+    bindings.AIRLOCK_MODE,
+    bindings.AIRLOCK_GATEWAY_API_KEYS,
+    bindings.AIRLOCK_MODEL_ALIASES,
+    bindings.AIRLOCK_MODEL_FALLBACKS,
+    bindings.AIRLOCK_MODEL_TARGET_SELECTION,
+    bindings.AIRLOCK_MODEL_KEY_POLICY,
+    bindings.AIRLOCK_MODEL_SHAPING,
+    bindings.AIRLOCK_MODEL_GROUPS,
+    bindings.AIRLOCK_REQUEST_SIGNING_SECRETS,
+    bindings.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS,
+    bindings.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+    bindings.AIRLOCK_INTERNAL_ADMIN_ACTOR_HEADER,
+    bindings.AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED,
+    bindings.AIRLOCK_CORS_ORIGINS,
+    bindings.AIRLOCK_PROVIDER_TIMEOUT_MS,
+    bindings.AIRLOCK_PROVIDER_MAX_RETRIES,
+    bindings.AIRLOCK_PROVIDER_RETRY_BACKOFF_MS,
+    bindings.AIRLOCK_PROVIDER_STREAM_IDLE_TIMEOUT_MS,
+    bindings.AIRLOCK_MAX_REQUEST_BODY_BYTES,
+    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD,
+    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS,
+    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT,
+    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_WINDOW_MS,
+    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_THRESHOLD,
+    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_MIN_ATTEMPTS_IN_WINDOW,
+    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_SUCCESSES,
+    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_SUCCESS_RATE,
+    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_WINDOW,
+    bindings.AIRLOCK_ROUTING_LATENCY_FRESHNESS_MS,
+    bindings.AIRLOCK_ROUTING_COST_FRESHNESS_MS,
+    bindings.AIRLOCK_ROUTING_FAILURE_FRESHNESS_MS,
+    bindings.AIRLOCK_ROUTING_RECOVERY_WINDOW_MS,
+    bindings.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED,
+    bindings.OPENAI_API_KEY,
+    bindings.OPENAI_BASE_URL,
+    bindings.OPENAI_DEFAULT_MODEL,
+    bindings.ANTHROPIC_API_KEY,
+    bindings.ANTHROPIC_BASE_URL,
+    bindings.ANTHROPIC_DEFAULT_MAX_TOKENS,
+    bindings.GEMINI_API_KEY,
+    bindings.GEMINI_BASE_URL,
+    bindings.AIRLOCK_GATEWAY_KEY_QUOTA !== undefined ? "1" : "0",
+    bindings.AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA !== undefined ? "1" : "0",
+    bindings.AIRLOCK_GATEWAY_KEY_CONCURRENCY !== undefined ? "1" : "0",
+    bindings.AIRLOCK_GATEWAY_KEY_REGISTRY !== undefined ? "1" : "0",
+    bindings.AIRLOCK_GATEWAY_KEY_REVOCATION !== undefined ? "1" : "0",
+    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER !== undefined ? "1" : "0"
+  ].join("\0");
+}
+
+let configCache: { fingerprint: string; config: GatewayConfig } | undefined;
+
+/** Reset config cache (for testing). */
+export function resetConfigCache(): void {
+  configCache = undefined;
+}
+
 export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
+  const fingerprint = computeConfigFingerprint(bindings);
+  if (configCache && configCache.fingerprint === fingerprint) {
+    return configCache.config;
+  }
+
+  const config = parseGatewayConfigUncached(bindings);
+  configCache = { fingerprint, config };
+  return config;
+}
+
+function parseGatewayConfigUncached(bindings: GatewayBindings): GatewayConfig {
   const env = gatewayEnvSchema.parse(bindings);
   const gatewayApiKeys = parseGatewayApiKeys(env.AIRLOCK_GATEWAY_API_KEYS);
   const requestSigningSecrets = parseRequestSigningSecrets(
