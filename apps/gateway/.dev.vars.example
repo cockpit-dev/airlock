@@ -1,0 +1,99 @@
+# Airlock Gateway — Local Development Variables
+# Copy this file to .dev.vars and fill in the values.
+# .dev.vars is gitignored and never committed.
+
+# === Required ===
+
+# Gateway operating mode: "free" (Cloudflare free-tier) or "scale"
+AIRLOCK_MODE=free
+
+# API keys for caller authentication (comma-separated, each ≥8 chars)
+AIRLOCK_GATEWAY_API_KEYS=dev-key-change-me-please
+
+# OpenAI provider (always required)
+OPENAI_API_KEY=sk-...
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_DEFAULT_MODEL=gpt-4.1-mini
+
+# === Optional Providers ===
+
+# Anthropic (required if any route targets anthropic)
+# ANTHROPIC_API_KEY=sk-ant-...
+# ANTHROPIC_BASE_URL=https://api.anthropic.com
+# ANTHROPIC_DEFAULT_MAX_TOKENS=4096
+
+# Gemini (required if any route targets gemini)
+# GEMINI_API_KEY=...
+# GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+
+# === Model Routing ===
+
+# Model aliases (JSON array)
+# AIRLOCK_MODEL_ALIASES=[{"external":"gpt-4","target":{"provider":"openai","model":"gpt-4.1-mini"}}]
+
+# Model fallbacks (JSON array)
+# AIRLOCK_MODEL_FALLBACKS=[{"external":"gpt-4","targets":[{"provider":"openai","model":"gpt-4.1-mini"},{"provider":"anthropic","model":"claude-sonnet-4-5"}]}]
+
+# Model groups for key policy access control (JSON object)
+# AIRLOCK_MODEL_GROUPS={"premium":["gpt-4.1-mini","claude-sonnet-4-5"]}
+
+# Per-key access policy (JSON array)
+# AIRLOCK_MODEL_KEY_POLICY=[{"keyId":"dev-key-change-me-please","tier":"premium"}]
+
+# === Request Shaping ===
+
+# Outbound request shaping (JSON)
+# AIRLOCK_MODEL_SHAPING=[...]
+
+# HMAC-SHA256 request signing secrets (JSON)
+# AIRLOCK_REQUEST_SIGNING_SECRETS={"default":"hex-encoded-secret"}
+
+# === Timeouts & Limits ===
+
+# Upstream provider timeout in ms (default: 30000)
+# AIRLOCK_PROVIDER_TIMEOUT_MS=30000
+
+# Max retry attempts across providers (default: 0)
+# AIRLOCK_PROVIDER_MAX_RETRIES=0
+
+# Stream idle timeout in ms (default: 15000)
+# AIRLOCK_PROVIDER_STREAM_IDLE_TIMEOUT_MS=15000
+
+# Max request body size in bytes (default: 10485760 = 10MB)
+# AIRLOCK_MAX_REQUEST_BODY_BYTES=10485760
+
+# === Circuit Breaker ===
+
+# Consecutive failures before circuit opens (default: 3)
+# AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD=3
+
+# Circuit open duration in ms (default: 30000)
+# AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS=30000
+
+# Use persistent (DO-backed) circuit breaker (default: false)
+# AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT=false
+
+# === CORS ===
+
+# Allowed CORS origins for /v1/* (comma-separated, or "*" for wildcard)
+# AIRLOCK_CORS_ORIGINS=*
+
+# === Admin ===
+
+# Static admin token for /_airlock/* endpoints
+# AIRLOCK_INTERNAL_ADMIN_TOKEN=dev-admin-token
+
+# === Observability ===
+
+# Enable structured request logging (default: false)
+# AIRLOCK_REQUEST_LOGGING=true
+
+# === Gateway Key Registry ===
+
+# Enable dynamic key registry (default: false)
+# AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED=false
+
+# === IP Rate Limiting ===
+
+# IP rate limit policy (JSON)
+# AIRLOCK_IP_RATE_LIMIT_POLICY={"requestsPerMinute":60,"burstAllowance":10}
