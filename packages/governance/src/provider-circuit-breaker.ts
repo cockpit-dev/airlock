@@ -207,7 +207,12 @@ export function applyCircuitBreakerSuccess(
   now: number | undefined,
   policy?: Pick<
     ProviderCircuitBreakerPolicy,
-    "errorRateWindowMs" | "errorRateThreshold" | "minAttemptsInWindow"
+    | "errorRateWindowMs"
+    | "errorRateThreshold"
+    | "minAttemptsInWindow"
+    | "halfOpenPromotionSuccesses"
+    | "halfOpenPromotionSuccessRate"
+    | "halfOpenPromotionWindow"
   >
 ): ProviderCircuitState {
   const nextSmoothedLatencyMs =
@@ -231,13 +236,41 @@ export function applyCircuitBreakerSuccess(
       : undefined;
 
   const wasHalfOpen = current.openedAt !== undefined;
+  const nextRecoverySuccessCount = wasHalfOpen
+    ? (current.recoverySuccessCount ?? 0) + 1
+    : undefined;
+
+  // Determine whether to promote from half-open to closed.
+  // When no promotion policy is configured, a single success closes the circuit
+  // (backward-compatible default: halfOpenPromotionSuccesses defaults to 1).
+  // When a promotion policy IS configured, we evaluate against the intermediate
+  // state (with incremented recoverySuccessCount) to decide if openedAt clears.
+  const shouldPromote =
+    wasHalfOpen && policy
+      ? shouldPromoteHalfOpenToClosed(
+          {
+            ...current,
+            recoverySuccessCount: nextRecoverySuccessCount ?? 0,
+            // Apply window increment so the promotion check sees the latest attempt
+            ...(window !== undefined
+              ? {
+                  windowedTotalAttempts: window.windowedTotalAttempts,
+                  windowedFailures: window.windowedFailures
+                }
+              : {})
+          },
+          policy
+        )
+      : true; // No promotion policy or not half-open → always close on success
 
   return {
     consecutiveRetryableFailures: 0,
     halfOpenRetryableFailureCount: 0,
-    ...(wasHalfOpen
-      ? { recoverySuccessCount: (current.recoverySuccessCount ?? 0) + 1 }
+    ...(nextRecoverySuccessCount !== undefined
+      ? { recoverySuccessCount: nextRecoverySuccessCount }
       : {}),
+    // Preserve openedAt when half-open and promotion criteria are NOT yet met
+    ...(wasHalfOpen && !shouldPromote ? { openedAt: current.openedAt } : {}),
     ...(latencyMs !== undefined ? { lastSuccessLatencyMs: latencyMs } : {}),
     ...(nextSmoothedLatencyMs !== undefined
       ? { smoothedSuccessLatencyMs: nextSmoothedLatencyMs }
@@ -270,8 +303,8 @@ export function applyCircuitBreakerSuccess(
           windowStartAt: window.windowStartAt
         }
       : current.windowedTotalAttempts !== undefined ||
-        current.windowedFailures !== undefined ||
-        current.windowStartAt !== undefined
+          current.windowedFailures !== undefined ||
+          current.windowStartAt !== undefined
         ? {
             windowedTotalAttempts: current.windowedTotalAttempts,
             windowedFailures: current.windowedFailures,
@@ -306,9 +339,7 @@ export function applyCircuitBreakerRetryableFailure(
     : undefined;
 
   const shouldOpenForWindow =
-    window !== undefined
-      ? shouldOpenForErrorRate(window, policy ?? {})
-      : false;
+    window !== undefined ? shouldOpenForErrorRate(window, policy ?? {}) : false;
 
   const shouldOpen =
     halfOpenProbeFailed || nextFailures >= threshold || shouldOpenForWindow;
@@ -350,8 +381,8 @@ export function applyCircuitBreakerRetryableFailure(
           windowStartAt: window.windowStartAt
         }
       : current.windowedTotalAttempts !== undefined ||
-        current.windowedFailures !== undefined ||
-        current.windowStartAt !== undefined
+          current.windowedFailures !== undefined ||
+          current.windowStartAt !== undefined
         ? {
             windowedTotalAttempts: current.windowedTotalAttempts,
             windowedFailures: current.windowedFailures,
@@ -660,9 +691,7 @@ export function parseProviderCircuitState(
       !Number.isInteger(windowedTotalAttempts) ||
       windowedTotalAttempts < 0)
   ) {
-    throw new Error(
-      "Provider circuit state windowedTotalAttempts is invalid"
-    );
+    throw new Error("Provider circuit state windowedTotalAttempts is invalid");
   }
 
   if (
@@ -687,9 +716,7 @@ export function parseProviderCircuitState(
       !Number.isInteger(recoverySuccessCount) ||
       recoverySuccessCount < 0)
   ) {
-    throw new Error(
-      "Provider circuit state recoverySuccessCount is invalid"
-    );
+    throw new Error("Provider circuit state recoverySuccessCount is invalid");
   }
 
   return {
@@ -710,9 +737,7 @@ export function parseProviderCircuitState(
     ...(lastSuccessAt !== undefined ? { lastSuccessAt } : {}),
     ...(lastUsageObservedAt !== undefined ? { lastUsageObservedAt } : {}),
     ...(lastFailureAt !== undefined ? { lastFailureAt } : {}),
-    ...(windowedTotalAttempts !== undefined
-      ? { windowedTotalAttempts }
-      : {}),
+    ...(windowedTotalAttempts !== undefined ? { windowedTotalAttempts } : {}),
     ...(windowedFailures !== undefined ? { windowedFailures } : {}),
     ...(windowStartAt !== undefined ? { windowStartAt } : {}),
     ...(recoverySuccessCount !== undefined ? { recoverySuccessCount } : {})

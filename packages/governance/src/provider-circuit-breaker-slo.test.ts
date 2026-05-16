@@ -47,12 +47,9 @@ describe("applyCircuitBreakerRetryableFailure with sliding window", () => {
       { errorRateWindowMs: 60_000 }
     );
 
-    state = applyCircuitBreakerRetryableFailure(
-      state,
-      3,
-      1010,
-      { errorRateWindowMs: 60_000 }
-    );
+    state = applyCircuitBreakerRetryableFailure(state, 3, 1010, {
+      errorRateWindowMs: 60_000
+    });
 
     expect(state.windowedTotalAttempts).toBe(2);
     expect(state.windowedFailures).toBe(2);
@@ -66,26 +63,28 @@ describe("applyCircuitBreakerRetryableFailure with sliding window", () => {
       { consecutiveRetryableFailures: 0 },
       100,
       1000,
-      { errorRateWindowMs: 60_000, errorRateThreshold: 0.5, minAttemptsInWindow: 3 }
+      {
+        errorRateWindowMs: 60_000,
+        errorRateThreshold: 0.5,
+        minAttemptsInWindow: 3
+      }
     );
 
     expect(state.openedAt).toBeUndefined(); // 1/1 = 100% but minAttempts=3 not met
 
-    state = applyCircuitBreakerRetryableFailure(
-      state,
-      100,
-      1010,
-      { errorRateWindowMs: 60_000, errorRateThreshold: 0.5, minAttemptsInWindow: 3 }
-    );
+    state = applyCircuitBreakerRetryableFailure(state, 100, 1010, {
+      errorRateWindowMs: 60_000,
+      errorRateThreshold: 0.5,
+      minAttemptsInWindow: 3
+    });
 
     expect(state.openedAt).toBeUndefined(); // 2/2 = 100% but minAttempts=3 not met
 
-    state = applyCircuitBreakerRetryableFailure(
-      state,
-      100,
-      1020,
-      { errorRateWindowMs: 60_000, errorRateThreshold: 0.5, minAttemptsInWindow: 3 }
-    );
+    state = applyCircuitBreakerRetryableFailure(state, 100, 1020, {
+      errorRateWindowMs: 60_000,
+      errorRateThreshold: 0.5,
+      minAttemptsInWindow: 3
+    });
 
     expect(state.openedAt).toBe(1020); // 3/3 = 100% >= 0.5, minAttempts met
   });
@@ -98,49 +97,41 @@ describe("applyCircuitBreakerRetryableFailure with sliding window", () => {
     };
 
     // success
-    state = applyCircuitBreakerSuccess(
-      state,
-      100,
-      50,
-      1000,
-      { errorRateWindowMs: 60_000, errorRateThreshold: 0.5, minAttemptsInWindow: 3 }
-    );
+    state = applyCircuitBreakerSuccess(state, 100, 50, 1000, {
+      errorRateWindowMs: 60_000,
+      errorRateThreshold: 0.5,
+      minAttemptsInWindow: 3
+    });
 
     // success
-    state = applyCircuitBreakerSuccess(
-      state,
-      120,
-      60,
-      1010,
-      { errorRateWindowMs: 60_000, errorRateThreshold: 0.5, minAttemptsInWindow: 3 }
-    );
+    state = applyCircuitBreakerSuccess(state, 120, 60, 1010, {
+      errorRateWindowMs: 60_000,
+      errorRateThreshold: 0.5,
+      minAttemptsInWindow: 3
+    });
 
     // failure
-    state = applyCircuitBreakerRetryableFailure(
-      state,
-      100,
-      1020,
-      { errorRateWindowMs: 60_000, errorRateThreshold: 0.5, minAttemptsInWindow: 3 }
-    );
+    state = applyCircuitBreakerRetryableFailure(state, 100, 1020, {
+      errorRateWindowMs: 60_000,
+      errorRateThreshold: 0.5,
+      minAttemptsInWindow: 3
+    });
 
     expect(state.openedAt).toBeUndefined();
 
     // success
-    state = applyCircuitBreakerSuccess(
-      state,
-      110,
-      55,
-      1030,
-      { errorRateWindowMs: 60_000, errorRateThreshold: 0.5, minAttemptsInWindow: 3 }
-    );
+    state = applyCircuitBreakerSuccess(state, 110, 55, 1030, {
+      errorRateWindowMs: 60_000,
+      errorRateThreshold: 0.5,
+      minAttemptsInWindow: 3
+    });
 
     // failure => 2/5 = 0.4 < 0.5
-    state = applyCircuitBreakerRetryableFailure(
-      state,
-      100,
-      1040,
-      { errorRateWindowMs: 60_000, errorRateThreshold: 0.5, minAttemptsInWindow: 3 }
-    );
+    state = applyCircuitBreakerRetryableFailure(state, 100, 1040, {
+      errorRateWindowMs: 60_000,
+      errorRateThreshold: 0.5,
+      minAttemptsInWindow: 3
+    });
 
     expect(state.openedAt).toBeUndefined();
     expect(state.windowedTotalAttempts).toBe(5);
@@ -154,31 +145,27 @@ describe("applyCircuitBreakerRetryableFailure with sliding window", () => {
     };
 
     // success at t=1000
-    state = applyCircuitBreakerSuccess(
-      state,
-      100,
-      50,
-      1000,
-      { errorRateWindowMs: 60_000, errorRateThreshold: 0.5, minAttemptsInWindow: 3 }
-    );
+    state = applyCircuitBreakerSuccess(state, 100, 50, 1000, {
+      errorRateWindowMs: 60_000,
+      errorRateThreshold: 0.5,
+      minAttemptsInWindow: 3
+    });
 
     // failure at t=1010 => 1/2 = 0.5 >= 0.5 but minAttempts=3 not met
-    state = applyCircuitBreakerRetryableFailure(
-      state,
-      100,
-      1010,
-      { errorRateWindowMs: 60_000, errorRateThreshold: 0.5, minAttemptsInWindow: 3 }
-    );
+    state = applyCircuitBreakerRetryableFailure(state, 100, 1010, {
+      errorRateWindowMs: 60_000,
+      errorRateThreshold: 0.5,
+      minAttemptsInWindow: 3
+    });
 
     expect(state.openedAt).toBeUndefined();
 
     // failure at t=1020 => 2/3 = 0.67 >= 0.5, minAttempts=3 met => open
-    state = applyCircuitBreakerRetryableFailure(
-      state,
-      100,
-      1020,
-      { errorRateWindowMs: 60_000, errorRateThreshold: 0.5, minAttemptsInWindow: 3 }
-    );
+    state = applyCircuitBreakerRetryableFailure(state, 100, 1020, {
+      errorRateWindowMs: 60_000,
+      errorRateThreshold: 0.5,
+      minAttemptsInWindow: 3
+    });
 
     expect(state.openedAt).toBe(1020);
     expect(state.windowedTotalAttempts).toBe(3);
@@ -198,12 +185,9 @@ describe("applyCircuitBreakerRetryableFailure with sliding window", () => {
     expect(state.windowStartAt).toBe(1000);
 
     // Advance past window expiry
-    state = applyCircuitBreakerRetryableFailure(
-      state,
-      100,
-      2500,
-      { errorRateWindowMs: 1000 }
-    );
+    state = applyCircuitBreakerRetryableFailure(state, 100, 2500, {
+      errorRateWindowMs: 1000
+    });
 
     // Window should have reset: new window starts at 2500
     expect(state.windowedTotalAttempts).toBe(1);
@@ -253,13 +237,9 @@ describe("applyCircuitBreakerSuccess with sliding window", () => {
       { errorRateWindowMs: 60_000 }
     );
 
-    state = applyCircuitBreakerSuccess(
-      state,
-      110,
-      55,
-      1010,
-      { errorRateWindowMs: 60_000 }
-    );
+    state = applyCircuitBreakerSuccess(state, 110, 55, 1010, {
+      errorRateWindowMs: 60_000
+    });
 
     expect(state.windowedTotalAttempts).toBe(2);
     expect(state.windowedFailures).toBe(0);
@@ -275,22 +255,14 @@ describe("applyCircuitBreakerSuccess with sliding window", () => {
     );
 
     // success
-    state = applyCircuitBreakerSuccess(
-      state,
-      100,
-      50,
-      1010,
-      { errorRateWindowMs: 60_000 }
-    );
+    state = applyCircuitBreakerSuccess(state, 100, 50, 1010, {
+      errorRateWindowMs: 60_000
+    });
 
     // success
-    state = applyCircuitBreakerSuccess(
-      state,
-      120,
-      60,
-      1020,
-      { errorRateWindowMs: 60_000 }
-    );
+    state = applyCircuitBreakerSuccess(state, 120, 60, 1020, {
+      errorRateWindowMs: 60_000
+    });
 
     expect(state.windowedTotalAttempts).toBe(3);
     expect(state.windowedFailures).toBe(1);
@@ -458,6 +430,142 @@ describe("backward compatibility", () => {
   });
 });
 
+describe("applyCircuitBreakerSuccess half-open promotion gating", () => {
+  it("closes circuit immediately when no promotion policy is given", () => {
+    const result = applyCircuitBreakerSuccess(
+      { consecutiveRetryableFailures: 0, openedAt: 1000 },
+      100,
+      undefined,
+      2000
+    );
+    expect(result.openedAt).toBeUndefined();
+    expect(result.recoverySuccessCount).toBe(1);
+  });
+
+  it("closes circuit when default promotion policy (1 success) is met", () => {
+    const result = applyCircuitBreakerSuccess(
+      { consecutiveRetryableFailures: 0, openedAt: 1000 },
+      100,
+      undefined,
+      2000,
+      {}
+    );
+    expect(result.openedAt).toBeUndefined();
+    expect(result.recoverySuccessCount).toBe(1);
+  });
+
+  it("preserves openedAt when promotion requires 2 successes and only 1 has occurred", () => {
+    const result = applyCircuitBreakerSuccess(
+      { consecutiveRetryableFailures: 0, openedAt: 1000 },
+      100,
+      undefined,
+      2000,
+      { halfOpenPromotionSuccesses: 2 }
+    );
+    expect(result.openedAt).toBe(1000);
+    expect(result.recoverySuccessCount).toBe(1);
+  });
+
+  it("closes circuit when second success meets the promotion threshold", () => {
+    const result = applyCircuitBreakerSuccess(
+      {
+        consecutiveRetryableFailures: 0,
+        openedAt: 1000,
+        recoverySuccessCount: 1
+      },
+      100,
+      undefined,
+      3000,
+      { halfOpenPromotionSuccesses: 2 }
+    );
+    expect(result.openedAt).toBeUndefined();
+    expect(result.recoverySuccessCount).toBe(2);
+  });
+
+  it("preserves openedAt when success rate is below threshold", () => {
+    // 1 success + 2 failures, window=3: need 100% rate over window of 3
+    const result = applyCircuitBreakerSuccess(
+      {
+        consecutiveRetryableFailures: 0,
+        openedAt: 1000,
+        recoverySuccessCount: 1,
+        halfOpenRetryableFailureCount: 2
+      },
+      100,
+      undefined,
+      3000,
+      {
+        halfOpenPromotionSuccesses: 1,
+        halfOpenPromotionSuccessRate: 1.0,
+        halfOpenPromotionWindow: 3
+      }
+    );
+    // After: successes=2, failures=2, total=4
+    // windowedAttempts = min(4, 3) = 3, windowedSuccesses = min(2, 3) = 2
+    // rate = 2/3 = 66.7% < 100% → stays open
+    expect(result.openedAt).toBe(1000);
+    expect(result.recoverySuccessCount).toBe(2);
+  });
+
+  it("closes circuit when success rate meets threshold after failures", () => {
+    // 3 successes + 1 failure = 75% >= 0.7 threshold, with successes >= 2 required
+    const result = applyCircuitBreakerSuccess(
+      {
+        consecutiveRetryableFailures: 0,
+        openedAt: 1000,
+        recoverySuccessCount: 2,
+        halfOpenRetryableFailureCount: 1
+      },
+      100,
+      undefined,
+      5000,
+      {
+        halfOpenPromotionSuccesses: 2,
+        halfOpenPromotionSuccessRate: 0.7
+      }
+    );
+    // After this success: 3 successes / 4 total = 75% >= 70% → promoted
+    expect(result.openedAt).toBeUndefined();
+    expect(result.recoverySuccessCount).toBe(3);
+  });
+
+  it("preserves openedAt with windowed evaluation", () => {
+    // 3 successes + 2 failures, window of 3: recent 3 = 1 success + 2 failures = 33% < 100%
+    const result = applyCircuitBreakerSuccess(
+      {
+        consecutiveRetryableFailures: 0,
+        openedAt: 1000,
+        recoverySuccessCount: 2,
+        halfOpenRetryableFailureCount: 2
+      },
+      100,
+      undefined,
+      5000,
+      {
+        halfOpenPromotionSuccesses: 1,
+        halfOpenPromotionSuccessRate: 1.0,
+        halfOpenPromotionWindow: 3
+      }
+    );
+    // 3 successes / 5 total, but windowed(3): 3 successes / 3 = 100% >= 100% → promoted
+    // Actually: window = min(5, 3) = 3, windowedSuccesses = min(3, 3) = 3, rate = 3/3 = 1.0 >= 1.0
+    expect(result.openedAt).toBeUndefined();
+    expect(result.recoverySuccessCount).toBe(3);
+  });
+
+  it("does not add recoverySuccessCount for closed circuits", () => {
+    const result = applyCircuitBreakerSuccess(
+      { consecutiveRetryableFailures: 3 },
+      100,
+      undefined,
+      2000,
+      { halfOpenPromotionSuccesses: 2 }
+    );
+    expect(result.openedAt).toBeUndefined();
+    expect(result.recoverySuccessCount).toBeUndefined();
+  });
+});
+
 describe("shouldAttemptHalfOpenRecovery", () => {
   const policy = { threshold: 3, cooldownMs: 10_000 };
 
@@ -525,10 +633,7 @@ describe("shouldAttemptHalfOpenRecovery", () => {
 describe("shouldPromoteHalfOpenToClosed", () => {
   it("returns false when circuit has no openedAt", () => {
     expect(
-      shouldPromoteHalfOpenToClosed(
-        { consecutiveRetryableFailures: 0 },
-        {}
-      )
+      shouldPromoteHalfOpenToClosed({ consecutiveRetryableFailures: 0 }, {})
     ).toBe(false);
   });
 
@@ -544,7 +649,11 @@ describe("shouldPromoteHalfOpenToClosed", () => {
   it("returns true with default policy after 1 success and no failures", () => {
     expect(
       shouldPromoteHalfOpenToClosed(
-        { consecutiveRetryableFailures: 0, openedAt: 1000, recoverySuccessCount: 1 },
+        {
+          consecutiveRetryableFailures: 0,
+          openedAt: 1000,
+          recoverySuccessCount: 1
+        },
         {}
       )
     ).toBe(true);
@@ -553,7 +662,11 @@ describe("shouldPromoteHalfOpenToClosed", () => {
   it("returns false when success count below required threshold", () => {
     expect(
       shouldPromoteHalfOpenToClosed(
-        { consecutiveRetryableFailures: 0, openedAt: 1000, recoverySuccessCount: 1 },
+        {
+          consecutiveRetryableFailures: 0,
+          openedAt: 1000,
+          recoverySuccessCount: 1
+        },
         { halfOpenPromotionSuccesses: 3 }
       )
     ).toBe(false);
@@ -562,7 +675,11 @@ describe("shouldPromoteHalfOpenToClosed", () => {
   it("returns true when success count meets required threshold", () => {
     expect(
       shouldPromoteHalfOpenToClosed(
-        { consecutiveRetryableFailures: 0, openedAt: 1000, recoverySuccessCount: 3 },
+        {
+          consecutiveRetryableFailures: 0,
+          openedAt: 1000,
+          recoverySuccessCount: 3
+        },
         { halfOpenPromotionSuccesses: 3 }
       )
     ).toBe(true);
@@ -610,7 +727,11 @@ describe("shouldPromoteHalfOpenToClosed", () => {
           recoverySuccessCount: 5,
           halfOpenRetryableFailureCount: 3
         },
-        { halfOpenPromotionSuccesses: 3, halfOpenPromotionSuccessRate: 0.8, halfOpenPromotionWindow: 4 }
+        {
+          halfOpenPromotionSuccesses: 3,
+          halfOpenPromotionSuccessRate: 0.8,
+          halfOpenPromotionWindow: 4
+        }
       )
     ).toBe(true);
   });
@@ -621,10 +742,7 @@ describe("shouldPromoteHalfOpenToClosed", () => {
 describe("computeHalfOpenTrafficRamp", () => {
   it("returns 1 for non-open circuit", () => {
     expect(
-      computeHalfOpenTrafficRamp(
-        { consecutiveRetryableFailures: 0 },
-        {}
-      )
+      computeHalfOpenTrafficRamp({ consecutiveRetryableFailures: 0 }, {})
     ).toBe(1);
   });
 
@@ -640,7 +758,11 @@ describe("computeHalfOpenTrafficRamp", () => {
   it("returns 1 for open circuit with 1 success and default policy", () => {
     expect(
       computeHalfOpenTrafficRamp(
-        { consecutiveRetryableFailures: 0, openedAt: 1000, recoverySuccessCount: 1 },
+        {
+          consecutiveRetryableFailures: 0,
+          openedAt: 1000,
+          recoverySuccessCount: 1
+        },
         {}
       )
     ).toBe(1);
@@ -650,7 +772,11 @@ describe("computeHalfOpenTrafficRamp", () => {
     // 1 out of 3 required = 0.333
     expect(
       computeHalfOpenTrafficRamp(
-        { consecutiveRetryableFailures: 0, openedAt: 1000, recoverySuccessCount: 1 },
+        {
+          consecutiveRetryableFailures: 0,
+          openedAt: 1000,
+          recoverySuccessCount: 1
+        },
         { halfOpenPromotionSuccesses: 3 }
       )
     ).toBeCloseTo(1 / 3);
@@ -659,7 +785,11 @@ describe("computeHalfOpenTrafficRamp", () => {
   it("returns capped at 1 when successes exceed requirement", () => {
     expect(
       computeHalfOpenTrafficRamp(
-        { consecutiveRetryableFailures: 0, openedAt: 1000, recoverySuccessCount: 5 },
+        {
+          consecutiveRetryableFailures: 0,
+          openedAt: 1000,
+          recoverySuccessCount: 5
+        },
         { halfOpenPromotionSuccesses: 3 }
       )
     ).toBe(1);

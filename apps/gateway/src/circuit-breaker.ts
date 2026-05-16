@@ -26,7 +26,16 @@ export interface ProviderCircuitBreakerBackend {
     target: ProviderTarget,
     latencyMs?: number,
     totalTokensOrNow?: number,
-    now?: number
+    now?: number,
+    successPolicy?: Pick<
+      ProviderCircuitBreakerPolicy,
+      | "errorRateWindowMs"
+      | "errorRateThreshold"
+      | "minAttemptsInWindow"
+      | "halfOpenPromotionSuccesses"
+      | "halfOpenPromotionSuccessRate"
+      | "halfOpenPromotionWindow"
+    >
   ): Promise<void>;
   recordRetryableFailure(
     target: ProviderTarget,
@@ -72,7 +81,7 @@ export function createInMemoryCircuitBreakerBackend(): ProviderCircuitBreakerBac
       state.probeStartedAt = now;
       return Promise.resolve(true);
     },
-    recordSuccess(target, latencyMs, totalTokensOrNow, now) {
+    recordSuccess(target, latencyMs, totalTokensOrNow, now, successPolicy) {
       const normalized = normalizeRecordSuccessArguments(totalTokensOrNow, now);
       const existing = providerCircuitStates.get(getCircuitKey(target));
       providerCircuitStates.set(
@@ -81,7 +90,8 @@ export function createInMemoryCircuitBreakerBackend(): ProviderCircuitBreakerBac
           existing ?? { consecutiveRetryableFailures: 0 },
           latencyMs,
           normalized.totalTokens,
-          normalized.now
+          normalized.now,
+          successPolicy
         )
       );
       return Promise.resolve();
@@ -132,6 +142,9 @@ export class ProviderCircuitBreakerDurableObject {
         errorRateWindowMs?: number;
         errorRateThreshold?: number;
         minAttemptsInWindow?: number;
+        halfOpenPromotionSuccesses?: number;
+        halfOpenPromotionSuccessRate?: number;
+        halfOpenPromotionWindow?: number;
       };
       const current = (await this.state.storage.get<ProviderCircuitState>(
         "state"
@@ -140,15 +153,39 @@ export class ProviderCircuitBreakerDurableObject {
       };
 
       if (body.kind === "success") {
+        const hasErrorRatePolicy = body.errorRateWindowMs !== undefined;
+        const hasPromotionPolicy =
+          body.halfOpenPromotionSuccesses !== undefined ||
+          body.halfOpenPromotionSuccessRate !== undefined ||
+          body.halfOpenPromotionWindow !== undefined;
         const successPolicy =
-          body.errorRateWindowMs !== undefined
+          hasErrorRatePolicy || hasPromotionPolicy
             ? {
-                errorRateWindowMs: body.errorRateWindowMs,
-                ...(body.errorRateThreshold !== undefined
-                  ? { errorRateThreshold: body.errorRateThreshold }
+                ...(hasErrorRatePolicy
+                  ? {
+                      errorRateWindowMs: body.errorRateWindowMs!,
+                      ...(body.errorRateThreshold !== undefined
+                        ? { errorRateThreshold: body.errorRateThreshold }
+                        : {}),
+                      ...(body.minAttemptsInWindow !== undefined
+                        ? { minAttemptsInWindow: body.minAttemptsInWindow }
+                        : {})
+                    }
                   : {}),
-                ...(body.minAttemptsInWindow !== undefined
-                  ? { minAttemptsInWindow: body.minAttemptsInWindow }
+                ...(body.halfOpenPromotionSuccesses !== undefined
+                  ? {
+                      halfOpenPromotionSuccesses:
+                        body.halfOpenPromotionSuccesses
+                    }
+                  : {}),
+                ...(body.halfOpenPromotionSuccessRate !== undefined
+                  ? {
+                      halfOpenPromotionSuccessRate:
+                        body.halfOpenPromotionSuccessRate
+                    }
+                  : {}),
+                ...(body.halfOpenPromotionWindow !== undefined
+                  ? { halfOpenPromotionWindow: body.halfOpenPromotionWindow }
                   : {})
               }
             : undefined;
@@ -249,7 +286,13 @@ export function createPersistentCircuitBreakerBackend(namespace: {
       const body = (await response.json()) as { claimed?: boolean };
       return body.claimed === true;
     },
-    async recordSuccess(target, latencyMs, totalTokensOrNow, now) {
+    async recordSuccess(
+      target,
+      latencyMs,
+      totalTokensOrNow,
+      now,
+      successPolicy
+    ) {
       const normalized = normalizeRecordSuccessArguments(totalTokensOrNow, now);
       await namespace.get(namespace.idFromName(getCircuitKey(target))).fetch(
         new Request("https://airlock.internal/provider-circuit-breaker", {
@@ -263,7 +306,33 @@ export function createPersistentCircuitBreakerBackend(namespace: {
             ...(normalized.totalTokens !== undefined
               ? { totalTokens: normalized.totalTokens }
               : {}),
-            ...(normalized.now !== undefined ? { now: normalized.now } : {})
+            ...(normalized.now !== undefined ? { now: normalized.now } : {}),
+            ...(successPolicy?.errorRateWindowMs !== undefined
+              ? { errorRateWindowMs: successPolicy.errorRateWindowMs }
+              : {}),
+            ...(successPolicy?.errorRateThreshold !== undefined
+              ? { errorRateThreshold: successPolicy.errorRateThreshold }
+              : {}),
+            ...(successPolicy?.minAttemptsInWindow !== undefined
+              ? { minAttemptsInWindow: successPolicy.minAttemptsInWindow }
+              : {}),
+            ...(successPolicy?.halfOpenPromotionSuccesses !== undefined
+              ? {
+                  halfOpenPromotionSuccesses:
+                    successPolicy.halfOpenPromotionSuccesses
+                }
+              : {}),
+            ...(successPolicy?.halfOpenPromotionSuccessRate !== undefined
+              ? {
+                  halfOpenPromotionSuccessRate:
+                    successPolicy.halfOpenPromotionSuccessRate
+                }
+              : {}),
+            ...(successPolicy?.halfOpenPromotionWindow !== undefined
+              ? {
+                  halfOpenPromotionWindow: successPolicy.halfOpenPromotionWindow
+                }
+              : {})
           })
         })
       );

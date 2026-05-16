@@ -36,6 +36,9 @@ export interface GatewayConfig {
   providerCircuitBreakerErrorRateWindowMs?: number;
   providerCircuitBreakerErrorRateThreshold?: number;
   providerCircuitBreakerMinAttemptsInWindow?: number;
+  providerCircuitBreakerHalfOpenPromotionSuccesses?: number;
+  providerCircuitBreakerHalfOpenPromotionSuccessRate?: number;
+  providerCircuitBreakerHalfOpenPromotionWindow?: number;
   routingLatencyFreshnessMs: number;
   routingCostFreshnessMs: number;
   routingFailureFreshnessMs: number;
@@ -204,21 +207,27 @@ function parseRequestSigningSecrets(
   try {
     parsed = JSON.parse(value);
   } catch {
-    throw new GatewayError("Request signing secrets config must be valid JSON", {
-      code: "config_invalid_request_signing_secrets",
-      category: "configuration",
-      httpStatus: 500,
-      retryable: false
-    });
+    throw new GatewayError(
+      "Request signing secrets config must be valid JSON",
+      {
+        code: "config_invalid_request_signing_secrets",
+        category: "configuration",
+        httpStatus: 500,
+        retryable: false
+      }
+    );
   }
 
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new GatewayError("Request signing secrets config must be a JSON object", {
-      code: "config_invalid_request_signing_secrets",
-      category: "configuration",
-      httpStatus: 500,
-      retryable: false
-    });
+    throw new GatewayError(
+      "Request signing secrets config must be a JSON object",
+      {
+        code: "config_invalid_request_signing_secrets",
+        category: "configuration",
+        httpStatus: 500,
+        retryable: false
+      }
+    );
   }
 
   const secrets: Record<string, string> = {};
@@ -269,7 +278,10 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
     attachRouteFallbacks(
       attachRouteRequestShaping(
         attachRouteKeyAccessPolicy(
-          parseModelAliases(env.AIRLOCK_MODEL_ALIASES, env.OPENAI_DEFAULT_MODEL),
+          parseModelAliases(
+            env.AIRLOCK_MODEL_ALIASES,
+            env.OPENAI_DEFAULT_MODEL
+          ),
           parseRouteKeyAccessPolicy(env.AIRLOCK_MODEL_KEY_POLICY)
         ),
         parseRouteRequestShaping(env.AIRLOCK_MODEL_SHAPING)
@@ -360,17 +372,51 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
     providerTimeoutMs: env.AIRLOCK_PROVIDER_TIMEOUT_MS,
     providerMaxRetries: env.AIRLOCK_PROVIDER_MAX_RETRIES,
     providerRetryBackoffMs: env.AIRLOCK_PROVIDER_RETRY_BACKOFF_MS,
-    providerCircuitBreakerThreshold: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD,
-    providerCircuitBreakerCooldownMs: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS,
-    providerCircuitBreakerPersistent: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT,
+    providerCircuitBreakerThreshold:
+      env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD,
+    providerCircuitBreakerCooldownMs:
+      env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS,
+    providerCircuitBreakerPersistent:
+      env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT,
     ...(env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_WINDOW_MS !== undefined
-      ? { providerCircuitBreakerErrorRateWindowMs: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_WINDOW_MS }
+      ? {
+          providerCircuitBreakerErrorRateWindowMs:
+            env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_WINDOW_MS
+        }
       : {}),
     ...(env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_THRESHOLD !== undefined
-      ? { providerCircuitBreakerErrorRateThreshold: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_THRESHOLD }
+      ? {
+          providerCircuitBreakerErrorRateThreshold:
+            env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_THRESHOLD
+        }
       : {}),
-    ...(env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_MIN_ATTEMPTS_IN_WINDOW !== undefined
-      ? { providerCircuitBreakerMinAttemptsInWindow: env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_MIN_ATTEMPTS_IN_WINDOW }
+    ...(env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_MIN_ATTEMPTS_IN_WINDOW !==
+    undefined
+      ? {
+          providerCircuitBreakerMinAttemptsInWindow:
+            env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_MIN_ATTEMPTS_IN_WINDOW
+        }
+      : {}),
+    ...(env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_SUCCESSES !==
+    undefined
+      ? {
+          providerCircuitBreakerHalfOpenPromotionSuccesses:
+            env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_SUCCESSES
+        }
+      : {}),
+    ...(env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_SUCCESS_RATE !==
+    undefined
+      ? {
+          providerCircuitBreakerHalfOpenPromotionSuccessRate:
+            env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_SUCCESS_RATE
+        }
+      : {}),
+    ...(env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_WINDOW !==
+    undefined
+      ? {
+          providerCircuitBreakerHalfOpenPromotionWindow:
+            env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_WINDOW
+        }
       : {}),
     routingLatencyFreshnessMs: env.AIRLOCK_ROUTING_LATENCY_FRESHNESS_MS,
     routingCostFreshnessMs: env.AIRLOCK_ROUTING_COST_FRESHNESS_MS,

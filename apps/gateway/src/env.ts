@@ -20,19 +20,76 @@ export const gatewayEnvSchema = z.object({
   AIRLOCK_MODEL_KEY_POLICY: z.string().min(1).optional(),
   AIRLOCK_MODEL_SHAPING: z.string().min(1).optional(),
   AIRLOCK_REQUEST_SIGNING_SECRETS: z.string().min(1).optional(),
-  AIRLOCK_PROVIDER_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  AIRLOCK_PROVIDER_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30_000),
   AIRLOCK_PROVIDER_MAX_RETRIES: z.coerce.number().int().min(0).default(0),
   AIRLOCK_PROVIDER_RETRY_BACKOFF_MS: z.coerce.number().int().min(0).default(0),
-  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: z.coerce.number().int().positive().default(3),
-  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: z.coerce.number().int().min(0).default(30_000),
-  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_WINDOW_MS: z.coerce.number().int().positive().optional(),
-  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_THRESHOLD: z.coerce.number().min(0).max(1).optional(),
-  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_MIN_ATTEMPTS_IN_WINDOW: z.coerce.number().int().positive().optional(),
-  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: z.coerce.boolean().default(false),
-  AIRLOCK_ROUTING_LATENCY_FRESHNESS_MS: z.coerce.number().int().positive().default(30_000),
-  AIRLOCK_ROUTING_COST_FRESHNESS_MS: z.coerce.number().int().positive().default(30_000),
-  AIRLOCK_ROUTING_FAILURE_FRESHNESS_MS: z.coerce.number().int().positive().default(30_000),
-  AIRLOCK_ROUTING_RECOVERY_WINDOW_MS: z.coerce.number().int().positive().default(30_000),
+  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(3),
+  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .default(30_000),
+  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_WINDOW_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .optional(),
+  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_THRESHOLD: z.coerce
+    .number()
+    .min(0)
+    .max(1)
+    .optional(),
+  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_MIN_ATTEMPTS_IN_WINDOW: z.coerce
+    .number()
+    .int()
+    .positive()
+    .optional(),
+  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_SUCCESSES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .optional(),
+  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_SUCCESS_RATE: z.coerce
+    .number()
+    .min(0)
+    .max(1)
+    .optional(),
+  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_WINDOW: z.coerce
+    .number()
+    .int()
+    .positive()
+    .optional(),
+  AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: z.coerce
+    .boolean()
+    .default(false),
+  AIRLOCK_ROUTING_LATENCY_FRESHNESS_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30_000),
+  AIRLOCK_ROUTING_COST_FRESHNESS_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30_000),
+  AIRLOCK_ROUTING_FAILURE_FRESHNESS_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30_000),
+  AIRLOCK_ROUTING_RECOVERY_WINDOW_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30_000),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_BASE_URL: z.url().optional(),
   ANTHROPIC_DEFAULT_MAX_TOKENS: z.coerce.number().int().positive().optional(),

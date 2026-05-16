@@ -19,6 +19,7 @@ import {
   compareTargetsByPriority,
   compareTargetsByHealthScore,
   computeAdjustedWeight,
+  computeHalfOpenTrafficRamp,
   compareByOriginalRouteOrder,
   type ProviderTargetHealthSnapshot,
   type RoutingFreshnessWindows,
@@ -123,6 +124,24 @@ function getProviderCircuitBreakerPolicy(
       ? {
           minAttemptsInWindow: config.providerCircuitBreakerMinAttemptsInWindow
         }
+      : {}),
+    ...(config.providerCircuitBreakerHalfOpenPromotionSuccesses !== undefined
+      ? {
+          halfOpenPromotionSuccesses:
+            config.providerCircuitBreakerHalfOpenPromotionSuccesses
+        }
+      : {}),
+    ...(config.providerCircuitBreakerHalfOpenPromotionSuccessRate !== undefined
+      ? {
+          halfOpenPromotionSuccessRate:
+            config.providerCircuitBreakerHalfOpenPromotionSuccessRate
+        }
+      : {}),
+    ...(config.providerCircuitBreakerHalfOpenPromotionWindow !== undefined
+      ? {
+          halfOpenPromotionWindow:
+            config.providerCircuitBreakerHalfOpenPromotionWindow
+        }
       : {})
   };
 }
@@ -156,26 +175,106 @@ const CAPABILITY_REQUIREMENTS: readonly {
   support: keyof ProviderCapabilityDescriptor;
   capabilityName: string;
 }[] = [
-  { requirement: "requiresSystemMessages", support: "supportsSystemMessages", capabilityName: "system_messages" },
-  { requirement: "requiresStreaming", support: "supportsStreaming", capabilityName: "streaming" },
-  { requirement: "requiresTools", support: "supportsTools", capabilityName: "tools" },
-  { requirement: "requiresToolReplay", support: "supportsToolReplay", capabilityName: "tool_replay" },
-  { requirement: "requiresStreamingTools", support: "supportsStreamingTools", capabilityName: "streaming_tools" },
-  { requirement: "requiresMultimodalInput", support: "supportsMultimodalInput", capabilityName: "multimodal_input" },
-  { requirement: "requiresEndUserId", support: "supportsEndUserId", capabilityName: "end_user_id" },
-  { requirement: "requiresPreviousResponseId", support: "supportsPreviousResponseId", capabilityName: "previous_response_id" },
-  { requirement: "requiresConversationId", support: "supportsConversationId", capabilityName: "conversation" },
-  { requirement: "requiresPrompt", support: "supportsPrompt", capabilityName: "prompt" },
-  { requirement: "requiresReasoning", support: "supportsReasoning", capabilityName: "reasoning" },
-  { requirement: "requiresStructuredOutputs", support: "supportsStructuredOutputs", capabilityName: "structured_outputs" },
-  { requirement: "requiresStreamingStructuredOutputs", support: "supportsStreamingStructuredOutputs", capabilityName: "streaming_structured_outputs" },
-  { requirement: "requiresParallelToolCallControl", support: "supportsParallelToolCallControl", capabilityName: "parallel_tool_call_control" },
-  { requirement: "requiresOpenAIRequestMetadata", support: "supportsOpenAIRequestMetadata", capabilityName: "openai_request_metadata" },
-  { requirement: "requiresOpenAIResponsesTextControls", support: "supportsOpenAIResponsesTextControls", capabilityName: "openai_responses_text_controls" },
-  { requirement: "requiresToolChoice", support: "supportsToolChoice", capabilityName: "tool_choice" },
-  { requirement: "requiresStopSequences", support: "supportsStopSequences", capabilityName: "stop_sequences" },
-  { requirement: "requiresSamplingParameters", support: "supportsSamplingParameters", capabilityName: "sampling_parameters" },
-  { requirement: "requiresAnthropicRequestMetadata", support: "supportsAnthropicRequestMetadata", capabilityName: "anthropic_request_metadata" }
+  {
+    requirement: "requiresSystemMessages",
+    support: "supportsSystemMessages",
+    capabilityName: "system_messages"
+  },
+  {
+    requirement: "requiresStreaming",
+    support: "supportsStreaming",
+    capabilityName: "streaming"
+  },
+  {
+    requirement: "requiresTools",
+    support: "supportsTools",
+    capabilityName: "tools"
+  },
+  {
+    requirement: "requiresToolReplay",
+    support: "supportsToolReplay",
+    capabilityName: "tool_replay"
+  },
+  {
+    requirement: "requiresStreamingTools",
+    support: "supportsStreamingTools",
+    capabilityName: "streaming_tools"
+  },
+  {
+    requirement: "requiresMultimodalInput",
+    support: "supportsMultimodalInput",
+    capabilityName: "multimodal_input"
+  },
+  {
+    requirement: "requiresEndUserId",
+    support: "supportsEndUserId",
+    capabilityName: "end_user_id"
+  },
+  {
+    requirement: "requiresPreviousResponseId",
+    support: "supportsPreviousResponseId",
+    capabilityName: "previous_response_id"
+  },
+  {
+    requirement: "requiresConversationId",
+    support: "supportsConversationId",
+    capabilityName: "conversation"
+  },
+  {
+    requirement: "requiresPrompt",
+    support: "supportsPrompt",
+    capabilityName: "prompt"
+  },
+  {
+    requirement: "requiresReasoning",
+    support: "supportsReasoning",
+    capabilityName: "reasoning"
+  },
+  {
+    requirement: "requiresStructuredOutputs",
+    support: "supportsStructuredOutputs",
+    capabilityName: "structured_outputs"
+  },
+  {
+    requirement: "requiresStreamingStructuredOutputs",
+    support: "supportsStreamingStructuredOutputs",
+    capabilityName: "streaming_structured_outputs"
+  },
+  {
+    requirement: "requiresParallelToolCallControl",
+    support: "supportsParallelToolCallControl",
+    capabilityName: "parallel_tool_call_control"
+  },
+  {
+    requirement: "requiresOpenAIRequestMetadata",
+    support: "supportsOpenAIRequestMetadata",
+    capabilityName: "openai_request_metadata"
+  },
+  {
+    requirement: "requiresOpenAIResponsesTextControls",
+    support: "supportsOpenAIResponsesTextControls",
+    capabilityName: "openai_responses_text_controls"
+  },
+  {
+    requirement: "requiresToolChoice",
+    support: "supportsToolChoice",
+    capabilityName: "tool_choice"
+  },
+  {
+    requirement: "requiresStopSequences",
+    support: "supportsStopSequences",
+    capabilityName: "stop_sequences"
+  },
+  {
+    requirement: "requiresSamplingParameters",
+    support: "supportsSamplingParameters",
+    capabilityName: "sampling_parameters"
+  },
+  {
+    requirement: "requiresAnthropicRequestMetadata",
+    support: "supportsAnthropicRequestMetadata",
+    capabilityName: "anthropic_request_metadata"
+  }
 ];
 
 export function assertProviderSupportsCanonicalRequest(
@@ -318,7 +417,8 @@ function reorderTargetsForRoute(
   requestId: string,
   now: () => number,
   healthByTarget: Map<string, ProviderTargetHealthSnapshot>,
-  windows: RoutingFreshnessWindows
+  windows: RoutingFreshnessWindows,
+  circuitBreakerPolicy: ProviderCircuitBreakerPolicy
 ): ProviderTarget[] {
   const targetSelection = route.targetSelection;
 
@@ -380,20 +480,46 @@ function reorderTargetsForRoute(
   }
 
   // weighted strategy — uses gateway-local hash scoring, with governance
-  // health-adjusted weights.
+  // health-adjusted weights and half-open traffic ramping.
   return [...targets].sort((left, right) => {
     const leftKey = serializeProviderTarget(left);
     const rightKey = serializeProviderTarget(right);
-    const leftWeight = computeAdjustedWeight(
+    const leftBaseWeight = computeAdjustedWeight(
       targetSelection.weights[leftKey] ?? 1,
       leftKey,
       ctx
     );
-    const rightWeight = computeAdjustedWeight(
+    const rightBaseWeight = computeAdjustedWeight(
       targetSelection.weights[rightKey] ?? 1,
       rightKey,
       ctx
     );
+    const leftHealth = ctx.healthByTarget.get(leftKey);
+    const rightHealth = ctx.healthByTarget.get(rightKey);
+    // Apply traffic ramp factor for half-open targets: multiply the health-adjusted
+    // weight by the ramp factor (0 = probe only, 1 = fully promoted).
+    const leftRamp = leftHealth?.isHalfOpen
+      ? computeHalfOpenTrafficRamp(
+          {
+            consecutiveRetryableFailures: 0,
+            openedAt: 1,
+            recoverySuccessCount: leftHealth.recoverySuccessCount ?? 0
+          },
+          circuitBreakerPolicy
+        )
+      : 1;
+    const rightRamp = rightHealth?.isHalfOpen
+      ? computeHalfOpenTrafficRamp(
+          {
+            consecutiveRetryableFailures: 0,
+            openedAt: 1,
+            recoverySuccessCount: rightHealth.recoverySuccessCount ?? 0
+          },
+          circuitBreakerPolicy
+        )
+      : 1;
+    const leftWeight = leftBaseWeight * leftRamp;
+    const rightWeight = rightBaseWeight * rightRamp;
     const rightScore = scoreWeightedTarget(
       route,
       right,
@@ -529,7 +655,8 @@ function selectEligibleTargets(
           requestId,
           now,
           healthByTarget,
-          windows
+          windows,
+          circuitBreakerPolicy
         ),
         healthByTarget
       );
@@ -659,7 +786,8 @@ export async function executeRoutedRequest(
           target,
           now() - currentAttemptStartedAt,
           response.usage?.totalTokens,
-          now()
+          now(),
+          circuitBreakerPolicy
         );
 
         return response;
@@ -867,7 +995,8 @@ export async function* executeRoutedStreamRequest(
           target,
           now() - currentAttemptStartedAt,
           completedUsageTotalTokens,
-          now()
+          now(),
+          circuitBreakerPolicy
         );
 
         return;
