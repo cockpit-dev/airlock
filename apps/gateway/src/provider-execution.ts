@@ -1,5 +1,6 @@
 import {
   getCanonicalRequestCapabilityRequirements,
+  deriveRequestClass,
   type CanonicalRequest,
   type CanonicalRequestCapabilityRequirements,
   type CanonicalResponse,
@@ -20,6 +21,7 @@ import {
   compareTargetsByHealthScore,
   computeAdjustedWeight,
   computeHalfOpenTrafficRamp,
+  computeAffinityByTarget,
   compareByOriginalRouteOrder,
   type ProviderTargetHealthSnapshot,
   type RoutingFreshnessWindows,
@@ -414,6 +416,7 @@ function scoreWeightedTarget(
 function reorderTargetsForRoute(
   route: ModelRoute,
   targets: ProviderTarget[],
+  request: CanonicalRequest,
   requestId: string,
   now: () => number,
   healthByTarget: Map<string, ProviderTargetHealthSnapshot>,
@@ -429,11 +432,21 @@ function reorderTargetsForRoute(
   // Evaluate time once for consistent routing comparisons.
   const currentTime = now();
   const originalOrder = getOriginalTargetOrder(targets);
+
+  // Derive request class and compute affinity adjustments.
+  const requestClass = deriveRequestClass(request);
+  const affinityByTarget = computeAffinityByTarget(
+    requestClass,
+    targetSelection.requestClassAffinity,
+    targets.map((t) => serializeProviderTarget(t))
+  );
+
   const ctx: RoutingScoringContext = {
     now: currentTime,
     healthByTarget,
     windows,
-    originalOrder
+    originalOrder,
+    ...(affinityByTarget ? { affinityByTarget } : {})
   };
 
   if (targetSelection.strategy === "health_priority") {
@@ -652,6 +665,7 @@ function selectEligibleTargets(
         reorderTargetsForRoute(
           route,
           eligibleTargets,
+          request,
           requestId,
           now,
           healthByTarget,

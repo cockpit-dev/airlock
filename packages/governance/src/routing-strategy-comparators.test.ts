@@ -4,6 +4,8 @@ import {
   compareTargetsByLowestCost,
   compareTargetsByPriority,
   compareByOriginalRouteOrder,
+  compareTargetsByAffinity,
+  computeAffinityByTarget,
   computeAdjustedWeight,
   getDefaultHealthSnapshot,
   getHealthForTarget,
@@ -111,9 +113,7 @@ describe("compareTargetsByHealthPriority", () => {
         ["b", makeHealth({ isOpen: false })]
       ])
     });
-    expect(
-      compareTargetsByHealthPriority("a", "b", ctx)
-    ).toBeGreaterThan(0);
+    expect(compareTargetsByHealthPriority("a", "b", ctx)).toBeGreaterThan(0);
   });
 
   it("prefers non-half-open over half-open", () => {
@@ -123,33 +123,39 @@ describe("compareTargetsByHealthPriority", () => {
         ["b", makeHealth({ isOpen: false })]
       ])
     });
-    expect(
-      compareTargetsByHealthPriority("a", "b", ctx)
-    ).toBeGreaterThan(0);
+    expect(compareTargetsByHealthPriority("a", "b", ctx)).toBeGreaterThan(0);
   });
 
   it("prefers fewer fresh failures", () => {
     const ctx = makeCtx({
       healthByTarget: new Map([
-        ["a", makeHealth({ consecutiveRetryableFailures: 5, lastFailureAt: 9000 })],
-        ["b", makeHealth({ consecutiveRetryableFailures: 1, lastFailureAt: 9000 })]
+        [
+          "a",
+          makeHealth({ consecutiveRetryableFailures: 5, lastFailureAt: 9000 })
+        ],
+        [
+          "b",
+          makeHealth({ consecutiveRetryableFailures: 1, lastFailureAt: 9000 })
+        ]
       ])
     });
-    expect(
-      compareTargetsByHealthPriority("a", "b", ctx)
-    ).toBeGreaterThan(0);
+    expect(compareTargetsByHealthPriority("a", "b", ctx)).toBeGreaterThan(0);
   });
 
   it("prefers lower latency", () => {
     const ctx = makeCtx({
       healthByTarget: new Map([
-        ["a", makeHealth({ smoothedSuccessLatencyMs: 200, lastSuccessAt: 9000 })],
-        ["b", makeHealth({ smoothedSuccessLatencyMs: 100, lastSuccessAt: 9000 })]
+        [
+          "a",
+          makeHealth({ smoothedSuccessLatencyMs: 200, lastSuccessAt: 9000 })
+        ],
+        [
+          "b",
+          makeHealth({ smoothedSuccessLatencyMs: 100, lastSuccessAt: 9000 })
+        ]
       ])
     });
-    expect(
-      compareTargetsByHealthPriority("a", "b", ctx)
-    ).toBeGreaterThan(0);
+    expect(compareTargetsByHealthPriority("a", "b", ctx)).toBeGreaterThan(0);
   });
 
   it("falls back to original route order", () => {
@@ -159,9 +165,7 @@ describe("compareTargetsByHealthPriority", () => {
         ["b", makeHealth()]
       ])
     });
-    expect(
-      compareTargetsByHealthPriority("a", "b", ctx)
-    ).toBeLessThan(0);
+    expect(compareTargetsByHealthPriority("a", "b", ctx)).toBeLessThan(0);
   });
 });
 
@@ -177,21 +181,23 @@ describe("compareTargetsByLowestCost", () => {
         ["b", makeHealth({ isOpen: false })]
       ])
     });
-    expect(
-      compareTargetsByLowestCost("a", "b", ctx, costs)
-    ).toBeGreaterThan(0);
+    expect(compareTargetsByLowestCost("a", "b", ctx, costs)).toBeGreaterThan(0);
   });
 
   it("prefers fewer fresh failures", () => {
     const ctx = makeCtx({
       healthByTarget: new Map([
-        ["a", makeHealth({ consecutiveRetryableFailures: 3, lastFailureAt: 9000 })],
-        ["b", makeHealth({ consecutiveRetryableFailures: 0, lastFailureAt: 9000 })]
+        [
+          "a",
+          makeHealth({ consecutiveRetryableFailures: 3, lastFailureAt: 9000 })
+        ],
+        [
+          "b",
+          makeHealth({ consecutiveRetryableFailures: 0, lastFailureAt: 9000 })
+        ]
       ])
     });
-    expect(
-      compareTargetsByLowestCost("a", "b", ctx, costs)
-    ).toBeGreaterThan(0);
+    expect(compareTargetsByLowestCost("a", "b", ctx, costs)).toBeGreaterThan(0);
   });
 
   it("prefers lower configured cost", () => {
@@ -201,9 +207,7 @@ describe("compareTargetsByLowestCost", () => {
         ["b", makeHealth()]
       ])
     });
-    expect(
-      compareTargetsByLowestCost("a", "b", ctx, costs)
-    ).toBeGreaterThan(0);
+    expect(compareTargetsByLowestCost("a", "b", ctx, costs)).toBeGreaterThan(0);
   });
 
   it("factors in observed token cost multiplier", () => {
@@ -226,9 +230,7 @@ describe("compareTargetsByLowestCost", () => {
       ])
     });
     // a: configured 2 × observed 100 = 200, b: configured 1 × observed 50 = 50
-    expect(
-      compareTargetsByLowestCost("a", "b", ctx, costs)
-    ).toBeGreaterThan(0);
+    expect(compareTargetsByLowestCost("a", "b", ctx, costs)).toBeGreaterThan(0);
   });
 
   it("falls back to original route order when cost is equal", () => {
@@ -239,9 +241,9 @@ describe("compareTargetsByLowestCost", () => {
         ["b", makeHealth()]
       ])
     });
-    expect(
-      compareTargetsByLowestCost("a", "b", ctx, equalCosts)
-    ).toBeLessThan(0);
+    expect(compareTargetsByLowestCost("a", "b", ctx, equalCosts)).toBeLessThan(
+      0
+    );
   });
 });
 
@@ -249,18 +251,14 @@ describe("compareTargetsByLowestCost", () => {
 
 describe("getPriorityLatencyStatus", () => {
   it("returns 1 when no SLO is defined", () => {
-    expect(getPriorityLatencyStatus("a", undefined, 10_000, new Map(), 30_000)).toBe(1);
+    expect(
+      getPriorityLatencyStatus("a", undefined, 10_000, new Map(), 30_000)
+    ).toBe(1);
   });
 
   it("returns 1 when no latency data is available", () => {
     expect(
-      getPriorityLatencyStatus(
-        "a",
-        { a: 200 },
-        10_000,
-        new Map(),
-        30_000
-      )
+      getPriorityLatencyStatus("a", { a: 200 }, 10_000, new Map(), 30_000)
     ).toBe(1);
   });
 
@@ -366,13 +364,7 @@ describe("getPriorityEffectiveCost", () => {
 
   it("returns configured cost without observed data", () => {
     expect(
-      getPriorityEffectiveCost(
-        "a",
-        { a: 5 },
-        10_000,
-        new Map(),
-        30_000
-      )
+      getPriorityEffectiveCost("a", { a: 5 }, 10_000, new Map(), 30_000)
     ).toBe(5);
   });
 
@@ -443,9 +435,7 @@ describe("compareTargetsByPriority", () => {
         ["b", makeHealth({ isOpen: false })]
       ])
     });
-    expect(
-      compareTargetsByPriority("a", "b", ctx, {})
-    ).toBeGreaterThan(0);
+    expect(compareTargetsByPriority("a", "b", ctx, {})).toBeGreaterThan(0);
   });
 
   it("prefers higher recovery score", () => {
@@ -455,9 +445,7 @@ describe("compareTargetsByPriority", () => {
         ["b", makeHealth({ recoverySuccessCount: 2 })]
       ])
     });
-    expect(
-      compareTargetsByPriority("a", "b", ctx, {})
-    ).toBeGreaterThan(0);
+    expect(compareTargetsByPriority("a", "b", ctx, {})).toBeGreaterThan(0);
   });
 
   it("prefers lower error rate", () => {
@@ -467,9 +455,7 @@ describe("compareTargetsByPriority", () => {
         ["b", makeHealth({ windowedTotalAttempts: 10, windowedFailures: 1 })]
       ])
     });
-    expect(
-      compareTargetsByPriority("a", "b", ctx, {})
-    ).toBeGreaterThan(0);
+    expect(compareTargetsByPriority("a", "b", ctx, {})).toBeGreaterThan(0);
   });
 
   it("prefers better latency SLO status", () => {
@@ -486,7 +472,9 @@ describe("compareTargetsByPriority", () => {
       ])
     });
     expect(
-      compareTargetsByPriority("a", "b", ctx, { latencySloMs: { a: 200, b: 200 } })
+      compareTargetsByPriority("a", "b", ctx, {
+        latencySloMs: { a: 200, b: 200 }
+      })
     ).toBeGreaterThan(0);
   });
 
@@ -509,9 +497,7 @@ describe("compareTargetsByPriority", () => {
         ["b", makeHealth()]
       ])
     });
-    expect(
-      compareTargetsByPriority("a", "b", ctx, {})
-    ).toBeLessThan(0);
+    expect(compareTargetsByPriority("a", "b", ctx, {})).toBeLessThan(0);
   });
 });
 
@@ -528,7 +514,10 @@ describe("computeAdjustedWeight", () => {
   it("reduces weight by fresh failure count", () => {
     const ctx = makeCtx({
       healthByTarget: new Map([
-        ["a", makeHealth({ consecutiveRetryableFailures: 3, lastFailureAt: 9000 })]
+        [
+          "a",
+          makeHealth({ consecutiveRetryableFailures: 3, lastFailureAt: 9000 })
+        ]
       ])
     });
     expect(computeAdjustedWeight(10, "a", ctx)).toBe(7);
@@ -537,7 +526,10 @@ describe("computeAdjustedWeight", () => {
   it("does not reduce below 0", () => {
     const ctx = makeCtx({
       healthByTarget: new Map([
-        ["a", makeHealth({ consecutiveRetryableFailures: 20, lastFailureAt: 9000 })]
+        [
+          "a",
+          makeHealth({ consecutiveRetryableFailures: 20, lastFailureAt: 9000 })
+        ]
       ])
     });
     expect(computeAdjustedWeight(5, "a", ctx)).toBe(0);
@@ -680,5 +672,175 @@ describe("compareTargetsByHealthScore", () => {
       ])
     });
     expect(compareTargetsByHealthScore("a", "b", ctx)).toBeLessThan(0);
+  });
+});
+
+// ── computeAffinityByTarget ──────────────────────────────────────────
+
+describe("computeAffinityByTarget", () => {
+  it("returns undefined when no affinity config is provided", () => {
+    const result = computeAffinityByTarget(
+      {
+        streaming: true,
+        toolUse: false,
+        structuredOutput: false,
+        reasoning: false,
+        multiTurn: false
+      },
+      undefined,
+      ["a", "b"]
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it("returns undefined when no request class flags match config", () => {
+    const result = computeAffinityByTarget(
+      {
+        streaming: false,
+        toolUse: false,
+        structuredOutput: false,
+        reasoning: false,
+        multiTurn: false
+      },
+      { streaming: { preferredTargets: ["a"] } },
+      ["a", "b"]
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it("returns undefined when config has empty preferred/avoided lists", () => {
+    const result = computeAffinityByTarget(
+      {
+        streaming: true,
+        toolUse: false,
+        structuredOutput: false,
+        reasoning: false,
+        multiTurn: false
+      },
+      { streaming: { preferredTargets: [], avoidedTargets: [] } },
+      ["a", "b"]
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it("applies -1 for preferred targets on active class", () => {
+    const result = computeAffinityByTarget(
+      {
+        streaming: true,
+        toolUse: false,
+        structuredOutput: false,
+        reasoning: false,
+        multiTurn: false
+      },
+      { streaming: { preferredTargets: ["a"] } },
+      ["a", "b"]
+    );
+    expect(result).not.toBeUndefined();
+    expect(result!.get("a")).toBe(-1);
+    expect(result!.has("b")).toBe(false);
+  });
+
+  it("applies +1 for avoided targets on active class", () => {
+    const result = computeAffinityByTarget(
+      {
+        streaming: true,
+        toolUse: false,
+        structuredOutput: false,
+        reasoning: false,
+        multiTurn: false
+      },
+      { streaming: { avoidedTargets: ["b"] } },
+      ["a", "b"]
+    );
+    expect(result).not.toBeUndefined();
+    expect(result!.get("b")).toBe(1);
+    expect(result!.has("a")).toBe(false);
+  });
+
+  it("accumulates adjustments across multiple active classes", () => {
+    const result = computeAffinityByTarget(
+      {
+        streaming: true,
+        toolUse: true,
+        structuredOutput: false,
+        reasoning: false,
+        multiTurn: false
+      },
+      {
+        streaming: { preferredTargets: ["a"] },
+        toolUse: { preferredTargets: ["a"], avoidedTargets: ["b"] }
+      },
+      ["a", "b"]
+    );
+    expect(result).not.toBeUndefined();
+    expect(result!.get("a")).toBe(-2);
+    expect(result!.get("b")).toBe(1);
+  });
+
+  it("ignores affinity config for inactive request classes", () => {
+    const result = computeAffinityByTarget(
+      {
+        streaming: false,
+        toolUse: true,
+        structuredOutput: false,
+        reasoning: false,
+        multiTurn: false
+      },
+      {
+        streaming: { preferredTargets: ["a"] },
+        toolUse: { preferredTargets: ["b"] }
+      },
+      ["a", "b"]
+    );
+    expect(result).not.toBeUndefined();
+    expect(result!.has("a")).toBe(false);
+    expect(result!.get("b")).toBe(-1);
+  });
+});
+
+// ── compareTargetsByAffinity ──────────────────────────────────────────
+
+describe("compareTargetsByAffinity", () => {
+  it("returns 0 when no affinity map is present", () => {
+    const ctx = makeCtx();
+    expect(compareTargetsByAffinity("a", "b", ctx)).toBe(0);
+  });
+
+  it("prefers target with lower affinity (negative = preferred)", () => {
+    const ctx = makeCtx({
+      affinityByTarget: new Map([
+        ["a", -1],
+        ["b", 0]
+      ])
+    });
+    expect(compareTargetsByAffinity("a", "b", ctx)).toBeLessThan(0);
+  });
+
+  it("avoids target with higher affinity (positive = avoided)", () => {
+    const ctx = makeCtx({
+      affinityByTarget: new Map([
+        ["a", 0],
+        ["b", 1]
+      ])
+    });
+    expect(compareTargetsByAffinity("a", "b", ctx)).toBeLessThan(0);
+  });
+
+  it("returns 0 for equal adjustments", () => {
+    const ctx = makeCtx({
+      affinityByTarget: new Map([
+        ["a", -1],
+        ["b", -1]
+      ])
+    });
+    expect(compareTargetsByAffinity("a", "b", ctx)).toBe(0);
+  });
+
+  it("treats missing targets as 0", () => {
+    const ctx = makeCtx({
+      affinityByTarget: new Map([["a", -1]])
+    });
+    expect(compareTargetsByAffinity("a", "c", ctx)).toBeLessThan(0);
+    expect(compareTargetsByAffinity("c", "a", ctx)).toBeGreaterThan(0);
   });
 });

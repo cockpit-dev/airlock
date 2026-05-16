@@ -50,7 +50,7 @@ export interface CanonicalRequest {
   conversationId?: string;
   outputFormat?:
     | {
-      type: "text";
+        type: "text";
       }
     | {
         type: "json_object";
@@ -85,11 +85,7 @@ export interface CanonicalRequest {
   };
   previousResponseId?: string;
   reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
-  reasoningSummary?:
-    | "auto"
-    | "concise"
-    | "detailed"
-    | (string & {});
+  reasoningSummary?: "auto" | "concise" | "detailed" | (string & {});
   maxOutputTokens?: number;
   temperature?: number;
   topP?: number;
@@ -97,6 +93,14 @@ export interface CanonicalRequest {
   tools?: CanonicalToolDefinition[];
   toolChoice?: CanonicalToolChoice;
   allowParallelToolCalls?: boolean;
+}
+
+export interface RequestClass {
+  streaming: boolean;
+  toolUse: boolean;
+  structuredOutput: boolean;
+  reasoning: boolean;
+  multiTurn: boolean;
 }
 
 export interface CanonicalRequestCapabilityRequirements {

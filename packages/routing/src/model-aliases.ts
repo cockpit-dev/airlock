@@ -11,29 +11,47 @@ export interface ProviderTarget {
   providerModel: string;
 }
 
+export interface RequestClassTargetAffinity {
+  preferredTargets?: string[];
+  avoidedTargets?: string[];
+}
+
+export interface RequestClassAffinity {
+  streaming?: RequestClassTargetAffinity;
+  toolUse?: RequestClassTargetAffinity;
+  structuredOutput?: RequestClassTargetAffinity;
+  reasoning?: RequestClassTargetAffinity;
+  multiTurn?: RequestClassTargetAffinity;
+}
+
 export interface WeightedRouteTargetSelection {
   strategy: "weighted";
   weights: Record<string, number>;
+  requestClassAffinity?: RequestClassAffinity;
 }
 
 export interface LowestCostRouteTargetSelection {
   strategy: "lowest_cost";
   costs: Record<string, number>;
+  requestClassAffinity?: RequestClassAffinity;
 }
 
 export interface HealthPriorityRouteTargetSelection {
   strategy: "health_priority";
+  requestClassAffinity?: RequestClassAffinity;
 }
 
 export interface PriorityRouteTargetSelection {
   strategy: "priority";
   latencySloMs?: Record<string, number>;
   costs?: Record<string, number>;
+  requestClassAffinity?: RequestClassAffinity;
 }
 
 export interface HealthScoreRouteTargetSelection {
   strategy: "health_score";
   latencySloMs?: Record<string, number>;
+  requestClassAffinity?: RequestClassAffinity;
 }
 
 export type RouteTargetSelection =
@@ -199,6 +217,121 @@ function parsePositiveTargetNumberMap(
 
 export function serializeProviderTarget(target: ProviderTarget): string {
   return `${target.provider}:${target.providerModel}`;
+}
+
+const REQUEST_CLASS_AFFINITY_KEYS = [
+  "streaming",
+  "toolUse",
+  "structuredOutput",
+  "reasoning",
+  "multiTurn"
+] as const;
+
+function parseStringList(
+  value: unknown,
+  fieldName: string
+): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value)) {
+    throw createInvalidRouteTargetSelectionError(
+      `${fieldName} must be an array`
+    );
+  }
+
+  const result = value.map((item, index) => {
+    if (typeof item !== "string" || item.trim().length === 0) {
+      throw createInvalidRouteTargetSelectionError(
+        `${fieldName}[${index}] must be a non-empty string`
+      );
+    }
+
+    return item.trim();
+  });
+
+  if (result.length === 0) {
+    return undefined;
+  }
+
+  return result;
+}
+
+function parseRequestClassAffinity(
+  value: unknown,
+  routeTargetKeys: Set<string>
+): RequestClassAffinity | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw createInvalidRouteTargetSelectionError(
+      "requestClassAffinity must be an object"
+    );
+  }
+
+  const affinityRecord = value as Record<string, unknown>;
+  const result: RequestClassAffinity = {};
+
+  for (const classKey of REQUEST_CLASS_AFFINITY_KEYS) {
+    const classAffinity = affinityRecord[classKey];
+    if (classAffinity === undefined) {
+      continue;
+    }
+
+    if (
+      typeof classAffinity !== "object" ||
+      classAffinity === null ||
+      Array.isArray(classAffinity)
+    ) {
+      throw createInvalidRouteTargetSelectionError(
+        `requestClassAffinity.${classKey} must be an object`
+      );
+    }
+
+    const classRecord = classAffinity as Record<string, unknown>;
+    const preferred = parseStringList(
+      classRecord.preferredTargets,
+      `requestClassAffinity.${classKey}.preferredTargets`
+    );
+    const avoided = parseStringList(
+      classRecord.avoidedTargets,
+      `requestClassAffinity.${classKey}.avoidedTargets`
+    );
+
+    if (!preferred && !avoided) {
+      continue;
+    }
+
+    for (const targetKey of preferred ?? []) {
+      if (!routeTargetKeys.has(targetKey)) {
+        throw createInvalidRouteTargetSelectionError(
+          `requestClassAffinity.${classKey}.preferredTargets references unknown target: ${targetKey}`
+        );
+      }
+    }
+
+    for (const targetKey of avoided ?? []) {
+      if (!routeTargetKeys.has(targetKey)) {
+        throw createInvalidRouteTargetSelectionError(
+          `requestClassAffinity.${classKey}.avoidedTargets references unknown target: ${targetKey}`
+        );
+      }
+    }
+
+    result[classKey] = {
+      ...(preferred ? { preferredTargets: preferred } : {}),
+      ...(avoided ? { avoidedTargets: avoided } : {})
+    };
+  }
+
+  if (Object.keys(result).length === 0) {
+    return undefined;
+  }
+
+  return result;
 }
 
 export function parseModelAliases(
@@ -384,9 +517,15 @@ export function parseRouteTargetSelection(
         );
       }
 
+      const affinity = parseRequestClassAffinity(
+        (selection as Record<string, unknown>).requestClassAffinity,
+        new Set(Object.keys(normalizedWeights))
+      );
+
       targetSelectionByRoute[externalModel] = {
         strategy: "weighted",
-        weights: normalizedWeights
+        weights: normalizedWeights,
+        ...(affinity ? { requestClassAffinity: affinity } : {})
       };
       continue;
     }
@@ -411,16 +550,28 @@ export function parseRouteTargetSelection(
         );
       }
 
+      const affinity = parseRequestClassAffinity(
+        (selection as Record<string, unknown>).requestClassAffinity,
+        new Set(Object.keys(normalizedCosts))
+      );
+
       targetSelectionByRoute[externalModel] = {
         strategy: "lowest_cost",
-        costs: normalizedCosts
+        costs: normalizedCosts,
+        ...(affinity ? { requestClassAffinity: affinity } : {})
       };
       continue;
     }
 
     if (strategy === "health_priority") {
+      const affinity = parseRequestClassAffinity(
+        (selection as Record<string, unknown>).requestClassAffinity,
+        new Set()
+      );
+
       targetSelectionByRoute[externalModel] = {
-        strategy: "health_priority"
+        strategy: "health_priority",
+        ...(affinity ? { requestClassAffinity: affinity } : {})
       };
       continue;
     }
@@ -470,10 +621,19 @@ export function parseRouteTargetSelection(
         );
       }
 
+      const affinity = parseRequestClassAffinity(
+        selectionRecord.requestClassAffinity,
+        new Set([
+          ...Object.keys(latencySloMs ?? {}),
+          ...Object.keys(costs ?? {})
+        ])
+      );
+
       targetSelectionByRoute[externalModel] = {
         strategy: "priority",
         ...(latencySloMs ? { latencySloMs } : {}),
-        ...(costs ? { costs } : {})
+        ...(costs ? { costs } : {}),
+        ...(affinity ? { requestClassAffinity: affinity } : {})
       };
       continue;
     }
@@ -489,9 +649,15 @@ export function parseRouteTargetSelection(
             )
           : undefined;
 
+      const affinity = parseRequestClassAffinity(
+        selectionRecord.requestClassAffinity,
+        new Set(Object.keys(latencySloMs ?? {}))
+      );
+
       targetSelectionByRoute[externalModel] = {
         strategy: "health_score",
-        ...(latencySloMs ? { latencySloMs } : {})
+        ...(latencySloMs ? { latencySloMs } : {}),
+        ...(affinity ? { requestClassAffinity: affinity } : {})
       };
       continue;
     }
@@ -591,6 +757,17 @@ export function parseRouteKeyAccessPolicy(
 function listTargetSelectionKeys(
   targetSelection: RouteTargetSelection
 ): string[] {
+  const baseKeys = listBaseTargetSelectionKeys(targetSelection);
+  const affinityKeys = listRequestClassAffinityTargetKeys(
+    targetSelection.requestClassAffinity
+  );
+
+  return Array.from(new Set([...baseKeys, ...affinityKeys]));
+}
+
+function listBaseTargetSelectionKeys(
+  targetSelection: RouteTargetSelection
+): string[] {
   if (targetSelection.strategy === "weighted") {
     return Object.keys(targetSelection.weights);
   }
@@ -613,6 +790,29 @@ function listTargetSelectionKeys(
   }
 
   return [];
+}
+
+function listRequestClassAffinityTargetKeys(
+  affinity: RequestClassAffinity | undefined
+): string[] {
+  if (!affinity) {
+    return [];
+  }
+
+  const keys = new Set<string>();
+  for (const classAffinity of Object.values(affinity) as (
+    | RequestClassTargetAffinity
+    | undefined
+  )[]) {
+    for (const targetKey of classAffinity?.preferredTargets ?? []) {
+      keys.add(targetKey);
+    }
+    for (const targetKey of classAffinity?.avoidedTargets ?? []) {
+      keys.add(targetKey);
+    }
+  }
+
+  return Array.from(keys);
 }
 
 export function attachRouteRequestShaping(

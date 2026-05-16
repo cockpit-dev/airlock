@@ -1,7 +1,29 @@
 import type {
   CanonicalRequest,
-  CanonicalRequestCapabilityRequirements
+  CanonicalRequestCapabilityRequirements,
+  RequestClass
 } from "./models.js";
+
+export function deriveRequestClass(request: CanonicalRequest): RequestClass {
+  const hasToolReplay = request.messages.some((message) => {
+    return (
+      message.role === "tool" ||
+      (message.role === "assistant" && (message.toolCalls?.length ?? 0) > 0)
+    );
+  });
+
+  return {
+    streaming: request.stream,
+    toolUse: (request.tools?.length ?? 0) > 0 || hasToolReplay,
+    structuredOutput:
+      request.outputFormat !== undefined &&
+      request.outputFormat.type !== "text",
+    reasoning:
+      request.reasoningEffort !== undefined ||
+      request.reasoningSummary !== undefined,
+    multiTurn: request.messages.length > 2
+  };
+}
 
 export function getCanonicalRequestCapabilityRequirements(
   request: CanonicalRequest
@@ -12,8 +34,7 @@ export function getCanonicalRequestCapabilityRequirements(
       (message.role === "assistant" && (message.toolCalls?.length ?? 0) > 0)
     );
   });
-  const requiresTools =
-    (request.tools?.length ?? 0) > 0 || requiresToolReplay;
+  const requiresTools = (request.tools?.length ?? 0) > 0 || requiresToolReplay;
   const requiresStreamingTools = request.stream && requiresTools;
 
   return {

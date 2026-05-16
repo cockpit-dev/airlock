@@ -1,4 +1,8 @@
-import type { ProviderTargetHealthSnapshot, RoutingFreshnessWindows, HierarchicalHealthScore } from "./provider-target-health.js";
+import type {
+  ProviderTargetHealthSnapshot,
+  RoutingFreshnessWindows,
+  HierarchicalHealthScore
+} from "./provider-target-health.js";
 import {
   getFreshRetryableFailureCount,
   getFreshSmoothedLatency,
@@ -20,6 +24,12 @@ export interface RoutingScoringContext {
   healthByTarget: ReadonlyMap<string, ProviderTargetHealthSnapshot>;
   windows: RoutingFreshnessWindows;
   originalOrder: ReadonlyMap<string, number>;
+  /**
+   * Per-target affinity adjustment derived from request class.
+   * Negative = preferred, positive = avoided, 0 = neutral.
+   * When absent, no affinity signal is applied.
+   */
+  affinityByTarget?: ReadonlyMap<string, number>;
 }
 
 /**
@@ -65,20 +75,136 @@ export function compareByOriginalRouteOrder(
 }
 
 /**
+ * Compares two targets by request-class affinity adjustment.
+ * Returns <0 if left is preferred over right, >0 if right is preferred.
+ * Returns 0 when no affinity signal is present or adjustments are equal.
+ */
+export function compareTargetsByAffinity(
+  leftKey: string,
+  rightKey: string,
+  ctx: RoutingScoringContext
+): number {
+  if (!ctx.affinityByTarget) {
+    return 0;
+  }
+
+  const leftAffinity = ctx.affinityByTarget.get(leftKey) ?? 0;
+  const rightAffinity = ctx.affinityByTarget.get(rightKey) ?? 0;
+
+  return leftAffinity - rightAffinity;
+}
+
+/**
+ * Request-class flags used for affinity computation.
+ * Mirrors the canonical RequestClass interface to avoid
+ * a cross-package dependency on @airlock/canonical.
+ */
+export interface RequestClassFlags {
+  streaming: boolean;
+  toolUse: boolean;
+  structuredOutput: boolean;
+  reasoning: boolean;
+  multiTurn: boolean;
+}
+
+/**
+ * Per-request-class affinity configuration for a single class dimension.
+ */
+export interface RequestClassTargetAffinity {
+  preferredTargets?: string[];
+  avoidedTargets?: string[];
+}
+
+/**
+ * Full request-class affinity configuration from route target selection.
+ */
+export interface RequestClassAffinityConfig {
+  streaming?: RequestClassTargetAffinity;
+  toolUse?: RequestClassTargetAffinity;
+  structuredOutput?: RequestClassTargetAffinity;
+  reasoning?: RequestClassTargetAffinity;
+  multiTurn?: RequestClassTargetAffinity;
+}
+
+/**
+ * Computes a per-target affinity adjustment map from request class flags
+ * and route affinity configuration.
+ *
+ * For each active request-class flag that has affinity configuration:
+ * - preferredTargets get -1 per active class that prefers them
+ * - avoidedTargets get +1 per active class that avoids them
+ *
+ * The resulting map can be passed as `affinityByTarget` in the scoring context.
+ */
+export function computeAffinityByTarget(
+  requestClass: RequestClassFlags,
+  affinityConfig: RequestClassAffinityConfig | undefined,
+  _targetKeys: string[]
+): Map<string, number> | undefined {
+  if (!affinityConfig) {
+    return undefined;
+  }
+
+  const adjustments = new Map<string, number>();
+  const ensureEntry = (key: string) => {
+    if (!adjustments.has(key)) {
+      adjustments.set(key, 0);
+    }
+  };
+
+  const applyAffinity = (
+    active: boolean,
+    classAffinity: RequestClassTargetAffinity | undefined
+  ) => {
+    if (!active || !classAffinity) {
+      return;
+    }
+
+    for (const targetKey of classAffinity.preferredTargets ?? []) {
+      ensureEntry(targetKey);
+      adjustments.set(targetKey, adjustments.get(targetKey)! - 1);
+    }
+
+    for (const targetKey of classAffinity.avoidedTargets ?? []) {
+      ensureEntry(targetKey);
+      adjustments.set(targetKey, adjustments.get(targetKey)! + 1);
+    }
+  };
+
+  applyAffinity(requestClass.streaming, affinityConfig.streaming);
+  applyAffinity(requestClass.toolUse, affinityConfig.toolUse);
+  applyAffinity(requestClass.structuredOutput, affinityConfig.structuredOutput);
+  applyAffinity(requestClass.reasoning, affinityConfig.reasoning);
+  applyAffinity(requestClass.multiTurn, affinityConfig.multiTurn);
+
+  if (adjustments.size === 0) {
+    return undefined;
+  }
+
+  return adjustments;
+}
+
+/**
  * Health-priority strategy comparator.
  *
  * Ranking order:
- * 1. Non-open before open
- * 2. Non-half-open before half-open
- * 3. Fewer fresh failures first
- * 4. Lower fresh smoothed latency first
- * 5. Original route order tie-break
+ * 1. Request-class affinity (preferred before avoided)
+ * 2. Non-open before open
+ * 3. Non-half-open before half-open
+ * 4. Fewer fresh failures first
+ * 5. Lower fresh smoothed latency first
+ * 6. Original route order tie-break
  */
 export function compareTargetsByHealthPriority(
   leftKey: string,
   rightKey: string,
   ctx: RoutingScoringContext
 ): number {
+  const affinityCmp = compareTargetsByAffinity(leftKey, rightKey, ctx);
+  if (affinityCmp !== 0) {
+    return affinityCmp;
+  }
+
   const leftHealth = getHealthForTarget(leftKey, ctx.healthByTarget);
   const rightHealth = getHealthForTarget(rightKey, ctx.healthByTarget);
 
@@ -127,10 +253,11 @@ export function compareTargetsByHealthPriority(
  * Lowest-cost strategy comparator.
  *
  * Ranking order:
- * 1. Non-half-open before half-open
- * 2. Fewer fresh failures first
- * 3. Lower effective cost first (observed multiplier × configured cost)
- * 4. Original route order tie-break
+ * 1. Request-class affinity (preferred before avoided)
+ * 2. Non-half-open before half-open
+ * 3. Fewer fresh failures first
+ * 4. Lower effective cost first (observed multiplier × configured cost)
+ * 5. Original route order tie-break
  */
 export function compareTargetsByLowestCost(
   leftKey: string,
@@ -138,6 +265,11 @@ export function compareTargetsByLowestCost(
   ctx: RoutingScoringContext,
   costs: Readonly<Record<string, number>>
 ): number {
+  const affinityCmp = compareTargetsByAffinity(leftKey, rightKey, ctx);
+  if (affinityCmp !== 0) {
+    return affinityCmp;
+  }
+
   const leftHealth = getHealthForTarget(leftKey, ctx.healthByTarget);
   const rightHealth = getHealthForTarget(rightKey, ctx.healthByTarget);
 
@@ -318,16 +450,17 @@ export function getPriorityRecoveryPenalty(
  * Priority multi-signal strategy comparator.
  *
  * Ranking order:
- * 1. Non-open before open
- * 2. Non-half-open before half-open
- * 3. Fewer fresh failures first
- * 4. Lower recovery penalty first
- * 5. Higher recovery score first
- * 6. Lower sliding-window error rate first
- * 7. Better latency SLO status first
- * 8. Lower latency delta ratio first
- * 9. Lower effective cost first
- * 10. Original route order tie-break
+ * 1. Request-class affinity (preferred before avoided)
+ * 2. Non-open before open
+ * 3. Non-half-open before half-open
+ * 4. Fewer fresh failures first
+ * 5. Lower recovery penalty first
+ * 6. Higher recovery score first
+ * 7. Lower sliding-window error rate first
+ * 8. Better latency SLO status first
+ * 9. Lower latency delta ratio first
+ * 10. Lower effective cost first
+ * 11. Original route order tie-break
  */
 export function compareTargetsByPriority(
   leftKey: string,
@@ -338,6 +471,11 @@ export function compareTargetsByPriority(
     costs?: Readonly<Record<string, number>>;
   }
 ): number {
+  const affinityCmp = compareTargetsByAffinity(leftKey, rightKey, ctx);
+  if (affinityCmp !== 0) {
+    return affinityCmp;
+  }
+
   const leftHealth = getHealthForTarget(leftKey, ctx.healthByTarget);
   const rightHealth = getHealthForTarget(rightKey, ctx.healthByTarget);
 
@@ -495,10 +633,10 @@ export function getTargetHealthScore(
 /**
  * Hierarchical health score strategy comparator.
  *
- * Uses a composite tier + sub-score that combines circuit state, failure
- * count, recovery progress, error rate, and latency SLO into a single
- * sortable metric. Targets are ranked by tier first, then sub-score.
- * Falls back to original route order when scores are identical.
+ * Ranking order:
+ * 1. Request-class affinity (preferred before avoided)
+ * 2. Hierarchical health score (tier + sub-score)
+ * 3. Original route order tie-break
  */
 export function compareTargetsByHealthScore(
   leftKey: string,
@@ -506,6 +644,11 @@ export function compareTargetsByHealthScore(
   ctx: RoutingScoringContext,
   latencySloMs?: Readonly<Record<string, number>>
 ): number {
+  const affinityCmp = compareTargetsByAffinity(leftKey, rightKey, ctx);
+  if (affinityCmp !== 0) {
+    return affinityCmp;
+  }
+
   const leftScore = getTargetHealthScore(leftKey, ctx, latencySloMs);
   const rightScore = getTargetHealthScore(rightKey, ctx, latencySloMs);
 

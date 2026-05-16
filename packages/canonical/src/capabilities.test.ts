@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import type { CanonicalRequest } from "./models.js";
 
-import { getCanonicalRequestCapabilityRequirements } from "./capabilities.js";
+import {
+  getCanonicalRequestCapabilityRequirements,
+  deriveRequestClass
+} from "./capabilities.js";
 
 describe("getCanonicalRequestCapabilityRequirements", () => {
   it("marks system-message requirements when canonical requests include system messages", () => {
@@ -141,7 +144,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
             {
               id: "call_123",
               name: "lookup_weather",
-              arguments: "{\"city\":\"Shanghai\"}"
+              arguments: '{"city":"Shanghai"}'
             }
           ]
         }
@@ -179,7 +182,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       messages: [
         {
           role: "tool",
-          content: "{\"temperature_c\":26}",
+          content: '{"temperature_c":26}',
           toolCallId: "call_123"
         }
       ]
@@ -591,7 +594,7 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
             {
               id: "call_123",
               name: "lookup_weather",
-              arguments: "{\"city\":\"Shanghai\"}"
+              arguments: '{"city":"Shanghai"}'
             }
           ]
         }
@@ -862,5 +865,134 @@ describe("getCanonicalRequestCapabilityRequirements", () => {
       requiresSamplingParameters: false,
       requiresAnthropicRequestMetadata: false
     });
+  });
+});
+
+describe("deriveRequestClass", () => {
+  it("classifies a minimal request as non-streaming, non-tool, non-structured", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [{ role: "user", content: "hi" }]
+    };
+
+    expect(deriveRequestClass(request)).toEqual({
+      streaming: false,
+      toolUse: false,
+      structuredOutput: false,
+      reasoning: false,
+      multiTurn: false
+    });
+  });
+
+  it("detects streaming", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: true,
+      messages: [{ role: "user", content: "hi" }]
+    };
+
+    expect(deriveRequestClass(request).streaming).toBe(true);
+  });
+
+  it("detects tool use from tools array", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ name: "get_weather", inputSchema: { type: "object" } }]
+    };
+
+    expect(deriveRequestClass(request).toolUse).toBe(true);
+  });
+
+  it("detects tool use from tool replay in history", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        { role: "user", content: "weather?" },
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [{ id: "c1", name: "get_weather", arguments: "{}" }]
+        },
+        { role: "tool", content: "sunny", toolCallId: "c1" }
+      ]
+    };
+
+    expect(deriveRequestClass(request).toolUse).toBe(true);
+  });
+
+  it("detects structured output", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [{ role: "user", content: "hi" }],
+      outputFormat: { type: "json_object" }
+    };
+
+    expect(deriveRequestClass(request).structuredOutput).toBe(true);
+  });
+
+  it("does not flag text output format as structured", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [{ role: "user", content: "hi" }],
+      outputFormat: { type: "text" }
+    };
+
+    expect(deriveRequestClass(request).structuredOutput).toBe(false);
+  });
+
+  it("detects reasoning from reasoningEffort", () => {
+    const request: CanonicalRequest = {
+      model: "o3",
+      stream: false,
+      messages: [{ role: "user", content: "solve this" }],
+      reasoningEffort: "high"
+    };
+
+    expect(deriveRequestClass(request).reasoning).toBe(true);
+  });
+
+  it("detects reasoning from reasoningSummary", () => {
+    const request: CanonicalRequest = {
+      model: "o3",
+      stream: false,
+      messages: [{ role: "user", content: "solve this" }],
+      reasoningSummary: "concise"
+    };
+
+    expect(deriveRequestClass(request).reasoning).toBe(true);
+  });
+
+  it("detects multi-turn from more than 2 messages", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        { role: "system", content: "You are helpful." },
+        { role: "user", content: "hi" },
+        { role: "assistant", content: "hello" },
+        { role: "user", content: "how are you" }
+      ]
+    };
+
+    expect(deriveRequestClass(request).multiTurn).toBe(true);
+  });
+
+  it("does not flag 2 messages as multi-turn", () => {
+    const request: CanonicalRequest = {
+      model: "gpt-4.1-mini",
+      stream: false,
+      messages: [
+        { role: "system", content: "You are helpful." },
+        { role: "user", content: "hi" }
+      ]
+    };
+
+    expect(deriveRequestClass(request).multiTurn).toBe(false);
   });
 });
