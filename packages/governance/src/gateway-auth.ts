@@ -1016,11 +1016,11 @@ function hasStructuredAdminCredentialsConfig(
   return typeof value === "string" && value.length > 0;
 }
 
-export function assertInternalAdminAuthorization(
+export async function assertInternalAdminAuthorization(
   authorization: string | undefined,
   adminToken: string | undefined,
   requestId: string
-): void {
+): Promise<void> {
   if (!adminToken) {
     throw new GatewayError("Internal admin token is not configured", {
       code: "config_missing_internal_admin_token",
@@ -1031,7 +1031,19 @@ export function assertInternalAdminAuthorization(
     });
   }
 
-  if (authorization !== `Bearer ${adminToken}`) {
+  if (
+    !authorization ||
+    !authorization.startsWith("Bearer ") ||
+    authorization.length <= "Bearer ".length
+  ) {
+    throw createInvalidAdminTokenError(requestId);
+  }
+
+  const provided = authorization.slice("Bearer ".length);
+  const providedHash = await sha256Hex(provided);
+  const expectedHash = await sha256Hex(adminToken);
+
+  if (providedHash !== expectedHash) {
     throw createInvalidAdminTokenError(requestId);
   }
 }
@@ -1070,7 +1082,7 @@ export async function authorizeInternalAdminRequest(
     return authorization;
   }
 
-  assertInternalAdminAuthorization(
+  await assertInternalAdminAuthorization(
     request.authorization,
     request.adminToken,
     request.requestId
