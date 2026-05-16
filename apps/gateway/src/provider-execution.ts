@@ -1,16 +1,16 @@
 import {
   getCanonicalRequestCapabilityRequirements,
   type CanonicalRequest,
+  type CanonicalRequestCapabilityRequirements,
   type CanonicalResponse,
   type CanonicalStreamEvent
 } from "@airlock/canonical";
 import {
-  AnthropicProviderAdapter,
   type ProviderCapabilityDescriptor,
-  GeminiProviderAdapter,
   getProviderCapabilityDescriptor,
-  OpenAIProviderAdapter,
-  type ProviderAdapter
+  type ProviderAdapter,
+  createProviderAdapterFromRegistry,
+  type ProviderAdapterConstructionOptions
 } from "@airlock/providers";
 import {
   deriveProviderTargetHealthSnapshot,
@@ -212,39 +212,51 @@ function createProviderAdapter(
     serializeProviderTarget(route.target),
     serializeProviderTarget(target)
   );
-  const routeSigning = routeShaping?.signing;
 
-  if (target.provider === "anthropic") {
-    return new AnthropicProviderAdapter({
-      apiKey: config.anthropic?.apiKey ?? "",
-      baseUrl: config.anthropic?.baseUrl ?? "",
-      defaultMaxTokens: config.anthropic?.defaultMaxTokens ?? 256,
-      ...(routeShaping ? { shaping: routeShaping } : {}),
-      ...(routeSigning ? { signing: routeSigning } : {}),
-      signingSecrets: config.requestSigningSecrets ?? {},
-      ...(fetcher ? { fetcher } : {})
-    });
-  }
-
-  if (target.provider === "gemini") {
-    return new GeminiProviderAdapter({
-      apiKey: config.gemini?.apiKey ?? "",
-      baseUrl: config.gemini?.baseUrl ?? "",
-      ...(routeShaping ? { shaping: routeShaping } : {}),
-      ...(routeSigning ? { signing: routeSigning } : {}),
-      signingSecrets: config.requestSigningSecrets ?? {},
-      ...(fetcher ? { fetcher } : {})
-    });
-  }
-
-  return new OpenAIProviderAdapter({
-    apiKey: config.openAI.apiKey,
-    baseUrl: config.openAI.baseUrl,
+  const providerConfig = resolveProviderConfig(target.provider, config);
+  const options: ProviderAdapterConstructionOptions = {
+    apiKey: providerConfig.apiKey,
+    baseUrl: providerConfig.baseUrl,
+    ...(providerConfig.defaultMaxTokens != null
+      ? { defaultMaxTokens: providerConfig.defaultMaxTokens }
+      : {}),
     ...(routeShaping ? { shaping: routeShaping } : {}),
-    ...(routeSigning ? { signing: routeSigning } : {}),
+    ...(routeShaping?.signing ? { signing: routeShaping.signing } : {}),
     signingSecrets: config.requestSigningSecrets ?? {},
     ...(fetcher ? { fetcher } : {})
-  });
+  };
+
+  return createProviderAdapterFromRegistry(target.provider, options);
+}
+
+interface ResolvedProviderConfig {
+  apiKey: string;
+  baseUrl: string;
+  defaultMaxTokens?: number;
+}
+
+function resolveProviderConfig(
+  provider: string,
+  config: GatewayConfig
+): ResolvedProviderConfig {
+  switch (provider) {
+    case "anthropic":
+      return {
+        apiKey: config.anthropic?.apiKey ?? "",
+        baseUrl: config.anthropic?.baseUrl ?? "",
+        defaultMaxTokens: config.anthropic?.defaultMaxTokens ?? 256
+      };
+    case "gemini":
+      return {
+        apiKey: config.gemini?.apiKey ?? "",
+        baseUrl: config.gemini?.baseUrl ?? ""
+      };
+    default:
+      return {
+        apiKey: config.openAI.apiKey,
+        baseUrl: config.openAI.baseUrl
+      };
+  }
 }
 
 function createAttemptRequest(
