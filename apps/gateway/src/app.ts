@@ -6,6 +6,7 @@ import { toErrorResponse, toNotFoundResponse } from "./errors.js";
 import type { GatewayBindings } from "./env.js";
 import { createRequestId } from "./request-id.js";
 import { registerAdminKeyGovernanceRoutes } from "./routes/admin-key-governance.js";
+import { registerAdminGatewayStatusRoutes } from "./routes/admin-gateway-status.js";
 import { registerAdminRoutingHealthRoutes } from "./routes/admin-routing-health.js";
 import { handleChatCompletions } from "./routes/chat-completions.js";
 import { handleHealth } from "./routes/health.js";
@@ -101,6 +102,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.get("/healthz", handleHealth);
   app.get("/readyz", handleReady);
   registerAdminKeyGovernanceRoutes(app);
+  registerAdminGatewayStatusRoutes(app);
   registerAdminRoutingHealthRoutes(
     app,
     options.now ? () => options.now! : undefined
