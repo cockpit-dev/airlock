@@ -101,6 +101,9 @@ export async function handleMessages(
     });
   }
 
+  // Advisory body size check via Content-Length header.
+  // Chunked transfer encoding (no Content-Length) relies on the
+  // Cloudflare Workers platform body size limit as a safety net.
   const contentLength = context.req.header("content-length");
   if (
     contentLength !== undefined &&
