@@ -52,6 +52,36 @@ describe("Provider adapter registry", () => {
         })
       ).toThrow("No adapter factory registered for provider: unknown-provider");
     });
+
+    it("passes optional shaping to factory", () => {
+      const adapter = createProviderAdapterFromRegistry("openai", {
+        apiKey: "test-key",
+        baseUrl: "https://api.openai.com/v1",
+        shaping: { headers: { "x-custom": "value" } }
+      });
+      expect(adapter).toBeDefined();
+    });
+
+    it("passes optional fetcher to factory", () => {
+      const customFetcher = (() =>
+        Promise.resolve(new Response())) as unknown as typeof fetch;
+      const adapter = createProviderAdapterFromRegistry("openai", {
+        apiKey: "test-key",
+        baseUrl: "https://api.openai.com/v1",
+        fetcher: customFetcher
+      });
+      expect(adapter).toBeDefined();
+    });
+
+    it("passes signing secrets to factory", () => {
+      const adapter = createProviderAdapterFromRegistry("anthropic", {
+        apiKey: "test-key",
+        baseUrl: "https://api.anthropic.com",
+        defaultMaxTokens: 256,
+        signingSecrets: { "hmac-key-1": "secret-value" }
+      });
+      expect(adapter).toBeDefined();
+    });
   });
 
   describe("custom factory registration", () => {
@@ -70,6 +100,30 @@ describe("Provider adapter registry", () => {
       });
 
       expect(result).toBe(mockAdapter);
+    });
+
+    it("receives construction options in factory callback", () => {
+      let receivedApiKey: string | undefined;
+      let receivedBaseUrl: string | undefined;
+      const mockAdapter: ProviderAdapter = {
+        complete() {
+          return Promise.resolve(stubCanonicalResponse);
+        }
+      };
+
+      registerProviderAdapterFactory("options-capture" as never, (opts) => {
+        receivedApiKey = opts.apiKey;
+        receivedBaseUrl = opts.baseUrl;
+        return mockAdapter;
+      });
+
+      createProviderAdapterFromRegistry("options-capture" as never, {
+        apiKey: "my-key",
+        baseUrl: "https://example.com"
+      });
+
+      expect(receivedApiKey).toBe("my-key");
+      expect(receivedBaseUrl).toBe("https://example.com");
     });
   });
 });
