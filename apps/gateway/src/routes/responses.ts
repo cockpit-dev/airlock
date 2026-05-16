@@ -533,6 +533,16 @@ export async function handleResponses(
             // Controller may already be closed or errored
           }
         } finally {
+          // If streaming completed without capturing usage, release the
+          // token reservation to avoid holding quota until TTL expiry.
+          if (!streamUsage) {
+            void releaseGatewayKeyTokenQuotaReservation(
+              context.env,
+              gatewayApiKey,
+              requestId,
+              tokenReservation
+            );
+          }
           try {
             await releaseGatewayKeyConcurrencyLease(
               context.env,
