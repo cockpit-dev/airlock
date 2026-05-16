@@ -96,6 +96,24 @@ function createProviderTimeoutError(requestId: string): GatewayError {
   });
 }
 
+function createProviderEmptyStreamError(
+  provider: string,
+  providerModel: string,
+  requestId: string
+): GatewayError {
+  return new GatewayError(
+    `Provider ${provider} returned an empty stream for model ${providerModel}`,
+    {
+      code: "provider_empty_stream",
+      category: "provider",
+      httpStatus: 502,
+      retryable: true,
+      provider,
+      requestId
+    }
+  );
+}
+
 function createProviderCircuitOpenError(requestId: string): GatewayError {
   return new GatewayError(
     "All eligible provider targets are temporarily unavailable",
@@ -1025,15 +1043,25 @@ export async function* executeRoutedStreamRequest(
               ? { requestShaping: streamTargetShaping }
               : {})
           };
+          let sawCompleted = false;
           for await (const event of adapter.stream(
             currentStreamAttemptRequest,
             streamContext
           )) {
             if (event.type === "response_completed") {
+              sawCompleted = true;
               completedUsageTotalTokens = event.usage?.totalTokens;
             }
             yieldedAnyEvent = true;
             yield event;
+          }
+
+          if (!yieldedAnyEvent) {
+            throw createProviderEmptyStreamError(
+              target.provider,
+              target.providerModel,
+              requestId
+            );
           }
 
           if (routingMetadataRef && streamContext.malformedSseEventCount > 0) {

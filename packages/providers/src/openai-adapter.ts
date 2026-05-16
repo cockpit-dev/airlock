@@ -18,6 +18,7 @@ import {
 import { GatewayError } from "@airlock/shared";
 
 import type { ProviderAdapter, ProviderRequestContext } from "./types.js";
+import { assertSseBufferSize } from "./sse-buffer.js";
 
 function normalizeOpenAIFinishReason(
   finishReason: "stop" | "length" | "tool_calls" | null | undefined
@@ -1163,6 +1164,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         resetIdleTimeout();
 
         buffer += decoder.decode(chunk, { stream: true });
+        assertSseBufferSize(buffer, "openai");
 
         while (true) {
           const separatorIndex = buffer.indexOf("\n\n");
@@ -2281,6 +2283,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         resetIdleTimeout();
 
         buffer += decoder.decode(chunk, { stream: true });
+        assertSseBufferSize(buffer, "openai");
 
         while (true) {
           const separatorIndex = buffer.indexOf("\n\n");

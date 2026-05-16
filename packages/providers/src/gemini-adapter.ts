@@ -17,6 +17,7 @@ import {
 import { GatewayError } from "@airlock/shared";
 
 import type { ProviderAdapter, ProviderRequestContext } from "./types.js";
+import { assertSseBufferSize } from "./sse-buffer.js";
 
 export interface GeminiProviderAdapterOptions {
   apiKey: string;
@@ -415,6 +416,7 @@ export class GeminiProviderAdapter implements ProviderAdapter {
         resetIdleTimeout();
 
         buffer += decoder.decode(chunk, { stream: true });
+        assertSseBufferSize(buffer, "gemini");
 
         while (true) {
           const separatorIndex = buffer.indexOf("\n\n");

@@ -17,6 +17,7 @@ import {
 import { GatewayError } from "@airlock/shared";
 
 import type { ProviderAdapter, ProviderRequestContext } from "./types.js";
+import { assertSseBufferSize } from "./sse-buffer.js";
 
 type JsonValue =
   | string
@@ -679,6 +680,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
         resetIdleTimeout();
 
         buffer += decoder.decode(chunk, { stream: true });
+        assertSseBufferSize(buffer, "anthropic");
 
         while (true) {
           const separatorIndex = buffer.indexOf("\n\n");
