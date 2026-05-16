@@ -3,7 +3,7 @@ import type { TelemetrySink } from "@airlock/telemetry";
 
 import { requireAdminScope } from "../admin-auth.js";
 import type { GatewayConfig } from "../config.js";
-import { resolveGatewayConfig } from "../config.js";
+import { resolveGatewayConfigWithOverlay } from "../config.js";
 import type { GatewayBindings } from "../env.js";
 
 type AppVariables = {
@@ -172,7 +172,7 @@ export function buildAdminConfigResponse(
 export function registerAdminConfigRoutes(app: GatewayApp): void {
   app.get("/_airlock/config", async (context) => {
     await requireAdminScope(context, "config.read");
-    const config = resolveGatewayConfig(context.env);
+    const config = await resolveGatewayConfigWithOverlay(context.env);
     const response = buildAdminConfigResponse(config);
     response.features.telemetry = context.env.AIRLOCK_TELEMETRY !== undefined;
     response.features.cors = context.env.AIRLOCK_CORS_ORIGINS !== undefined;

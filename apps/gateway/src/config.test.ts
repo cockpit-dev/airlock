@@ -1,6 +1,11 @@
 import { describe, expect, it, beforeEach } from "vitest";
 
-import { resetConfigCache, resolveGatewayConfig } from "./config.js";
+import {
+  resetConfigCache,
+  resetDashboardOverlayCache,
+  resolveGatewayConfig,
+  resolveGatewayConfigWithOverlay
+} from "./config.js";
 import type { GatewayBindings } from "./env.js";
 
 function createBindings(
@@ -35,6 +40,7 @@ function createBindings(
 
 beforeEach(() => {
   resetConfigCache();
+  resetDashboardOverlayCache();
 });
 
 describe("resolveGatewayConfig", () => {
@@ -443,5 +449,134 @@ describe("resolveGatewayConfig", () => {
         )
       ).toThrow("Provider circuit breaker binding is required");
     });
+  });
+});
+
+function createConfigStoreNamespace(snapshot: Record<string, unknown>) {
+  return {
+    idFromName: () => "global",
+    get: () => ({
+      fetch: () =>
+        Promise.resolve(
+          new Response(JSON.stringify(snapshot), {
+            headers: { "Content-Type": "application/json" }
+          })
+        )
+    })
+  };
+}
+
+describe("resolveGatewayConfigWithOverlay", () => {
+  it("returns base config when no DO binding", async () => {
+    const config = await resolveGatewayConfigWithOverlay(createBindings());
+    expect(config.openAI.apiKey).toBe("openai-secret");
+    expect(config.anthropic).toBeUndefined();
+    expect(config.gemini).toBeUndefined();
+  });
+
+  it("returns base config when DO snapshot has empty sections", async () => {
+    const namespace = createConfigStoreNamespace({
+      sections: {},
+      globalVersion: 0
+    });
+    const config = await resolveGatewayConfigWithOverlay(
+      createBindings({ AIRLOCK_CONFIG_STORE: namespace as never })
+    );
+    expect(config.openAI.apiKey).toBe("openai-secret");
+  });
+
+  it("merges provider config from DO overlay", async () => {
+    const namespace = createConfigStoreNamespace({
+      sections: {
+        providers: {
+          data: {
+            openai: {
+              apiKey: "do-openai-key",
+              baseUrl: "https://custom.openai.com/v1"
+            }
+          },
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        }
+      },
+      globalVersion: 1
+    });
+    const config = await resolveGatewayConfigWithOverlay(
+      createBindings({ AIRLOCK_CONFIG_STORE: namespace as never })
+    );
+    expect(config.openAI.apiKey).toBe("do-openai-key");
+    expect(config.openAI.baseUrl).toBe("https://custom.openai.com/v1");
+    expect(config.openAI.defaultModel).toBe("gpt-4.1-mini");
+  });
+
+  it("resolves anthropic config from DO when env vars missing", async () => {
+    const namespace = createConfigStoreNamespace({
+      sections: {
+        providers: {
+          data: {
+            anthropic: {
+              apiKey: "do-anthropic-key",
+              baseUrl: "https://api.anthropic.com",
+              defaultMaxTokens: 8192
+            }
+          },
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        }
+      },
+      globalVersion: 1
+    });
+    const config = await resolveGatewayConfigWithOverlay(
+      createBindings({
+        AIRLOCK_CONFIG_STORE: namespace as never,
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=gpt-4.1-mini,claude=anthropic:claude-sonnet-4-20250514"
+      })
+    );
+    expect(config.anthropic).toEqual({
+      apiKey: "do-anthropic-key",
+      baseUrl: "https://api.anthropic.com",
+      defaultMaxTokens: 8192
+    });
+  });
+
+  it("throws post-merge validation when provider missing from both env and DO", async () => {
+    const namespace = createConfigStoreNamespace({
+      sections: {},
+      globalVersion: 0
+    });
+    await expect(
+      resolveGatewayConfigWithOverlay(
+        createBindings({
+          AIRLOCK_CONFIG_STORE: namespace as never,
+          AIRLOCK_MODEL_ALIASES:
+            "gpt-4.1-mini=gpt-4.1-mini,claude=anthropic:claude-sonnet-4-20250514"
+        })
+      )
+    ).rejects.toThrow("Anthropic configuration is required");
+  });
+
+  it("merges limits config from DO overlay", async () => {
+    const namespace = createConfigStoreNamespace({
+      sections: {
+        limits: {
+          data: {
+            providerTimeoutMs: 60_000,
+            providerMaxRetries: 3
+          },
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        }
+      },
+      globalVersion: 1
+    });
+    const config = await resolveGatewayConfigWithOverlay(
+      createBindings({ AIRLOCK_CONFIG_STORE: namespace as never })
+    );
+    expect(config.providerTimeoutMs).toBe(60_000);
+    expect(config.providerMaxRetries).toBe(3);
   });
 });

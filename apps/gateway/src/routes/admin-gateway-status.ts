@@ -3,7 +3,7 @@ import type { Hono } from "hono";
 import { requireAdminScope } from "../admin-auth.js";
 import type { GatewayBindings } from "../env.js";
 import {
-  resolveGatewayConfig,
+  resolveGatewayConfigWithOverlay,
   computeConfigFingerprint,
   type GatewayConfig
 } from "../config.js";
@@ -205,7 +205,7 @@ function buildKeyCounts(config: GatewayConfig): {
 export function registerAdminGatewayStatusRoutes(app: GatewayApp): void {
   app.get("/_airlock/status", async (context) => {
     await requireAdminScope(context, "status.read");
-    const config = resolveGatewayConfig(context.env);
+    const config = await resolveGatewayConfigWithOverlay(context.env);
     const circuitBreakerStates = getAllInMemoryCircuitBreakerStates();
     const configFingerprint = computeConfigFingerprint(context.env);
     return context.json(

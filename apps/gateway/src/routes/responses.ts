@@ -18,7 +18,7 @@ import {
   assertGatewayKeyAllowsRoute,
   requireGatewayAuthorization
 } from "../auth.js";
-import { resolveGatewayConfig } from "../config.js";
+import { resolveGatewayConfigWithOverlay } from "../config.js";
 import type { GatewayBindings } from "../env.js";
 import { parseRequestShapingExtension } from "../request-extensions.js";
 import type { CreateAppOptions } from "../app.js";
@@ -93,7 +93,7 @@ export async function handleResponses(
   }>
 ): Promise<Response> {
   const requestId = context.get("requestId");
-  const config = resolveGatewayConfig(context.env);
+  const config = await resolveGatewayConfigWithOverlay(context.env);
   const requestStartedAt = context.get("requestStartedAt");
   const telemetrySink = context.get("telemetrySink");
   const gatewayApiKey = await requireGatewayAuthorization(

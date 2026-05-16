@@ -4,7 +4,7 @@ import { GatewayError } from "@airlock/shared";
 
 import { requireGatewayAuthorization } from "../auth.js";
 import type { CreateAppOptions } from "../app.js";
-import { resolveGatewayConfig } from "../config.js";
+import { resolveGatewayConfigWithOverlay } from "../config.js";
 import type { GatewayBindings } from "../env.js";
 
 function createModelDescriptor(modelId: string) {
@@ -26,7 +26,7 @@ export async function handleModels(
     };
   }>
 ) {
-  const config = resolveGatewayConfig(context.env);
+  const config = await resolveGatewayConfigWithOverlay(context.env);
   const requestId = context.get("requestId");
 
   await requireGatewayAuthorization(context, config, requestId);
@@ -65,7 +65,7 @@ export async function handleModelById(
     };
   }>
 ) {
-  const config = resolveGatewayConfig(context.env);
+  const config = await resolveGatewayConfigWithOverlay(context.env);
   const modelId = resolveModelIdFromContext(context);
   const requestId = context.get("requestId");
 

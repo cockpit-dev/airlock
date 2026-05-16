@@ -355,7 +355,11 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
   return config;
 }
 
-function parseGatewayConfigUncached(bindings: GatewayBindings): GatewayConfig {
+function parseGatewayConfigUncached(
+  bindings: GatewayBindings,
+  options?: { allowMissingProviderEnvVars?: boolean }
+): GatewayConfig {
+  const allowMissing = options?.allowMissingProviderEnvVars ?? false;
   const env = gatewayEnvSchema.parse(bindings);
   const gatewayApiKeys = parseGatewayApiKeys(env.AIRLOCK_GATEWAY_API_KEYS);
   const requestSigningSecrets = parseRequestSigningSecrets(
@@ -477,27 +481,29 @@ function parseGatewayConfigUncached(bindings: GatewayBindings): GatewayConfig {
   const usesAnthropic = usedProviders.has("anthropic");
   const usesGemini = usedProviders.has("gemini");
 
-  if (
-    usesAnthropic &&
-    (!env.ANTHROPIC_API_KEY ||
-      !env.ANTHROPIC_BASE_URL ||
-      !env.ANTHROPIC_DEFAULT_MAX_TOKENS)
-  ) {
-    throw new GatewayError("Anthropic configuration is required", {
-      code: "config_missing_anthropic",
-      category: "configuration",
-      httpStatus: 500,
-      retryable: false
-    });
-  }
+  if (!allowMissing) {
+    if (
+      usesAnthropic &&
+      (!env.ANTHROPIC_API_KEY ||
+        !env.ANTHROPIC_BASE_URL ||
+        !env.ANTHROPIC_DEFAULT_MAX_TOKENS)
+    ) {
+      throw new GatewayError("Anthropic configuration is required", {
+        code: "config_missing_anthropic",
+        category: "configuration",
+        httpStatus: 500,
+        retryable: false
+      });
+    }
 
-  if (usesGemini && (!env.GEMINI_API_KEY || !env.GEMINI_BASE_URL)) {
-    throw new GatewayError("Gemini configuration is required", {
-      code: "config_missing_gemini",
-      category: "configuration",
-      httpStatus: 500,
-      retryable: false
-    });
+    if (usesGemini && (!env.GEMINI_API_KEY || !env.GEMINI_BASE_URL)) {
+      throw new GatewayError("Gemini configuration is required", {
+        code: "config_missing_gemini",
+        category: "configuration",
+        httpStatus: 500,
+        retryable: false
+      });
+    }
   }
 
   return {
@@ -567,17 +573,17 @@ function parseGatewayConfigUncached(bindings: GatewayBindings): GatewayConfig {
     ...(usesAnthropic
       ? {
           anthropic: {
-            apiKey: env.ANTHROPIC_API_KEY as string,
-            baseUrl: env.ANTHROPIC_BASE_URL as string,
-            defaultMaxTokens: env.ANTHROPIC_DEFAULT_MAX_TOKENS as number
+            apiKey: env.ANTHROPIC_API_KEY ?? "",
+            baseUrl: env.ANTHROPIC_BASE_URL ?? "",
+            defaultMaxTokens: env.ANTHROPIC_DEFAULT_MAX_TOKENS ?? 4096
           }
         }
       : {}),
     ...(usesGemini
       ? {
           gemini: {
-            apiKey: env.GEMINI_API_KEY as string,
-            baseUrl: env.GEMINI_BASE_URL as string
+            apiKey: env.GEMINI_API_KEY ?? "",
+            baseUrl: env.GEMINI_BASE_URL ?? ""
           }
         }
       : {}),
@@ -587,6 +593,69 @@ function parseGatewayConfigUncached(bindings: GatewayBindings): GatewayConfig {
       defaultModel: env.OPENAI_DEFAULT_MODEL
     }
   };
+}
+
+/**
+ * Resolve gateway config with optional dashboard overlay from Config Store DO.
+ * Falls back to strict env-var-only config when DO is unavailable.
+ */
+export async function resolveGatewayConfigWithOverlay(
+  bindings: GatewayBindings
+): Promise<GatewayConfig> {
+  let base: GatewayConfig;
+
+  try {
+    base = resolveGatewayConfig(bindings);
+  } catch (e) {
+    if (!bindings.AIRLOCK_CONFIG_STORE) throw e;
+    base = parseGatewayConfigUncached(bindings, {
+      allowMissingProviderEnvVars: true
+    });
+  }
+
+  const overlay = await resolveDashboardOverlay(bindings);
+  const merged = mergeConfigWithOverlay(base, overlay);
+
+  validateMergedProviderConfig(merged);
+  return merged;
+}
+
+function validateMergedProviderConfig(config: GatewayConfig): void {
+  const usedProviders = new Set(
+    config.modelAliases.flatMap((route) => {
+      return [route.target, ...(route.fallbacks ?? [])].map((target) => {
+        return target.provider;
+      });
+    })
+  );
+
+  if (usedProviders.has("anthropic")) {
+    if (!config.anthropic?.apiKey || !config.anthropic?.baseUrl) {
+      throw new GatewayError(
+        "Anthropic configuration is required (set via environment variables or dashboard config)",
+        {
+          code: "config_missing_anthropic",
+          category: "configuration",
+          httpStatus: 500,
+          retryable: false
+        }
+      );
+    }
+  }
+
+  if (usedProviders.has("gemini")) {
+    if (!config.gemini?.apiKey || !config.gemini?.baseUrl) {
+      throw new GatewayError(
+        "Gemini configuration is required (set via environment variables or dashboard config)",
+        {
+          code: "config_missing_gemini",
+          category: "configuration",
+          httpStatus: 500,
+          retryable: false
+        }
+      );
+    }
+  }
 }
 
 const DASHBOARD_OVERLAY_TTL_MS = 5_000;

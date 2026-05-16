@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 
 import type { GatewayConfig } from "../config.js";
-import { resolveGatewayConfig } from "../config.js";
+import { resolveGatewayConfigWithOverlay } from "../config.js";
 import type { GatewayBindings } from "../env.js";
 
 interface ReadinessDetail {
@@ -50,9 +50,11 @@ export function buildReadinessResponse(
   };
 }
 
-export function handleReady(context: Context) {
+export async function handleReady(context: Context) {
   try {
-    const config = resolveGatewayConfig(context.env as GatewayBindings);
+    const config = await resolveGatewayConfigWithOverlay(
+      context.env as GatewayBindings
+    );
     const result = buildReadinessResponse(config);
     if (!result.ready) {
       return context.json(

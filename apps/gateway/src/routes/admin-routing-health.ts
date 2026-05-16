@@ -12,7 +12,7 @@ import { serializeProviderTarget } from "@airlock/routing";
 import { requireAdminScope } from "../admin-auth.js";
 import { getAllInMemoryCircuitBreakerStates } from "../circuit-breaker.js";
 import type { GatewayConfig } from "../config.js";
-import { resolveGatewayConfig } from "../config.js";
+import { resolveGatewayConfigWithOverlay } from "../config.js";
 import type { GatewayBindings } from "../env.js";
 
 type AppVariables = {
@@ -35,7 +35,7 @@ export function registerAdminRoutingHealthRoutes(
   app.get("/_airlock/routing/health", async (context) => {
     await requireAdminScope(context, "routing.read");
 
-    const config = resolveGatewayConfig(context.env);
+    const config = await resolveGatewayConfigWithOverlay(context.env);
     const now = getNow ? getNow()() : Date.now();
     return context.json(buildRoutingHealthResponse(config, now));
   });
