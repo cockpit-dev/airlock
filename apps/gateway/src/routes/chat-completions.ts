@@ -25,31 +25,7 @@ import {
   releaseGatewayKeyConcurrencyLease
 } from "../gateway-key-concurrency.js";
 import { enforceGatewayKeyRequestQuota } from "../gateway-key-quota.js";
-import {
-  createRateLimitHeaders,
-  type RateLimitDecision
-} from "@airlock/governance";
-
-function collectRateLimitHeaders(
-  ...decisions: (RateLimitDecision | undefined)[]
-): Record<string, string> {
-  const defined = decisions.filter(
-    (d): d is RateLimitDecision => d !== undefined
-  );
-  if (defined.length === 0) {
-    return {};
-  }
-
-  const mostRestrictive: RateLimitDecision = {
-    allowed: true,
-    limit: Math.min(...defined.map((d) => d.limit)),
-    remaining: Math.min(...defined.map((d) => d.remaining)),
-    resetAt: defined.map((d) => d.resetAt).sort()[0]!,
-    retryAfterSeconds: 0
-  };
-
-  return createRateLimitHeaders(mostRestrictive);
-}
+import { collectRateLimitHeaders } from "../rate-limit-headers.js";
 
 import {
   assertGatewayKeyTokenUsageAvailable,

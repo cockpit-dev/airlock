@@ -6,35 +6,10 @@ import {
   encodeCanonicalToAnthropicMessagesResponse,
   normalizeAnthropicMessagesRequest
 } from "@airlock/canonical";
-import {
-  createRateLimitHeaders,
-  type RateLimitDecision
-} from "@airlock/governance";
-import type { TelemetrySink } from "@airlock/telemetry";
-import { anthropicMessagesRequestSchema } from "@airlock/protocols";
 import { resolveModelRoute, type ProviderTarget } from "@airlock/routing";
 import { GatewayError } from "@airlock/shared";
-
-function collectRateLimitHeaders(
-  ...decisions: (RateLimitDecision | undefined)[]
-): Record<string, string> {
-  const defined = decisions.filter(
-    (d): d is RateLimitDecision => d !== undefined
-  );
-  if (defined.length === 0) {
-    return {};
-  }
-
-  const mostRestrictive: RateLimitDecision = {
-    allowed: true,
-    limit: Math.min(...defined.map((d) => d.limit)),
-    remaining: Math.min(...defined.map((d) => d.remaining)),
-    resetAt: defined.map((d) => d.resetAt).sort()[0]!,
-    retryAfterSeconds: 0
-  };
-
-  return createRateLimitHeaders(mostRestrictive);
-}
+import type { TelemetrySink } from "@airlock/telemetry";
+import { anthropicMessagesRequestSchema } from "@airlock/protocols";
 
 import {
   assertGatewayKeyAllowsModel,
@@ -49,6 +24,7 @@ import {
   releaseGatewayKeyConcurrencyLease
 } from "../gateway-key-concurrency.js";
 import { enforceGatewayKeyRequestQuota } from "../gateway-key-quota.js";
+import { collectRateLimitHeaders } from "../rate-limit-headers.js";
 import {
   assertGatewayKeyTokenUsageAvailable,
   enforceGatewayKeyTokenQuotaPrecheck,
