@@ -2,7 +2,11 @@ import { Hono } from "hono";
 import type { TelemetrySink } from "@airlock/telemetry";
 import { GatewayError } from "@airlock/shared";
 
-import { toErrorResponse, toNotFoundResponse } from "./errors.js";
+import {
+  toErrorResponse,
+  toMethodNotAllowedResponse,
+  toNotFoundResponse
+} from "./errors.js";
 import type { GatewayBindings } from "./env.js";
 import { createRequestId } from "./request-id.js";
 import { registerAdminKeyGovernanceRoutes } from "./routes/admin-key-governance.js";
@@ -49,7 +53,12 @@ export function createApp(options: CreateAppOptions = {}) {
     const telemetrySink = context.get("telemetrySink");
     const requestStartedAt = context.get("requestStartedAt");
     const telemetryErrorEmitted = context.get("telemetryErrorEmitted");
-    const pathname = new URL(context.req.url).pathname;
+    let pathname: string;
+    try {
+      pathname = new URL(context.req.url).pathname;
+    } catch {
+      pathname = context.req.path ?? "/unknown";
+    }
 
     if (!telemetryErrorEmitted && requestStartedAt !== undefined) {
       if (error instanceof GatewayError) {
@@ -83,7 +92,12 @@ export function createApp(options: CreateAppOptions = {}) {
 
   app.notFound((context) => {
     const requestId = context.get("requestId") ?? createRequestId();
-    const pathname = new URL(context.req.url).pathname;
+    let pathname: string;
+    try {
+      pathname = new URL(context.req.url).pathname;
+    } catch {
+      pathname = context.req.path ?? "/unknown";
+    }
     return toNotFoundResponse(requestId, pathname);
   });
 
@@ -112,6 +126,18 @@ export function createApp(options: CreateAppOptions = {}) {
   app.post("/v1/chat/completions", handleChatCompletions);
   app.post("/v1/messages", handleMessages);
   app.post("/v1/responses", handleResponses);
+
+  // Return 405 for non-POST methods on write endpoints
+  for (const path of [
+    "/v1/chat/completions",
+    "/v1/messages",
+    "/v1/responses"
+  ]) {
+    app.on(["GET", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"], path, (c) => {
+      const requestId = c.get("requestId");
+      return toMethodNotAllowedResponse(requestId, path);
+    });
+  }
 
   return app;
 }

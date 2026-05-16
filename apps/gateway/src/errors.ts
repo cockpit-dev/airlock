@@ -6,6 +6,51 @@ function detectErrorProtocol(pathname: string): ErrorProtocol {
   return pathname.startsWith("/v1/messages") ? "anthropic" : "openai";
 }
 
+export function toMethodNotAllowedResponse(
+  requestId: string,
+  pathname: string
+): Response {
+  const protocol = detectErrorProtocol(pathname);
+
+  if (protocol === "anthropic") {
+    return Response.json(
+      {
+        type: "error",
+        error: {
+          type: "method_not_allowed",
+          message: "Method not allowed"
+        },
+        request_id: requestId
+      },
+      {
+        status: 405,
+        headers: {
+          "request-id": requestId,
+          "x-request-id": requestId,
+          allow: "POST"
+        }
+      }
+    );
+  }
+
+  return Response.json(
+    {
+      error: {
+        message: "Method not allowed",
+        type: "invalid_request_error",
+        code: "method_not_allowed"
+      }
+    },
+    {
+      status: 405,
+      headers: {
+        "x-request-id": requestId,
+        allow: "POST"
+      }
+    }
+  );
+}
+
 export function toNotFoundResponse(
   requestId: string,
   pathname: string

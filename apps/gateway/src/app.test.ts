@@ -37036,4 +37036,55 @@ describe("GET /_airlock/routing/health", () => {
     expect(freshnessWindows.latencyFreshnessMs).toBe(60000);
     expect(freshnessWindows.costFreshnessMs).toBe(120000);
   });
+
+  describe("405 Method Not Allowed", () => {
+    it("returns 405 for GET /v1/chat/completions", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const response = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          headers: { authorization: "Bearer gateway-secret" }
+        },
+        createBindings()
+      );
+
+      expect(response.status).toBe(405);
+      expect(response.headers.get("allow")).toBe("POST");
+      await expect(readJson(response)).resolves.toMatchObject({
+        error: { code: "method_not_allowed" }
+      });
+    });
+
+    it("returns 405 for GET /v1/responses", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const response = await app.request(
+        "http://localhost/v1/responses",
+        {
+          headers: { authorization: "Bearer gateway-secret" }
+        },
+        createBindings()
+      );
+
+      expect(response.status).toBe(405);
+      expect(response.headers.get("allow")).toBe("POST");
+    });
+
+    it("returns 405 for GET /v1/messages with Anthropic error shape", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const response = await app.request(
+        "http://localhost/v1/messages",
+        {
+          headers: { authorization: "Bearer gateway-secret" }
+        },
+        createBindings()
+      );
+
+      expect(response.status).toBe(405);
+      expect(response.headers.get("allow")).toBe("POST");
+      await expect(readJson(response)).resolves.toMatchObject({
+        type: "error",
+        error: { type: "method_not_allowed" }
+      });
+    });
+  });
 });
