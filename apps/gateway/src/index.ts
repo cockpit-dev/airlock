@@ -46,6 +46,7 @@ export default {
         body: unknown;
         ack(): void;
         retry(): void;
+        attempts: number;
       }>;
     },
     env: GatewayBindings

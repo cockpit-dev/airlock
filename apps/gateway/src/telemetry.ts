@@ -129,12 +129,15 @@ export function createGatewayTelemetrySink(
   return createQueueTelemetrySink(producer, sampling);
 }
 
+const TELEMETRY_QUEUE_MAX_ATTEMPTS = 3;
+
 export async function processTelemetryQueueBatch(
   batch: {
     messages: Array<{
       body: unknown;
       ack(): void;
       retry(): void;
+      attempts: number;
     }>;
   },
   dataset: {
@@ -146,14 +149,27 @@ export async function processTelemetryQueueBatch(
   }
 ): Promise<void> {
   for (const message of batch.messages) {
+    let event: GatewayRequestTelemetryEvent;
     try {
-      const event = gatewayRequestTelemetryEventSchema.parse(message.body);
+      event = gatewayRequestTelemetryEventSchema.parse(message.body);
+    } catch {
+      // Poison message: unparseable body — ack to drop, never retry
+      message.ack();
+      continue;
+    }
+
+    try {
       const dataPoint = createAnalyticsEngineTelemetryDataPoint(event);
       await Promise.resolve();
       dataset.writeDataPoint(dataPoint);
       message.ack();
     } catch {
-      message.retry();
+      if (message.attempts >= TELEMETRY_QUEUE_MAX_ATTEMPTS) {
+        // Exhausted retries — ack to drop, break the poison loop
+        message.ack();
+      } else {
+        message.retry();
+      }
     }
   }
 }

@@ -106,7 +106,8 @@ describe("processTelemetryQueueBatch", () => {
           {
             body: createSuccessEvent(),
             ack,
-            retry
+            retry,
+            attempts: 1
           }
         ]
       },
@@ -135,7 +136,8 @@ describe("processTelemetryQueueBatch", () => {
               primaryTargetOpen: true
             }),
             ack,
-            retry
+            retry,
+            attempts: 1
           }
         ]
       },
@@ -162,7 +164,8 @@ describe("processTelemetryQueueBatch", () => {
           {
             body: createSuccessEvent(),
             ack,
-            retry
+            retry,
+            attempts: 1
           }
         ]
       },
@@ -173,5 +176,58 @@ describe("processTelemetryQueueBatch", () => {
 
     expect(ack).not.toHaveBeenCalled();
     expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it("acks poison messages with unparseable body without retrying", async () => {
+    const ack = vi.fn();
+    const retry = vi.fn();
+    const writeDataPoint = vi.fn();
+
+    await processTelemetryQueueBatch(
+      {
+        messages: [
+          {
+            body: { not: "a valid telemetry event" },
+            ack,
+            retry,
+            attempts: 1
+          }
+        ]
+      },
+      {
+        writeDataPoint
+      }
+    );
+
+    expect(writeDataPoint).not.toHaveBeenCalled();
+    expect(ack).toHaveBeenCalledTimes(1);
+    expect(retry).not.toHaveBeenCalled();
+  });
+
+  it("acks messages that exhaust max retries without further retry", async () => {
+    const ack = vi.fn();
+    const retry = vi.fn();
+    const writeDataPoint = vi.fn().mockImplementation(() => {
+      throw new Error("analytics failed");
+    });
+
+    await processTelemetryQueueBatch(
+      {
+        messages: [
+          {
+            body: createSuccessEvent(),
+            ack,
+            retry,
+            attempts: 3
+          }
+        ]
+      },
+      {
+        writeDataPoint
+      }
+    );
+
+    expect(ack).toHaveBeenCalledTimes(1);
+    expect(retry).not.toHaveBeenCalled();
   });
 });
