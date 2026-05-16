@@ -227,7 +227,7 @@ export async function handleChatCompletions(
       );
       context.set("telemetryErrorEmitted", true);
       if (error instanceof GatewayError) {
-        await emitGatewayRequestErrorTelemetry(
+        void emitGatewayRequestErrorTelemetry(
           {
             telemetrySink,
             requestId,
@@ -245,7 +245,7 @@ export async function handleChatCompletions(
           error
         );
       } else {
-        await emitGatewayRequestUnknownErrorTelemetry({
+        void emitGatewayRequestUnknownErrorTelemetry({
           telemetrySink,
           requestId,
           routePath: "/v1/chat/completions",
@@ -335,7 +335,7 @@ export async function handleChatCompletions(
             await writeStreamEvent(nextChunk.value, controller);
           }
 
-          await emitGatewayRequestSuccessTelemetry({
+          void emitGatewayRequestSuccessTelemetry({
             telemetrySink,
             requestId,
             routePath: "/v1/chat/completions",
@@ -402,7 +402,7 @@ export async function handleChatCompletions(
     );
     if (error instanceof GatewayError) {
       context.set("telemetryErrorEmitted", true);
-      await emitGatewayRequestErrorTelemetry(
+      void emitGatewayRequestErrorTelemetry(
         {
           telemetrySink,
           requestId,
@@ -424,7 +424,7 @@ export async function handleChatCompletions(
       );
     } else {
       context.set("telemetryErrorEmitted", true);
-      await emitGatewayRequestUnknownErrorTelemetry({
+      void emitGatewayRequestUnknownErrorTelemetry({
         telemetrySink,
         requestId,
         routePath: "/v1/chat/completions",
@@ -468,7 +468,7 @@ export async function handleChatCompletions(
     );
   }
 
-  await emitGatewayRequestSuccessTelemetry({
+  void emitGatewayRequestSuccessTelemetry({
     telemetrySink,
     requestId,
     routePath: "/v1/chat/completions",

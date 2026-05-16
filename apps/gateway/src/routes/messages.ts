@@ -203,7 +203,7 @@ export async function handleMessages(
       );
       context.set("telemetryErrorEmitted", true);
       if (error instanceof GatewayError) {
-        await emitGatewayRequestErrorTelemetry(
+        void emitGatewayRequestErrorTelemetry(
           {
             telemetrySink,
             requestId,
@@ -221,7 +221,7 @@ export async function handleMessages(
           error
         );
       } else {
-        await emitGatewayRequestUnknownErrorTelemetry({
+        void emitGatewayRequestUnknownErrorTelemetry({
           telemetrySink,
           requestId,
           routePath: "/v1/messages",
@@ -312,7 +312,7 @@ export async function handleMessages(
             await writeStreamEvent(nextChunk.value, controller);
           }
 
-          await emitGatewayRequestSuccessTelemetry({
+          void emitGatewayRequestSuccessTelemetry({
             telemetrySink,
             requestId,
             routePath: "/v1/messages",
@@ -380,7 +380,7 @@ export async function handleMessages(
     );
     if (error instanceof GatewayError) {
       context.set("telemetryErrorEmitted", true);
-      await emitGatewayRequestErrorTelemetry(
+      void emitGatewayRequestErrorTelemetry(
         {
           telemetrySink,
           requestId,
@@ -402,7 +402,7 @@ export async function handleMessages(
       );
     } else {
       context.set("telemetryErrorEmitted", true);
-      await emitGatewayRequestUnknownErrorTelemetry({
+      void emitGatewayRequestUnknownErrorTelemetry({
         telemetrySink,
         requestId,
         routePath: "/v1/messages",
@@ -446,7 +446,7 @@ export async function handleMessages(
     );
   }
 
-  await emitGatewayRequestSuccessTelemetry({
+  void emitGatewayRequestSuccessTelemetry({
     telemetrySink,
     requestId,
     routePath: "/v1/messages",
