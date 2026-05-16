@@ -37,11 +37,11 @@ export async function enforceGatewayKeyRequestQuota(
   env: GatewayBindings,
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string
-): Promise<void> {
+): Promise<ConsumeGatewayKeyQuotaDecision | undefined> {
   const requestQuota = gatewayApiKey.policy?.requestQuota;
 
   if (!requestQuota) {
-    return;
+    return undefined;
   }
 
   const namespace = env.AIRLOCK_GATEWAY_KEY_QUOTA;
@@ -108,11 +108,11 @@ export async function enforceGatewayKeyRequestQuota(
     );
   }
 
-  if (decision.allowed) {
-    return;
+  if (!decision.allowed) {
+    throw createGatewayKeyQuotaExceededError(decision, requestId);
   }
 
-  throw createGatewayKeyQuotaExceededError(decision, requestId);
+  return decision;
 }
 
 export async function consumeGatewayKeyQuotaFromStorage(

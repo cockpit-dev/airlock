@@ -127,7 +127,9 @@ export async function acquireGatewayKeyConcurrencyLease(
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string,
   providerTimeoutMs: number
-): Promise<string | undefined> {
+): Promise<
+  { leaseId: string; decision: GatewayKeyConcurrencyDecision } | undefined
+> {
   const concurrencyQuota = gatewayApiKey.policy?.concurrencyQuota;
 
   if (!concurrencyQuota) {
@@ -205,11 +207,11 @@ export async function acquireGatewayKeyConcurrencyLease(
     );
   }
 
-  if (decision.allowed) {
-    return leaseId;
+  if (!decision.allowed) {
+    throw createGatewayKeyConcurrencyExceededError(decision, requestId);
   }
 
-  throw createGatewayKeyConcurrencyExceededError(decision, requestId);
+  return { leaseId, decision };
 }
 
 export async function releaseGatewayKeyConcurrencyLease(

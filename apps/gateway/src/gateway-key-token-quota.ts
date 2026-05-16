@@ -179,7 +179,13 @@ export async function reserveGatewayKeyTokenQuota(
   requestId: string,
   tokens: number,
   ttlMs: number
-): Promise<GatewayKeyTokenReservationHandle | undefined> {
+): Promise<
+  | {
+      handle: GatewayKeyTokenReservationHandle;
+      decision: GatewayKeyTokenQuotaDecision;
+    }
+  | undefined
+> {
   const tokenQuota = gatewayApiKey.policy?.tokenQuota;
 
   if (!tokenQuota) {
@@ -210,8 +216,11 @@ export async function reserveGatewayKeyTokenQuota(
   }
 
   return {
-    reservationId,
-    reservedTokens: tokens
+    handle: {
+      reservationId,
+      reservedTokens: tokens
+    },
+    decision
   };
 }
 

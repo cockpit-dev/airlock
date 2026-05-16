@@ -6,10 +6,35 @@ import {
   encodeCanonicalToOpenAIResponsesResponse,
   normalizeOpenAIResponsesRequest
 } from "@airlock/canonical";
+import {
+  createRateLimitHeaders,
+  type RateLimitDecision
+} from "@airlock/governance";
 import type { TelemetrySink } from "@airlock/telemetry";
 import { openAIResponsesRequestSchema } from "@airlock/protocols";
 import { resolveModelRoute, type ProviderTarget } from "@airlock/routing";
 import { GatewayError } from "@airlock/shared";
+
+function collectRateLimitHeaders(
+  ...decisions: (RateLimitDecision | undefined)[]
+): Record<string, string> {
+  const defined = decisions.filter(
+    (d): d is RateLimitDecision => d !== undefined
+  );
+  if (defined.length === 0) {
+    return {};
+  }
+
+  const mostRestrictive: RateLimitDecision = {
+    allowed: true,
+    limit: Math.min(...defined.map((d) => d.limit)),
+    remaining: Math.min(...defined.map((d) => d.remaining)),
+    resetAt: defined.map((d) => d.resetAt).sort()[0]!,
+    retryAfterSeconds: 0
+  };
+
+  return createRateLimitHeaders(mostRestrictive);
+}
 
 import {
   assertGatewayKeyAllowsModel,
@@ -169,20 +194,26 @@ export async function handleResponses(
     gatewayApiKey,
     requestId
   );
-  const tokenReservation = await reserveGatewayKeyTokenQuota(
+  const tokenReservationResult = await reserveGatewayKeyTokenQuota(
     context.env,
     gatewayApiKey,
     requestId,
     canonicalRequest.maxOutputTokens ?? 0,
     config.providerTimeoutMs + 5_000
   );
-  await enforceGatewayKeyRequestQuota(context.env, gatewayApiKey, requestId);
-  const concurrencyLeaseId = await acquireGatewayKeyConcurrencyLease(
+  const tokenReservation = tokenReservationResult?.handle;
+  const requestQuotaDecision = await enforceGatewayKeyRequestQuota(
+    context.env,
+    gatewayApiKey,
+    requestId
+  );
+  const concurrencyResult = await acquireGatewayKeyConcurrencyLease(
     context.env,
     gatewayApiKey,
     requestId,
     config.providerTimeoutMs
   );
+  const concurrencyLeaseId = concurrencyResult?.leaseId;
   const circuitBreakerBackend =
     config.providerCircuitBreakerPersistent &&
     context.env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER
@@ -503,7 +534,12 @@ export async function handleResponses(
         "content-type": "text/event-stream; charset=utf-8",
         "cache-control": "no-cache",
         connection: "keep-alive",
-        "x-request-id": requestId
+        "x-request-id": requestId,
+        ...collectRateLimitHeaders(
+          tokenReservationResult?.decision,
+          requestQuotaDecision,
+          concurrencyResult?.decision
+        )
       }
     });
   }
@@ -623,7 +659,12 @@ export async function handleResponses(
     encodeCanonicalToOpenAIResponsesResponse(canonicalResponse),
     200,
     {
-      "x-request-id": requestId
+      "x-request-id": requestId,
+      ...collectRateLimitHeaders(
+        tokenReservationResult?.decision,
+        requestQuotaDecision,
+        concurrencyResult?.decision
+      )
     }
   );
 }
