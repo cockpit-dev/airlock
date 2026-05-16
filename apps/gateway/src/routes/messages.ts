@@ -218,7 +218,9 @@ export async function handleMessages(
   const routingSignals = () => ({
     routingStrategy: route.targetSelection?.strategy,
     attemptCount: routingMetadata.attemptCount,
-    primaryTargetOpen: routingMetadata.primaryTargetOpen
+    primaryTargetOpen: routingMetadata.primaryTargetOpen,
+    timeoutBudgetMs: routingMetadata.timeoutBudgetMs,
+    timeoutBudgetRemainingMs: routingMetadata.timeoutBudgetRemainingMs
   });
 
   if (canonicalRequest.stream) {

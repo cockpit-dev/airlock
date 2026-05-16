@@ -29,6 +29,8 @@ export interface RequestTelemetryContext {
   routingStrategy?: string | undefined;
   attemptCount?: number | undefined;
   primaryTargetOpen?: boolean | undefined;
+  timeoutBudgetMs?: number | undefined;
+  timeoutBudgetRemainingMs?: number | undefined;
 }
 
 function getTelemetryNow(): number {
@@ -69,6 +71,12 @@ function createBaseEvent(
       : {}),
     ...(context.primaryTargetOpen !== undefined
       ? { primaryTargetOpen: context.primaryTargetOpen }
+      : {}),
+    ...(context.timeoutBudgetMs !== undefined
+      ? { timeoutBudgetMs: context.timeoutBudgetMs }
+      : {}),
+    ...(context.timeoutBudgetRemainingMs !== undefined
+      ? { timeoutBudgetRemainingMs: context.timeoutBudgetRemainingMs }
       : {})
   };
 }

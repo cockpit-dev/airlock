@@ -248,7 +248,9 @@ export async function handleChatCompletions(
   const routingSignals = () => ({
     routingStrategy: route.targetSelection?.strategy,
     attemptCount: routingMetadata.attemptCount,
-    primaryTargetOpen: routingMetadata.primaryTargetOpen
+    primaryTargetOpen: routingMetadata.primaryTargetOpen,
+    timeoutBudgetMs: routingMetadata.timeoutBudgetMs,
+    timeoutBudgetRemainingMs: routingMetadata.timeoutBudgetRemainingMs
   });
 
   if (canonicalRequest.stream) {

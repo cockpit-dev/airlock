@@ -51,6 +51,8 @@ import type { GatewayConfig } from "./config.js";
 export type RoutingMetadataAccumulator = {
   primaryTargetOpen?: boolean;
   attemptCount?: number;
+  timeoutBudgetMs?: number;
+  timeoutBudgetRemainingMs?: number;
 };
 
 const DEFAULT_PROVIDER_CIRCUIT_BREAKER_THRESHOLD = 3;
@@ -750,121 +752,131 @@ export async function executeRoutedRequest(
   let lastError: unknown;
   let attemptCount = 0;
 
-  for (let index = 0; index < targets.length; index += 1) {
-    const target = targets[index];
-    if (!target) {
-      throw new Error("Provider target is required for route execution");
-    }
-
-    let targetAttempt = 0;
-
-    while (true) {
-      onAttemptTarget?.(target);
-      attemptCount += 1;
-      if (routingMetadataRef) {
-        routingMetadataRef.attemptCount = attemptCount;
-      }
-      const currentAttemptRequest = createAttemptRequest(request, target);
-      const currentAttemptStartedAt = now();
-      const currentRemainingTimeoutMs = deadline - currentAttemptStartedAt;
-
-      if (currentRemainingTimeoutMs <= 0) {
-        throw createProviderTimeoutError(requestId);
+  try {
+    for (let index = 0; index < targets.length; index += 1) {
+      const target = targets[index];
+      if (!target) {
+        throw new Error("Provider target is required for route execution");
       }
 
-      const adapter = createProviderAdapter(
-        route,
-        target,
-        config,
-        currentAttemptRequest,
-        requestId,
-        getProviderDescriptor,
-        fetcher
-      );
+      let targetAttempt = 0;
 
-      try {
-        const targetRequestShaping = resolvePerRequestShapingForTarget(
-          requestShaping,
-          route,
-          target
-        );
-        const response = await adapter.complete(currentAttemptRequest, {
-          requestId,
-          timeoutMs: currentRemainingTimeoutMs,
-          requestMode,
-          ...(targetRequestShaping
-            ? { requestShaping: targetRequestShaping }
-            : {})
-        });
-        await circuitBreakerBackend.recordSuccess(
-          target,
-          now() - currentAttemptStartedAt,
-          response.usage?.totalTokens,
-          now(),
-          circuitBreakerPolicy
-        );
+      while (true) {
+        onAttemptTarget?.(target);
+        attemptCount += 1;
+        if (routingMetadataRef) {
+          routingMetadataRef.attemptCount = attemptCount;
+        }
+        const currentAttemptRequest = createAttemptRequest(request, target);
+        const currentAttemptStartedAt = now();
+        const currentRemainingTimeoutMs = deadline - currentAttemptStartedAt;
 
-        return response;
-      } catch (error) {
-        lastError = error;
-
-        if (
-          error instanceof GatewayError &&
-          error.category === "provider" &&
-          error.retryable
-        ) {
-          await circuitBreakerBackend.recordRetryableFailure(
-            target,
-            circuitBreakerPolicy,
-            currentAttemptStartedAt
-          );
+        if (currentRemainingTimeoutMs <= 0) {
+          throw createProviderTimeoutError(requestId);
         }
 
-        const shouldRetrySameTarget =
-          error instanceof GatewayError &&
-          error.category === "provider" &&
-          error.retryable &&
-          targetAttempt < config.providerMaxRetries;
+        const adapter = createProviderAdapter(
+          route,
+          target,
+          config,
+          currentAttemptRequest,
+          requestId,
+          getProviderDescriptor,
+          fetcher
+        );
 
-        if (shouldRetrySameTarget) {
-          const remainingBeforeBackoff = deadline - now();
+        try {
+          const targetRequestShaping = resolvePerRequestShapingForTarget(
+            requestShaping,
+            route,
+            target
+          );
+          const response = await adapter.complete(currentAttemptRequest, {
+            requestId,
+            timeoutMs: currentRemainingTimeoutMs,
+            requestMode,
+            ...(targetRequestShaping
+              ? { requestShaping: targetRequestShaping }
+              : {})
+          });
+          await circuitBreakerBackend.recordSuccess(
+            target,
+            now() - currentAttemptStartedAt,
+            response.usage?.totalTokens,
+            now(),
+            circuitBreakerPolicy
+          );
 
-          if (remainingBeforeBackoff <= 0) {
-            throw createProviderTimeoutError(requestId);
+          return response;
+        } catch (error) {
+          lastError = error;
+
+          if (
+            error instanceof GatewayError &&
+            error.category === "provider" &&
+            error.retryable
+          ) {
+            await circuitBreakerBackend.recordRetryableFailure(
+              target,
+              circuitBreakerPolicy,
+              currentAttemptStartedAt
+            );
           }
 
-          const retryBackoffMs = config.providerRetryBackoffMs;
+          const shouldRetrySameTarget =
+            error instanceof GatewayError &&
+            error.category === "provider" &&
+            error.retryable &&
+            targetAttempt < config.providerMaxRetries;
 
-          if (retryBackoffMs > 0) {
-            if (remainingBeforeBackoff < retryBackoffMs) {
+          if (shouldRetrySameTarget) {
+            const remainingBeforeBackoff = deadline - now();
+
+            if (remainingBeforeBackoff <= 0) {
               throw createProviderTimeoutError(requestId);
             }
 
-            await sleep(retryBackoffMs);
+            const retryBackoffMs = config.providerRetryBackoffMs;
+
+            if (retryBackoffMs > 0) {
+              if (remainingBeforeBackoff < retryBackoffMs) {
+                throw createProviderTimeoutError(requestId);
+              }
+
+              await sleep(retryBackoffMs);
+            }
+
+            targetAttempt += 1;
+            continue;
           }
 
-          targetAttempt += 1;
-          continue;
+          const shouldFailOver =
+            error instanceof GatewayError &&
+            error.category === "provider" &&
+            error.retryable &&
+            index < targets.length - 1;
+
+          if (!shouldFailOver) {
+            throw error;
+          }
+
+          break;
         }
-
-        const shouldFailOver =
-          error instanceof GatewayError &&
-          error.category === "provider" &&
-          error.retryable &&
-          index < targets.length - 1;
-
-        if (!shouldFailOver) {
-          throw error;
-        }
-
-        break;
       }
     }
-  }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new Error("Provider execution failed");
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("Provider execution failed");
+  } finally {
+    if (routingMetadataRef) {
+      routingMetadataRef.timeoutBudgetMs = config.providerTimeoutMs;
+      routingMetadataRef.timeoutBudgetRemainingMs = Math.max(
+        0,
+        deadline - now()
+      );
+    }
+  }
 }
 
 export async function* executeRoutedStreamRequest(
@@ -935,142 +947,155 @@ export async function* executeRoutedStreamRequest(
   let lastError: unknown;
   let attemptCount = 0;
 
-  for (let index = 0; index < targets.length; index += 1) {
-    const target = targets[index];
+  try {
+    for (let index = 0; index < targets.length; index += 1) {
+      const target = targets[index];
 
-    if (!target) {
-      throw new Error("Provider target is required for stream execution");
-    }
+      if (!target) {
+        throw new Error("Provider target is required for stream execution");
+      }
 
-    const currentAttemptStartedAt = now();
-    const currentRemainingTimeoutMs = deadline - currentAttemptStartedAt;
+      const currentAttemptStartedAt = now();
+      const currentRemainingTimeoutMs = deadline - currentAttemptStartedAt;
 
-    if (currentRemainingTimeoutMs <= 0) {
-      throw createProviderTimeoutError(requestId);
-    }
+      if (currentRemainingTimeoutMs <= 0) {
+        throw createProviderTimeoutError(requestId);
+      }
 
-    const currentAttemptRequest = createAttemptRequest(request, target);
-    onAttemptTarget?.(target);
-    const adapter = createProviderAdapter(
-      route,
-      target,
-      config,
-      currentAttemptRequest,
-      requestId,
-      getProviderDescriptor,
-      fetcher
-    );
-
-    if (!adapter.stream) {
-      throw createUnsupportedCapabilityError(
-        target.provider,
-        "streaming",
-        requestId
+      const currentAttemptRequest = createAttemptRequest(request, target);
+      onAttemptTarget?.(target);
+      const adapter = createProviderAdapter(
+        route,
+        target,
+        config,
+        currentAttemptRequest,
+        requestId,
+        getProviderDescriptor,
+        fetcher
       );
-    }
 
-    let yieldedAnyEvent = false;
-    let streamAttempt = 0;
-    let completedUsageTotalTokens: number | undefined;
-
-    while (true) {
-      try {
-        onAttemptTarget?.(target);
-        attemptCount += 1;
-        if (routingMetadataRef) {
-          routingMetadataRef.attemptCount = attemptCount;
-        }
-        const currentStreamAttemptRequest =
-          streamAttempt === 0
-            ? currentAttemptRequest
-            : createAttemptRequest(request, target);
-
-        const streamTargetShaping = resolvePerRequestShapingForTarget(
-          requestShaping,
-          route,
-          target
+      if (!adapter.stream) {
+        throw createUnsupportedCapabilityError(
+          target.provider,
+          "streaming",
+          requestId
         );
-        for await (const event of adapter.stream(currentStreamAttemptRequest, {
-          requestId,
-          timeoutMs: deadline - now(),
-          streamIdleTimeoutMs: config.providerStreamIdleTimeoutMs,
-          requestMode,
-          ...(streamTargetShaping
-            ? { requestShaping: streamTargetShaping }
-            : {})
-        })) {
-          if (event.type === "response_completed") {
-            completedUsageTotalTokens = event.usage?.totalTokens;
+      }
+
+      let yieldedAnyEvent = false;
+      let streamAttempt = 0;
+      let completedUsageTotalTokens: number | undefined;
+
+      while (true) {
+        try {
+          onAttemptTarget?.(target);
+          attemptCount += 1;
+          if (routingMetadataRef) {
+            routingMetadataRef.attemptCount = attemptCount;
           }
-          yieldedAnyEvent = true;
-          yield event;
-        }
+          const currentStreamAttemptRequest =
+            streamAttempt === 0
+              ? currentAttemptRequest
+              : createAttemptRequest(request, target);
 
-        await circuitBreakerBackend.recordSuccess(
-          target,
-          now() - currentAttemptStartedAt,
-          completedUsageTotalTokens,
-          now(),
-          circuitBreakerPolicy
-        );
-
-        return;
-      } catch (error) {
-        lastError = error;
-
-        if (
-          error instanceof GatewayError &&
-          error.category === "provider" &&
-          error.retryable
-        ) {
-          await circuitBreakerBackend.recordRetryableFailure(
-            target,
-            circuitBreakerPolicy,
-            currentAttemptStartedAt
+          const streamTargetShaping = resolvePerRequestShapingForTarget(
+            requestShaping,
+            route,
+            target
           );
-        }
+          for await (const event of adapter.stream(
+            currentStreamAttemptRequest,
+            {
+              requestId,
+              timeoutMs: deadline - now(),
+              streamIdleTimeoutMs: config.providerStreamIdleTimeoutMs,
+              requestMode,
+              ...(streamTargetShaping
+                ? { requestShaping: streamTargetShaping }
+                : {})
+            }
+          )) {
+            if (event.type === "response_completed") {
+              completedUsageTotalTokens = event.usage?.totalTokens;
+            }
+            yieldedAnyEvent = true;
+            yield event;
+          }
 
-        const shouldRetrySameTarget =
-          error instanceof GatewayError &&
-          error.category === "provider" &&
-          error.retryable &&
-          !yieldedAnyEvent &&
-          streamAttempt < config.providerMaxRetries &&
-          deadline - now() > 0;
+          await circuitBreakerBackend.recordSuccess(
+            target,
+            now() - currentAttemptStartedAt,
+            completedUsageTotalTokens,
+            now(),
+            circuitBreakerPolicy
+          );
 
-        if (shouldRetrySameTarget) {
-          const retryBackoffMs = config.providerRetryBackoffMs;
-          const remainingBeforeBackoff = deadline - now();
+          return;
+        } catch (error) {
+          lastError = error;
 
-          if (retryBackoffMs > 0) {
-            if (remainingBeforeBackoff < retryBackoffMs) {
-              throw createProviderTimeoutError(requestId);
+          if (
+            error instanceof GatewayError &&
+            error.category === "provider" &&
+            error.retryable
+          ) {
+            await circuitBreakerBackend.recordRetryableFailure(
+              target,
+              circuitBreakerPolicy,
+              currentAttemptStartedAt
+            );
+          }
+
+          const shouldRetrySameTarget =
+            error instanceof GatewayError &&
+            error.category === "provider" &&
+            error.retryable &&
+            !yieldedAnyEvent &&
+            streamAttempt < config.providerMaxRetries &&
+            deadline - now() > 0;
+
+          if (shouldRetrySameTarget) {
+            const retryBackoffMs = config.providerRetryBackoffMs;
+            const remainingBeforeBackoff = deadline - now();
+
+            if (retryBackoffMs > 0) {
+              if (remainingBeforeBackoff < retryBackoffMs) {
+                throw createProviderTimeoutError(requestId);
+              }
+
+              await sleep(retryBackoffMs);
             }
 
-            await sleep(retryBackoffMs);
+            streamAttempt += 1;
+            continue;
           }
 
-          streamAttempt += 1;
-          continue;
+          const shouldFailOver =
+            !yieldedAnyEvent &&
+            error instanceof GatewayError &&
+            error.category === "provider" &&
+            error.retryable &&
+            index < targets.length - 1;
+
+          if (!shouldFailOver) {
+            throw error;
+          }
+
+          break;
         }
-
-        const shouldFailOver =
-          !yieldedAnyEvent &&
-          error instanceof GatewayError &&
-          error.category === "provider" &&
-          error.retryable &&
-          index < targets.length - 1;
-
-        if (!shouldFailOver) {
-          throw error;
-        }
-
-        break;
       }
     }
-  }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new Error("Provider stream execution failed");
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("Provider stream execution failed");
+  } finally {
+    if (routingMetadataRef) {
+      routingMetadataRef.timeoutBudgetMs = config.providerTimeoutMs;
+      routingMetadataRef.timeoutBudgetRemainingMs = Math.max(
+        0,
+        deadline - now()
+      );
+    }
+  }
 }

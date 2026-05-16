@@ -24,7 +24,9 @@ const gatewayRequestTelemetryBaseSchema = z.object({
   usage: tokenUsageSchema.optional(),
   routingStrategy: z.string().min(1).optional(),
   attemptCount: z.number().int().min(1).optional(),
-  primaryTargetOpen: z.boolean().optional()
+  primaryTargetOpen: z.boolean().optional(),
+  timeoutBudgetMs: z.number().int().min(0).optional(),
+  timeoutBudgetRemainingMs: z.number().int().min(0).optional()
 });
 
 const gatewayRequestTelemetrySuccessSchema =
@@ -32,12 +34,13 @@ const gatewayRequestTelemetrySuccessSchema =
     outcome: z.literal("success")
   });
 
-const gatewayRequestTelemetryErrorSchema = gatewayRequestTelemetryBaseSchema.extend({
-  outcome: z.literal("error"),
-  errorCode: z.string().min(1),
-  errorCategory: z.string().min(1),
-  retryable: z.boolean()
-});
+const gatewayRequestTelemetryErrorSchema =
+  gatewayRequestTelemetryBaseSchema.extend({
+    outcome: z.literal("error"),
+    errorCode: z.string().min(1),
+    errorCategory: z.string().min(1),
+    retryable: z.boolean()
+  });
 
 export const gatewayRequestTelemetryEventSchema = z.union([
   gatewayRequestTelemetrySuccessSchema,

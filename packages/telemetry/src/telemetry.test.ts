@@ -288,7 +288,7 @@ describe("createAnalyticsEngineTelemetryDataPoint", () => {
     ).toMatchObject({
       indexes: ["gateway_request", "scale", "/v1/chat/completions"],
       blobs: ["success", "openai", "gpt-4.1-mini", "gpt-4.1-mini", "gak_1", ""],
-      doubles: [42, 200, 0, 12, 8, 20, 0, 0]
+      doubles: [42, 200, 0, 12, 8, 20, 0, 0, 0, 0]
     });
   });
 
@@ -338,5 +338,24 @@ describe("createAnalyticsEngineTelemetryDataPoint", () => {
 
     expect(dataPoint.blobs).toContain("");
     expect(dataPoint.doubles).toContain(0);
+  });
+
+  it("includes timeout budget columns when present", () => {
+    const dataPoint = createAnalyticsEngineTelemetryDataPoint({
+      kind: "gateway_request",
+      occurredAt: "2026-05-16T00:00:00.000Z",
+      requestId: "req_timeout_budget",
+      mode: "scale",
+      routePath: "/v1/chat/completions",
+      stream: false,
+      durationMs: 4500,
+      statusCode: 200,
+      outcome: "success",
+      timeoutBudgetMs: 30000,
+      timeoutBudgetRemainingMs: 25500
+    });
+
+    expect(dataPoint.doubles).toContain(30000);
+    expect(dataPoint.doubles).toContain(25500);
   });
 });
