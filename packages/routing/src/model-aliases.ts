@@ -306,7 +306,7 @@ function parseRequestClassAffinity(
     }
 
     for (const targetKey of preferred ?? []) {
-      if (!routeTargetKeys.has(targetKey)) {
+      if (routeTargetKeys.size > 0 && !routeTargetKeys.has(targetKey)) {
         throw createInvalidRouteTargetSelectionError(
           `requestClassAffinity.${classKey}.preferredTargets references unknown target: ${targetKey}`
         );
@@ -314,7 +314,7 @@ function parseRequestClassAffinity(
     }
 
     for (const targetKey of avoided ?? []) {
-      if (!routeTargetKeys.has(targetKey)) {
+      if (routeTargetKeys.size > 0 && !routeTargetKeys.has(targetKey)) {
         throw createInvalidRouteTargetSelectionError(
           `requestClassAffinity.${classKey}.avoidedTargets references unknown target: ${targetKey}`
         );

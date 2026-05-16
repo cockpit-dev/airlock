@@ -37334,3 +37334,419 @@ describe("GET /_airlock/status", () => {
     expect(response.status).toBe(403);
   });
 });
+
+describe("request-class-aware routing affinity", () => {
+  const openaiBufferedResponse = new Response(
+    JSON.stringify({
+      id: "chatcmpl_123",
+      object: "chat.completion",
+      created: 1,
+      model: "gpt-4.1-mini",
+      choices: [
+        {
+          index: 0,
+          finish_reason: "stop",
+          message: { role: "assistant", content: "hello from openai" }
+        }
+      ],
+      usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 }
+    }),
+    { status: 200, headers: { "content-type": "application/json" } }
+  );
+
+  const anthropicBufferedResponse = new Response(
+    JSON.stringify({
+      id: "msg_123",
+      type: "message",
+      role: "assistant",
+      model: "claude-haiku-4-5",
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: "hello from anthropic" }],
+      usage: { input_tokens: 5, output_tokens: 3 }
+    }),
+    { status: 200, headers: { "content-type": "application/json" } }
+  );
+
+  function createOpenaiStreamingResponse(): Response {
+    const encoder = new TextEncoder();
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              [
+                'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}\n\n',
+                'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}\n\n',
+                "data: [DONE]\n\n"
+              ].join("")
+            )
+          );
+          controller.close();
+        }
+      }),
+      { status: 200, headers: { "content-type": "text/event-stream" } }
+    );
+  }
+
+  function createAnthropicStreamingResponse(): Response {
+    const encoder = new TextEncoder();
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              [
+                'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_123","type":"message","role":"assistant","model":"claude-haiku-4-5","content":[],"usage":{"input_tokens":5,"output_tokens":0}}}\n\n',
+                'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+                'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}\n\n',
+                'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n',
+                'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}\n\n',
+                'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+              ].join("")
+            )
+          );
+          controller.close();
+        }
+      }),
+      { status: 200, headers: { "content-type": "text/event-stream" } }
+    );
+  }
+
+  function affinityBindings(
+    requestClassAffinity: Record<string, unknown>
+  ) {
+    return {
+      ...createBindings(),
+      AIRLOCK_MODEL_ALIASES:
+        "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+      AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+        "assistant-default": ["anthropic:claude-haiku-4-5"]
+      }),
+      AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+        "assistant-default": {
+          strategy: "health_priority",
+          requestClassAffinity
+        }
+      })
+    };
+  }
+
+  it("routes streaming requests to the streaming-preferred target", async () => {
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("openai")) {
+        return Promise.resolve(createOpenaiStreamingResponse());
+      }
+      return Promise.resolve(createAnthropicStreamingResponse());
+    });
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: true,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      affinityBindings({
+        streaming: {
+          preferredTargets: ["anthropic:claude-haiku-4-5"]
+        },
+        toolUse: {
+          preferredTargets: ["openai:gpt-4.1-mini"]
+        }
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    // Streaming affinity prefers anthropic
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
+    await expect(readText(response)).resolves.toContain("data: [DONE]");
+  });
+
+  it("routes tool-use requests to the toolUse-preferred target", async () => {
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("openai")) {
+        return Promise.resolve(openaiBufferedResponse.clone());
+      }
+      return Promise.resolve(anthropicBufferedResponse.clone());
+    });
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "get_weather",
+                description: "Get weather",
+                parameters: { type: "object", properties: {} }
+              }
+            }
+          ]
+        })
+      },
+      affinityBindings({
+        streaming: {
+          preferredTargets: ["anthropic:claude-haiku-4-5"]
+        },
+        toolUse: {
+          preferredTargets: ["openai:gpt-4.1-mini"]
+        }
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    // Tool-use affinity prefers openai
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+  });
+
+  it("routes non-streaming non-tool requests to the default primary target", async () => {
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("openai")) {
+        return Promise.resolve(openaiBufferedResponse.clone());
+      }
+      return Promise.resolve(anthropicBufferedResponse.clone());
+    });
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      affinityBindings({
+        streaming: {
+          preferredTargets: ["anthropic:claude-haiku-4-5"]
+        },
+        toolUse: {
+          preferredTargets: ["openai:gpt-4.1-mini"]
+        }
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    // No matching affinity → default order (openai primary from alias)
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "gpt-4.1-mini"
+    });
+  });
+
+  it("routes streaming tool-use requests with streaming affinity taking precedence when both classes match", async () => {
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("openai")) {
+        return Promise.resolve(createOpenaiStreamingResponse());
+      }
+      return Promise.resolve(createAnthropicStreamingResponse());
+    });
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: true,
+          messages: [{ role: "user", content: "hi" }],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "get_weather",
+                description: "Get weather",
+                parameters: { type: "object", properties: {} }
+              }
+            }
+          ]
+        })
+      },
+      affinityBindings({
+        streaming: {
+          preferredTargets: ["anthropic:claude-haiku-4-5"]
+        },
+        toolUse: {
+          preferredTargets: ["openai:gpt-4.1-mini"]
+        }
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    // Both streaming and toolUse match.
+    // anthropic gets streaming preferred (-1), openai gets toolUse preferred (-1).
+    // Neither has a net advantage over the other from affinity alone,
+    // so health_priority falls through to original order (openai first from alias).
+    // But since both have equal affinity, the sort is stable and openai comes first.
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+  });
+
+  it("applies avoided targets correctly to deprioritize a provider", async () => {
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("openai")) {
+        return Promise.resolve(openaiBufferedResponse.clone());
+      }
+      return Promise.resolve(anthropicBufferedResponse.clone());
+    });
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [
+            { role: "user", content: "first" },
+            { role: "assistant", content: "ok" },
+            { role: "user", content: "second" }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "health_priority",
+            requestClassAffinity: {
+              multiTurn: {
+                avoidedTargets: ["openai:gpt-4.1-mini"]
+              }
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    // multiTurn is active (3 messages), openai is avoided → anthropic selected
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.anthropic.com/v1/messages"
+    );
+    await expect(readJson(response)).resolves.toMatchObject({
+      model: "claude-haiku-4-5"
+    });
+  });
+
+  it("does not apply affinity when no request class flags are active", async () => {
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("openai")) {
+        return Promise.resolve(openaiBufferedResponse.clone());
+      }
+      return Promise.resolve(anthropicBufferedResponse.clone());
+    });
+
+    const app = createApp({ fetcher });
+
+    // Simple 2-message request: streaming=false, no tools, no structured output,
+    // no reasoning, multiTurn=false → no affinity flags active
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "assistant-default",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES:
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "assistant-default": ["anthropic:claude-haiku-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "assistant-default": {
+            strategy: "health_priority",
+            requestClassAffinity: {
+              streaming: {
+                preferredTargets: ["anthropic:claude-haiku-4-5"]
+              },
+              toolUse: {
+                preferredTargets: ["openai:gpt-4.1-mini"]
+              },
+              multiTurn: {
+                avoidedTargets: ["openai:gpt-4.1-mini"]
+              }
+            }
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    // No flags active → default order (openai primary from alias)
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/chat/completions"
+    );
+  });
+});
