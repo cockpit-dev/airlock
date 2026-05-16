@@ -26,8 +26,7 @@ import {
 import { enforceGatewayKeyRequestQuota } from "../gateway-key-quota.js";
 import {
   assertGatewayKeyTokenUsageAvailable,
-  enforceGatewayKeyTokenQuotaPrecheck
-  ,
+  enforceGatewayKeyTokenQuotaPrecheck,
   reconcileGatewayKeyTokenQuotaReservation,
   releaseGatewayKeyTokenQuotaReservation,
   reserveGatewayKeyTokenQuota
@@ -40,6 +39,7 @@ import {
 import { parseRequestShapingExtension } from "../request-extensions.js";
 import {
   emitGatewayRequestErrorTelemetry,
+  emitGatewayRequestUnknownErrorTelemetry,
   emitGatewayRequestSuccessTelemetry
 } from "../telemetry.js";
 import type { CreateAppOptions } from "../app.js";
@@ -118,7 +118,11 @@ export async function handleMessages(
   const requestShaping = parseRequestShapingExtension(
     parsed.airlock?.requestShaping
   );
-  await enforceGatewayKeyTokenQuotaPrecheck(context.env, gatewayApiKey, requestId);
+  await enforceGatewayKeyTokenQuotaPrecheck(
+    context.env,
+    gatewayApiKey,
+    requestId
+  );
   const tokenReservation = await reserveGatewayKeyTokenQuota(
     context.env,
     gatewayApiKey,
@@ -134,7 +138,8 @@ export async function handleMessages(
     config.providerTimeoutMs
   );
   const circuitBreakerBackend =
-    config.providerCircuitBreakerPersistent && context.env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER
+    config.providerCircuitBreakerPersistent &&
+    context.env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER
       ? createPersistentCircuitBreakerBackend(
           context.env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER
         )
@@ -163,20 +168,24 @@ export async function handleMessages(
           totalTokens: number;
         }
       | undefined;
-    const streamExecution = executeRoutedStreamRequest(route, canonicalRequest, {
-      config,
-      gatewayApiKey,
-      requestId,
-      requestMode: "openai_responses",
-      ...(circuitBreakerBackend ? { circuitBreakerBackend } : {}),
-      onAttemptTarget(target) {
-        attemptedTarget = target;
-      },
-      routingMetadata,
-      ...(now ? { now } : {}),
-      ...(requestShaping ? { requestShaping } : {}),
-      ...(fetcher ? { fetcher } : {})
-    });
+    const streamExecution = executeRoutedStreamRequest(
+      route,
+      canonicalRequest,
+      {
+        config,
+        gatewayApiKey,
+        requestId,
+        requestMode: "openai_responses",
+        ...(circuitBreakerBackend ? { circuitBreakerBackend } : {}),
+        onAttemptTarget(target) {
+          attemptedTarget = target;
+        },
+        routingMetadata,
+        ...(now ? { now } : {}),
+        ...(requestShaping ? { requestShaping } : {}),
+        ...(fetcher ? { fetcher } : {})
+      }
+    );
     const streamIterator = streamExecution[Symbol.asyncIterator]();
     const didUseFallback = () => {
       return (
@@ -192,8 +201,8 @@ export async function handleMessages(
         requestId,
         tokenReservation
       );
+      context.set("telemetryErrorEmitted", true);
       if (error instanceof GatewayError) {
-        context.set("telemetryErrorEmitted", true);
         await emitGatewayRequestErrorTelemetry(
           {
             telemetrySink,
@@ -211,6 +220,21 @@ export async function handleMessages(
           },
           error
         );
+      } else {
+        await emitGatewayRequestUnknownErrorTelemetry({
+          telemetrySink,
+          requestId,
+          routePath: "/v1/messages",
+          mode: config.mode,
+          startedAt: requestStartedAt,
+          stream: true,
+          statusCode: 500,
+          gatewayApiKey,
+          externalModel: route.externalModel,
+          providerTarget: attemptedTarget,
+          fallbackUsed: didUseFallback(),
+          ...routingSignals()
+        });
       }
     };
     const writeStreamEvent = async (
@@ -376,6 +400,25 @@ export async function handleMessages(
         },
         error
       );
+    } else {
+      context.set("telemetryErrorEmitted", true);
+      await emitGatewayRequestUnknownErrorTelemetry({
+        telemetrySink,
+        requestId,
+        routePath: "/v1/messages",
+        mode: config.mode,
+        startedAt: requestStartedAt,
+        stream: false,
+        statusCode: 500,
+        gatewayApiKey,
+        externalModel: route.externalModel,
+        providerTarget: attemptedTarget,
+        fallbackUsed:
+          attemptedTarget !== undefined &&
+          (attemptedTarget.provider !== route.target.provider ||
+            attemptedTarget.providerModel !== route.target.providerModel),
+        ...routingSignals()
+      });
     }
 
     throw error;

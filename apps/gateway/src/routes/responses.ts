@@ -26,8 +26,7 @@ import {
 import { enforceGatewayKeyRequestQuota } from "../gateway-key-quota.js";
 import {
   assertGatewayKeyTokenUsageAvailable,
-  enforceGatewayKeyTokenQuotaPrecheck
-  ,
+  enforceGatewayKeyTokenQuotaPrecheck,
   reconcileGatewayKeyTokenQuotaReservation,
   releaseGatewayKeyTokenQuotaReservation,
   reserveGatewayKeyTokenQuota
@@ -40,6 +39,7 @@ import {
 import { parseRequestShapingExtension } from "../request-extensions.js";
 import {
   emitGatewayRequestErrorTelemetry,
+  emitGatewayRequestUnknownErrorTelemetry,
   emitGatewayRequestSuccessTelemetry
 } from "../telemetry.js";
 import type { CreateAppOptions } from "../app.js";
@@ -142,7 +142,11 @@ export async function handleResponses(
   const requestShaping = parseRequestShapingExtension(
     parsed.airlock?.requestShaping
   );
-  await enforceGatewayKeyTokenQuotaPrecheck(context.env, gatewayApiKey, requestId);
+  await enforceGatewayKeyTokenQuotaPrecheck(
+    context.env,
+    gatewayApiKey,
+    requestId
+  );
   const tokenReservation = await reserveGatewayKeyTokenQuota(
     context.env,
     gatewayApiKey,
@@ -158,7 +162,8 @@ export async function handleResponses(
     config.providerTimeoutMs
   );
   const circuitBreakerBackend =
-    config.providerCircuitBreakerPersistent && context.env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER
+    config.providerCircuitBreakerPersistent &&
+    context.env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER
       ? createPersistentCircuitBreakerBackend(
           context.env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER
         )
@@ -198,20 +203,24 @@ export async function handleResponses(
           totalTokens: number;
         }
       | undefined;
-    const streamExecution = executeRoutedStreamRequest(route, canonicalRequest, {
-      config,
-      gatewayApiKey,
-      requestId,
-      requestMode: "openai_responses",
-      ...(circuitBreakerBackend ? { circuitBreakerBackend } : {}),
-      onAttemptTarget(target) {
-        attemptedTarget = target;
-      },
-      routingMetadata,
-      ...(now ? { now } : {}),
-      ...(requestShaping ? { requestShaping } : {}),
-      ...(fetcher ? { fetcher } : {})
-    });
+    const streamExecution = executeRoutedStreamRequest(
+      route,
+      canonicalRequest,
+      {
+        config,
+        gatewayApiKey,
+        requestId,
+        requestMode: "openai_responses",
+        ...(circuitBreakerBackend ? { circuitBreakerBackend } : {}),
+        onAttemptTarget(target) {
+          attemptedTarget = target;
+        },
+        routingMetadata,
+        ...(now ? { now } : {}),
+        ...(requestShaping ? { requestShaping } : {}),
+        ...(fetcher ? { fetcher } : {})
+      }
+    );
     const streamIterator = streamExecution[Symbol.asyncIterator]();
     const didUseFallback = () => {
       return (
@@ -227,8 +236,8 @@ export async function handleResponses(
         requestId,
         tokenReservation
       );
+      context.set("telemetryErrorEmitted", true);
       if (error instanceof GatewayError) {
-        context.set("telemetryErrorEmitted", true);
         await emitGatewayRequestErrorTelemetry(
           {
             telemetrySink,
@@ -246,6 +255,21 @@ export async function handleResponses(
           },
           error
         );
+      } else {
+        await emitGatewayRequestUnknownErrorTelemetry({
+          telemetrySink,
+          requestId,
+          routePath: "/v1/responses",
+          mode: config.mode,
+          startedAt: requestStartedAt,
+          stream: true,
+          statusCode: 500,
+          gatewayApiKey,
+          externalModel: route.externalModel,
+          providerTarget: attemptedTarget,
+          fallbackUsed: didUseFallback(),
+          ...routingSignals()
+        });
       }
     };
     const writeStreamEvent = async (
@@ -308,7 +332,8 @@ export async function handleResponses(
         sequenceNumber: responsesSequenceNumber,
         outputIndex:
           event.type === "tool_call_delta"
-            ? (streamedToolCalls.get(event.toolCallId)?.outputIndex ?? event.toolIndex)
+            ? (streamedToolCalls.get(event.toolCallId)?.outputIndex ??
+              event.toolIndex)
             : 0,
         contentIndex: 0,
         ...(startedTextOutput ? { startedTextOutput } : {}),
@@ -325,17 +350,19 @@ export async function handleResponses(
               ...(startedToolCallIds.has(event.toolCallId) &&
               streamedToolCalls.get(event.toolCallId) !== undefined
                 ? {
-                    toolCallArguments:
-                      streamedToolCalls.get(event.toolCallId)!.toolCallArguments
+                    toolCallArguments: streamedToolCalls.get(event.toolCallId)!
+                      .toolCallArguments
                   }
                 : {})
             }
           : {}),
         ...(streamedToolCalls.size > 0
           ? {
-              toolCalls: Array.from(streamedToolCalls.values()).sort((left, right) => {
-                return left.outputIndex - right.outputIndex;
-              })
+              toolCalls: Array.from(streamedToolCalls.values()).sort(
+                (left, right) => {
+                  return left.outputIndex - right.outputIndex;
+                }
+              )
             }
           : {}),
         ...(parallelToolCallsState !== undefined
@@ -496,6 +523,25 @@ export async function handleResponses(
         },
         error
       );
+    } else {
+      context.set("telemetryErrorEmitted", true);
+      await emitGatewayRequestUnknownErrorTelemetry({
+        telemetrySink,
+        requestId,
+        routePath: "/v1/responses",
+        mode: config.mode,
+        startedAt: requestStartedAt,
+        stream: false,
+        statusCode: 500,
+        gatewayApiKey,
+        externalModel: route.externalModel,
+        providerTarget: attemptedTarget,
+        fallbackUsed:
+          attemptedTarget !== undefined &&
+          (attemptedTarget.provider !== route.target.provider ||
+            attemptedTarget.providerModel !== route.target.providerModel),
+        ...routingSignals()
+      });
     }
 
     throw error;
@@ -542,7 +588,11 @@ export async function handleResponses(
     ...routingSignals()
   });
 
-  return context.json(encodeCanonicalToOpenAIResponsesResponse(canonicalResponse), 200, {
-    "x-request-id": requestId
-  });
+  return context.json(
+    encodeCanonicalToOpenAIResponsesResponse(canonicalResponse),
+    200,
+    {
+      "x-request-id": requestId
+    }
+  );
 }

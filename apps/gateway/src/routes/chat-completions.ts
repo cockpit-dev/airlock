@@ -27,8 +27,7 @@ import {
 import { enforceGatewayKeyRequestQuota } from "../gateway-key-quota.js";
 import {
   assertGatewayKeyTokenUsageAvailable,
-  enforceGatewayKeyTokenQuotaPrecheck
-  ,
+  enforceGatewayKeyTokenQuotaPrecheck,
   reconcileGatewayKeyTokenQuotaReservation,
   releaseGatewayKeyTokenQuotaReservation,
   reserveGatewayKeyTokenQuota
@@ -41,7 +40,8 @@ import {
 import { parseRequestShapingExtension } from "../request-extensions.js";
 import {
   emitGatewayRequestSuccessTelemetry,
-  emitGatewayRequestErrorTelemetry
+  emitGatewayRequestErrorTelemetry,
+  emitGatewayRequestUnknownErrorTelemetry
 } from "../telemetry.js";
 import type { CreateAppOptions } from "../app.js";
 import {
@@ -147,7 +147,11 @@ export async function handleChatCompletions(
   const requestShaping = parseRequestShapingExtension(
     parsed.airlock?.requestShaping
   );
-  await enforceGatewayKeyTokenQuotaPrecheck(context.env, gatewayApiKey, requestId);
+  await enforceGatewayKeyTokenQuotaPrecheck(
+    context.env,
+    gatewayApiKey,
+    requestId
+  );
   const tokenReservation = await reserveGatewayKeyTokenQuota(
     context.env,
     gatewayApiKey,
@@ -163,7 +167,8 @@ export async function handleChatCompletions(
     config.providerTimeoutMs
   );
   const circuitBreakerBackend =
-    config.providerCircuitBreakerPersistent && context.env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER
+    config.providerCircuitBreakerPersistent &&
+    context.env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER
       ? createPersistentCircuitBreakerBackend(
           context.env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER
         )
@@ -188,19 +193,23 @@ export async function handleChatCompletions(
           totalTokens: number;
         }
       | undefined;
-    const streamExecution = executeRoutedStreamRequest(route, canonicalRequest, {
-      config,
-      gatewayApiKey,
-      requestId,
-      ...(circuitBreakerBackend ? { circuitBreakerBackend } : {}),
-      onAttemptTarget(target) {
-        attemptedTarget = target;
-      },
-      routingMetadata,
-      ...(now ? { now } : {}),
-      ...(requestShaping ? { requestShaping } : {}),
-      ...(fetcher ? { fetcher } : {})
-    });
+    const streamExecution = executeRoutedStreamRequest(
+      route,
+      canonicalRequest,
+      {
+        config,
+        gatewayApiKey,
+        requestId,
+        ...(circuitBreakerBackend ? { circuitBreakerBackend } : {}),
+        onAttemptTarget(target) {
+          attemptedTarget = target;
+        },
+        routingMetadata,
+        ...(now ? { now } : {}),
+        ...(requestShaping ? { requestShaping } : {}),
+        ...(fetcher ? { fetcher } : {})
+      }
+    );
     const streamIterator = streamExecution[Symbol.asyncIterator]();
     const didUseFallback = () => {
       return (
@@ -216,8 +225,8 @@ export async function handleChatCompletions(
         requestId,
         tokenReservation
       );
+      context.set("telemetryErrorEmitted", true);
       if (error instanceof GatewayError) {
-        context.set("telemetryErrorEmitted", true);
         await emitGatewayRequestErrorTelemetry(
           {
             telemetrySink,
@@ -235,6 +244,21 @@ export async function handleChatCompletions(
           },
           error
         );
+      } else {
+        await emitGatewayRequestUnknownErrorTelemetry({
+          telemetrySink,
+          requestId,
+          routePath: "/v1/chat/completions",
+          mode: config.mode,
+          startedAt: requestStartedAt,
+          stream: true,
+          statusCode: 500,
+          gatewayApiKey,
+          externalModel: route.externalModel,
+          providerTarget: attemptedTarget,
+          fallbackUsed: didUseFallback(),
+          ...routingSignals()
+        });
       }
     };
     const writeStreamEvent = async (
@@ -398,6 +422,25 @@ export async function handleChatCompletions(
         },
         error
       );
+    } else {
+      context.set("telemetryErrorEmitted", true);
+      await emitGatewayRequestUnknownErrorTelemetry({
+        telemetrySink,
+        requestId,
+        routePath: "/v1/chat/completions",
+        mode: config.mode,
+        startedAt: requestStartedAt,
+        stream: false,
+        statusCode: 500,
+        gatewayApiKey,
+        externalModel: route.externalModel,
+        providerTarget: attemptedTarget,
+        fallbackUsed:
+          attemptedTarget !== undefined &&
+          (attemptedTarget.provider !== route.target.provider ||
+            attemptedTarget.providerModel !== route.target.providerModel),
+        ...routingSignals()
+      });
     }
 
     throw error;
@@ -444,7 +487,11 @@ export async function handleChatCompletions(
     ...routingSignals()
   });
 
-  return context.json(encodeCanonicalToOpenAIChatResponse(canonicalResponse), 200, {
-    "x-request-id": requestId
-  });
+  return context.json(
+    encodeCanonicalToOpenAIChatResponse(canonicalResponse),
+    200,
+    {
+      "x-request-id": requestId
+    }
+  );
 }

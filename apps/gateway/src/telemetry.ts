@@ -47,7 +47,9 @@ function createBaseEvent(
     stream: context.stream,
     durationMs: Math.max(0, Math.round(getTelemetryNow() - context.startedAt)),
     statusCode: context.statusCode,
-    ...(context.gatewayApiKey ? { gatewayKeyId: context.gatewayApiKey.id } : {}),
+    ...(context.gatewayApiKey
+      ? { gatewayKeyId: context.gatewayApiKey.id }
+      : {}),
     ...(context.externalModel ? { externalModel: context.externalModel } : {}),
     ...(context.providerTarget
       ? {
@@ -59,8 +61,12 @@ function createBaseEvent(
       ? { fallbackUsed: context.fallbackUsed }
       : {}),
     ...(context.usage ? { usage: context.usage } : {}),
-    ...(context.routingStrategy ? { routingStrategy: context.routingStrategy } : {}),
-    ...(context.attemptCount !== undefined ? { attemptCount: context.attemptCount } : {}),
+    ...(context.routingStrategy
+      ? { routingStrategy: context.routingStrategy }
+      : {}),
+    ...(context.attemptCount !== undefined
+      ? { attemptCount: context.attemptCount }
+      : {}),
     ...(context.primaryTargetOpen !== undefined
       ? { primaryTargetOpen: context.primaryTargetOpen }
       : {})
@@ -86,6 +92,18 @@ export async function emitGatewayRequestErrorTelemetry(
     errorCode: error.code,
     errorCategory: error.category,
     retryable: error.retryable
+  });
+}
+
+export async function emitGatewayRequestUnknownErrorTelemetry(
+  context: RequestTelemetryContext
+): Promise<void> {
+  await emitTelemetryEvent(context.telemetrySink, {
+    ...createBaseEvent(context),
+    outcome: "error",
+    errorCode: "internal_error",
+    errorCategory: "internal",
+    retryable: false
   });
 }
 
