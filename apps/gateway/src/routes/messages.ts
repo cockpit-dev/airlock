@@ -334,12 +334,16 @@ export async function handleMessages(
       try {
         await handleStreamingError(error);
       } finally {
-        await releaseGatewayKeyConcurrencyLease(
-          context.env,
-          gatewayApiKey,
-          concurrencyLeaseId,
-          requestId
-        );
+        try {
+          await releaseGatewayKeyConcurrencyLease(
+            context.env,
+            gatewayApiKey,
+            concurrencyLeaseId,
+            requestId
+          );
+        } catch {
+          // Lease release failure must not mask the original response
+        }
       }
       throw error;
     }
@@ -394,12 +398,16 @@ export async function handleMessages(
             // Controller may already be closed or errored
           }
         } finally {
-          await releaseGatewayKeyConcurrencyLease(
-            context.env,
-            gatewayApiKey,
-            concurrencyLeaseId,
-            requestId
-          );
+          try {
+            await releaseGatewayKeyConcurrencyLease(
+              context.env,
+              gatewayApiKey,
+              concurrencyLeaseId,
+              requestId
+            );
+          } catch {
+            // Lease release failure must not mask the original response
+          }
         }
       },
       cancel() {
@@ -505,12 +513,16 @@ export async function handleMessages(
 
     throw error;
   } finally {
-    await releaseGatewayKeyConcurrencyLease(
-      context.env,
-      gatewayApiKey,
-      concurrencyLeaseId,
-      requestId
-    );
+    try {
+      await releaseGatewayKeyConcurrencyLease(
+        context.env,
+        gatewayApiKey,
+        concurrencyLeaseId,
+        requestId
+      );
+    } catch {
+      // Lease release failure must not mask the original response
+    }
   }
 
   assertGatewayKeyTokenUsageAvailable(
