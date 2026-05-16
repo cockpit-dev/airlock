@@ -37591,6 +37591,45 @@ describe("enhanced /readyz", () => {
   });
 });
 
+describe("admin endpoint rate limiting", () => {
+  it("returns 429 when admin rate limit is exceeded", async () => {
+    const { AdminRateLimiter } = await import("./admin-rate-limit.js");
+    const limiter = new AdminRateLimiter(2, 60_000);
+    const app = createApp({ fetcher: vi.fn(), adminRateLimiter: limiter });
+
+    const adminBindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    // First two requests should succeed
+    const response1 = await app.request(
+      "http://localhost/_airlock/config",
+      { headers: { authorization: "Bearer admin-secret" } },
+      adminBindings
+    );
+    expect(response1.status).toBe(200);
+
+    const response2 = await app.request(
+      "http://localhost/_airlock/status",
+      { headers: { authorization: "Bearer admin-secret" } },
+      adminBindings
+    );
+    expect(response2.status).toBe(200);
+
+    // Third request should be rate limited
+    const response3 = await app.request(
+      "http://localhost/_airlock/config",
+      { headers: { authorization: "Bearer admin-secret" } },
+      adminBindings
+    );
+    expect(response3.status).toBe(429);
+    const body = (await readJson(response3)) as Record<string, unknown>;
+    expect(body).toHaveProperty("error.code", "admin_rate_limit_exceeded");
+  });
+});
+
 describe("request-class-aware routing affinity", () => {
   const openaiBufferedResponse = new Response(
     JSON.stringify({
