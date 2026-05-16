@@ -106,7 +106,29 @@ export async function handleResponses(
     requestId
   );
 
-  const json: unknown = await context.req.json();
+  const contentType = context.req.header("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    throw new GatewayError("Content-Type must be application/json", {
+      code: "request_invalid_content_type",
+      category: "request",
+      httpStatus: 415,
+      retryable: false,
+      requestId
+    });
+  }
+
+  let json: unknown;
+  try {
+    json = await context.req.json();
+  } catch {
+    throw new GatewayError("Request body must be valid JSON", {
+      code: "request_invalid_json",
+      category: "request",
+      httpStatus: 400,
+      retryable: false,
+      requestId
+    });
+  }
   assertAllowedOpenAITopLevelFields(
     json,
     requestId,
@@ -466,6 +488,12 @@ export async function handleResponses(
       },
       cancel() {
         void streamIterator.return?.();
+        void releaseGatewayKeyTokenQuotaReservation(
+          context.env,
+          gatewayApiKey,
+          requestId,
+          tokenReservation
+        );
       }
     });
 
