@@ -441,6 +441,8 @@ export class GeminiProviderAdapter implements ProviderAdapter {
             try {
               payload = JSON.parse(data) as GeminiGenerateContentResponse;
             } catch {
+              context.malformedSseEventCount =
+                (context.malformedSseEventCount ?? 0) + 1;
               continue;
             }
             const responseId = payload.responseId ?? activeResponseId;

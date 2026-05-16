@@ -296,7 +296,7 @@ describe("createAnalyticsEngineTelemetryDataPoint", () => {
         "",
         ""
       ],
-      doubles: [42, 200, 0, 12, 8, 20, 0, 0, 0, 0]
+      doubles: [42, 200, 0, 12, 8, 20, 0, 0, 0, 0, 0]
     });
   });
 
@@ -401,5 +401,39 @@ describe("createAnalyticsEngineTelemetryDataPoint", () => {
     });
 
     expect(dataPoint.blobs).toContain("");
+  });
+
+  it("includes malformedSseEventCount when present", () => {
+    const dataPoint = createAnalyticsEngineTelemetryDataPoint({
+      kind: "gateway_request",
+      occurredAt: "2026-05-16T00:00:00.000Z",
+      requestId: "req_malformed_sse",
+      mode: "scale",
+      routePath: "/v1/chat/completions",
+      stream: true,
+      durationMs: 3500,
+      statusCode: 200,
+      outcome: "success",
+      malformedSseEventCount: 3
+    });
+
+    expect(dataPoint.doubles).toContain(3);
+  });
+
+  it("defaults malformedSseEventCount to 0 when absent", () => {
+    const dataPoint = createAnalyticsEngineTelemetryDataPoint({
+      kind: "gateway_request",
+      occurredAt: "2026-05-16T00:00:00.000Z",
+      requestId: "req_no_malformed",
+      mode: "free",
+      routePath: "/v1/chat/completions",
+      stream: false,
+      durationMs: 10,
+      statusCode: 200,
+      outcome: "success"
+    });
+
+    const lastDouble = dataPoint.doubles[dataPoint.doubles.length - 1];
+    expect(lastDouble).toBe(0);
   });
 });

@@ -714,6 +714,8 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                 ? (JSON.parse(currentData) as Record<string, unknown>)
                 : {};
           } catch {
+            context.malformedSseEventCount =
+              (context.malformedSseEventCount ?? 0) + 1;
             continue;
           }
 

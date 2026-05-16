@@ -42,6 +42,8 @@ export interface ProviderRequestContext {
   streamIdleTimeoutMs?: number;
   requestShaping?: RequestShapingProfile;
   requestMode?: "default" | "openai_responses";
+  /** Mutable counter incremented by provider adapters when an SSE frame fails JSON.parse. */
+  malformedSseEventCount?: number;
 }
 
 export interface ProviderAdapter {

@@ -36,7 +36,8 @@ export function createAnalyticsEngineTelemetryDataPoint(
       event.attemptCount ?? 0,
       event.primaryTargetOpen ? 1 : 0,
       event.timeoutBudgetMs ?? 0,
-      event.timeoutBudgetRemainingMs ?? 0
+      event.timeoutBudgetRemainingMs ?? 0,
+      event.malformedSseEventCount ?? 0
     ]
   };
 }

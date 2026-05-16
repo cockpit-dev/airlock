@@ -31,6 +31,7 @@ export interface RequestTelemetryContext {
   primaryTargetOpen?: boolean | undefined;
   timeoutBudgetMs?: number | undefined;
   timeoutBudgetRemainingMs?: number | undefined;
+  malformedSseEventCount?: number | undefined;
 }
 
 function getTelemetryNow(): number {
@@ -77,6 +78,9 @@ function createBaseEvent(
       : {}),
     ...(context.timeoutBudgetRemainingMs !== undefined
       ? { timeoutBudgetRemainingMs: context.timeoutBudgetRemainingMs }
+      : {}),
+    ...(context.malformedSseEventCount !== undefined
+      ? { malformedSseEventCount: context.malformedSseEventCount }
       : {})
   };
 }

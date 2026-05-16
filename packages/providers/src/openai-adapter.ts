@@ -1237,6 +1237,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
             try {
               payload = JSON.parse(data) as typeof payload;
             } catch {
+              context.malformedSseEventCount =
+                (context.malformedSseEventCount ?? 0) + 1;
               continue;
             }
             const choice = payload.choices?.[0];
@@ -2383,6 +2385,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
             try {
               payload = JSON.parse(data) as typeof payload;
             } catch {
+              context.malformedSseEventCount =
+                (context.malformedSseEventCount ?? 0) + 1;
               continue;
             }
 

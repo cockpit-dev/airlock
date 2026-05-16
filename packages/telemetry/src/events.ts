@@ -26,7 +26,8 @@ const gatewayRequestTelemetryBaseSchema = z.object({
   attemptCount: z.number().int().min(1).optional(),
   primaryTargetOpen: z.boolean().optional(),
   timeoutBudgetMs: z.number().int().min(0).optional(),
-  timeoutBudgetRemainingMs: z.number().int().min(0).optional()
+  timeoutBudgetRemainingMs: z.number().int().min(0).optional(),
+  malformedSseEventCount: z.number().int().min(0).optional()
 });
 
 const gatewayRequestTelemetrySuccessSchema =

@@ -53,6 +53,7 @@ export type RoutingMetadataAccumulator = {
   attemptCount?: number;
   timeoutBudgetMs?: number;
   timeoutBudgetRemainingMs?: number;
+  malformedSseEventCount?: number;
 };
 
 const DEFAULT_PROVIDER_CIRCUIT_BREAKER_THRESHOLD = 3;
@@ -1003,23 +1004,31 @@ export async function* executeRoutedStreamRequest(
             route,
             target
           );
+          const streamContext = {
+            requestId,
+            timeoutMs: deadline - now(),
+            streamIdleTimeoutMs: config.providerStreamIdleTimeoutMs,
+            requestMode,
+            malformedSseEventCount: 0,
+            ...(streamTargetShaping
+              ? { requestShaping: streamTargetShaping }
+              : {})
+          };
           for await (const event of adapter.stream(
             currentStreamAttemptRequest,
-            {
-              requestId,
-              timeoutMs: deadline - now(),
-              streamIdleTimeoutMs: config.providerStreamIdleTimeoutMs,
-              requestMode,
-              ...(streamTargetShaping
-                ? { requestShaping: streamTargetShaping }
-                : {})
-            }
+            streamContext
           )) {
             if (event.type === "response_completed") {
               completedUsageTotalTokens = event.usage?.totalTokens;
             }
             yieldedAnyEvent = true;
             yield event;
+          }
+
+          if (routingMetadataRef && streamContext.malformedSseEventCount > 0) {
+            routingMetadataRef.malformedSseEventCount =
+              (routingMetadataRef.malformedSseEventCount ?? 0) +
+              streamContext.malformedSseEventCount;
           }
 
           await circuitBreakerBackend.recordSuccess(

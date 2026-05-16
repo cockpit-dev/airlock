@@ -220,7 +220,8 @@ export async function handleResponses(
     attemptCount: routingMetadata.attemptCount,
     primaryTargetOpen: routingMetadata.primaryTargetOpen,
     timeoutBudgetMs: routingMetadata.timeoutBudgetMs,
-    timeoutBudgetRemainingMs: routingMetadata.timeoutBudgetRemainingMs
+    timeoutBudgetRemainingMs: routingMetadata.timeoutBudgetRemainingMs,
+    malformedSseEventCount: routingMetadata.malformedSseEventCount
   });
 
   if (canonicalRequest.stream) {
