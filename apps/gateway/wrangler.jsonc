@@ -31,6 +31,10 @@
       {
         "name": "AIRLOCK_IP_RATE_LIMIT",
         "class_name": "IpRateLimitDurableObject"
+      },
+      {
+        "name": "AIRLOCK_CONFIG_STORE",
+        "class_name": "GatewayConfigStoreDurableObject"
       }
     ]
   },
@@ -62,6 +66,10 @@
     {
       "tag": "v7",
       "new_sqlite_classes": ["IpRateLimitDurableObject"]
+    },
+    {
+      "tag": "v8",
+      "new_sqlite_classes": ["GatewayConfigStoreDurableObject"]
     }
   ],
   "queues": {

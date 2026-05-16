@@ -1,5 +1,6 @@
 import { createApp } from "./app.js";
 import { ProviderCircuitBreakerDurableObject } from "./circuit-breaker.js";
+import { GatewayConfigStoreDurableObject } from "./gateway-config-store.js";
 import type { GatewayBindings } from "./env.js";
 import { gatewayEnvSchema } from "./env.js";
 import { GatewayKeyConcurrencyDurableObject } from "./gateway-key-concurrency.js";
@@ -71,3 +72,4 @@ export {
 export { GatewayKeyTokenQuotaDurableObject };
 export { ProviderCircuitBreakerDurableObject };
 export { IpRateLimitDurableObject };
+export { GatewayConfigStoreDurableObject };

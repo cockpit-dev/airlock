@@ -17,6 +17,7 @@
       <a href="/keys" class="hover:text-gray-300">Keys</a>
       <a href="/routes" class="hover:text-gray-300">Routes</a>
       <a href="/config" class="hover:text-gray-300">Config</a>
+      <a href="/config/providers" class="hover:text-gray-300">Providers</a>
     </div>
   </div>
   <div class="flex items-center gap-4 text-sm text-gray-400">

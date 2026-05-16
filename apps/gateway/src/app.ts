@@ -22,6 +22,7 @@ import { createRequestId, resolveRequestId } from "./request-id.js";
 import { logRequest } from "./request-logger.js";
 import { getMetricsCollector } from "./metrics.js";
 import { registerAdminConfigRoutes } from "./routes/admin-config.js";
+import { registerAdminConfigManageRoutes } from "./routes/admin-config-manage.js";
 import { registerAdminKeyGovernanceRoutes } from "./routes/admin-key-governance.js";
 import { registerAdminGatewayStatusRoutes } from "./routes/admin-gateway-status.js";
 import { registerAdminMetricsRoutes } from "./routes/admin-metrics.js";
@@ -220,6 +221,7 @@ export function createApp(options: CreateAppOptions = {}) {
   registerAdminKeyGovernanceRoutes(app);
   registerAdminGatewayStatusRoutes(app);
   registerAdminConfigRoutes(app);
+  registerAdminConfigManageRoutes(app);
   registerAdminMetricsRoutes(app);
   registerAdminRoutingHealthRoutes(
     app,

@@ -24,6 +24,12 @@ import { GatewayError } from "@airlock/shared";
 import type { GatewayBindings } from "./env.js";
 
 import { gatewayEnvSchema } from "./env.js";
+import {
+  fetchConfigStoreSnapshot,
+  type DashboardConfigOverlay,
+  type DashboardProvidersConfig,
+  type StoredConfigSnapshot
+} from "./gateway-config-store.js";
 
 export type ModelGroupMap = Record<string, string[]>;
 
@@ -326,7 +332,8 @@ export function computeConfigFingerprint(bindings: GatewayBindings): string {
     bindings.AIRLOCK_IP_RATE_LIMIT !== undefined ? "1" : "0",
     bindings.AIRLOCK_IP_RATE_LIMIT_POLICY ?? "",
     bindings.AIRLOCK_TELEMETRY ?? "",
-    bindings.AIRLOCK_REQUEST_LOGGING ?? ""
+    bindings.AIRLOCK_REQUEST_LOGGING ?? "",
+    bindings.AIRLOCK_CONFIG_STORE !== undefined ? "1" : "0"
   ].join("\0");
 }
 
@@ -579,5 +586,150 @@ function parseGatewayConfigUncached(bindings: GatewayBindings): GatewayConfig {
       baseUrl: env.OPENAI_BASE_URL,
       defaultModel: env.OPENAI_DEFAULT_MODEL
     }
+  };
+}
+
+const DASHBOARD_OVERLAY_TTL_MS = 5_000;
+
+let overlayCache: {
+  snapshot: StoredConfigSnapshot;
+  fetchedAt: number;
+} | undefined;
+
+export function resetDashboardOverlayCache(): void {
+  overlayCache = undefined;
+}
+
+export async function resolveDashboardOverlay(
+  bindings: GatewayBindings
+): Promise<StoredConfigSnapshot | undefined> {
+  const namespace = bindings.AIRLOCK_CONFIG_STORE;
+  if (!namespace) {
+    return undefined;
+  }
+
+  const now = Date.now();
+  if (overlayCache && now - overlayCache.fetchedAt < DASHBOARD_OVERLAY_TTL_MS) {
+    return overlayCache.snapshot;
+  }
+
+  try {
+    const snapshot = await fetchConfigStoreSnapshot(namespace);
+    overlayCache = { snapshot, fetchedAt: now };
+    return snapshot;
+  } catch {
+    return overlayCache?.snapshot;
+  }
+}
+
+export function mergeConfigWithOverlay(
+  base: GatewayConfig,
+  overlay: StoredConfigSnapshot | undefined
+): GatewayConfig {
+  if (!overlay || Object.keys(overlay.sections).length === 0) {
+    return base;
+  }
+
+  let config = base;
+
+  const providersSection = overlay.sections["providers"];
+  if (providersSection) {
+    config = mergeProvidersConfig(config, providersSection.data as DashboardProvidersConfig);
+  }
+
+  const limitsSection = overlay.sections["limits"];
+  if (limitsSection) {
+    config = mergeLimitsConfig(config, limitsSection.data as DashboardLimitsOverlay);
+  }
+
+  return config;
+}
+
+interface DashboardLimitsOverlay {
+  providerTimeoutMs?: number;
+  maxRequestBodyBytes?: number;
+  providerStreamIdleTimeoutMs?: number;
+  providerMaxRetries?: number;
+  providerRetryBackoffMs?: number;
+  providerCircuitBreakerThreshold?: number;
+  providerCircuitBreakerCooldownMs?: number;
+  providerCircuitBreakerPersistent?: boolean;
+}
+
+function mergeProvidersConfig(
+  config: GatewayConfig,
+  providers: DashboardProvidersConfig
+): GatewayConfig {
+  return {
+    ...config,
+    openAI: {
+      ...config.openAI,
+      ...(providers.openai
+        ? {
+            apiKey: providers.openai.apiKey,
+            baseUrl: providers.openai.baseUrl,
+            ...(providers.openai.defaultModel
+              ? { defaultModel: providers.openai.defaultModel }
+              : {})
+          }
+        : {}),
+    },
+    ...(providers.anthropic
+      ? {
+          anthropic: {
+            apiKey: providers.anthropic.apiKey,
+            baseUrl: providers.anthropic.baseUrl,
+            defaultMaxTokens:
+              providers.anthropic.defaultMaxTokens ??
+              config.anthropic?.defaultMaxTokens ??
+              4096
+          }
+        }
+      : config.anthropic
+        ? { anthropic: config.anthropic }
+        : {}),
+    ...(providers.gemini
+      ? {
+          gemini: {
+            apiKey: providers.gemini.apiKey,
+            baseUrl: providers.gemini.baseUrl
+          }
+        }
+      : config.gemini
+        ? { gemini: config.gemini }
+        : {})
+  };
+}
+
+function mergeLimitsConfig(
+  config: GatewayConfig,
+  limits: DashboardLimitsOverlay
+): GatewayConfig {
+  return {
+    ...config,
+    ...(limits.providerTimeoutMs !== undefined
+      ? { providerTimeoutMs: limits.providerTimeoutMs }
+      : {}),
+    ...(limits.maxRequestBodyBytes !== undefined
+      ? { maxRequestBodyBytes: limits.maxRequestBodyBytes }
+      : {}),
+    ...(limits.providerStreamIdleTimeoutMs !== undefined
+      ? { providerStreamIdleTimeoutMs: limits.providerStreamIdleTimeoutMs }
+      : {}),
+    ...(limits.providerMaxRetries !== undefined
+      ? { providerMaxRetries: limits.providerMaxRetries }
+      : {}),
+    ...(limits.providerRetryBackoffMs !== undefined
+      ? { providerRetryBackoffMs: limits.providerRetryBackoffMs }
+      : {}),
+    ...(limits.providerCircuitBreakerThreshold !== undefined
+      ? { providerCircuitBreakerThreshold: limits.providerCircuitBreakerThreshold }
+      : {}),
+    ...(limits.providerCircuitBreakerCooldownMs !== undefined
+      ? { providerCircuitBreakerCooldownMs: limits.providerCircuitBreakerCooldownMs }
+      : {}),
+    ...(limits.providerCircuitBreakerPersistent !== undefined
+      ? { providerCircuitBreakerPersistent: limits.providerCircuitBreakerPersistent }
+      : {})
   };
 }

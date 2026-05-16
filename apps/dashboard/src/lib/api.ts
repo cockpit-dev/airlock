@@ -108,6 +108,32 @@ export class AirlockClient {
   getKeyEvents(keyId: string) {
     return this.request<unknown>(`/_airlock/keys/${keyId}/events`);
   }
+
+  // Config Store Management
+  getConfigStoreSnapshot() {
+    return this.request<ConfigStoreSnapshot>("/_airlock/config/manage");
+  }
+
+  getConfigStoreSection(section: string) {
+    return this.request<ConfigStoreSection>(`/_airlock/config/manage/${section}`);
+  }
+
+  putConfigStoreSection(section: string, data: unknown) {
+    return this.request<ConfigStoreSectionWriteResult>(
+      `/_airlock/config/manage/${section}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data)
+      }
+    );
+  }
+
+  deleteConfigStoreSection(section: string) {
+    return this.request<{ deleted: boolean; section: string }>(
+      `/_airlock/config/manage/${section}`,
+      { method: "DELETE" }
+    );
+  }
 }
 
 export class AuthError extends Error {
@@ -203,6 +229,22 @@ export interface AdminConfigResponse {
     maxRetries: number;
     retryBackoffMs: number;
   };
+}
+
+export interface ConfigStoreSection {
+  data: unknown;
+  updatedAt: number;
+  updatedBy: string;
+  version: number;
+}
+
+export interface ConfigStoreSnapshot {
+  sections: Record<string, ConfigStoreSection>;
+  globalVersion: number;
+}
+
+export interface ConfigStoreSectionWriteResult extends ConfigStoreSection {
+  globalVersion: number;
 }
 
 export interface RoutingHealthResponse {

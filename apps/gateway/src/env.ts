@@ -297,7 +297,20 @@ export const gatewayEnvSchema = z.object({
     .optional(),
 
   /** IP rate limit policy configuration (JSON). Defines per-IP request limits and windows. Optional. */
-  AIRLOCK_IP_RATE_LIMIT_POLICY: z.string().min(1).optional()
+  AIRLOCK_IP_RATE_LIMIT_POLICY: z.string().min(1).optional(),
+
+  /** Durable Object binding for dashboard-driven config storage. Optional; config managed via env vars if absent. */
+  AIRLOCK_CONFIG_STORE: z
+    .custom<{
+      idFromName(name: string): unknown;
+      get(id: unknown): {
+        fetch(request: Request): Promise<Response>;
+      };
+    }>()
+    .optional(),
+
+  /** Google email address for the super admin. Used during OAuth login to auto-assign the super_admin role. Optional. */
+  AIRLOCK_GOOGLE_SUPER_ADMIN_EMAIL: z.string().min(1).optional()
 });
 
 export type GatewayBindings = z.infer<typeof gatewayEnvSchema>;
