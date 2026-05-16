@@ -521,7 +521,21 @@ export async function handleResponses(
           controller.close();
         } catch (error) {
           await handleStreamingError(error);
-          throw error;
+          try {
+            const errorMessage =
+              error instanceof GatewayError
+                ? error.message
+                : "Internal server error";
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ error: { message: errorMessage, type: "internal_error", code: "stream_error" } })}\n\n`
+              )
+            );
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          } catch {
+            // Controller may already be closed or errored
+          }
         } finally {
           await releaseGatewayKeyConcurrencyLease(
             context.env,
