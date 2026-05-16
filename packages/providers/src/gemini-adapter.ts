@@ -109,12 +109,15 @@ export class GeminiProviderAdapter implements ProviderAdapter {
     let response: Response;
 
     try {
-      response = await this.#fetcher(buildRequestUrl(this.#baseUrl, outboundRequest), {
-        method: outboundRequest.method,
-        headers: outboundRequest.headers,
-        body: JSON.stringify(outboundRequest.jsonBody),
-        signal: abortController.signal
-      });
+      response = await this.#fetcher(
+        buildRequestUrl(this.#baseUrl, outboundRequest),
+        {
+          method: outboundRequest.method,
+          headers: outboundRequest.headers,
+          body: JSON.stringify(outboundRequest.jsonBody),
+          signal: abortController.signal
+        }
+      );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         throw new GatewayError("Upstream provider timed out", {
@@ -136,11 +139,17 @@ export class GeminiProviderAdapter implements ProviderAdapter {
     }
 
     if (!response.ok) {
-      const payload = (await response.json()) as {
-        error?: { message?: string };
-      };
+      let errorMessage = "Upstream provider error";
+      try {
+        const payload = (await response.json()) as {
+          error?: { message?: string };
+        };
+        errorMessage = payload.error?.message ?? errorMessage;
+      } catch {
+        // Non-JSON error body — use generic message
+      }
 
-      throw new GatewayError(payload.error?.message ?? "Upstream provider error", {
+      throw new GatewayError(errorMessage, {
         code: "provider_upstream_error",
         category: "provider",
         httpStatus: response.status,
@@ -178,7 +187,7 @@ export class GeminiProviderAdapter implements ProviderAdapter {
     const finishReason =
       toolCalls.length > 0
         ? "tool_calls"
-        : normalizeGeminiFinishReason(candidate?.finishReason) ?? "stop";
+        : (normalizeGeminiFinishReason(candidate?.finishReason) ?? "stop");
 
     return {
       id: payload.responseId ?? `gemini_${context.requestId}`,
@@ -269,12 +278,15 @@ export class GeminiProviderAdapter implements ProviderAdapter {
     let response: Response;
 
     try {
-      response = await this.#fetcher(buildRequestUrl(this.#baseUrl, outboundRequest), {
-        method: outboundRequest.method,
-        headers: outboundRequest.headers,
-        body: JSON.stringify(outboundRequest.jsonBody),
-        signal: abortController.signal
-      });
+      response = await this.#fetcher(
+        buildRequestUrl(this.#baseUrl, outboundRequest),
+        {
+          method: outboundRequest.method,
+          headers: outboundRequest.headers,
+          body: JSON.stringify(outboundRequest.jsonBody),
+          signal: abortController.signal
+        }
+      );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         throw new GatewayError("Upstream provider timed out", {
@@ -292,15 +304,21 @@ export class GeminiProviderAdapter implements ProviderAdapter {
     }
 
     if (!response.ok) {
-      const payload = (await response.json()) as {
-        error?: { message?: string };
-      };
+      let errorMessage = "Upstream provider error";
+      try {
+        const payload = (await response.json()) as {
+          error?: { message?: string };
+        };
+        errorMessage = payload.error?.message ?? errorMessage;
+      } catch {
+        // Non-JSON error body — use generic message
+      }
 
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
       }
 
-      throw new GatewayError(payload.error?.message ?? "Upstream provider error", {
+      throw new GatewayError(errorMessage, {
         code: "provider_upstream_error",
         category: "provider",
         httpStatus: response.status,
@@ -315,14 +333,17 @@ export class GeminiProviderAdapter implements ProviderAdapter {
         clearTimeout(timeoutHandle);
       }
 
-      throw new GatewayError("Upstream provider returned an empty stream body", {
-        code: "provider_upstream_error",
-        category: "provider",
-        httpStatus: 502,
-        retryable: true,
-        provider: "gemini",
-        requestId: context.requestId
-      });
+      throw new GatewayError(
+        "Upstream provider returned an empty stream body",
+        {
+          code: "provider_upstream_error",
+          category: "provider",
+          httpStatus: 502,
+          retryable: true,
+          provider: "gemini",
+          requestId: context.requestId
+        }
+      );
     }
 
     const responseBody = response.body as ReadableStream<Uint8Array>;
@@ -382,7 +403,12 @@ export class GeminiProviderAdapter implements ProviderAdapter {
               continue;
             }
 
-            const payload = JSON.parse(data) as GeminiGenerateContentResponse;
+            let payload: GeminiGenerateContentResponse;
+            try {
+              payload = JSON.parse(data) as GeminiGenerateContentResponse;
+            } catch {
+              continue;
+            }
             const responseId = payload.responseId ?? activeResponseId;
             const model = payload.modelVersion ?? activeModel;
             const candidate = payload.candidates?.[0];
@@ -444,19 +470,25 @@ export class GeminiProviderAdapter implements ProviderAdapter {
               candidate?.finishReason
             );
 
-            if (normalizedFinishReason === "stop" || normalizedFinishReason === "max_tokens") {
+            if (
+              normalizedFinishReason === "stop" ||
+              normalizedFinishReason === "max_tokens"
+            ) {
               yield {
                 type: "response_completed",
                 responseId,
                 model,
-                finishReason: sawToolCall ? "tool_calls" : normalizedFinishReason ?? "stop",
+                finishReason: sawToolCall
+                  ? "tool_calls"
+                  : (normalizedFinishReason ?? "stop"),
                 ...(toolCallsById.size > 0
                   ? { toolCalls: Array.from(toolCallsById.values()) }
                   : {}),
                 ...(payload.usageMetadata
                   ? {
                       usage: {
-                        inputTokens: payload.usageMetadata.promptTokenCount ?? 0,
+                        inputTokens:
+                          payload.usageMetadata.promptTokenCount ?? 0,
                         outputTokens:
                           payload.usageMetadata.candidatesTokenCount ?? 0,
                         totalTokens:
@@ -575,13 +607,23 @@ function buildGeminiRequestBody(request: CanonicalRequest) {
 
       if (message.role === "tool") {
         const matchingToolCall = request.messages
-          .filter((candidate): candidate is Extract<CanonicalRequest["messages"][number], { role: "assistant" }> => {
-            return candidate.role === "assistant";
-          })
+          .filter(
+            (
+              candidate
+            ): candidate is Extract<
+              CanonicalRequest["messages"][number],
+              { role: "assistant" }
+            > => {
+              return candidate.role === "assistant";
+            }
+          )
           .flatMap((candidate) => candidate.toolCalls ?? [])
           .find((toolCall) => toolCall.id === message.toolCallId);
 
-        if (!matchingToolCall || !declaredToolNames.has(matchingToolCall.name)) {
+        if (
+          !matchingToolCall ||
+          !declaredToolNames.has(matchingToolCall.name)
+        ) {
           throw new GatewayError(
             "Provider gemini cannot encode tool replay without a matching declared tool definition",
             {
@@ -654,11 +696,11 @@ function buildGeminiRequestBody(request: CanonicalRequest) {
           }
         }
       : {}),
-    ...((request.maxOutputTokens !== undefined ||
-      request.outputFormat !== undefined ||
-      request.temperature !== undefined ||
-      request.topP !== undefined ||
-      request.stopSequences !== undefined)
+    ...(request.maxOutputTokens !== undefined ||
+    request.outputFormat !== undefined ||
+    request.temperature !== undefined ||
+    request.topP !== undefined ||
+    request.stopSequences !== undefined
       ? {
           generationConfig: {
             ...(request.maxOutputTokens !== undefined
@@ -721,7 +763,11 @@ function parseGeminiToolArguments(
   try {
     const parsed = JSON.parse(value) as unknown;
 
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
       throw new Error("Tool arguments must be a JSON object");
     }
 
@@ -740,13 +786,15 @@ function parseGeminiToolArguments(
   }
 }
 
-function parseGeminiToolResponse(
-  value: string
-): Record<string, unknown> {
+function parseGeminiToolResponse(value: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(value) as unknown;
 
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
       return {
         result: parsed
       };

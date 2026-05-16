@@ -29,9 +29,7 @@ function normalizeOpenAIFinishReason(
   return finishReason === "length" ? "max_tokens" : "stop";
 }
 
-function normalizeOpenAIMessageContent(
-  content: string | null | undefined
-) {
+function normalizeOpenAIMessageContent(content: string | null | undefined) {
   return content ?? "";
 }
 
@@ -86,8 +84,7 @@ function normalizeOpenAIOutputTextLogprobs(
     const normalized = entries
       .filter((entry) => {
         return (
-          typeof entry.token === "string" &&
-          typeof entry.logprob === "number"
+          typeof entry.token === "string" && typeof entry.logprob === "number"
         );
       })
       .map((entry) => ({
@@ -195,22 +192,16 @@ function mapCanonicalParallelToolCallsToOpenAI(
 function mapCanonicalEndUserIdToOpenAIChat(
   endUserId: CanonicalRequest["endUserId"]
 ) {
-  return endUserId !== undefined
-    ? { safety_identifier: endUserId }
-    : undefined;
+  return endUserId !== undefined ? { safety_identifier: endUserId } : undefined;
 }
 
 function mapCanonicalEndUserIdToOpenAIResponses(
   endUserId: CanonicalRequest["endUserId"]
 ) {
-  return endUserId !== undefined
-    ? { safety_identifier: endUserId }
-    : undefined;
+  return endUserId !== undefined ? { safety_identifier: endUserId } : undefined;
 }
 
-function mapCanonicalOpenAIRequestMetadata(
-  request: CanonicalRequest
-) {
+function mapCanonicalOpenAIRequestMetadata(request: CanonicalRequest) {
   return {
     ...(request.providerMetadata?.openai?.metadata !== undefined
       ? { metadata: request.providerMetadata.openai.metadata }
@@ -243,9 +234,7 @@ function mapCanonicalOpenAIRequestMetadata(
   };
 }
 
-function mapCanonicalOpenAIResponsesLogprobs(
-  request: CanonicalRequest
-) {
+function mapCanonicalOpenAIResponsesLogprobs(request: CanonicalRequest) {
   if (
     request.providerMetadata?.openai?.responsesOutputTextLogprobs !== true &&
     request.providerMetadata?.openai?.responsesTopLogprobs === undefined
@@ -269,14 +258,15 @@ function mapCanonicalOpenAIResponsesConversation(
     : undefined;
 }
 
-function mapCanonicalOpenAIResponsesText(
-  request: CanonicalRequest
-) {
+function mapCanonicalOpenAIResponsesText(request: CanonicalRequest) {
   const outputFormat = mapCanonicalOutputFormatToOpenAIResponses(
     request.outputFormat
   );
 
-  if (request.responseTextVerbosity === undefined && outputFormat === undefined) {
+  if (
+    request.responseTextVerbosity === undefined &&
+    outputFormat === undefined
+  ) {
     return undefined;
   }
 
@@ -358,9 +348,7 @@ function mapCanonicalOutputFormatToOpenAIResponses(
   };
 }
 
-function buildOpenAIChatMessages(
-  request: CanonicalRequest
-) {
+function buildOpenAIChatMessages(request: CanonicalRequest) {
   return request.messages.map((message) => {
     if (message.role === "tool") {
       return {
@@ -436,9 +424,7 @@ function buildOpenAIChatRequestBody(
       : {}),
     ...(mapCanonicalToolChoiceToOpenAI(request.toolChoice)
       ? {
-          tool_choice: mapCanonicalToolChoiceToOpenAI(
-            request.toolChoice
-          )
+          tool_choice: mapCanonicalToolChoiceToOpenAI(request.toolChoice)
         }
       : {}),
     ...(mapCanonicalParallelToolCallsToOpenAI(
@@ -460,9 +446,7 @@ function buildOpenAIChatRequestBody(
   };
 }
 
-function buildOpenAIResponsesInput(
-  request: CanonicalRequest
-) {
+function buildOpenAIResponsesInput(request: CanonicalRequest) {
   type OpenAIResponsesInputItem =
     | {
         type: "function_call_output";
@@ -840,12 +824,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     let response: Response;
 
     try {
-      response = await this.#fetcher(buildRequestUrl(this.#baseUrl, outboundRequest), {
-        method: outboundRequest.method,
-        headers: outboundRequest.headers,
-        body: JSON.stringify(outboundRequest.jsonBody),
-        signal: abortController.signal
-      });
+      response = await this.#fetcher(
+        buildRequestUrl(this.#baseUrl, outboundRequest),
+        {
+          method: outboundRequest.method,
+          headers: outboundRequest.headers,
+          body: JSON.stringify(outboundRequest.jsonBody),
+          signal: abortController.signal
+        }
+      );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         throw new GatewayError("Upstream provider timed out", {
@@ -867,11 +854,17 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     }
 
     if (!response.ok) {
-      const payload = (await response.json()) as {
-        error?: { message?: string };
-      };
+      let errorMessage = "Upstream provider error";
+      try {
+        const payload = (await response.json()) as {
+          error?: { message?: string };
+        };
+        errorMessage = payload.error?.message ?? errorMessage;
+      } catch {
+        // Non-JSON error body — use generic message
+      }
 
-      throw new GatewayError(payload.error?.message ?? "Upstream provider error", {
+      throw new GatewayError(errorMessage, {
         code: "provider_upstream_error",
         category: "provider",
         httpStatus: response.status,
@@ -945,19 +938,17 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       ...(payload.system_fingerprint !== undefined
         ? { systemFingerprint: payload.system_fingerprint }
         : {}),
-      ...(payload.metadata !== undefined
-        ? { metadata: payload.metadata }
-        : {}),
-      ...(outputTextLogprobs !== undefined
-        ? { outputTextLogprobs }
-        : {}),
+      ...(payload.metadata !== undefined ? { metadata: payload.metadata } : {}),
+      ...(outputTextLogprobs !== undefined ? { outputTextLogprobs } : {}),
       ...(payload.choices[0]?.message.tool_calls
         ? {
-            toolCalls: payload.choices[0].message.tool_calls.map((toolCall) => ({
-              id: toolCall.id,
-              name: toolCall.function.name,
-              arguments: toolCall.function.arguments
-            }))
+            toolCalls: payload.choices[0].message.tool_calls.map(
+              (toolCall) => ({
+                id: toolCall.id,
+                name: toolCall.function.name,
+                arguments: toolCall.function.arguments
+              })
+            )
           }
         : {}),
       finishReason: payload.choices[0]?.message.tool_calls?.length
@@ -1046,12 +1037,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     let response: Response;
 
     try {
-      response = await this.#fetcher(buildRequestUrl(this.#baseUrl, outboundRequest), {
-        method: outboundRequest.method,
-        headers: outboundRequest.headers,
-        body: JSON.stringify(outboundRequest.jsonBody),
-        signal: abortController.signal
-      });
+      response = await this.#fetcher(
+        buildRequestUrl(this.#baseUrl, outboundRequest),
+        {
+          method: outboundRequest.method,
+          headers: outboundRequest.headers,
+          body: JSON.stringify(outboundRequest.jsonBody),
+          signal: abortController.signal
+        }
+      );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         throw new GatewayError("Upstream provider timed out", {
@@ -1069,15 +1063,21 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     }
 
     if (!response.ok) {
-      const payload = (await response.json()) as {
-        error?: { message?: string };
-      };
+      let errorMessage = "Upstream provider error";
+      try {
+        const payload = (await response.json()) as {
+          error?: { message?: string };
+        };
+        errorMessage = payload.error?.message ?? errorMessage;
+      } catch {
+        // Non-JSON error body — use generic message
+      }
 
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
       }
 
-      throw new GatewayError(payload.error?.message ?? "Upstream provider error", {
+      throw new GatewayError(errorMessage, {
         code: "provider_upstream_error",
         category: "provider",
         httpStatus: response.status,
@@ -1092,14 +1092,17 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         clearTimeout(timeoutHandle);
       }
 
-      throw new GatewayError("Upstream provider returned an empty stream body", {
-        code: "provider_upstream_error",
-        category: "provider",
-        httpStatus: 502,
-        retryable: true,
-        provider: "openai",
-        requestId: context.requestId
-      });
+      throw new GatewayError(
+        "Upstream provider returned an empty stream body",
+        {
+          code: "provider_upstream_error",
+          category: "provider",
+          httpStatus: 502,
+          retryable: true,
+          provider: "openai",
+          requestId: context.requestId
+        }
+      );
     }
 
     const responseBody = response.body as ReadableStream<Uint8Array>;
@@ -1156,7 +1159,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               continue;
             }
 
-            const payload = JSON.parse(data) as {
+            let payload: {
               id?: string;
               created?: number;
               model?: string;
@@ -1205,6 +1208,11 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 total_tokens?: number;
               };
             };
+            try {
+              payload = JSON.parse(data) as typeof payload;
+            } catch {
+              continue;
+            }
             const choice = payload.choices?.[0];
             const responseId = payload.id ?? `chatcmpl_${context.requestId}`;
             const model = payload.model ?? request.model;
@@ -1229,7 +1237,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 choice.logprobs
               );
 
-              if (deltaLogprobs?.content?.length || deltaLogprobs?.refusal?.length) {
+              if (
+                deltaLogprobs?.content?.length ||
+                deltaLogprobs?.refusal?.length
+              ) {
                 streamedOutputTextLogprobs = {
                   ...(deltaLogprobs.content !== undefined
                     ? {
@@ -1406,8 +1417,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(mapCanonicalOpenAIResponsesConversation(
                     request.conversationId
                   ) ?? {}),
-                  ...(mapCanonicalEndUserIdToOpenAIResponses(request.endUserId) ??
-                    {}),
+                  ...(mapCanonicalEndUserIdToOpenAIResponses(
+                    request.endUserId
+                  ) ?? {}),
                   ...(request.reasoningEffort !== undefined ||
                   request.reasoningSummary !== undefined
                     ? {
@@ -1430,7 +1442,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.temperature !== undefined
                     ? { temperature: request.temperature }
                     : {}),
-                  ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+                  ...(request.topP !== undefined
+                    ? { top_p: request.topP }
+                    : {}),
                   ...(request.stopSequences !== undefined
                     ? { stop: request.stopSequences }
                     : {}),
@@ -1446,7 +1460,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                         }))
                       }
                     : {}),
-                  ...(mapCanonicalToolChoiceToOpenAIResponses(request.toolChoice)
+                  ...(mapCanonicalToolChoiceToOpenAIResponses(
+                    request.toolChoice
+                  )
                     ? {
                         tool_choice: mapCanonicalToolChoiceToOpenAIResponses(
                           request.toolChoice
@@ -1457,9 +1473,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                     request.allowParallelToolCalls
                   ) !== undefined
                     ? {
-                        parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
-                          request.allowParallelToolCalls
-                        )
+                        parallel_tool_calls:
+                          mapCanonicalParallelToolCallsToOpenAI(
+                            request.allowParallelToolCalls
+                          )
                       }
                     : {})
                 }
@@ -1542,7 +1559,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                       tools: request.tools.map((tool) => ({
                         type: "function" as const,
                         name: tool.name,
-                        ...(tool.description ? { description: tool.description } : {}),
+                        ...(tool.description
+                          ? { description: tool.description }
+                          : {}),
                         parameters: tool.inputSchema
                       }))
                     }
@@ -1558,9 +1577,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   request.allowParallelToolCalls
                 ) !== undefined
                   ? {
-                      parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
-                        request.allowParallelToolCalls
-                      )
+                      parallel_tool_calls:
+                        mapCanonicalParallelToolCallsToOpenAI(
+                          request.allowParallelToolCalls
+                        )
                     }
                   : {})
               }
@@ -1583,12 +1603,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     let response: Response;
 
     try {
-      response = await this.#fetcher(buildRequestUrl(this.#baseUrl, outboundRequest), {
-        method: outboundRequest.method,
-        headers: outboundRequest.headers,
-        body: JSON.stringify(outboundRequest.jsonBody),
-        signal: abortController.signal
-      });
+      response = await this.#fetcher(
+        buildRequestUrl(this.#baseUrl, outboundRequest),
+        {
+          method: outboundRequest.method,
+          headers: outboundRequest.headers,
+          body: JSON.stringify(outboundRequest.jsonBody),
+          signal: abortController.signal
+        }
+      );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         throw new GatewayError("Upstream provider timed out", {
@@ -1610,11 +1633,17 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     }
 
     if (!response.ok) {
-      const payload = (await response.json()) as {
-        error?: { message?: string };
-      };
+      let errorMessage = "Upstream provider error";
+      try {
+        const payload = (await response.json()) as {
+          error?: { message?: string };
+        };
+        errorMessage = payload.error?.message ?? errorMessage;
+      } catch {
+        // Non-JSON error body — use generic message
+      }
 
-      throw new GatewayError(payload.error?.message ?? "Upstream provider error", {
+      throw new GatewayError(errorMessage, {
         code: "provider_upstream_error",
         category: "provider",
         httpStatus: response.status,
@@ -1655,9 +1684,11 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       text?: {
         verbosity?: CanonicalResponse["responseTextVerbosity"];
       };
-      conversation?: {
-        id?: string;
-      } | string;
+      conversation?:
+        | {
+            id?: string;
+          }
+        | string;
       output?: Array<{
         type?: string;
         role?: string;
@@ -1701,7 +1732,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         ...(payload.created_at !== undefined
           ? { createdAt: payload.created_at }
           : {}),
-        outputText: normalizeOpenAIMessageContent(payload.choices[0]?.message.content),
+        outputText: normalizeOpenAIMessageContent(
+          payload.choices[0]?.message.content
+        ),
         ...(payload.service_tier !== undefined
           ? { serviceTier: payload.service_tier }
           : {}),
@@ -1730,11 +1763,13 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
           : {}),
         ...(payload.choices[0]?.message.tool_calls
           ? {
-              toolCalls: payload.choices[0].message.tool_calls.map((toolCall) => ({
-                id: toolCall.id,
-                name: toolCall.function.name,
-                arguments: toolCall.function.arguments
-              }))
+              toolCalls: payload.choices[0].message.tool_calls.map(
+                (toolCall) => ({
+                  id: toolCall.id,
+                  name: toolCall.function.name,
+                  arguments: toolCall.function.arguments
+                })
+              )
             }
           : {}),
         finishReason: payload.choices[0]?.message.tool_calls?.length
@@ -1762,9 +1797,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     const reasoningSummary = extractReasoningSummaryFromOpenAIResponsesOutput(
       payload.output
     );
-    const outputTextLogprobs = extractOutputTextLogprobsFromOpenAIResponsesOutput(
-      payload.output
-    );
+    const outputTextLogprobs =
+      extractOutputTextLogprobsFromOpenAIResponsesOutput(payload.output);
 
     return {
       id: payload.id,
@@ -1776,9 +1810,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       ...(payload.service_tier !== undefined
         ? { serviceTier: payload.service_tier }
         : {}),
-      ...(payload.metadata !== undefined
-        ? { metadata: payload.metadata }
-        : {}),
+      ...(payload.metadata !== undefined ? { metadata: payload.metadata } : {}),
       ...(payload.prompt_cache_key !== undefined
         ? { promptCacheKey: payload.prompt_cache_key }
         : {}),
@@ -1800,9 +1832,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
           }
         : {}),
       ...(reasoningSummary.length > 0 ? { reasoningSummary } : {}),
-      ...(outputTextLogprobs !== undefined
-        ? { outputTextLogprobs }
-        : {}),
+      ...(outputTextLogprobs !== undefined ? { outputTextLogprobs } : {}),
       ...(toolCalls ? { toolCalls } : {}),
       finishReason: normalizeOpenAIResponsesFinishReason(
         payload.status,
@@ -1883,10 +1913,11 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(mapCanonicalOpenAIResponsesConversation(
                     request.conversationId
                   ) ?? {}),
-                  ...(mapCanonicalEndUserIdToOpenAIResponses(request.endUserId) ??
-                    {}),
-                  ...(request.reasoningEffort !== undefined
-                    || request.reasoningSummary !== undefined
+                  ...(mapCanonicalEndUserIdToOpenAIResponses(
+                    request.endUserId
+                  ) ?? {}),
+                  ...(request.reasoningEffort !== undefined ||
+                  request.reasoningSummary !== undefined
                     ? {
                         reasoning: {
                           ...(request.reasoningEffort !== undefined
@@ -1907,7 +1938,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ...(request.temperature !== undefined
                     ? { temperature: request.temperature }
                     : {}),
-                  ...(request.topP !== undefined ? { top_p: request.topP } : {}),
+                  ...(request.topP !== undefined
+                    ? { top_p: request.topP }
+                    : {}),
                   ...(request.tools !== undefined
                     ? {
                         tools: request.tools.map((tool) => ({
@@ -1920,7 +1953,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                         }))
                       }
                     : {}),
-                  ...(mapCanonicalToolChoiceToOpenAIResponses(request.toolChoice)
+                  ...(mapCanonicalToolChoiceToOpenAIResponses(
+                    request.toolChoice
+                  )
                     ? {
                         tool_choice: mapCanonicalToolChoiceToOpenAIResponses(
                           request.toolChoice
@@ -1931,9 +1966,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                     request.allowParallelToolCalls
                   ) !== undefined
                     ? {
-                        parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
-                          request.allowParallelToolCalls
-                        )
+                        parallel_tool_calls:
+                          mapCanonicalParallelToolCallsToOpenAI(
+                            request.allowParallelToolCalls
+                          )
                       }
                     : {})
                 }
@@ -1993,8 +2029,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 ) ?? {}),
                 ...(mapCanonicalEndUserIdToOpenAIResponses(request.endUserId) ??
                   {}),
-                ...(request.reasoningEffort !== undefined
-                  || request.reasoningSummary !== undefined
+                ...(request.reasoningEffort !== undefined ||
+                request.reasoningSummary !== undefined
                   ? {
                       reasoning: {
                         ...(request.reasoningEffort !== undefined
@@ -2016,8 +2052,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   ? { temperature: request.temperature }
                   : {}),
                 ...(request.topP !== undefined ? { top_p: request.topP } : {}),
-                ...(request.providerMetadata?.openai?.responsesIncludeObfuscation ===
-                false
+                ...(request.providerMetadata?.openai
+                  ?.responsesIncludeObfuscation === false
                   ? {
                       stream_options: {
                         include_obfuscation: false
@@ -2029,7 +2065,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                       tools: request.tools.map((tool) => ({
                         type: "function" as const,
                         name: tool.name,
-                        ...(tool.description ? { description: tool.description } : {}),
+                        ...(tool.description
+                          ? { description: tool.description }
+                          : {}),
                         parameters: tool.inputSchema
                       }))
                     }
@@ -2045,9 +2083,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   request.allowParallelToolCalls
                 ) !== undefined
                   ? {
-                      parallel_tool_calls: mapCanonicalParallelToolCallsToOpenAI(
-                        request.allowParallelToolCalls
-                      )
+                      parallel_tool_calls:
+                        mapCanonicalParallelToolCallsToOpenAI(
+                          request.allowParallelToolCalls
+                        )
                     }
                   : {})
               }
@@ -2070,12 +2109,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     let response: Response;
 
     try {
-      response = await this.#fetcher(buildRequestUrl(this.#baseUrl, outboundRequest), {
-        method: outboundRequest.method,
-        headers: outboundRequest.headers,
-        body: JSON.stringify(outboundRequest.jsonBody),
-        signal: abortController.signal
-      });
+      response = await this.#fetcher(
+        buildRequestUrl(this.#baseUrl, outboundRequest),
+        {
+          method: outboundRequest.method,
+          headers: outboundRequest.headers,
+          body: JSON.stringify(outboundRequest.jsonBody),
+          signal: abortController.signal
+        }
+      );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         throw new GatewayError("Upstream provider timed out", {
@@ -2093,15 +2135,21 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
     }
 
     if (!response.ok) {
-      const payload = (await response.json()) as {
-        error?: { message?: string };
-      };
+      let errorMessage = "Upstream provider error";
+      try {
+        const payload = (await response.json()) as {
+          error?: { message?: string };
+        };
+        errorMessage = payload.error?.message ?? errorMessage;
+      } catch {
+        // Non-JSON error body — use generic message
+      }
 
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
       }
 
-      throw new GatewayError(payload.error?.message ?? "Upstream provider error", {
+      throw new GatewayError(errorMessage, {
         code: "provider_upstream_error",
         category: "provider",
         httpStatus: response.status,
@@ -2116,14 +2164,17 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         clearTimeout(timeoutHandle);
       }
 
-      throw new GatewayError("Upstream provider returned an empty stream body", {
-        code: "provider_upstream_error",
-        category: "provider",
-        httpStatus: 502,
-        retryable: true,
-        provider: "openai",
-        requestId: context.requestId
-      });
+      throw new GatewayError(
+        "Upstream provider returned an empty stream body",
+        {
+          code: "provider_upstream_error",
+          category: "provider",
+          httpStatus: 502,
+          retryable: true,
+          provider: "openai",
+          requestId: context.requestId
+        }
+      );
     }
 
     const responseBody = response.body as ReadableStream<Uint8Array>;
@@ -2193,7 +2244,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               continue;
             }
 
-            const payload = JSON.parse(data) as {
+            let payload: {
               type?: string;
               id?: string;
               model?: string;
@@ -2274,6 +2325,11 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 }>;
               }>;
             };
+            try {
+              payload = JSON.parse(data) as typeof payload;
+            } catch {
+              continue;
+            }
 
             if (payload.choices) {
               const choice = payload.choices[0];
@@ -2340,7 +2396,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   type: "response_completed",
                   responseId,
                   model,
-                  finishReason: normalizeOpenAIFinishReason(choice.finish_reason),
+                  finishReason: normalizeOpenAIFinishReason(
+                    choice.finish_reason
+                  ),
                   ...(payload.usage
                     ? {
                         usage: {
@@ -2364,7 +2422,10 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               const model = payload.response.model ?? request.model;
               responseIdToModel.set(responseId, model);
               if (payload.response.created_at !== undefined) {
-                responseIdToCreatedAt.set(responseId, payload.response.created_at);
+                responseIdToCreatedAt.set(
+                  responseId,
+                  payload.response.created_at
+                );
               }
 
               if (!hasStarted) {
@@ -2418,12 +2479,13 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               continue;
             }
 
-            if (payload.type === "response.output_text.delta" && payload.delta !== undefined) {
-              const [responseId, model] =
-                Array.from(responseIdToModel.entries())[0] ?? [
-                  `resp_${context.requestId}`,
-                  request.model
-                ];
+            if (
+              payload.type === "response.output_text.delta" &&
+              payload.delta !== undefined
+            ) {
+              const [responseId, model] = Array.from(
+                responseIdToModel.entries()
+              )[0] ?? [`resp_${context.requestId}`, request.model];
               const createdAt = responseIdToCreatedAt.get(responseId);
 
               streamedOutputText += payload.delta;
@@ -2440,7 +2502,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                         .map((entry) => ({
                           token: entry.token as string,
                           logprob: entry.logprob as number,
-                          ...(entry.bytes !== undefined ? { bytes: entry.bytes } : {}),
+                          ...(entry.bytes !== undefined
+                            ? { bytes: entry.bytes }
+                            : {}),
                           ...(entry.top_logprobs !== undefined
                             ? {
                                 topLogprobs: entry.top_logprobs
@@ -2501,11 +2565,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               payload.type === "response.reasoning_summary_text.delta" &&
               payload.delta !== undefined
             ) {
-              const [responseId, model] =
-                Array.from(responseIdToModel.entries())[0] ?? [
-                  `resp_${context.requestId}`,
-                  request.model
-                ];
+              const [responseId, model] = Array.from(
+                responseIdToModel.entries()
+              )[0] ?? [`resp_${context.requestId}`, request.model];
 
               streamedReasoningSummary += payload.delta;
 
@@ -2532,19 +2594,20 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               payload.item?.type === "function_call" &&
               payload.item.call_id
             ) {
-              const [responseId, model] =
-                Array.from(responseIdToModel.entries())[0] ?? [
-                  `resp_${context.requestId}`,
-                  request.model
-                ];
-              const currentTool = streamedToolCalls.get(payload.item.call_id) ?? {
+              const [responseId, model] = Array.from(
+                responseIdToModel.entries()
+              )[0] ?? [`resp_${context.requestId}`, request.model];
+              const currentTool = streamedToolCalls.get(
+                payload.item.call_id
+              ) ?? {
                 toolIndex: Array.from(streamedToolCalls.values()).length,
                 outputIndex: payload.output_index ?? 0,
                 arguments: "",
                 started: false
               };
 
-              currentTool.outputIndex = payload.output_index ?? currentTool.outputIndex;
+              currentTool.outputIndex =
+                payload.output_index ?? currentTool.outputIndex;
 
               if (payload.item.name) {
                 currentTool.name = payload.item.name;
@@ -2585,11 +2648,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               payload.type === "response.function_call_arguments.delta" &&
               payload.item_id
             ) {
-              const [responseId, model] =
-                Array.from(responseIdToModel.entries())[0] ?? [
-                  `resp_${context.requestId}`,
-                  request.model
-                ];
+              const [responseId, model] = Array.from(
+                responseIdToModel.entries()
+              )[0] ?? [`resp_${context.requestId}`, request.model];
               const currentTool = streamedToolCalls.get(payload.item_id) ?? {
                 toolIndex: Array.from(streamedToolCalls.values()).length,
                 outputIndex: payload.output_index ?? 0,
@@ -2597,7 +2658,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 started: false
               };
 
-              currentTool.outputIndex = payload.output_index ?? currentTool.outputIndex;
+              currentTool.outputIndex =
+                payload.output_index ?? currentTool.outputIndex;
               currentTool.arguments += payload.delta ?? "";
               currentTool.started = true;
               streamedToolCalls.set(payload.item_id, currentTool);
@@ -2628,21 +2690,23 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               payload.item?.type === "function_call" &&
               payload.item.call_id
             ) {
-              const [responseId, model] =
-                Array.from(responseIdToModel.entries())[0] ?? [
-                  `resp_${context.requestId}`,
-                  request.model
-                ];
-              const currentTool = streamedToolCalls.get(payload.item.call_id) ?? {
+              const [responseId, model] = Array.from(
+                responseIdToModel.entries()
+              )[0] ?? [`resp_${context.requestId}`, request.model];
+              const currentTool = streamedToolCalls.get(
+                payload.item.call_id
+              ) ?? {
                 toolIndex: Array.from(streamedToolCalls.values()).length,
                 outputIndex: payload.output_index ?? 0,
                 arguments: "",
                 started: false
               };
-              const finalArguments = payload.item.arguments ?? currentTool.arguments;
+              const finalArguments =
+                payload.item.arguments ?? currentTool.arguments;
               let argumentsDelta = "";
 
-              currentTool.outputIndex = payload.output_index ?? currentTool.outputIndex;
+              currentTool.outputIndex =
+                payload.output_index ?? currentTool.outputIndex;
 
               if (payload.item.name) {
                 currentTool.name = payload.item.name;
@@ -2654,7 +2718,9 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 finalArguments.length > currentTool.arguments.length &&
                 finalArguments.startsWith(currentTool.arguments)
               ) {
-                argumentsDelta = finalArguments.slice(currentTool.arguments.length);
+                argumentsDelta = finalArguments.slice(
+                  currentTool.arguments.length
+                );
               }
 
               currentTool.arguments = finalArguments;
@@ -2691,18 +2757,22 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 payload.response.model ??
                 responseIdToModel.get(responseId) ??
                 request.model;
-              const completedOutputText = extractOutputTextFromOpenAIResponsesOutput(
-                payload.response.output
-              );
+              const completedOutputText =
+                extractOutputTextFromOpenAIResponsesOutput(
+                  payload.response.output
+                );
               const completedToolCalls =
-                extractToolCallsFromOpenAIResponsesOutput(payload.response.output) ?? [];
+                extractToolCallsFromOpenAIResponsesOutput(
+                  payload.response.output
+                ) ?? [];
               const reasoningSummary =
                 extractReasoningSummaryFromOpenAIResponsesOutput(
                   payload.response.output
                 ) || streamedReasoningSummary;
               const completedOutputTextLogprobs =
-                extractOutputTextLogprobsFromOpenAIResponsesOutput(payload.response.output) ??
-                streamedOutputTextLogprobs;
+                extractOutputTextLogprobsFromOpenAIResponsesOutput(
+                  payload.response.output
+                ) ?? streamedOutputTextLogprobs;
 
               if (!hasStarted) {
                 hasStarted = true;
@@ -2792,14 +2862,18 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 }
               }
 
-              for (const [toolIndex, completedToolCall] of completedToolCalls.entries()) {
-                const currentTool =
-                  streamedToolCalls.get(completedToolCall.id) ?? {
-                    toolIndex,
-                    outputIndex: toolIndex,
-                    arguments: "",
-                    started: false
-                  };
+              for (const [
+                toolIndex,
+                completedToolCall
+              ] of completedToolCalls.entries()) {
+                const currentTool = streamedToolCalls.get(
+                  completedToolCall.id
+                ) ?? {
+                  toolIndex,
+                  outputIndex: toolIndex,
+                  arguments: "",
+                  started: false
+                };
                 const hadStarted = currentTool.started;
                 let missingArgumentsDelta = "";
 
@@ -2808,7 +2882,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 if (!hadStarted) {
                   missingArgumentsDelta = completedToolCall.arguments;
                 } else if (
-                  completedToolCall.arguments.length > currentTool.arguments.length &&
+                  completedToolCall.arguments.length >
+                    currentTool.arguments.length &&
                   completedToolCall.arguments.startsWith(currentTool.arguments)
                 ) {
                   missingArgumentsDelta = completedToolCall.arguments.slice(
@@ -2885,9 +2960,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                       parallelToolCalls: payload.response.parallel_tool_calls
                     }
                   : {}),
-                ...(reasoningSummary.length > 0
-                  ? { reasoningSummary }
-                  : {}),
+                ...(reasoningSummary.length > 0 ? { reasoningSummary } : {}),
                 ...(payload.response.usage
                   ? {
                       usage: {

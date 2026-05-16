@@ -182,9 +182,7 @@ function parseStringMap(
   createError: (message: string) => GatewayError
 ): Record<string, string> {
   if (!isRecord(value)) {
-    throw createError(
-      `Request shaping field "${fieldName}" must be an object`
-    );
+    throw createError(`Request shaping field "${fieldName}" must be an object`);
   }
 
   const result: Record<string, string> = {};
@@ -193,6 +191,20 @@ function parseStringMap(
       throw createError(
         `Request shaping field "${fieldName}" values must be strings`
       );
+    }
+
+    if (fieldName === "headers") {
+      if (/[\r\n]/.test(key)) {
+        throw createError(
+          `Request shaping header name contains illegal characters: ${key}`
+        );
+      }
+
+      if (/[\r\n]/.test(entryValue)) {
+        throw createError(
+          `Request shaping header value for "${key}" contains illegal characters`
+        );
+      }
     }
 
     result[key] = entryValue;
@@ -209,7 +221,10 @@ function validateSecretRef(
     throw createError("Secret ref must be an object");
   }
 
-  if (typeof value.secretRef !== "string" || value.secretRef.trim().length === 0) {
+  if (
+    typeof value.secretRef !== "string" ||
+    value.secretRef.trim().length === 0
+  ) {
     throw createError("Secret ref must define a non-empty secretRef string");
   }
 
@@ -252,7 +267,9 @@ function validateSigningComponent(
 
 function validateSigningStrategy(value: unknown): OutboundSigningStrategy {
   if (!isRecord(value)) {
-    throw createInvalidSigningStrategyError("Signing strategy must be an object");
+    throw createInvalidSigningStrategyError(
+      "Signing strategy must be an object"
+    );
   }
 
   if (value.type !== "hmac_sha256_header") {
@@ -261,7 +278,10 @@ function validateSigningStrategy(value: unknown): OutboundSigningStrategy {
     );
   }
 
-  if (typeof value.headerName !== "string" || value.headerName.trim().length === 0) {
+  if (
+    typeof value.headerName !== "string" ||
+    value.headerName.trim().length === 0
+  ) {
     throw createInvalidSigningStrategyError(
       "Signing strategy headerName must be a non-empty string"
     );
@@ -349,9 +369,7 @@ function validateRequestShapingProfileWithErrorFactory(
 
   if (value.jsonBody !== undefined) {
     if (!isRecord(value.jsonBody)) {
-      throw createError(
-        'Request shaping field "jsonBody" must be an object'
-      );
+      throw createError('Request shaping field "jsonBody" must be an object');
     }
 
     profile.jsonBody = value.jsonBody;
@@ -427,19 +445,22 @@ export function parseRouteRequestShaping(
           ? validateRequestShapingProfile(profile.defaults)
           : undefined;
 
-      for (const [targetKey, targetProfile] of Object.entries(profile.targets)) {
+      for (const [targetKey, targetProfile] of Object.entries(
+        profile.targets
+      )) {
         if (targetKey.trim().length === 0) {
           throw createInvalidShapingError(
             "Target-scoped request shaping keys must be non-empty strings"
           );
         }
 
-        targets[targetKey.trim()] = validateRequestShapingProfile(targetProfile);
+        targets[targetKey.trim()] =
+          validateRequestShapingProfile(targetProfile);
       }
 
       if (Object.keys(targets).length === 0) {
         throw createInvalidShapingError(
-          'Target-scoped request shaping must define at least one target profile'
+          "Target-scoped request shaping must define at least one target profile"
         );
       }
 
@@ -490,8 +511,7 @@ export function mergeRequestShapingProfiles(
       : {}),
     ...(base?.jsonBody || override?.jsonBody
       ? {
-          jsonBody:
-            deepMergeRecords(base?.jsonBody, override?.jsonBody) ?? {}
+          jsonBody: deepMergeRecords(base?.jsonBody, override?.jsonBody) ?? {}
         }
       : {}),
     ...(resolvedSigning
@@ -579,9 +599,7 @@ export function applyAuthStrategy(
   }
 
   const headerValue =
-    strategy.type === "header_bearer"
-      ? `Bearer ${secretValue}`
-      : secretValue;
+    strategy.type === "header_bearer" ? `Bearer ${secretValue}` : secretValue;
 
   return {
     ...request,

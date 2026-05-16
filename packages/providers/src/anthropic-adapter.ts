@@ -395,21 +395,24 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     }
 
     if (!response.ok) {
-      const payload = (await response.json()) as {
-        error?: { message?: string };
-      };
+      let errorMessage = "Upstream provider error";
+      try {
+        const payload = (await response.json()) as {
+          error?: { message?: string };
+        };
+        errorMessage = payload.error?.message ?? errorMessage;
+      } catch {
+        // Non-JSON error body — use generic message
+      }
 
-      throw new GatewayError(
-        payload.error?.message ?? "Upstream provider error",
-        {
-          code: "provider_upstream_error",
-          category: "provider",
-          httpStatus: response.status,
-          retryable: response.status >= 500 || response.status === 429,
-          provider: "anthropic",
-          requestId: context.requestId
-        }
-      );
+      throw new GatewayError(errorMessage, {
+        code: "provider_upstream_error",
+        category: "provider",
+        httpStatus: response.status,
+        retryable: response.status >= 500 || response.status === 429,
+        provider: "anthropic",
+        requestId: context.requestId
+      });
     }
 
     const payload = (await response.json()) as {
@@ -569,25 +572,28 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     }
 
     if (!response.ok) {
-      const payload = (await response.json()) as {
-        error?: { message?: string };
-      };
+      let errorMessage = "Upstream provider error";
+      try {
+        const payload = (await response.json()) as {
+          error?: { message?: string };
+        };
+        errorMessage = payload.error?.message ?? errorMessage;
+      } catch {
+        // Non-JSON error body — use generic message
+      }
 
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
       }
 
-      throw new GatewayError(
-        payload.error?.message ?? "Upstream provider error",
-        {
-          code: "provider_upstream_error",
-          category: "provider",
-          httpStatus: response.status,
-          retryable: response.status >= 500 || response.status === 429,
-          provider: "anthropic",
-          requestId: context.requestId
-        }
-      );
+      throw new GatewayError(errorMessage, {
+        code: "provider_upstream_error",
+        category: "provider",
+        httpStatus: response.status,
+        retryable: response.status >= 500 || response.status === 429,
+        provider: "anthropic",
+        requestId: context.requestId
+      });
     }
 
     if (!response.body) {
@@ -675,10 +681,15 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
             continue;
           }
 
-          const payload =
-            currentData.length > 0
-              ? (JSON.parse(currentData) as Record<string, unknown>)
-              : {};
+          let payload: Record<string, unknown>;
+          try {
+            payload =
+              currentData.length > 0
+                ? (JSON.parse(currentData) as Record<string, unknown>)
+                : {};
+          } catch {
+            continue;
+          }
 
           if (currentEventType === "message_start") {
             const message = payload.message as

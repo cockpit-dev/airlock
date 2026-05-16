@@ -232,7 +232,13 @@ describe("applySigningStrategy", () => {
           secret: {
             secretRef: "shared-signing-secret"
           },
-          components: ["method", "path", "query", "body_sha256", "header:x-api-key"]
+          components: [
+            "method",
+            "path",
+            "query",
+            "body_sha256",
+            "header:x-api-key"
+          ]
         },
         {
           "shared-signing-secret": "signing-secret"
@@ -562,6 +568,46 @@ describe("parseRequestRequestShaping", () => {
         retryable: false
       })
     );
+  });
+
+  it("rejects header values containing carriage return", () => {
+    expect(() =>
+      parseRequestRequestShaping({
+        headers: {
+          "x-custom": "value\rX-Injected: malicious"
+        }
+      })
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects header values containing newline", () => {
+    expect(() =>
+      parseRequestRequestShaping({
+        headers: {
+          "x-custom": "value\nX-Injected: malicious"
+        }
+      })
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects header names containing carriage return", () => {
+    expect(() =>
+      parseRequestRequestShaping({
+        headers: {
+          "x-custom\rX-Injected": "value"
+        }
+      })
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects header names containing newline", () => {
+    expect(() =>
+      parseRequestRequestShaping({
+        headers: {
+          "x-custom\nX-Injected": "value"
+        }
+      })
+    ).toThrow(GatewayError);
   });
 });
 

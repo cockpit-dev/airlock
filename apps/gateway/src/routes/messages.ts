@@ -339,6 +339,9 @@ export async function handleMessages(
             requestId
           );
         }
+      },
+      cancel() {
+        void streamIterator.return?.();
       }
     });
 

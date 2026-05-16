@@ -363,6 +363,9 @@ export async function handleChatCompletions(
             requestId
           );
         }
+      },
+      cancel() {
+        void streamIterator.return?.();
       }
     });
 

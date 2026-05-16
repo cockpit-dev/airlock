@@ -22,7 +22,8 @@ function createMockStorage(
       store.set(key, value);
       return Promise.resolve();
     },
-    delete: (key: string): Promise<boolean> => Promise.resolve(store.delete(key))
+    delete: (key: string): Promise<boolean> =>
+      Promise.resolve(store.delete(key))
   };
 }
 
@@ -144,9 +145,7 @@ describe("reserveGatewayKeyTokenQuotaFromStorage", () => {
   });
 
   it("denies reservation exceeding limit", async () => {
-    const store = new Map([
-      ["token_quota", storedState({ usedTokens: 900 })]
-    ]);
+    const store = new Map([["token_quota", storedState({ usedTokens: 900 })]]);
     const storage = createMockStorage(store);
 
     const decision = await reserveGatewayKeyTokenQuotaFromStorage(
@@ -273,7 +272,7 @@ describe("releaseGatewayKeyTokenQuotaReservationFromStorage", () => {
 });
 
 describe("reconcileGatewayKeyTokenQuotaReservationFromStorage", () => {
-  it("replaces reservation with actual usage", async () => {
+  it("adds actual usage and removes reservation", async () => {
     const store = new Map([
       [
         "token_quota",
@@ -287,25 +286,24 @@ describe("reconcileGatewayKeyTokenQuotaReservationFromStorage", () => {
     ]);
     const storage = createMockStorage(store);
 
-    const decision =
-      await reconcileGatewayKeyTokenQuotaReservationFromStorage(
-        storage,
-        {
-          kind: "reconcile",
-          ...policy,
-          reservationId: "r1",
-          actualTokens: 150
-        },
-        now
-      );
+    const decision = await reconcileGatewayKeyTokenQuotaReservationFromStorage(
+      storage,
+      {
+        kind: "reconcile",
+        ...policy,
+        reservationId: "r1",
+        actualTokens: 150
+      },
+      now
+    );
 
     expect(decision.allowed).toBe(true);
     const stored = store.get("token_quota") as GatewayKeyTokenQuotaStorage;
-    expect(stored.usedTokens).toBe(50);
+    expect(stored.usedTokens).toBe(250);
     expect(stored.reservations).toHaveLength(0);
   });
 
-  it("increases used tokens when actual exceeds reserved", async () => {
+  it("increases used tokens by actual amount regardless of reservation size", async () => {
     const store = new Map([
       [
         "token_quota",
@@ -331,10 +329,10 @@ describe("reconcileGatewayKeyTokenQuotaReservationFromStorage", () => {
     );
 
     const stored = store.get("token_quota") as GatewayKeyTokenQuotaStorage;
-    expect(stored.usedTokens).toBe(200);
+    expect(stored.usedTokens).toBe(400);
   });
 
-  it("clamps negative used tokens to zero", async () => {
+  it("does not subtract reservation tokens from usedTokens", async () => {
     const store = new Map([
       [
         "token_quota",
@@ -360,13 +358,12 @@ describe("reconcileGatewayKeyTokenQuotaReservationFromStorage", () => {
     );
 
     const stored = store.get("token_quota") as GatewayKeyTokenQuotaStorage;
-    expect(stored.usedTokens).toBe(0);
+    expect(stored.usedTokens).toBe(50);
+    expect(stored.reservations).toHaveLength(0);
   });
 
   it("handles reconcile when reservation no longer exists", async () => {
-    const store = new Map([
-      ["token_quota", storedState({ usedTokens: 100 })]
-    ]);
+    const store = new Map([["token_quota", storedState({ usedTokens: 100 })]]);
     const storage = createMockStorage(store);
 
     await reconcileGatewayKeyTokenQuotaReservationFromStorage(
@@ -383,13 +380,41 @@ describe("reconcileGatewayKeyTokenQuotaReservationFromStorage", () => {
     const stored = store.get("token_quota") as GatewayKeyTokenQuotaStorage;
     expect(stored.usedTokens).toBe(150);
   });
+
+  it("cannot erase used tokens via large reservation and small actual", async () => {
+    const store = new Map([
+      [
+        "token_quota",
+        storedState({
+          usedTokens: 800,
+          reservations: [
+            { reservationId: "r1", tokens: 1000, expiresAt: now + 30000 }
+          ]
+        })
+      ]
+    ]);
+    const storage = createMockStorage(store);
+
+    await reconcileGatewayKeyTokenQuotaReservationFromStorage(
+      storage,
+      {
+        kind: "reconcile",
+        ...policy,
+        reservationId: "r1",
+        actualTokens: 10
+      },
+      now
+    );
+
+    const stored = store.get("token_quota") as GatewayKeyTokenQuotaStorage;
+    expect(stored.usedTokens).toBe(810);
+    expect(stored.reservations).toHaveLength(0);
+  });
 });
 
 describe("chargeGatewayKeyTokenQuotaFromStorage", () => {
   it("adds tokens to used count", async () => {
-    const store = new Map([
-      ["token_quota", storedState({ usedTokens: 100 })]
-    ]);
+    const store = new Map([["token_quota", storedState({ usedTokens: 100 })]]);
     const storage = createMockStorage(store);
 
     const decision = await chargeGatewayKeyTokenQuotaFromStorage(

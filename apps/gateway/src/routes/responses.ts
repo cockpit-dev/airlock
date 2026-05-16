@@ -463,6 +463,9 @@ export async function handleResponses(
             requestId
           );
         }
+      },
+      cancel() {
+        void streamIterator.return?.();
       }
     });
 

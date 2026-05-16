@@ -414,24 +414,20 @@ export async function reconcileGatewayKeyTokenQuotaReservationFromStorage(
     windowStartedAt,
     now
   );
-  const reservation = current.reservations.find((candidate) => {
-    return candidate.reservationId === request.reservationId;
-  });
   const nextReservations = current.reservations.filter((candidate) => {
     return candidate.reservationId !== request.reservationId;
   });
-  const nextUsedTokens =
-    current.usedTokens + request.actualTokens - (reservation?.tokens ?? 0);
+  const nextUsedTokens = current.usedTokens + request.actualTokens;
 
   await storage.put("token_quota", {
     windowStartedAt,
-    usedTokens: Math.max(0, nextUsedTokens),
+    usedTokens: nextUsedTokens,
     reservations: nextReservations
   });
 
   return createTokenQuotaDecision(
     policy,
-    Math.max(0, nextUsedTokens),
+    nextUsedTokens,
     getReservedTokens(nextReservations),
     now
   );
