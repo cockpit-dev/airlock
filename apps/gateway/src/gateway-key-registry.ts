@@ -1127,14 +1127,10 @@ export class GatewayKeyRegistryDurableObject {
         const transitionNow = new Date().toISOString();
         const transition = buildCreateGatewayRegistryKeyTransition(
           createRequest.key,
-          {
-            ...(createRequest.auditMetadata?.reason
-              ? { reason: createRequest.auditMetadata.reason }
-              : {}),
-            ...(createRequest.actorContext
-              ? toGatewayKeyAuditActorContextRecord(createRequest.actorContext)
-              : {})
-          },
+          buildGatewayKeyAuditContext({
+            reason: createRequest.auditMetadata?.reason,
+            actorContext: createRequest.actorContext
+          }),
           transitionNow
         );
         const key = await createStoredDynamicKey(
@@ -1187,14 +1183,10 @@ export class GatewayKeyRegistryDurableObject {
         const transition = buildUpdateGatewayRegistryKeyTransition(
           existingKey,
           applyGatewayApiKeyMetadataOverride(existingKey, updateRequest.update),
-          {
-            ...(updateRequest.auditMetadata.reason
-              ? { reason: updateRequest.auditMetadata.reason }
-              : {}),
-            ...(actorContext
-              ? toGatewayKeyAuditActorContextRecord(actorContext)
-              : {})
-          },
+          buildGatewayKeyAuditContext({
+            reason: updateRequest.auditMetadata.reason,
+            actorContext
+          }),
           await listStoredDynamicKeys(this.state.storage),
           transitionNow
         );
