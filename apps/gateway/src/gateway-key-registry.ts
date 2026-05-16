@@ -1374,12 +1374,10 @@ export async function upsertGatewayKeyRegistryOverride(
       },
       body: JSON.stringify({
         override,
-        auditMetadata: {
-          ...(audit?.reason ? { reason: audit.reason } : {}),
-          ...(audit?.actorContext
-            ? toGatewayKeyAuditActorContextRecord(audit.actorContext)
-            : {})
-        }
+        auditMetadata: buildGatewayKeyAuditContext({
+          reason: audit?.reason,
+          actorContext: audit?.actorContext
+        })
       } satisfies GatewayKeyRegistryOverrideMutationRequest)
     }),
     requestId,
@@ -1442,12 +1440,10 @@ export async function clearGatewayKeyRegistryOverride(
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        auditMetadata: {
-          ...(audit?.reason ? { reason: audit.reason } : {}),
-          ...(audit?.actorContext
-            ? toGatewayKeyAuditActorContextRecord(audit.actorContext)
-            : {})
-        }
+        auditMetadata: buildGatewayKeyAuditContext({
+          reason: audit?.reason,
+          actorContext: audit?.actorContext
+        })
       })
     }),
     requestId,
@@ -2630,9 +2626,7 @@ export async function finalizeGatewayRegistryApiKeyRotation(
           },
           body: JSON.stringify({
             ...actionRequest,
-            ...(actorContext
-              ? toGatewayKeyAuditActorContextRecord(actorContext)
-              : {})
+            ...buildGatewayKeyAuditContext({ actorContext })
           } satisfies GatewayKeyRegistryRotationActionRequest)
         }),
         requestId,
@@ -2696,9 +2690,7 @@ export async function cancelGatewayRegistryApiKeyRotation(
           },
           body: JSON.stringify({
             ...actionRequest,
-            ...(actorContext
-              ? toGatewayKeyAuditActorContextRecord(actorContext)
-              : {})
+            ...buildGatewayKeyAuditContext({ actorContext })
           } satisfies GatewayKeyRegistryRotationActionRequest)
         }),
         requestId,
@@ -2768,9 +2760,7 @@ export async function archiveGatewayRegistryApiKey(
           },
           body: JSON.stringify({
             ...actionRequest,
-            ...(actorContext
-              ? toGatewayKeyAuditActorContextRecord(actorContext)
-              : {})
+            ...buildGatewayKeyAuditContext({ actorContext })
           })
         }),
         requestId,
@@ -2834,9 +2824,7 @@ export async function restoreGatewayRegistryApiKey(
           },
           body: JSON.stringify({
             ...actionRequest,
-            ...(actorContext
-              ? toGatewayKeyAuditActorContextRecord(actorContext)
-              : {})
+            ...buildGatewayKeyAuditContext({ actorContext })
           })
         }),
         requestId,
