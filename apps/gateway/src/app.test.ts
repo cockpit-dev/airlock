@@ -37233,3 +37233,104 @@ describe("GET /_airlock/routing/health", () => {
     });
   });
 });
+
+describe("GET /_airlock/status", () => {
+  it("requires admin authentication", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/status",
+      {
+        headers: { authorization: "Bearer wrong-token" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it("returns gateway status with routes, providers, keys, and config", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/status",
+      {
+        headers: { authorization: "Bearer admin-secret" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await readJson(response)) as Record<string, unknown>;
+
+    expect(body).toHaveProperty("mode", "free");
+    expect(body).toHaveProperty("routes");
+    expect(body).toHaveProperty("providers");
+    expect(body).toHaveProperty("keys");
+    expect(body).toHaveProperty("circuitBreaker");
+    expect(body).toHaveProperty("config");
+
+    const routes = body.routes as Array<{ externalModel: string }>;
+    const routeModels = routes.map((r) => r.externalModel);
+    expect(routeModels).toContain("gpt-4.1-mini");
+    expect(routeModels).toContain("claude-sonnet-4-5");
+
+    const providers = body.providers as Array<{
+      id: string;
+      configured: boolean;
+    }>;
+    const providerIds = providers.map((p) => p.id);
+    expect(providerIds).toContain("openai");
+    expect(providerIds).toContain("anthropic");
+
+    const keys = body.keys as Record<string, unknown>;
+    expect(keys).toHaveProperty("total");
+    expect(keys).toHaveProperty("configured");
+    expect(keys).toHaveProperty("registryOwned");
+
+    const config = body.config as Record<string, unknown>;
+    expect(config).toHaveProperty("providerTimeoutMs");
+    expect(config).toHaveProperty("routingLatencyFreshnessMs");
+  });
+
+  it("returns 403 for credential without keys.read scope", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    // Compute SHA-256 of the credential to create the tokenHash
+    // Using a fixed hash for "admin-write-only-credential"
+    const writeOnlyHash =
+      "013bc0b87808080d7a6ec3b7acea97d5bf56fb190a9a3d0a233e1a4731ad9119";
+
+    const response = await app.request(
+      "http://localhost/_airlock/status",
+      {
+        headers: {
+          authorization: "Bearer admin-write-only-credential"
+        }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_INTERNAL_ADMIN_CREDENTIALS: JSON.stringify([
+          {
+            id: "write_only",
+            tokenHash: writeOnlyHash,
+            actor: "admin",
+            scopes: ["keys.write"]
+          }
+        ]),
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(403);
+  });
+});
