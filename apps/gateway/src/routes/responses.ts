@@ -114,10 +114,10 @@ export async function handleResponses(
   // Advisory body size check via Content-Length header.
   // Chunked transfer encoding (no Content-Length) relies on the
   // Cloudflare Workers platform body size limit as a safety net.
-  const contentLength = context.req.header("content-length");
+  const contentLength = Number(context.req.header("content-length"));
   if (
-    contentLength !== undefined &&
-    Number(contentLength) > config.maxRequestBodyBytes
+    Number.isFinite(contentLength) &&
+    contentLength > config.maxRequestBodyBytes
   ) {
     throw new GatewayError("Request body exceeds maximum allowed size", {
       code: "request_body_too_large",

@@ -99,6 +99,18 @@ export function createApp(options: CreateAppOptions = {}) {
           stream: false,
           statusCode: 500
         });
+        if (context.env.AIRLOCK_REQUEST_LOGGING) {
+          console.error(
+            JSON.stringify({
+              level: "error",
+              msg: "Unhandled error in request",
+              requestId,
+              path: pathname,
+              error: error instanceof Error ? error.message : String(error),
+              stack: error instanceof Error ? error.stack : undefined
+            })
+          );
+        }
       }
     }
 
