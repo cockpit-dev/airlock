@@ -24,6 +24,7 @@ import {
   releaseGatewayKeyConcurrencyLease
 } from "../gateway-key-concurrency.js";
 import { enforceGatewayKeyRequestQuota } from "../gateway-key-quota.js";
+import { enforceIpRateLimit } from "../ip-rate-limit.js";
 import { collectRateLimitHeaders } from "../rate-limit-headers.js";
 import {
   assertGatewayKeyTokenUsageAvailable,
@@ -87,6 +88,13 @@ export async function handleMessages(
   const gatewayApiKey = await requireGatewayAuthorization(
     context,
     config,
+    requestId
+  );
+
+  const ipRateLimitDecision = await enforceIpRateLimit(
+    context.env,
+    config.ipRateLimitPolicy,
+    context.req.raw.headers,
     requestId
   );
 
@@ -456,6 +464,7 @@ export async function handleMessages(
         "request-id": requestId,
         "x-request-id": requestId,
         ...collectRateLimitHeaders(
+          ipRateLimitDecision,
           tokenReservationResult?.decision,
           requestQuotaDecision,
           concurrencyResult?.decision
@@ -595,6 +604,7 @@ export async function handleMessages(
     {
       "x-request-id": requestId,
       ...collectRateLimitHeaders(
+        ipRateLimitDecision,
         tokenReservationResult?.decision,
         requestQuotaDecision,
         concurrencyResult?.decision

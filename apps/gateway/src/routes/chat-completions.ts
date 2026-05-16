@@ -25,6 +25,7 @@ import {
   releaseGatewayKeyConcurrencyLease
 } from "../gateway-key-concurrency.js";
 import { enforceGatewayKeyRequestQuota } from "../gateway-key-quota.js";
+import { enforceIpRateLimit } from "../ip-rate-limit.js";
 import { collectRateLimitHeaders } from "../rate-limit-headers.js";
 
 import {
@@ -107,6 +108,13 @@ export async function handleChatCompletions(
   const gatewayApiKey = await requireGatewayAuthorization(
     context,
     config,
+    requestId
+  );
+
+  const ipRateLimitDecision = await enforceIpRateLimit(
+    context.env,
+    config.ipRateLimitPolicy,
+    context.req.raw.headers,
     requestId
   );
 
@@ -481,6 +489,7 @@ export async function handleChatCompletions(
         connection: "keep-alive",
         "x-request-id": requestId,
         ...collectRateLimitHeaders(
+          ipRateLimitDecision,
           tokenReservationResult?.decision,
           requestQuotaDecision,
           concurrencyResult?.decision
@@ -619,10 +628,10 @@ export async function handleChatCompletions(
     {
       "x-request-id": requestId,
       ...collectRateLimitHeaders(
+        ipRateLimitDecision,
         tokenReservationResult?.decision,
         requestQuotaDecision,
         concurrencyResult?.decision
       )
     }
-  );
-}
+  );}

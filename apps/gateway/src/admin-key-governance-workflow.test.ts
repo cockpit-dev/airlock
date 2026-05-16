@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { GatewayError } from "@airlock/shared";
+
 import type { GatewayBindings } from "./env.js";
 
 const workflowMocks = vi.hoisted(() => ({
@@ -132,5 +134,59 @@ describe("createAdminKeyGovernanceWorkflow", () => {
       },
       runtime: mutationRuntime
     });
+  });
+
+  it("propagates error when resolveAdminMutationActorCommand throws", async () => {
+    const env = createEnv();
+    const request = new Request("http://localhost/_airlock/keys");
+
+    workflowMocks.resolveAdminMutationActorCommand.mockRejectedValue(
+      new GatewayError("Gateway dynamic key bulk delete payload is invalid", {
+        code: "request_invalid_payload",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId: "req_123"
+      })
+    );
+
+    const workflow = createAdminKeyGovernanceWorkflow(env, "req_123");
+
+    await expect(
+      workflow.withMutation(
+        request,
+        { keyIds: ["bad"] },
+        "Gateway dynamic key bulk delete payload is invalid",
+        () => ({ should: "not reach" })
+      )
+    ).rejects.toThrow("Gateway dynamic key bulk delete payload is invalid");
+
+    expect(
+      workflowMocks.createAdminKeyGovernanceRuntime
+    ).not.toHaveBeenCalled();
+  });
+
+  it("propagates error when createAdminKeyGovernanceRuntime throws in withMutation", async () => {
+    const env = createEnv();
+    const request = new Request("http://localhost/_airlock/keys");
+
+    workflowMocks.resolveAdminMutationActorCommand.mockResolvedValue({
+      actorContext: { actor: "ops@example.com", actorSource: "credential" },
+      payload: { keyIds: ["key_1"] }
+    });
+    workflowMocks.createAdminKeyGovernanceRuntime.mockImplementation(() => {
+      throw new Error("Runtime construction failed");
+    });
+
+    const workflow = createAdminKeyGovernanceWorkflow(env, "req_123");
+
+    await expect(
+      workflow.withMutation(
+        request,
+        { keyIds: ["key_1"] },
+        "Invalid payload",
+        () => ({ should: "not reach" })
+      )
+    ).rejects.toThrow("Runtime construction failed");
   });
 });

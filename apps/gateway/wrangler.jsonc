@@ -27,6 +27,10 @@
       {
         "name": "AIRLOCK_PROVIDER_CIRCUIT_BREAKER",
         "class_name": "ProviderCircuitBreakerDurableObject"
+      },
+      {
+        "name": "AIRLOCK_IP_RATE_LIMIT",
+        "class_name": "IpRateLimitDurableObject"
       }
     ]
   },
@@ -54,6 +58,10 @@
     {
       "tag": "v6",
       "new_sqlite_classes": ["GatewayKeyRegistryDurableObject"]
+    },
+    {
+      "tag": "v7",
+      "new_sqlite_classes": ["IpRateLimitDurableObject"]
     }
   ],
   "queues": {

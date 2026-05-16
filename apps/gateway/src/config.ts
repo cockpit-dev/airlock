@@ -2,8 +2,10 @@ import {
   assertGatewayApiKeysRuntimeDependencies,
   parseGatewayApiKeys,
   parseInternalAdminCredentials,
+  parseIpRateLimitPolicy,
   type GatewayApiKeyRecord,
-  type InternalAdminCredential
+  type InternalAdminCredential,
+  type IpRateLimitPolicy
 } from "@airlock/governance";
 import { parseRouteRequestShaping } from "@airlock/request-shaping";
 import {
@@ -49,6 +51,7 @@ export interface GatewayConfig {
   internalAdminCredentials?: InternalAdminCredential[];
   gatewayApiKeys: GatewayApiKeyRecord[];
   requestSigningSecrets?: Record<string, string>;
+  ipRateLimitPolicy?: IpRateLimitPolicy;
   modelGroups: ModelGroupMap;
   modelAliases: ModelRouteDirectory;
   anthropic?: {
@@ -319,7 +322,9 @@ function computeConfigFingerprint(bindings: GatewayBindings): string {
     bindings.AIRLOCK_GATEWAY_KEY_CONCURRENCY !== undefined ? "1" : "0",
     bindings.AIRLOCK_GATEWAY_KEY_REGISTRY !== undefined ? "1" : "0",
     bindings.AIRLOCK_GATEWAY_KEY_REVOCATION !== undefined ? "1" : "0",
-    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER !== undefined ? "1" : "0"
+    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER !== undefined ? "1" : "0",
+    bindings.AIRLOCK_IP_RATE_LIMIT !== undefined ? "1" : "0",
+    bindings.AIRLOCK_IP_RATE_LIMIT_POLICY ?? ""
   ].join("\0");
 }
 
@@ -408,6 +413,49 @@ function parseGatewayConfigUncached(bindings: GatewayBindings): GatewayConfig {
       httpStatus: 500,
       retryable: false
     });
+  }
+
+  let ipRateLimitPolicy: IpRateLimitPolicy | undefined;
+  if (env.AIRLOCK_IP_RATE_LIMIT_POLICY) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(env.AIRLOCK_IP_RATE_LIMIT_POLICY);
+    } catch {
+      throw new GatewayError("IP rate limit policy must be valid JSON", {
+        code: "config_invalid_ip_rate_limit_policy",
+        category: "configuration",
+        httpStatus: 500,
+        retryable: false
+      });
+    }
+
+    try {
+      ipRateLimitPolicy = parseIpRateLimitPolicy(parsed);
+    } catch (cause) {
+      throw new GatewayError(
+        "IP rate limit policy is invalid: " +
+          (cause instanceof Error ? cause.message : String(cause)),
+        {
+          code: "config_invalid_ip_rate_limit_policy",
+          category: "configuration",
+          httpStatus: 500,
+          retryable: false,
+          cause: cause instanceof Error ? cause : undefined
+        }
+      );
+    }
+  }
+
+  if (ipRateLimitPolicy && !env.AIRLOCK_IP_RATE_LIMIT) {
+    throw new GatewayError(
+      "IP rate limit Durable Object binding is required when policy is configured",
+      {
+        code: "config_missing_ip_rate_limit_binding",
+        category: "configuration",
+        httpStatus: 500,
+        retryable: false
+      }
+    );
   }
 
   const usedProviders = new Set(
@@ -504,6 +552,7 @@ function parseGatewayConfigUncached(bindings: GatewayBindings): GatewayConfig {
     internalAdminCredentials,
     gatewayApiKeys,
     requestSigningSecrets,
+    ...(ipRateLimitPolicy ? { ipRateLimitPolicy } : {}),
     modelGroups,
     modelAliases,
     ...(usesAnthropic

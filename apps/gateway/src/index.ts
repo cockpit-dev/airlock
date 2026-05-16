@@ -7,6 +7,7 @@ import { GatewayKeyRegistryDurableObject } from "./gateway-key-registry.js";
 import { GatewayKeyQuotaDurableObject } from "./gateway-key-quota.js";
 import { GatewayKeyRevocationDurableObject } from "./gateway-key-revocation.js";
 import { GatewayKeyTokenQuotaDurableObject } from "./gateway-key-token-quota.js";
+import { IpRateLimitDurableObject } from "./ip-rate-limit.js";
 import {
   createGatewayTelemetrySink,
   processTelemetryQueueBatch
@@ -69,3 +70,4 @@ export {
 };
 export { GatewayKeyTokenQuotaDurableObject };
 export { ProviderCircuitBreakerDurableObject };
+export { IpRateLimitDurableObject };

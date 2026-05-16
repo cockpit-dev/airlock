@@ -176,7 +176,16 @@ export const gatewayEnvSchema = z.object({
         fetch(request: Request): Promise<Response>;
       };
     }>()
-    .optional()
+    .optional(),
+  AIRLOCK_IP_RATE_LIMIT: z
+    .custom<{
+      idFromName(name: string): unknown;
+      get(id: unknown): {
+        fetch(request: Request): Promise<Response>;
+      };
+    }>()
+    .optional(),
+  AIRLOCK_IP_RATE_LIMIT_POLICY: z.string().min(1).optional()
 });
 
 export type GatewayBindings = z.infer<typeof gatewayEnvSchema>;
