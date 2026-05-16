@@ -5,6 +5,7 @@
     MetricsSnapshot,
     RoutingHealthResponse
   } from "$lib/api.js";
+  import { createClient, getStoredCredentials } from "$lib/auth.js";
   import { onMount } from "svelte";
 
   let { data } = $props<{
@@ -17,10 +18,31 @@
 
   let statusChartEl: HTMLCanvasElement | undefined = $state();
   let routeChartEl: HTMLCanvasElement | undefined = $state();
+  let trendChartEl: HTMLCanvasElement | undefined = $state();
+  let errorRateChartEl: HTMLCanvasElement | undefined = $state();
+  let latencyChartEl: HTMLCanvasElement | undefined = $state();
 
-  onMount(async () => {
-    const { Chart, ArcElement, DoughnutController, Tooltip, Legend } = await import("chart.js");
-    Chart.register(ArcElement, DoughnutController, Tooltip, Legend);
+  // Time-series data for trend charts (client-side accumulation)
+  const MAX_DATA_POINTS = 30;
+  let trendLabels = $state<string[]>([]);
+  let trendRequests = $state<number[]>([]);
+  let trendErrors = $state<number[]>([]);
+  let trendErrorRates = $state<number[]>([]);
+  let trendLatencies = $state<number[]>([]);
+
+  let ChartModule: typeof import("chart.js") | null = null;
+
+  async function initCharts() {
+    ChartModule = await import("chart.js");
+    const { Chart, ArcElement, DoughnutController, Tooltip, Legend, LineController, LineElement, BarController, BarElement, LinearScale, CategoryScale, PointElement, Filler } = ChartModule;
+    Chart.register(ArcElement, DoughnutController, LineController, LineElement, BarController, BarElement, LinearScale, CategoryScale, PointElement, Tooltip, Legend, Filler);
+
+    renderStaticCharts();
+  }
+
+  function renderStaticCharts() {
+    if (!ChartModule) return;
+    const { Chart } = ChartModule;
 
     const m = data.metrics;
     if (m && statusChartEl) {
@@ -74,6 +96,159 @@
         });
       }
     }
+  }
+
+  function pushMetricsPoint(m: MetricsSnapshot) {
+    const now = new Date();
+    const label = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+    trendLabels = [...trendLabels.slice(-(MAX_DATA_POINTS - 1)), label];
+    trendRequests = [...trendRequests.slice(-(MAX_DATA_POINTS - 1)), m.requests];
+    trendErrors = [...trendErrors.slice(-(MAX_DATA_POINTS - 1)), m.errors];
+    trendErrorRates = [...trendErrorRates.slice(-(MAX_DATA_POINTS - 1)), +(m.errorRate * 100).toFixed(1)];
+    trendLatencies = [...trendLatencies.slice(-(MAX_DATA_POINTS - 1)), m.avgDurationMs];
+
+    renderTrendCharts();
+    renderLatencyChart(m);
+  }
+
+  function renderTrendCharts() {
+    if (!ChartModule || !trendChartEl || !errorRateChartEl) return;
+    const { Chart } = ChartModule;
+
+    // Destroy previous instances
+    const existingTrend = Chart.getChart(trendChartEl);
+    if (existingTrend) existingTrend.destroy();
+    const existingError = Chart.getChart(errorRateChartEl);
+    if (existingError) existingError.destroy();
+
+    // Requests trend line
+    new Chart(trendChartEl, {
+      type: "line",
+      data: {
+        labels: trendLabels,
+        datasets: [
+          {
+            label: "Requests",
+            data: trendRequests,
+            borderColor: "#3b82f6",
+            backgroundColor: "rgba(59,130,246,0.1)",
+            fill: true,
+            tension: 0.3,
+            pointRadius: 2
+          },
+          {
+            label: "Errors",
+            data: trendErrors,
+            borderColor: "#ef4444",
+            backgroundColor: "rgba(239,68,68,0.1)",
+            fill: true,
+            tension: 0.3,
+            pointRadius: 2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { color: "#6b7280", maxTicksLimit: 10 }, grid: { color: "#1f2937" } },
+          y: { ticks: { color: "#6b7280" }, grid: { color: "#1f2937" }, beginAtZero: true }
+        },
+        plugins: {
+          legend: { labels: { color: "#9ca3af" } }
+        }
+      }
+    });
+
+    // Error rate bar chart
+    new Chart(errorRateChartEl, {
+      type: "bar",
+      data: {
+        labels: trendLabels,
+        datasets: [{
+          label: "Error Rate (%)",
+          data: trendErrorRates,
+          backgroundColor: trendErrorRates.map((r) => (r > 5 ? "rgba(239,68,68,0.7)" : r > 1 ? "rgba(234,179,8,0.7)" : "rgba(34,197,94,0.7)")),
+          borderRadius: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { color: "#6b7280", maxTicksLimit: 10 }, grid: { color: "#1f2937" } },
+          y: { ticks: { color: "#6b7280" }, grid: { color: "#1f2937" }, beginAtZero: true, max: 100 }
+        },
+        plugins: {
+          legend: { labels: { color: "#9ca3af" } }
+        }
+      }
+    });
+  }
+
+  function renderLatencyChart(m: MetricsSnapshot) {
+    if (!ChartModule || !latencyChartEl) return;
+    const { Chart } = ChartModule;
+
+    const existing = Chart.getChart(latencyChartEl);
+    if (existing) existing.destroy();
+
+    const routes = Object.entries(m.byRoute);
+    if (routes.length === 0) return;
+
+    new Chart(latencyChartEl, {
+      type: "bar",
+      data: {
+        labels: routes.map(([name]) => name),
+        datasets: [{
+          label: "Avg Latency (ms)",
+          data: routes.map(([, r]) => r.avgDurationMs),
+          backgroundColor: routes.map(([, r]) =>
+            r.avgDurationMs > 3000 ? "rgba(239,68,68,0.7)"
+            : r.avgDurationMs > 1000 ? "rgba(234,179,8,0.7)"
+            : "rgba(59,130,246,0.7)"
+          ),
+          borderRadius: 2
+        }]
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { color: "#6b7280" }, grid: { color: "#1f2937" }, beginAtZero: true },
+          y: { ticks: { color: "#9ca3af", font: { family: "monospace", size: 11 } }, grid: { display: false } }
+        },
+        plugins: {
+          legend: { display: false }
+        }
+      }
+    });
+  }
+
+  onMount(async () => {
+    await initCharts();
+
+    // Seed initial data point
+    if (data.metrics) {
+      pushMetricsPoint(data.metrics);
+    }
+
+    // Poll metrics every 10s for live updates
+    const interval = setInterval(async () => {
+      const creds = getStoredCredentials();
+      if (!creds) return;
+      const client = createClient(creds.url, creds.token);
+      try {
+        const m = await client.getMetrics();
+        pushMetricsPoint(m);
+      } catch {
+        // Connection lost — skip this tick
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
   });
 </script>
 
@@ -161,6 +336,37 @@
           </div>
         </div>
       </div>
+
+      <!-- Trend Charts -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <!-- Request Trend Line -->
+        <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+          <h4 class="text-sm font-medium text-gray-300 mb-3">Request Trend</h4>
+          <div class="h-52">
+            <canvas bind:this={trendChartEl}></canvas>
+          </div>
+        </div>
+
+        <!-- Error Rate Bar -->
+        <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+          <h4 class="text-sm font-medium text-gray-300 mb-3">Error Rate (%)</h4>
+          <div class="h-52">
+            <canvas bind:this={errorRateChartEl}></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Per-Route Latency Chart -->
+      {#if data.metrics && Object.keys(data.metrics.byRoute).length > 0}
+        <div class="mb-8">
+          <h3 class="text-lg font-semibold text-gray-200 mb-3">Route Latency</h3>
+          <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <div class="h-64">
+              <canvas bind:this={latencyChartEl}></canvas>
+            </div>
+          </div>
+        </div>
+      {/if}
 
       <!-- Status Code Distribution -->
       {#if Object.keys(data.metrics.statusCodes).length > 0}
