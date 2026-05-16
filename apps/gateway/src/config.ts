@@ -27,6 +27,7 @@ import { gatewayEnvSchema } from "./env.js";
 import {
   fetchConfigStoreSnapshot,
   type DashboardConfigOverlay,
+  type DashboardProviderEntry,
   type DashboardProvidersConfig,
   type StoredConfigSnapshot
 } from "./gateway-config-store.js";
@@ -607,7 +608,14 @@ export async function resolveGatewayConfigWithOverlay(
   try {
     base = resolveGatewayConfig(bindings);
   } catch (e) {
-    if (!bindings.AIRLOCK_CONFIG_STORE) throw e;
+    if (
+      !bindings.AIRLOCK_CONFIG_STORE ||
+      !(e instanceof GatewayError) ||
+      (e.code !== "config_missing_anthropic" &&
+        e.code !== "config_missing_gemini")
+    ) {
+      throw e;
+    }
     base = parseGatewayConfigUncached(bindings, {
       allowMissingProviderEnvVars: true
     });
@@ -687,6 +695,9 @@ export async function resolveDashboardOverlay(
     overlayCache = { snapshot, fetchedAt: now };
     return snapshot;
   } catch {
+    if (overlayCache) {
+      overlayCache.fetchedAt = now;
+    }
     return overlayCache?.snapshot;
   }
 }
@@ -703,7 +714,10 @@ export function mergeConfigWithOverlay(
 
   const providersSection = overlay.sections["providers"];
   if (providersSection) {
-    config = mergeProvidersConfig(config, providersSection.data as DashboardProvidersConfig);
+    const validated = validateProvidersOverlay(providersSection.data);
+    if (validated) {
+      config = mergeProvidersConfig(config, validated);
+    }
   }
 
   const limitsSection = overlay.sections["limits"];
@@ -725,9 +739,50 @@ interface DashboardLimitsOverlay {
   providerCircuitBreakerPersistent?: boolean;
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function validateProviderEntry(
+  data: unknown,
+  providerName: string
+): DashboardProviderEntry | undefined {
+  if (typeof data !== "object" || data === null) return undefined;
+  const entry = data as Record<string, unknown>;
+  if (!isNonEmptyString(entry.apiKey) || !isNonEmptyString(entry.baseUrl)) {
+    return undefined;
+  }
+  return {
+    apiKey: entry.apiKey,
+    baseUrl: entry.baseUrl,
+    ...(isNonEmptyString(entry.defaultModel)
+      ? { defaultModel: entry.defaultModel }
+      : {}),
+    ...(typeof entry.defaultMaxTokens === "number" && entry.defaultMaxTokens > 0
+      ? { defaultMaxTokens: entry.defaultMaxTokens }
+      : {})
+  };
+}
+
+function validateProvidersOverlay(
+  data: unknown
+): Partial<DashboardProvidersConfig> | undefined {
+  if (typeof data !== "object" || data === null) return undefined;
+  const raw = data as Record<string, unknown>;
+  const openai = validateProviderEntry(raw.openai, "openai");
+  const anthropic = validateProviderEntry(raw.anthropic, "anthropic");
+  const gemini = validateProviderEntry(raw.gemini, "gemini");
+  if (!openai && !anthropic && !gemini) return undefined;
+  return {
+    ...(openai ? { openai } : {}),
+    ...(anthropic ? { anthropic } : {}),
+    ...(gemini ? { gemini } : {})
+  };
+}
+
 function mergeProvidersConfig(
   config: GatewayConfig,
-  providers: DashboardProvidersConfig
+  providers: Partial<DashboardProvidersConfig>
 ): GatewayConfig {
   return {
     ...config,

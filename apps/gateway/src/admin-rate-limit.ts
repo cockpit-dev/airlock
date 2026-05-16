@@ -14,6 +14,14 @@ export class AdminRateLimiter {
   }
 
   check(ip: string, now: number): { allowed: boolean; remaining: number } {
+    if (this.buckets.size > 10_000) {
+      for (const [key, bucket] of this.buckets) {
+        if (now - bucket.windowStart >= this.windowMs) {
+          this.buckets.delete(key);
+        }
+      }
+    }
+
     const bucket = this.buckets.get(ip);
 
     if (!bucket || now - bucket.windowStart >= this.windowMs) {

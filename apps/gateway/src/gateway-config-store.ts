@@ -199,6 +199,8 @@ export class GatewayConfigStoreDurableObject {
       version: sectionVersion
     };
 
+    // DO runtime batches sequential puts within the same handler into
+    // a single transaction, so these writes are effectively atomic.
     await this.state.storage.put(`section:${name}`, section);
     await this.state.storage.put("global_version", nextGlobalVersion);
 
