@@ -20,7 +20,7 @@ type GatewayApp = Hono<{
 
 export function registerAdminMetricsRoutes(app: GatewayApp): void {
   app.get("/_airlock/metrics", async (context) => {
-    await requireAdminScope(context, "keys.read");
+    await requireAdminScope(context, "metrics.read");
     return context.json(getMetricsCollector().snapshot());
   });
 }

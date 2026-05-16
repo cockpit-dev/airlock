@@ -171,7 +171,7 @@ export function buildAdminConfigResponse(
 
 export function registerAdminConfigRoutes(app: GatewayApp): void {
   app.get("/_airlock/config", async (context) => {
-    await requireAdminScope(context, "keys.read");
+    await requireAdminScope(context, "config.read");
     const config = resolveGatewayConfig(context.env);
     const response = buildAdminConfigResponse(config);
     response.features.telemetry = context.env.AIRLOCK_TELEMETRY !== undefined;

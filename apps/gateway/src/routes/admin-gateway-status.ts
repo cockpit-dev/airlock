@@ -204,7 +204,7 @@ function buildKeyCounts(config: GatewayConfig): {
 
 export function registerAdminGatewayStatusRoutes(app: GatewayApp): void {
   app.get("/_airlock/status", async (context) => {
-    await requireAdminScope(context, "keys.read");
+    await requireAdminScope(context, "status.read");
     const config = resolveGatewayConfig(context.env);
     const circuitBreakerStates = getAllInMemoryCircuitBreakerStates();
     const configFingerprint = computeConfigFingerprint(context.env);

@@ -107,15 +107,68 @@ export interface InternalAdminCredential {
   id: string;
   tokenHash: string;
   actor: string;
-  scopes: InternalAdminScope[];
+  role: AdminRole;
+  scopes: AdminScope[];
 }
 
 export interface InternalAdminAuthorization {
   credentialId: string;
   actor: string;
-  scopes: InternalAdminScope[];
+  role: AdminRole;
+  scopes: AdminScope[];
 }
 
+export type AdminScope =
+  | "status.read"
+  | "metrics.read"
+  | "config.read"
+  | "config.write"
+  | "keys.read"
+  | "keys.write"
+  | "routing.read"
+  | "routing.write";
+
+export type AdminRole = "super_admin" | "admin" | "operator" | "viewer";
+
+export const ADMIN_ROLE_SCOPES: Record<AdminRole, AdminScope[]> = {
+  super_admin: [
+    "status.read",
+    "metrics.read",
+    "config.read",
+    "config.write",
+    "keys.read",
+    "keys.write",
+    "routing.read",
+    "routing.write"
+  ],
+  admin: [
+    "status.read",
+    "metrics.read",
+    "config.read",
+    "config.write",
+    "keys.read",
+    "keys.write",
+    "routing.read",
+    "routing.write"
+  ],
+  operator: [
+    "status.read",
+    "metrics.read",
+    "config.read",
+    "keys.read",
+    "keys.write",
+    "routing.read"
+  ],
+  viewer: [
+    "status.read",
+    "metrics.read",
+    "config.read",
+    "keys.read",
+    "routing.read"
+  ]
+};
+
+/** @deprecated Use AdminScope instead. Kept for backward compatibility. */
 export type InternalAdminScope = "keys.read" | "keys.write";
 
 export interface InternalAdminAuthorizationRequest {
@@ -123,13 +176,19 @@ export interface InternalAdminAuthorizationRequest {
   adminToken: string | undefined;
   adminCredentials: readonly InternalAdminCredential[];
   structuredCredentialsConfig: string | undefined;
-  requiredScope?: InternalAdminScope;
+  requiredScope?: AdminScope;
   requestId: string;
 }
 
-const DEFAULT_INTERNAL_ADMIN_SCOPES: InternalAdminScope[] = [
+const DEFAULT_INTERNAL_ADMIN_SCOPES: AdminScope[] = [
+  "status.read",
+  "metrics.read",
+  "config.read",
+  "config.write",
   "keys.read",
-  "keys.write"
+  "keys.write",
+  "routing.read",
+  "routing.write"
 ];
 
 export function createUnauthorizedError(requestId: string): GatewayError {
@@ -203,9 +262,35 @@ function parseInternalAdminActor(value: unknown): string {
   return value.trim();
 }
 
+const VALID_ADMIN_SCOPES = new Set<AdminScope>([
+  "status.read",
+  "metrics.read",
+  "config.read",
+  "config.write",
+  "keys.read",
+  "keys.write",
+  "routing.read",
+  "routing.write"
+]);
+
+const VALID_ADMIN_ROLES = new Set<AdminRole>([
+  "super_admin",
+  "admin",
+  "operator",
+  "viewer"
+]);
+
+function parseAdminRole(value: unknown): AdminRole | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (VALID_ADMIN_ROLES.has(trimmed as AdminRole)) return trimmed as AdminRole;
+  return undefined;
+}
+
 function parseInternalAdminScopes(
   value: unknown
-): InternalAdminScope[] {
+): AdminScope[] {
   if (value === undefined) {
     return [...DEFAULT_INTERNAL_ADMIN_SCOPES];
   }
@@ -217,16 +302,16 @@ function parseInternalAdminScopes(
   }
 
   const rawScopes = value as unknown[];
-  const scopes: InternalAdminScope[] = [];
+  const scopes: AdminScope[] = [];
 
   for (const scope of rawScopes) {
-    if (scope !== "keys.read" && scope !== "keys.write") {
+    if (!VALID_ADMIN_SCOPES.has(scope as AdminScope)) {
       throw createInvalidGatewayKeyConfigError(
         "Internal admin credential scopes must contain only supported values"
       );
     }
 
-    scopes.push(scope);
+    scopes.push(scope as AdminScope);
   }
 
   if (new Set(scopes).size !== scopes.length) {
@@ -748,7 +833,10 @@ export function parseInternalAdminCredentials(
         ? entry.tokenHash.trim().toLowerCase()
         : "";
     const actor = parseInternalAdminActor(entry.actor);
-    const scopes = parseInternalAdminScopes(entry.scopes);
+    const role = parseAdminRole(entry.role) ?? "admin";
+    const scopes = entry.scopes !== undefined
+      ? parseInternalAdminScopes(entry.scopes)
+      : [...(ADMIN_ROLE_SCOPES[role] ?? DEFAULT_INTERNAL_ADMIN_SCOPES)];
 
     if (id.length === 0) {
       throw createInvalidGatewayKeyConfigError(
@@ -781,6 +869,7 @@ export function parseInternalAdminCredentials(
       id,
       tokenHash,
       actor,
+      role,
       scopes
     };
   });
@@ -1006,6 +1095,7 @@ export async function validateInternalAdminCredential(
   return {
     credentialId: matchedCredential.id,
     actor: matchedCredential.actor,
+    role: matchedCredential.role,
     scopes: matchedCredential.scopes
   };
 }
@@ -1093,7 +1183,7 @@ export async function authorizeInternalAdminRequest(
 
 export function requireInternalAdminScope(
   authorization: InternalAdminAuthorization,
-  scope: InternalAdminScope,
+  scope: AdminScope,
   requestId = "unknown_request"
 ): InternalAdminAuthorization {
   if (!authorization.scopes.includes(scope)) {

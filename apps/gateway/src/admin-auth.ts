@@ -1,7 +1,7 @@
 import {
   authorizeInternalAdminRequest,
   parseInternalAdminCredentials,
-  type InternalAdminScope
+  type AdminScope
 } from "@airlock/governance";
 
 import type { GatewayBindings } from "./env.js";
@@ -14,7 +14,7 @@ type AdminAuthContext = {
 
 export async function requireAdminScope(
   context: AdminAuthContext,
-  requiredScope: InternalAdminScope
+  requiredScope: AdminScope
 ): Promise<void> {
   await authorizeInternalAdminRequest({
     authorization: context.req.header("authorization"),
@@ -28,3 +28,5 @@ export async function requireAdminScope(
     requestId: context.get("requestId")
   });
 }
+
+export type { AdminScope };

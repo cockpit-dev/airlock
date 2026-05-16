@@ -33,7 +33,7 @@ export function registerAdminRoutingHealthRoutes(
   getNow?: () => () => number
 ) {
   app.get("/_airlock/routing/health", async (context) => {
-    await requireAdminScope(context, "keys.read");
+    await requireAdminScope(context, "routing.read");
 
     const config = resolveGatewayConfig(context.env);
     const now = getNow ? getNow()() : Date.now();

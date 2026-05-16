@@ -851,6 +851,7 @@ describe("parseInternalAdminCredentials", () => {
             id: "ops_primary",
             tokenHash: gatewaySecretHash,
             actor: "ops@example.com",
+            role: "operator",
             scopes: ["keys.read"]
           }
         ])
@@ -860,6 +861,7 @@ describe("parseInternalAdminCredentials", () => {
         id: "ops_primary",
         tokenHash: gatewaySecretHash,
         actor: "ops@example.com",
+        role: "operator",
         scopes: ["keys.read"]
       }
     ]);
@@ -893,7 +895,7 @@ describe("parseInternalAdminCredentials", () => {
     ).toThrow(GatewayError);
   });
 
-  it("defaults credentials without scopes to full access in this phase", () => {
+  it("defaults credentials without scopes to role-based access", () => {
     expect(
       parseInternalAdminCredentials(
         JSON.stringify([
@@ -909,7 +911,17 @@ describe("parseInternalAdminCredentials", () => {
         id: "ops_primary",
         tokenHash: gatewaySecretHash,
         actor: "ops@example.com",
-        scopes: ["keys.read", "keys.write"]
+        role: "admin",
+        scopes: [
+          "status.read",
+          "metrics.read",
+          "config.read",
+          "config.write",
+          "keys.read",
+          "keys.write",
+          "routing.read",
+          "routing.write"
+        ]
       }
     ]);
   });
@@ -927,6 +939,7 @@ describe("authorizeInternalAdminRequest", () => {
               id: "ops_reader",
               tokenHash: gatewaySecretHash,
               actor: "reader@example.com",
+              role: "viewer",
               scopes: ["keys.read"]
             }
           ])
@@ -936,6 +949,7 @@ describe("authorizeInternalAdminRequest", () => {
             id: "ops_reader",
             tokenHash: gatewaySecretHash,
             actor: "reader@example.com",
+            role: "viewer",
             scopes: ["keys.read"]
           }
         ]),
@@ -945,6 +959,7 @@ describe("authorizeInternalAdminRequest", () => {
     ).resolves.toEqual({
       credentialId: "ops_reader",
       actor: "reader@example.com",
+      role: "viewer",
       scopes: ["keys.read"]
     });
   });
