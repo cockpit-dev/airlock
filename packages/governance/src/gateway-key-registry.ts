@@ -1570,9 +1570,9 @@ export function toGatewayKeyAuditActorContextRecord(
 }
 
 export function buildGatewayKeyAuditContext(options: {
-  operationId?: string;
-  reason?: string;
-  actorContext?: GatewayKeyAuditActorContext;
+  operationId?: string | undefined;
+  reason?: string | undefined;
+  actorContext?: GatewayKeyAuditActorContext | undefined;
 }): Record<string, unknown> {
   return {
     ...(options.operationId ? { operationId: options.operationId } : {}),

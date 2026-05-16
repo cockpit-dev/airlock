@@ -40,6 +40,7 @@ import {
   finalizeGatewayRegistryKeyRotation as finalizeGatewayRegistryKeyRotationUseCase,
   isConfiguredGatewayApiKeyId,
   isStringArray,
+  buildGatewayKeyAuditContext,
   gatewayKeyAuditActorContextFromRegistryRequest,
   parseGatewayKeyRegistryBulkCreateRequest,
   parseGatewayKeyRegistryBulkArchiveRequest,
@@ -328,15 +329,11 @@ export class GatewayKeyRegistryDurableObject {
               nextKey: entry.nextKey
             };
           }),
-        {
-          ...(operationId ? { operationId } : {}),
-          ...(bulkRequest.auditMetadata.reason
-            ? { reason: bulkRequest.auditMetadata.reason }
-            : {}),
-          ...(actorContext
-            ? toGatewayKeyAuditActorContextRecord(actorContext)
-            : {})
-        },
+        buildGatewayKeyAuditContext({
+          operationId,
+          reason: bulkRequest.auditMetadata.reason,
+          actorContext
+        }),
         dynamicKeys,
         transitionNow
       );
@@ -362,7 +359,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
-        ...(operationId ? { operationId } : {}),
+        ...buildGatewayKeyAuditContext({ operationId }),
         keys: updatedKeys.map((entry) => {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
@@ -382,15 +379,11 @@ export class GatewayKeyRegistryDurableObject {
       const transitionNow = new Date().toISOString();
       const createTransitions = buildBulkCreateGatewayRegistryKeyTransitions(
         bulkRequest.keys,
-        {
-          ...(operationId ? { operationId } : {}),
-          ...(bulkRequest.auditMetadata?.reason
-            ? { reason: bulkRequest.auditMetadata.reason }
-            : {}),
-          ...(bulkRequest.actorContext
-            ? toGatewayKeyAuditActorContextRecord(bulkRequest.actorContext)
-            : {})
-        },
+        buildGatewayKeyAuditContext({
+          operationId,
+          reason: bulkRequest.auditMetadata?.reason,
+          actorContext: bulkRequest.actorContext
+        }),
         transitionNow
       );
       const createdKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
@@ -409,7 +402,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
-        ...(operationId ? { operationId } : {}),
+        ...buildGatewayKeyAuditContext({ operationId }),
         keys: createdKeys.map((entry) => {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
@@ -447,15 +440,11 @@ export class GatewayKeyRegistryDurableObject {
         bulkRequest.keyIds.map((candidateKeyId) => {
           return existingKeysById.get(candidateKeyId)!;
         }),
-        {
-          ...(operationId ? { operationId } : {}),
-          ...(bulkRequest.auditMetadata.reason
-            ? { reason: bulkRequest.auditMetadata.reason }
-            : {}),
-          ...(actorContext
-            ? toGatewayKeyAuditActorContextRecord(actorContext)
-            : {})
-        },
+        buildGatewayKeyAuditContext({
+          operationId,
+          reason: bulkRequest.auditMetadata.reason,
+          actorContext
+        }),
         occurredAt
       );
 
@@ -468,7 +457,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
-        ...(operationId ? { operationId } : {}),
+        ...buildGatewayKeyAuditContext({ operationId }),
         keys: bulkRequest.keyIds.map((keyId) => {
           return {
             keyId,
@@ -520,15 +509,11 @@ export class GatewayKeyRegistryDurableObject {
       const transitionNow = new Date().toISOString();
       const rotateTransitions = buildBulkRotateGatewayRegistryKeyTransitions(
         rotationEntries,
-        {
-          ...(operationId ? { operationId } : {}),
-          ...(bulkRequest.auditMetadata.reason
-            ? { reason: bulkRequest.auditMetadata.reason }
-            : {}),
-          ...(actorContext
-            ? toGatewayKeyAuditActorContextRecord(actorContext)
-            : {})
-        },
+        buildGatewayKeyAuditContext({
+          operationId,
+          reason: bulkRequest.auditMetadata.reason,
+          actorContext
+        }),
         dynamicKeys,
         transitionNow
       );
@@ -557,7 +542,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
-        ...(operationId ? { operationId } : {}),
+        ...buildGatewayKeyAuditContext({ operationId }),
         keys: updatedKeys.map((entry) => {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
@@ -637,12 +622,10 @@ export class GatewayKeyRegistryDurableObject {
       const transitionNow = new Date().toISOString();
       const transition = buildFinalizeGatewayRegistryKeyRotationTransition(
         existingKey,
-        {
-          ...(payload.reason ? { reason: payload.reason } : {}),
-          ...(actorContext
-            ? toGatewayKeyAuditActorContextRecord(actorContext)
-            : {})
-        },
+        buildGatewayKeyAuditContext({
+          reason: payload.reason,
+          actorContext
+        }),
         transitionNow
       );
       const key = await updateStoredDynamicKey(
@@ -692,12 +675,10 @@ export class GatewayKeyRegistryDurableObject {
       const transitionNow = new Date().toISOString();
       const transition = buildCancelGatewayRegistryKeyRotationTransition(
         existingKey,
-        {
-          ...(payload.reason ? { reason: payload.reason } : {}),
-          ...(actorContext
-            ? toGatewayKeyAuditActorContextRecord(actorContext)
-            : {})
-        },
+        buildGatewayKeyAuditContext({
+          reason: payload.reason,
+          actorContext
+        }),
         transitionNow
       );
       const key = await updateStoredDynamicKey(
@@ -766,15 +747,11 @@ export class GatewayKeyRegistryDurableObject {
         bulkRequest.keyIds.map((candidateKeyId) => {
           return existingKeysById.get(candidateKeyId)!;
         }),
-        {
-          ...(operationId ? { operationId } : {}),
-          ...(bulkRequest.auditMetadata.reason
-            ? { reason: bulkRequest.auditMetadata.reason }
-            : {}),
-          ...(actorContext
-            ? toGatewayKeyAuditActorContextRecord(actorContext)
-            : {})
-        },
+        buildGatewayKeyAuditContext({
+          operationId,
+          reason: bulkRequest.auditMetadata.reason,
+          actorContext
+        }),
         transitionNow
       );
       const archivedKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
@@ -799,7 +776,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
-        ...(operationId ? { operationId } : {}),
+        ...buildGatewayKeyAuditContext({ operationId }),
         keys: archivedKeys.map((entry) => {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
@@ -853,15 +830,11 @@ export class GatewayKeyRegistryDurableObject {
         bulkRequest.keyIds.map((candidateKeyId) => {
           return existingKeysById.get(candidateKeyId)!;
         }),
-        {
-          ...(operationId ? { operationId } : {}),
-          ...(bulkRequest.auditMetadata.reason
-            ? { reason: bulkRequest.auditMetadata.reason }
-            : {}),
-          ...(actorContext
-            ? toGatewayKeyAuditActorContextRecord(actorContext)
-            : {})
-        },
+        buildGatewayKeyAuditContext({
+          operationId,
+          reason: bulkRequest.auditMetadata.reason,
+          actorContext
+        }),
         transitionNow
       );
       const restoredKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
@@ -886,7 +859,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
-        ...(operationId ? { operationId } : {}),
+        ...buildGatewayKeyAuditContext({ operationId }),
         keys: restoredKeys.map((entry) => {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
@@ -933,15 +906,11 @@ export class GatewayKeyRegistryDurableObject {
           bulkRequest.keyIds.map((candidateKeyId) => {
             return existingKeysById.get(candidateKeyId)!;
           }),
-          {
-            ...(operationId ? { operationId } : {}),
-            ...(bulkRequest.auditMetadata.reason
-              ? { reason: bulkRequest.auditMetadata.reason }
-              : {}),
-            ...(actorContext
-              ? toGatewayKeyAuditActorContextRecord(actorContext)
-              : {})
-          },
+          buildGatewayKeyAuditContext({
+            operationId,
+            reason: bulkRequest.auditMetadata.reason,
+            actorContext
+          }),
           transitionNow
         );
       const finalizedKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
@@ -966,7 +935,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
-        ...(operationId ? { operationId } : {}),
+        ...buildGatewayKeyAuditContext({ operationId }),
         keys: finalizedKeys.map((entry) => {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
@@ -1014,15 +983,11 @@ export class GatewayKeyRegistryDurableObject {
           bulkRequest.keyIds.map((candidateKeyId) => {
             return existingKeysById.get(candidateKeyId)!;
           }),
-          {
-            ...(operationId ? { operationId } : {}),
-            ...(bulkRequest.auditMetadata.reason
-              ? { reason: bulkRequest.auditMetadata.reason }
-              : {}),
-            ...(actorContext
-              ? toGatewayKeyAuditActorContextRecord(actorContext)
-              : {})
-          },
+          buildGatewayKeyAuditContext({
+            operationId,
+            reason: bulkRequest.auditMetadata.reason,
+            actorContext
+          }),
           transitionNow
         );
       const canceledKeys: GatewayKeyRegistryStoredDynamicKey[] = [];
@@ -1047,7 +1012,7 @@ export class GatewayKeyRegistryDurableObject {
       }
 
       return Response.json({
-        ...(operationId ? { operationId } : {}),
+        ...buildGatewayKeyAuditContext({ operationId }),
         keys: canceledKeys.map((entry) => {
           return createGatewayKeyRegistryDynamicKeyView(entry);
         })
@@ -1080,12 +1045,10 @@ export class GatewayKeyRegistryDurableObject {
       const transitionNow = new Date().toISOString();
       const transition = buildArchiveGatewayRegistryKeyTransition(
         existingKey,
-        {
-          ...(payload.reason ? { reason: payload.reason } : {}),
-          ...(actorContext
-            ? toGatewayKeyAuditActorContextRecord(actorContext)
-            : {})
-        },
+        buildGatewayKeyAuditContext({
+          reason: payload.reason,
+          actorContext
+        }),
         transitionNow
       );
       const key = await updateStoredDynamicKey(
@@ -1131,12 +1094,10 @@ export class GatewayKeyRegistryDurableObject {
       const transitionNow = new Date().toISOString();
       const transition = buildRestoreGatewayRegistryKeyTransition(
         existingKey,
-        {
-          ...(payload.reason ? { reason: payload.reason } : {}),
-          ...(actorContext
-            ? toGatewayKeyAuditActorContextRecord(actorContext)
-            : {})
-        },
+        buildGatewayKeyAuditContext({
+          reason: payload.reason,
+          actorContext
+        }),
         transitionNow
       );
       const key = await updateStoredDynamicKey(
@@ -1279,12 +1240,10 @@ export class GatewayKeyRegistryDurableObject {
             this.state.storage,
             buildDeleteGatewayRegistryKeyAuditEvent(
               existingKey,
-              {
-                ...(payload.reason ? { reason: payload.reason } : {}),
-                ...(actorContext
-                  ? toGatewayKeyAuditActorContextRecord(actorContext)
-                  : {})
-              },
+              buildGatewayKeyAuditContext({
+                reason: payload.reason,
+                actorContext
+              }),
               occurredAt
             )
           );
@@ -1317,18 +1276,13 @@ export class GatewayKeyRegistryDurableObject {
           this.state.storage,
           keyId,
           parsedRequest.override,
-          {
+          buildGatewayKeyAuditContext({
             ...(operationId ? { operationId } : {}),
-            ...(parsedRequest.auditMetadata?.reason
-              ? { reason: parsedRequest.auditMetadata.reason }
-              : {}),
-            ...(parsedRequest.auditMetadata?.actor
-              ? {
-                  actor: parsedRequest.auditMetadata.actor,
-                  actorSource: parsedRequest.auditMetadata.actorSource
-                }
-              : {})
-          }
+            reason: parsedRequest.auditMetadata?.reason,
+            actorContext: parsedRequest.auditMetadata?.actor
+              ? { actor: parsedRequest.auditMetadata.actor, actorSource: parsedRequest.auditMetadata.actorSource ?? "payload" }
+              : undefined
+          })
         );
         await appendStoredConfiguredKeyAuditEvent(
           this.state.storage,
@@ -1348,18 +1302,15 @@ export class GatewayKeyRegistryDurableObject {
           ? await request.json()
           : {};
         const parsedRequest = parseGatewayKeyRegistryOverrideClearRequest(body);
-        const result = await clearStoredOverride(this.state.storage, keyId, {
-          ...(operationId ? { operationId } : {}),
-          ...(parsedRequest.auditMetadata?.reason
-            ? { reason: parsedRequest.auditMetadata.reason }
-            : {}),
-          ...(parsedRequest.auditMetadata?.actor
-            ? {
-                actor: parsedRequest.auditMetadata.actor,
-                actorSource: parsedRequest.auditMetadata.actorSource
-              }
-            : {})
-        });
+        const result = await clearStoredOverride(this.state.storage, keyId,
+          buildGatewayKeyAuditContext({
+            ...(operationId ? { operationId } : {}),
+            reason: parsedRequest.auditMetadata?.reason,
+            actorContext: parsedRequest.auditMetadata?.actor
+              ? { actor: parsedRequest.auditMetadata.actor, actorSource: parsedRequest.auditMetadata.actorSource ?? "payload" }
+              : undefined
+          })
+        );
         await appendStoredConfiguredKeyAuditEvent(
           this.state.storage,
           result.auditEvent
