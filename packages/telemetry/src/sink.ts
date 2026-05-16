@@ -13,9 +13,8 @@ export async function emitTelemetryEvent(
     return;
   }
 
-  gatewayRequestTelemetryEventSchema.parse(event);
-
   try {
+    gatewayRequestTelemetryEventSchema.parse(event);
     await sink.emit(event);
   } catch {
     // Telemetry must never affect request correctness.
