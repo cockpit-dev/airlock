@@ -14,6 +14,7 @@ import {
 } from "./errors.js";
 import type { GatewayBindings } from "./env.js";
 import { createRequestId } from "./request-id.js";
+import { logRequest } from "./request-logger.js";
 import { registerAdminKeyGovernanceRoutes } from "./routes/admin-key-governance.js";
 import { registerAdminGatewayStatusRoutes } from "./routes/admin-gateway-status.js";
 import { registerAdminRoutingHealthRoutes } from "./routes/admin-routing-health.js";
@@ -116,6 +117,26 @@ export function createApp(options: CreateAppOptions = {}) {
     await next();
     context.header("request-id", context.get("requestId"));
     context.header("x-request-id", context.get("requestId"));
+
+    // Structured request logging when enabled
+    if (context.env.AIRLOCK_REQUEST_LOGGING) {
+      let pathname: string;
+      try {
+        pathname = new URL(context.req.url).pathname;
+      } catch {
+        pathname = context.req.path ?? "/unknown";
+      }
+      logRequest({
+        msg: "gateway_request",
+        requestId: context.get("requestId"),
+        method: context.req.method,
+        path: pathname,
+        status: context.res.status,
+        durationMs: Math.round(
+          getRequestStartTime() - context.get("requestStartedAt")
+        )
+      });
+    }
   });
 
   // CORS preflight for /v1/* public API endpoints

@@ -147,6 +147,7 @@ export const gatewayEnvSchema = z.object({
     }>()
     .optional(),
   AIRLOCK_CORS_ORIGINS: z.string().min(1).optional(),
+  AIRLOCK_REQUEST_LOGGING: z.coerce.boolean().default(false),
   AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: z.coerce.boolean().default(false),
   AIRLOCK_INTERNAL_ADMIN_TOKEN: z.string().min(1).optional(),
   AIRLOCK_INTERNAL_ADMIN_CREDENTIALS: z.string().min(1).optional(),
