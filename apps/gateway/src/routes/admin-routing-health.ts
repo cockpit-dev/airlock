@@ -1,17 +1,15 @@
 import type { Hono } from "hono";
 import type { TelemetrySink } from "@airlock/telemetry";
 import {
-  authorizeInternalAdminRequest,
   deriveProviderTargetHealthSnapshot,
   getSlidingWindowErrorRate,
   getRecoveryScore,
-  parseInternalAdminCredentials,
-  type InternalAdminScope,
   type ProviderCircuitState,
   type ProviderTargetHealthSnapshot
 } from "@airlock/governance";
 import { serializeProviderTarget } from "@airlock/routing";
 
+import { requireAdminScope } from "../admin-auth.js";
 import { getAllInMemoryCircuitBreakerStates } from "../circuit-breaker.js";
 import type { GatewayConfig } from "../config.js";
 import { resolveGatewayConfig } from "../config.js";
@@ -34,27 +32,6 @@ export function registerAdminRoutingHealthRoutes(
   app: GatewayApp,
   getNow?: () => () => number
 ) {
-  const requireAdminScope = async (
-    context: {
-      req: { header(name: string): string | undefined };
-      env: GatewayBindings;
-      get(key: "requestId"): string;
-    },
-    requiredScope: InternalAdminScope
-  ): Promise<void> => {
-    await authorizeInternalAdminRequest({
-      authorization: context.req.header("authorization"),
-      adminToken: context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
-      adminCredentials: parseInternalAdminCredentials(
-        context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS
-      ),
-      structuredCredentialsConfig:
-        context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS,
-      requiredScope,
-      requestId: context.get("requestId")
-    });
-  };
-
   app.get("/_airlock/routing/health", async (context) => {
     await requireAdminScope(context, "keys.read");
 

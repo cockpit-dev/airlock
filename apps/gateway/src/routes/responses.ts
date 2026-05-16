@@ -2,6 +2,7 @@ import type { Context } from "hono";
 
 import {
   type CanonicalStreamEvent,
+  createStreamReassemblyIterable,
   encodeCanonicalToOpenAIResponsesStreamEvent,
   encodeCanonicalToOpenAIResponsesResponse,
   normalizeOpenAIResponsesRequest
@@ -247,7 +248,12 @@ export async function handleResponses(
         ...(fetcher ? { fetcher } : {})
       }
     );
-    const streamIterator = streamExecution[Symbol.asyncIterator]();
+    const reassembledStream = createStreamReassemblyIterable(
+      streamExecution,
+      `resp_${requestId}`,
+      route.target.providerModel
+    );
+    const streamIterator = reassembledStream[Symbol.asyncIterator]();
 
     const handleStreamingError = async (error: unknown) => {
       await handleQuotaError(context.env, telemetryBase, true, error);
@@ -469,6 +475,7 @@ export async function handleResponses(
         "content-type": "text/event-stream; charset=utf-8",
         "cache-control": "no-cache",
         connection: "keep-alive",
+        "x-accel-buffering": "no",
         "x-request-id": requestId,
         ...quotaRateLimitHeaders(quota)
       }

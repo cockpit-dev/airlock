@@ -1,5 +1,6 @@
 import type { Hono } from "hono";
 
+import { requireAdminScope } from "../admin-auth.js";
 import type { GatewayBindings } from "../env.js";
 import {
   resolveGatewayConfig,
@@ -8,10 +9,7 @@ import {
 } from "../config.js";
 import { type ModelRoute } from "@airlock/routing";
 import {
-  type ProviderCircuitState,
-  authorizeInternalAdminRequest,
-  parseInternalAdminCredentials,
-  type InternalAdminScope
+  type ProviderCircuitState
 } from "@airlock/governance";
 import { getAllInMemoryCircuitBreakerStates } from "../circuit-breaker.js";
 
@@ -205,27 +203,6 @@ function buildKeyCounts(config: GatewayConfig): {
 }
 
 export function registerAdminGatewayStatusRoutes(app: GatewayApp): void {
-  const requireAdminScope = async (
-    context: {
-      req: { header: (name: string) => string | undefined };
-      env: GatewayBindings;
-      get: (key: string) => string | undefined;
-    },
-    requiredScope: InternalAdminScope
-  ): Promise<void> => {
-    await authorizeInternalAdminRequest({
-      authorization: context.req.header("authorization"),
-      adminToken: context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
-      adminCredentials: parseInternalAdminCredentials(
-        context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS
-      ),
-      structuredCredentialsConfig:
-        context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS,
-      requiredScope,
-      requestId: context.get("requestId") ?? ""
-    });
-  };
-
   app.get("/_airlock/status", async (context) => {
     await requireAdminScope(context, "keys.read");
     const config = resolveGatewayConfig(context.env);

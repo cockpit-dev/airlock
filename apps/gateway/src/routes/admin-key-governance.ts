@@ -1,11 +1,8 @@
 import type { Hono } from "hono";
 import type { TelemetrySink } from "@airlock/telemetry";
-import {
-  authorizeInternalAdminRequest,
-  parseInternalAdminCredentials,
-  type InternalAdminScope
-} from "@airlock/governance";
+import { GatewayError } from "@airlock/shared";
 
+import { requireAdminScope } from "../admin-auth.js";
 import {
   archiveAdminGatewayKey,
   bulkArchiveAdminGatewayKeys,
@@ -51,29 +48,6 @@ type GatewayApp = Hono<{
 }>;
 
 export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
-  const requireAdminScope = async (
-    context: {
-      req: {
-        header(name: string): string | undefined;
-      };
-      env: GatewayBindings;
-      get(key: "requestId"): string;
-    },
-    requiredScope: InternalAdminScope
-  ): Promise<void> => {
-    await authorizeInternalAdminRequest({
-      authorization: context.req.header("authorization"),
-      adminToken: context.env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
-      adminCredentials: parseInternalAdminCredentials(
-        context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS
-      ),
-      structuredCredentialsConfig:
-        context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS,
-      requiredScope,
-      requestId: context.get("requestId")
-    });
-  };
-
   app.get("/_airlock/keys", async (context) => {
     const requestId = context.get("requestId");
     await requireAdminScope(context, "keys.read");
@@ -97,7 +71,7 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
         context.env,
         context.req.raw,
         requestId,
-        await context.req.json()
+        await parseAdminJsonBody(context)
       )
     );
   });
@@ -111,7 +85,7 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
         context.env,
         context.req.raw,
         requestId,
-        await context.req.json()
+        await parseAdminJsonBody(context)
       )
     );
   });
@@ -125,7 +99,7 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
         context.env,
         context.req.raw,
         requestId,
-        await context.req.json()
+        await parseAdminJsonBody(context)
       )
     );
   });
@@ -139,7 +113,7 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
         context.env,
         context.req.raw,
         requestId,
-        await context.req.json()
+        await parseAdminJsonBody(context)
       )
     );
   });
@@ -153,7 +127,7 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
         context.env,
         context.req.raw,
         requestId,
-        await context.req.json()
+        await parseAdminJsonBody(context)
       )
     );
   });
@@ -167,7 +141,7 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
         context.env,
         context.req.raw,
         requestId,
-        await context.req.json()
+        await parseAdminJsonBody(context)
       )
     );
   });
@@ -181,7 +155,7 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
         context.env,
         context.req.raw,
         requestId,
-        await context.req.json()
+        await parseAdminJsonBody(context)
       )
     );
   });
@@ -195,7 +169,7 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
         context.env,
         context.req.raw,
         requestId,
-        await context.req.json()
+        await parseAdminJsonBody(context)
       )
     );
   });
@@ -209,7 +183,7 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
         context.env,
         context.req.raw,
         requestId,
-        await context.req.json()
+        await parseAdminJsonBody(context)
       )
     );
   });
@@ -237,7 +211,7 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
         context.req.raw,
         context.req.param("keyId"),
         requestId,
-        await context.req.json()
+        await parseAdminJsonBody(context)
       )
     );
   });
@@ -268,7 +242,7 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
         context.req.raw,
         context.req.param("keyId"),
         requestId,
-        await context.req.json()
+        await parseAdminJsonBody(context)
       )
     );
   });
@@ -405,7 +379,7 @@ export function registerAdminKeyGovernanceRoutes(app: GatewayApp) {
   app.put("/_airlock/keys/:keyId/registry", async (context) => {
     const requestId = context.get("requestId");
     await requireAdminScope(context, "keys.write");
-    const payload: unknown = await context.req.json();
+    const payload: unknown = await parseAdminJsonBody(context);
 
     return context.json(
       await updateAdminGatewayKeyRegistryOverride(
@@ -472,5 +446,41 @@ async function readOptionalJsonBody(request: Request): Promise<unknown> {
     return undefined;
   }
 
-  return request.json();
+  try {
+    return await request.json();
+  } catch {
+    throw new GatewayError("Request body must be valid JSON", {
+      code: "request_invalid_json",
+      category: "request",
+      httpStatus: 400,
+      retryable: false
+    });
+  }
+}
+
+async function parseAdminJsonBody(
+  context: {
+    req: { json(): Promise<unknown>; header(name: string): string | undefined };
+  }
+): Promise<unknown> {
+  const contentType = context.req.header("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    throw new GatewayError("Content-Type must be application/json", {
+      code: "request_invalid_content_type",
+      category: "request",
+      httpStatus: 415,
+      retryable: false
+    });
+  }
+
+  try {
+    return await context.req.json();
+  } catch {
+    throw new GatewayError("Request body must be valid JSON", {
+      code: "request_invalid_json",
+      category: "request",
+      httpStatus: 400,
+      retryable: false
+    });
+  }
 }

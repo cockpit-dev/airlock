@@ -168,7 +168,17 @@ export async function reconcileTokenQuota(
       tokenReservation,
       totalTokens
     );
-  } catch {
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "Token quota reconciliation failed",
+        requestId,
+        keyId: gatewayApiKey.id,
+        totalTokens,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    );
     void releaseGatewayKeyTokenQuotaReservation(
       env,
       gatewayApiKey,
