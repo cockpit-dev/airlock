@@ -115,7 +115,7 @@ export async function enforceGatewayKeyRequestQuota(
   throw createGatewayKeyQuotaExceededError(decision, requestId);
 }
 
-async function consumeGatewayKeyQuotaFromStorage(
+export async function consumeGatewayKeyQuotaFromStorage(
   storage: DurableObjectStateLike["storage"],
   policy: GatewayApiKeyRequestQuotaPolicy,
   now = Date.now()

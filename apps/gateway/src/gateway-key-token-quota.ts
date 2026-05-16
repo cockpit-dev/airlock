@@ -292,7 +292,7 @@ export async function chargeGatewayKeyTokenQuota(
   );
 }
 
-async function precheckGatewayKeyTokenQuotaFromStorage(
+export async function precheckGatewayKeyTokenQuotaFromStorage(
   storage: DurableObjectStateLike["storage"],
   request: GatewayKeyTokenQuotaPrecheckRequest,
   now = Date.now()
@@ -317,7 +317,7 @@ async function precheckGatewayKeyTokenQuotaFromStorage(
   );
 }
 
-async function reserveGatewayKeyTokenQuotaFromStorage(
+export async function reserveGatewayKeyTokenQuotaFromStorage(
   storage: DurableObjectStateLike["storage"],
   request: GatewayKeyTokenQuotaReserveRequest,
   now = Date.now()
@@ -364,7 +364,7 @@ async function reserveGatewayKeyTokenQuotaFromStorage(
   return decision;
 }
 
-async function releaseGatewayKeyTokenQuotaReservationFromStorage(
+export async function releaseGatewayKeyTokenQuotaReservationFromStorage(
   storage: DurableObjectStateLike["storage"],
   request: GatewayKeyTokenQuotaReleaseRequest,
   now = Date.now()
@@ -398,7 +398,7 @@ async function releaseGatewayKeyTokenQuotaReservationFromStorage(
   );
 }
 
-async function reconcileGatewayKeyTokenQuotaReservationFromStorage(
+export async function reconcileGatewayKeyTokenQuotaReservationFromStorage(
   storage: DurableObjectStateLike["storage"],
   request: GatewayKeyTokenQuotaReconcileRequest,
   now = Date.now()
@@ -437,7 +437,7 @@ async function reconcileGatewayKeyTokenQuotaReservationFromStorage(
   );
 }
 
-async function chargeGatewayKeyTokenQuotaFromStorage(
+export async function chargeGatewayKeyTokenQuotaFromStorage(
   storage: DurableObjectStateLike["storage"],
   request: GatewayKeyTokenQuotaChargeRequest,
   now = Date.now()

@@ -58,7 +58,7 @@ export class GatewayKeyConcurrencyDurableObject {
   }
 }
 
-async function readActiveLeases(
+export async function readActiveLeases(
   storage: DurableObjectStateLike["storage"],
   now = Date.now()
 ): Promise<GatewayKeyConcurrencyLease[]> {
@@ -77,7 +77,7 @@ async function readActiveLeases(
   return activeLeases;
 }
 
-async function acquireGatewayKeyConcurrencyLeaseFromStorage(
+export async function acquireGatewayKeyConcurrencyLeaseFromStorage(
   storage: DurableObjectStateLike["storage"],
   policy: GatewayApiKeyConcurrencyQuotaPolicy,
   leaseId: string,
@@ -108,7 +108,7 @@ async function acquireGatewayKeyConcurrencyLeaseFromStorage(
   };
 }
 
-async function releaseGatewayKeyConcurrencyLeaseFromStorage(
+export async function releaseGatewayKeyConcurrencyLeaseFromStorage(
   storage: DurableObjectStateLike["storage"],
   leaseId: string,
   now = Date.now()
