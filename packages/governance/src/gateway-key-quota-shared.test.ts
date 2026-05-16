@@ -199,7 +199,7 @@ describe("gateway-key-quota-shared", () => {
       expect(error.httpStatus).toBe(429);
       expect(error.code).toBe("rate_limit_exceeded");
       expect(error.category).toBe("rate_limit");
-      expect(error.retryable).toBe(false);
+      expect(error.retryable).toBe(true);
       expect(error.requestId).toBe("req_123");
       expect(error.headers).toEqual({
         "retry-after": "60",

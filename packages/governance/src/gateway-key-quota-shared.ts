@@ -78,7 +78,7 @@ export function createRateLimitExceededError(
     code,
     category: "rate_limit",
     httpStatus: 429,
-    retryable: false,
+    retryable: true,
     requestId,
     headers: createRateLimitHeaders(decision)
   });
