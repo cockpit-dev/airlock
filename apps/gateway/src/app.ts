@@ -3,6 +3,11 @@ import type { TelemetrySink } from "@airlock/telemetry";
 import { GatewayError } from "@airlock/shared";
 
 import {
+  AdminRateLimiter,
+  extractIp,
+  getAdminRateLimiter
+} from "./admin-rate-limit.js";
+import {
   corsHeaders,
   createPreflightResponse,
   parseCorsOrigins
@@ -36,6 +41,7 @@ export interface CreateAppOptions {
   fetcher?: typeof fetch;
   now?: () => number;
   telemetrySink?: TelemetrySink;
+  adminRateLimiter?: AdminRateLimiter;
 }
 
 type AppVariables = {
@@ -173,6 +179,29 @@ export function createApp(options: CreateAppOptions = {}) {
 
   app.get("/healthz", handleHealth);
   app.get("/readyz", handleReady);
+
+  // Rate limiting for admin endpoints
+  const rateLimiter =
+    options.adminRateLimiter ?? new AdminRateLimiter();
+  app.use("/_airlock/*", async (context, next) => {
+    const ip = extractIp(context.req);
+    const now = context.get("now")?.() ?? Date.now();
+    const result = rateLimiter.check(ip, now);
+    if (!result.allowed) {
+      return context.json(
+        {
+          error: {
+            message: "Admin endpoint rate limit exceeded",
+            code: "admin_rate_limit_exceeded",
+            request_id: context.get("requestId")
+          }
+        },
+        429
+      );
+    }
+    await next();
+  });
+
   registerAdminKeyGovernanceRoutes(app);
   registerAdminGatewayStatusRoutes(app);
   registerAdminConfigRoutes(app);
