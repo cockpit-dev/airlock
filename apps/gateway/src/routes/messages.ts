@@ -5,6 +5,7 @@ import {
   createStreamReassemblyIterable,
   encodeCanonicalToAnthropicMessagesStreamEvents,
   encodeCanonicalToAnthropicMessagesResponse,
+  encodeAnthropicMessagesStreamError,
   normalizeAnthropicMessagesRequest
 } from "@airlock/canonical";
 import { anthropicMessagesRequestSchema } from "@airlock/protocols";
@@ -310,15 +311,7 @@ export async function handleMessages(
         } catch (error) {
           await handleStreamingError(error);
           try {
-            const errorMessage =
-              error instanceof GatewayError
-                ? error.message
-                : "Internal server error";
-            controller.enqueue(
-              encoder.encode(
-                `event: error\ndata: ${JSON.stringify({ type: "error", error: { type: "internal_error", message: errorMessage } })}\n\n`
-              )
-            );
+            controller.enqueue(encoder.encode(encodeAnthropicMessagesStreamError(error)));
             controller.close();
           } catch {
             // Controller may already be closed or errored

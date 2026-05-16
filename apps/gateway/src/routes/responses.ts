@@ -5,6 +5,7 @@ import {
   createStreamReassemblyIterable,
   encodeCanonicalToOpenAIResponsesStreamEvent,
   encodeCanonicalToOpenAIResponsesResponse,
+  encodeOpenAIResponsesStreamError,
   normalizeOpenAIResponsesRequest
 } from "@airlock/canonical";
 import { openAIResponsesRequestSchema } from "@airlock/protocols";
@@ -434,16 +435,7 @@ export async function handleResponses(
         } catch (error) {
           await handleStreamingError(error);
           try {
-            const errorMessage =
-              error instanceof GatewayError
-                ? error.message
-                : "Internal server error";
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ error: { message: errorMessage, type: "internal_error", code: "stream_error" } })}\n\n`
-              )
-            );
-            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.enqueue(encoder.encode(encodeOpenAIResponsesStreamError(error)));
             controller.close();
           } catch {
             // Controller may already be closed or errored

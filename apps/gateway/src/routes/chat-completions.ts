@@ -5,6 +5,7 @@ import {
   createStreamReassemblyIterable,
   encodeCanonicalToOpenAIChatResponse,
   encodeCanonicalToOpenAIChatStreamChunk,
+  encodeOpenAIChatStreamError,
   normalizeOpenAIChatRequest
 } from "@airlock/canonical";
 import { openAIChatCompletionRequestSchema } from "@airlock/protocols";
@@ -339,16 +340,7 @@ export async function handleChatCompletions(
         } catch (error) {
           await handleStreamingError(error);
           try {
-            const errorMessage =
-              error instanceof GatewayError
-                ? error.message
-                : "Internal server error";
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ error: { message: errorMessage, type: "internal_error", code: "stream_error" } })}\n\n`
-              )
-            );
-            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.enqueue(encoder.encode(encodeOpenAIChatStreamError(error)));
             controller.close();
           } catch {
             // Controller may already be closed or errored
