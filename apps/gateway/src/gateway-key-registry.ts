@@ -724,12 +724,7 @@ export class GatewayKeyRegistryDurableObject {
           return "already_archived" as const;
         }
 
-        return {
-          nextKey: {
-            ...existingKey,
-            archivedAt: new Date().toISOString()
-          }
-        };
+        return { existingKey };
       });
 
       if (archivePlan.some((entry) => entry === null)) {
@@ -809,10 +804,7 @@ export class GatewayKeyRegistryDurableObject {
           return "not_archived" as const;
         }
 
-        const nextKey = { ...existingKey };
-        delete nextKey.archivedAt;
-
-        return { nextKey };
+        return { existingKey };
       });
 
       if (restorePlan.some((entry) => entry === null)) {
