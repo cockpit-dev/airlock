@@ -36955,7 +36955,7 @@ describe("GET /_airlock/routing/health", () => {
     expect(routes).toHaveProperty("gpt-4.1-mini");
     const gptRoute = (routes as Record<string, Record<string, unknown>>)[
       "gpt-4.1-mini"
-    ];
+    ]!;
     expect(gptRoute.strategy).toBe("weighted");
     expect(gptRoute.weights).toMatchObject({
       "openai:gpt-4.1-mini": 0.7,
