@@ -351,9 +351,14 @@ export function parseModelAliases(
   }
 
   const routes = value.split(",").map((entry) => {
-    const [externalModel, providerTarget] = entry.split("=");
-    const normalizedExternalModel = externalModel?.trim() ?? "";
-    const normalizedProviderTarget = providerTarget?.trim() ?? "";
+    const eqIndex = entry.indexOf("=");
+    if (eqIndex < 0) {
+      throw createInvalidModelAliasError(
+        "Model alias entries must be in format external_model=provider:model"
+      );
+    }
+    const normalizedExternalModel = entry.slice(0, eqIndex).trim();
+    const normalizedProviderTarget = entry.slice(eqIndex + 1).trim();
 
     if (
       normalizedExternalModel.length === 0 ||

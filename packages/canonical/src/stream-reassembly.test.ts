@@ -84,7 +84,7 @@ describe("createStreamReassemblyIterable", () => {
     const completed = result[2];
     expect(completed?.type).toBe("response_completed");
     if (completed?.type === "response_completed") {
-      expect(completed.finishReason).toBe("stop");
+      expect(completed.finishReason).toBe("max_tokens");
     }
   });
 

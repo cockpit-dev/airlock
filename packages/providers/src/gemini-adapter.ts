@@ -510,10 +510,7 @@ export class GeminiProviderAdapter implements ProviderAdapter {
               candidate?.finishReason
             );
 
-            if (
-              normalizedFinishReason === "stop" ||
-              normalizedFinishReason === "max_tokens"
-            ) {
+            if (normalizedFinishReason !== undefined) {
               yield {
                 type: "response_completed",
                 responseId,
@@ -853,7 +850,7 @@ function parseGeminiToolResponse(value: string): Record<string, unknown> {
 
 function normalizeGeminiFinishReason(
   finishReason: string | undefined
-): "stop" | "max_tokens" | undefined {
+): "stop" | "max_tokens" | "safety" | undefined {
   if (!finishReason) {
     return undefined;
   }
@@ -868,5 +865,16 @@ function normalizeGeminiFinishReason(
     return "max_tokens";
   }
 
-  return undefined;
+  if (
+    normalized === "SAFETY" ||
+    normalized === "RECITATION" ||
+    normalized === "BLOCKLIST" ||
+    normalized === "PROHIBITED_CONTENT" ||
+    normalized === "SPII" ||
+    normalized === "MALFORMED_FUNCTION_CALL"
+  ) {
+    return "safety";
+  }
+
+  return "stop";
 }

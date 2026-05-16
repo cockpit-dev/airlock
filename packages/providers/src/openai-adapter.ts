@@ -929,6 +929,17 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       };
     };
 
+    if (!payload.choices || payload.choices.length === 0) {
+      throw new GatewayError("Upstream provider returned no choices", {
+        code: "provider_upstream_error",
+        category: "provider",
+        httpStatus: 502,
+        retryable: true,
+        provider: "openai",
+        requestId: context.requestId
+      });
+    }
+
     const outputTextLogprobs = normalizeOpenAIOutputTextLogprobs(
       payload.choices[0]?.logprobs
     );

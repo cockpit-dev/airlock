@@ -5,7 +5,14 @@ export interface StreamErrorInput {
 }
 
 function toStreamErrorInput(error: unknown): StreamErrorInput {
-  if (error && typeof error === "object" && "code" in error && "message" in error) {
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    typeof (error as Record<string, unknown>).code === "string" &&
+    "message" in error &&
+    typeof (error as Record<string, unknown>).message === "string"
+  ) {
     const e = error as { message: string; code: string; category?: string };
     return {
       message: e.message,

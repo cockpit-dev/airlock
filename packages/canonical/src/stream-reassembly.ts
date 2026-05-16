@@ -44,7 +44,7 @@ export async function* createStreamReassemblyIterable(
       type: "response_completed",
       responseId: activeResponseId,
       model: activeModel,
-      finishReason: "stop"
+      finishReason: "max_tokens"
     };
   }
 }

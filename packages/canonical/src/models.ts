@@ -149,7 +149,7 @@ export interface CanonicalResponse {
   model: string;
   createdAt?: number;
   outputText: string;
-  finishReason: "stop" | "max_tokens" | "tool_calls";
+  finishReason: "stop" | "max_tokens" | "tool_calls" | "safety";
   metadata?: Record<string, string>;
   systemFingerprint?: string;
   serviceTier?: "auto" | "default" | "flex" | "priority" | "scale";
@@ -214,7 +214,7 @@ export type CanonicalStreamEvent =
       responseId: string;
       model: string;
       createdAt?: number;
-      finishReason: "stop" | "max_tokens" | "tool_calls";
+      finishReason: "stop" | "max_tokens" | "tool_calls" | "safety";
       outputTextLogprobs?: CanonicalOutputTextLogprobs;
       usage?: CanonicalUsage;
       parallelToolCalls?: boolean;

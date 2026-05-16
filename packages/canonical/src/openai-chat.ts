@@ -91,6 +91,16 @@ type OpenAIResponsesEnvelopeStreamEvent = Extract<
   { type: "response_started" | "response_completed" }
 >;
 
+function parseToolCallArguments(
+  argumentsStr: string
+): Record<string, unknown> {
+  try {
+    return JSON.parse(argumentsStr) as Record<string, unknown>;
+  } catch {
+    return {} as Record<string, unknown>;
+  }
+}
+
 function encodeCanonicalOpenAIFinishReason(
   finishReason: CanonicalResponse["finishReason"]
 ) {
@@ -1764,7 +1774,7 @@ export function encodeCanonicalToAnthropicMessagesResponse(
       type: "tool_use" as const,
       id: toolCall.id,
       name: toolCall.name,
-      input: JSON.parse(toolCall.arguments) as Record<string, unknown>
+      input: parseToolCallArguments(toolCall.arguments)
     })) ?? [];
 
   const textContent =
