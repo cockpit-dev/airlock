@@ -1884,4 +1884,201 @@ describe("GeminiProviderAdapter", () => {
       }
     ]);
   });
+
+  it("maps streaming upstream timeout into a retryable provider_timeout gateway error", async () => {
+    const fetcher = vi.fn().mockImplementation(async (_input, init?: RequestInit) => {
+      const signal = init?.signal;
+
+      return await new Promise<Response>((_resolve, reject) => {
+        signal?.addEventListener("abort", () => {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        });
+      });
+    });
+
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+
+    await expect(
+      (async () => {
+        for await (const _event of adapter.stream(
+          { ...createCanonicalRequest(), stream: true },
+          { requestId: "req_stream_timeout", timeoutMs: 1 }
+        )) {
+          // drain
+        }
+      })()
+    ).rejects.toMatchObject({
+      code: "provider_timeout",
+      category: "provider",
+      httpStatus: 504,
+      retryable: true
+    });
+  });
+
+  it("maps streaming non-200 upstream response into a provider_upstream_error gateway error", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: { message: "API key not valid" }
+        }),
+        { status: 403 }
+      )
+    );
+
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+
+    await expect(
+      (async () => {
+        for await (const _event of adapter.stream(
+          { ...createCanonicalRequest(), stream: true },
+          { requestId: "req_stream_403" }
+        )) {
+          // drain
+        }
+      })()
+    ).rejects.toMatchObject({
+      code: "provider_upstream_error",
+      category: "provider",
+      httpStatus: 403,
+      retryable: false,
+      message: "API key not valid"
+    });
+  });
+
+  it("maps streaming 500 upstream response into a retryable provider_upstream_error", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: { message: "Internal error" }
+        }),
+        { status: 500 }
+      )
+    );
+
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+
+    await expect(
+      (async () => {
+        for await (const _event of adapter.stream(
+          { ...createCanonicalRequest(), stream: true },
+          { requestId: "req_stream_500" }
+        )) {
+          // drain
+        }
+      })()
+    ).rejects.toMatchObject({
+      code: "provider_upstream_error",
+      category: "provider",
+      httpStatus: 500,
+      retryable: true,
+      message: "Internal error"
+    });
+  });
+
+  it("maps streaming empty body into a retryable provider_upstream_error with 502", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" }
+      })
+    );
+
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+
+    await expect(
+      (async () => {
+        for await (const _event of adapter.stream(
+          { ...createCanonicalRequest(), stream: true },
+          { requestId: "req_stream_empty_body" }
+        )) {
+          // drain
+        }
+      })()
+    ).rejects.toMatchObject({
+      code: "provider_upstream_error",
+      category: "provider",
+      httpStatus: 502,
+      retryable: true,
+      message: "Upstream provider returned an empty stream body"
+    });
+  });
+
+  it("maps streaming 429 upstream response into a retryable provider_upstream_error", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: { message: "Resource exhausted" }
+        }),
+        { status: 429 }
+      )
+    );
+
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+
+    await expect(
+      (async () => {
+        for await (const _event of adapter.stream(
+          { ...createCanonicalRequest(), stream: true },
+          { requestId: "req_stream_429" }
+        )) {
+          // drain
+        }
+      })()
+    ).rejects.toMatchObject({
+      code: "provider_upstream_error",
+      category: "provider",
+      httpStatus: 429,
+      retryable: true,
+      message: "Resource exhausted"
+    });
+  });
+
+  it("maps streaming non-200 without error message into a generic provider_upstream_error", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 503 })
+    );
+
+    const adapter = new GeminiProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      fetcher
+    });
+
+    await expect(
+      (async () => {
+        for await (const _event of adapter.stream(
+          { ...createCanonicalRequest(), stream: true },
+          { requestId: "req_stream_503_no_msg" }
+        )) {
+          // drain
+        }
+      })()
+    ).rejects.toMatchObject({
+      code: "provider_upstream_error",
+      category: "provider",
+      httpStatus: 503,
+      retryable: true,
+      message: "Upstream provider error"
+    });
+  });
 });
