@@ -130,7 +130,7 @@ describe("gateway-key-request-quota", () => {
       const windowStartedAt = now - (now % windowMs);
 
       const { nextState } = computeRequestQuotaConsume(
-        { windowStartedAt, count: undefined },
+        { windowStartedAt },
         10,
         60,
         now

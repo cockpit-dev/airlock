@@ -13,6 +13,7 @@ import {
   requireRegistryKey,
   requireRegistryKeys
 } from "./gateway-key-registry-validation.js";
+import type { GatewayKeyRegistryDynamicKeyView } from "./gateway-key-registry.js";
 
 describe("gateway-key-registry-validation", () => {
   describe("error constructors", () => {
@@ -119,11 +120,12 @@ describe("gateway-key-registry-validation", () => {
 
   describe("requireRegistryKey", () => {
     it("returns key when found", async () => {
-      const key = {
+      const key: GatewayKeyRegistryDynamicKeyView = {
         keyId: "key_1",
-        valueHash: "hash_1",
-        status: "active" as const,
-        createdAt: Date.now()
+        ownership: "registry",
+        key: { id: "key_1", label: "test", valueHash: "hash_1", status: "active" },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       };
       const getRegistryKey = async (_keyId: string) => await Promise.resolve(key);
 
@@ -151,17 +153,19 @@ describe("gateway-key-registry-validation", () => {
   });
 
   describe("requireRegistryKeys", () => {
-    const key1 = {
+    const key1: GatewayKeyRegistryDynamicKeyView = {
       keyId: "key_1",
-      valueHash: "h1",
-      status: "active" as const,
-      createdAt: Date.now()
+      ownership: "registry",
+      key: { id: "key_1", label: "test-1", valueHash: "h1", status: "active" },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
-    const key2 = {
+    const key2: GatewayKeyRegistryDynamicKeyView = {
       keyId: "key_2",
-      valueHash: "h2",
-      status: "active" as const,
-      createdAt: Date.now()
+      ownership: "registry",
+      key: { id: "key_2", label: "test-2", valueHash: "h2", status: "active" },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
 
     it("returns all keys when all found", async () => {
