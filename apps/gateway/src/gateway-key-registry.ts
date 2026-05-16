@@ -69,6 +69,8 @@ import {
   updateStoredGatewayRegistryDynamicKey,
   updateGatewayRegistryKey as updateGatewayRegistryKeyUseCase,
   validateGatewayRegistryRotatedKeyCandidate,
+  assertStagedRotation,
+  assertRotationIsCancelable,
   MAX_GATEWAY_KEY_AUDIT_EVENTS,
   parseGatewayKeyAuditEventsResponse,
   resolveConfiguredGatewayApiKeyRuntime,
@@ -112,6 +114,20 @@ import {
   requireGatewayKeyRegistryNamespace
 } from "./gateway-key-registry-transport.js";
 import type { DurableObjectStateLike } from "./durable-object-state.js";
+
+function handleRotationPrecondition(
+  fn: () => void
+): Response | null {
+  try {
+    fn();
+    return null;
+  } catch (error) {
+    if (error instanceof GatewayError) {
+      return new Response(error.message, { status: error.httpStatus });
+    }
+    throw error;
+  }
+}
 
 const REGISTRY_KIND_OVERRIDE = "override";
 const REGISTRY_KIND_DYNAMIC = "dynamic";
@@ -628,11 +644,11 @@ export class GatewayKeyRegistryDurableObject {
         return new Response("Not found", { status: 404 });
       }
 
-      if (
-        !existingKey.previousValueHash ||
-        !existingKey.previousValueHashExpiresAt
-      ) {
-        return new Response("Rotation not staged", { status: 409 });
+      const finalizePrecondition = handleRotationPrecondition(() => {
+        assertStagedRotation(existingKey, operationId ?? "unknown");
+      });
+      if (finalizePrecondition) {
+        return finalizePrecondition;
       }
 
       const payload = parseGatewayKeyRegistryRotationActionRequest(
@@ -682,15 +698,12 @@ export class GatewayKeyRegistryDurableObject {
         return new Response("Not found", { status: 404 });
       }
 
-      if (
-        !existingKey.previousValueHash ||
-        !existingKey.previousValueHashExpiresAt
-      ) {
-        return new Response("Rotation not staged", { status: 409 });
-      }
-
-      if (Date.now() >= Date.parse(existingKey.previousValueHashExpiresAt)) {
-        return new Response("Rotation not cancelable", { status: 409 });
+      const cancelPrecondition = handleRotationPrecondition(() => {
+        assertStagedRotation(existingKey, operationId ?? "unknown");
+        assertRotationIsCancelable(existingKey, operationId ?? "unknown");
+      });
+      if (cancelPrecondition) {
+        return cancelPrecondition;
       }
 
       const payload = parseGatewayKeyRegistryRotationActionRequest(
@@ -926,11 +939,11 @@ export class GatewayKeyRegistryDurableObject {
           return new Response("Not found", { status: 404 });
         }
 
-        if (
-          !existingKey.previousValueHash ||
-          !existingKey.previousValueHashExpiresAt
-        ) {
-          return new Response("Rotation not staged", { status: 409 });
+        const precondition = handleRotationPrecondition(() => {
+          assertStagedRotation(existingKey, operationId ?? "unknown");
+        });
+        if (precondition) {
+          return precondition;
         }
       }
 
@@ -1006,15 +1019,12 @@ export class GatewayKeyRegistryDurableObject {
           return new Response("Not found", { status: 404 });
         }
 
-        if (
-          !existingKey.previousValueHash ||
-          !existingKey.previousValueHashExpiresAt
-        ) {
-          return new Response("Rotation not staged", { status: 409 });
-        }
-
-        if (Date.now() >= Date.parse(existingKey.previousValueHashExpiresAt)) {
-          return new Response("Rotation not cancelable", { status: 409 });
+        const precondition = handleRotationPrecondition(() => {
+          assertStagedRotation(existingKey, operationId ?? "unknown");
+          assertRotationIsCancelable(existingKey, operationId ?? "unknown");
+        });
+        if (precondition) {
+          return precondition;
         }
       }
 

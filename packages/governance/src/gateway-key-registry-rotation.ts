@@ -111,12 +111,27 @@ export interface BulkCancelGatewayRegistryKeyRotationsPort {
   }>;
 }
 
-function assertStagedRotation(
-  key: GatewayKeyRegistryDynamicKeyView,
+export interface RotationStagedKey {
+  previousValueHash?: string;
+  previousValueHashExpiresAt?: string;
+}
+
+export function assertStagedRotation(
+  key: RotationStagedKey,
   requestId: string
 ) {
   if (!key.previousValueHash || !key.previousValueHashExpiresAt) {
     throw createGatewayKeyRotationNotStagedError(requestId);
+  }
+}
+
+export function assertRotationIsCancelable(
+  key: RotationStagedKey,
+  requestId: string,
+  now = Date.now()
+) {
+  if (now >= Date.parse(key.previousValueHashExpiresAt!)) {
+    throw createGatewayKeyRotationNotCancelableError(requestId);
   }
 }
 
@@ -197,10 +212,7 @@ export async function cancelGatewayRegistryKeyRotation(
   );
 
   assertStagedRotation(existingKey, requestId);
-
-  if (now >= Date.parse(existingKey.previousValueHashExpiresAt!)) {
-    throw createGatewayKeyRotationNotCancelableError(requestId);
-  }
+  assertRotationIsCancelable(existingKey, requestId, now);
 
   return port.cancelRegistryKeyRotation(keyId, actionRequest);
 }
@@ -331,10 +343,7 @@ export async function bulkCancelGatewayRegistryKeyRotations(
 
   for (const existingKey of existingKeys) {
     assertStagedRotation(existingKey, requestId);
-
-    if (now >= Date.parse(existingKey.previousValueHashExpiresAt!)) {
-      throw createGatewayKeyRotationNotCancelableError(requestId);
-    }
+    assertRotationIsCancelable(existingKey, requestId, now);
   }
 
   return port.bulkCancelRegistryKeyRotations(parsed);
