@@ -1601,6 +1601,22 @@ export function gatewayKeyAuditActorContextFromRegistryRequest(
   };
 }
 
+export function resolveAuditActorRecord(
+  actorContext: GatewayKeyAuditActorContext | undefined,
+  fallback?: { actor?: string; actorSource?: string }
+): Record<string, unknown> {
+  if (actorContext) {
+    return toGatewayKeyAuditActorContextRecord(actorContext);
+  }
+  if (fallback?.actor) {
+    return toGatewayKeyAuditActorContextRecord({
+      actor: fallback.actor,
+      actorSource: (fallback.actorSource as GatewayKeyAuditActorSource) ?? "payload"
+    });
+  }
+  return {};
+}
+
 export function stripGatewayKeyAuditActorMetadata(value: unknown): unknown {
   if (!isRecord(value)) {
     return value;
