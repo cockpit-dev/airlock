@@ -1,7 +1,11 @@
 import type { Hono } from "hono";
 
 import type { GatewayBindings } from "../env.js";
-import { resolveGatewayConfig, type GatewayConfig } from "../config.js";
+import {
+  resolveGatewayConfig,
+  computeConfigFingerprint,
+  type GatewayConfig
+} from "../config.js";
 import { type ModelRoute } from "@airlock/routing";
 import {
   type ProviderCircuitState,
@@ -58,6 +62,7 @@ export interface GatewayStatusConfig {
 }
 
 export interface GatewayStatusResponse {
+  configFingerprint: string;
   mode: string;
   routes: RouteStatusEntry[];
   providers: ProviderStatusEntry[];
@@ -72,7 +77,8 @@ export interface GatewayStatusResponse {
 
 export function buildGatewayStatusResponse(
   config: GatewayConfig,
-  circuitBreakerStates: ReadonlyMap<string, ProviderCircuitState>
+  circuitBreakerStates: ReadonlyMap<string, ProviderCircuitState>,
+  configFingerprint: string
 ): GatewayStatusResponse {
   const routes = buildRouteStatusEntries(config.modelAliases);
   const providers = buildProviderStatusEntries(config, routes);
@@ -90,6 +96,7 @@ export function buildGatewayStatusResponse(
   }
 
   return {
+    configFingerprint,
     mode: config.mode,
     routes,
     providers,
@@ -223,8 +230,9 @@ export function registerAdminGatewayStatusRoutes(app: GatewayApp): void {
     await requireAdminScope(context, "keys.read");
     const config = resolveGatewayConfig(context.env);
     const circuitBreakerStates = getAllInMemoryCircuitBreakerStates();
+    const configFingerprint = computeConfigFingerprint(context.env);
     return context.json(
-      buildGatewayStatusResponse(config, circuitBreakerStates)
+      buildGatewayStatusResponse(config, circuitBreakerStates, configFingerprint)
     );
   });
 }

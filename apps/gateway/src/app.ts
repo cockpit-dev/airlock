@@ -16,6 +16,7 @@ import type { GatewayBindings } from "./env.js";
 import { createRequestId } from "./request-id.js";
 import { logRequest } from "./request-logger.js";
 import { getMetricsCollector } from "./metrics.js";
+import { registerAdminConfigRoutes } from "./routes/admin-config.js";
 import { registerAdminKeyGovernanceRoutes } from "./routes/admin-key-governance.js";
 import { registerAdminGatewayStatusRoutes } from "./routes/admin-gateway-status.js";
 import { registerAdminMetricsRoutes } from "./routes/admin-metrics.js";
@@ -174,6 +175,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.get("/readyz", handleReady);
   registerAdminKeyGovernanceRoutes(app);
   registerAdminGatewayStatusRoutes(app);
+  registerAdminConfigRoutes(app);
   registerAdminMetricsRoutes(app);
   registerAdminRoutingHealthRoutes(
     app,

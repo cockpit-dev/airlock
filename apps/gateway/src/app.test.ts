@@ -1809,9 +1809,10 @@ describe("gateway app", () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(readJson(response)).resolves.toEqual({
+    await expect(readJson(response)).resolves.toMatchObject({
       ok: true,
-      ready: true
+      ready: true,
+      config: true
     });
   });
 
@@ -1841,9 +1842,10 @@ describe("gateway app", () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(readJson(response)).resolves.toEqual({
+    await expect(readJson(response)).resolves.toMatchObject({
       ok: true,
-      ready: true
+      ready: true,
+      config: true
     });
   });
 
@@ -11272,7 +11274,7 @@ describe("gateway app", () => {
     });
 
     expect(response.status).toBe(503);
-    await expect(readJson(response)).resolves.toEqual({
+    await expect(readJson(response)).resolves.toMatchObject({
       ok: false,
       ready: false,
       code: "not_ready"
@@ -37476,6 +37478,116 @@ describe("GET /_airlock/metrics", () => {
 
     // At least the metrics request itself should be recorded
     expect(body.requests).toBeGreaterThan(0);
+  });
+});
+
+describe("GET /_airlock/config", () => {
+  it("requires admin authentication", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/config",
+      {
+        headers: { authorization: "Bearer wrong-token" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it("returns active config with providers, routes, and features", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/config",
+      {
+        headers: { authorization: "Bearer admin-secret" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await readJson(response)) as Record<string, unknown>;
+
+    expect(body).toHaveProperty("providers");
+    expect(body).toHaveProperty("routes");
+    expect(body).toHaveProperty("modelGroups");
+    expect(body).toHaveProperty("keys");
+    expect(body).toHaveProperty("features");
+    expect(body).toHaveProperty("limits");
+
+    const providers = body.providers as Record<string, unknown>;
+    expect(providers).toHaveProperty("openai");
+    const openai = providers.openai as Record<string, unknown>;
+    expect(openai).toHaveProperty("baseUrl");
+    expect(openai).toHaveProperty("defaultModel");
+    expect(openai).toHaveProperty("configured", true);
+    expect(openai).not.toHaveProperty("apiKey");
+
+    const routes = body.routes as Array<Record<string, unknown>>;
+    expect(routes.length).toBeGreaterThan(0);
+    expect(routes[0]).toHaveProperty("externalModel");
+    expect(routes[0]).toHaveProperty("target");
+
+    const features = body.features as Record<string, unknown>;
+    expect(features).toHaveProperty("circuitBreaker");
+    expect(features).toHaveProperty("quota");
+    expect(features).toHaveProperty("telemetry");
+
+    const limits = body.limits as Record<string, unknown>;
+    expect(limits).toHaveProperty("providerTimeoutMs");
+    expect(limits).toHaveProperty("maxRequestBodyBytes");
+  });
+});
+
+describe("enhanced /readyz", () => {
+  it("includes provider readiness details", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/readyz",
+      undefined,
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await readJson(response)) as Record<string, unknown>;
+
+    expect(body).toHaveProperty("ok", true);
+    expect(body).toHaveProperty("ready", true);
+    expect(body).toHaveProperty("config", true);
+
+    const providers = body.providers as Record<string, boolean>;
+    expect(providers).toHaveProperty("openai", true);
+    expect(providers).toHaveProperty("anthropic", true);
+    expect(providers).toHaveProperty("gemini", true);
+  });
+
+  it("reports not ready when config parse fails", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request("http://localhost/readyz", undefined, {
+      AIRLOCK_MODE: "free",
+      AIRLOCK_GATEWAY_API_KEYS: "gateway-secret",
+      OPENAI_API_KEY: "openai-secret",
+      OPENAI_BASE_URL: "https://api.openai.com/v1",
+      OPENAI_DEFAULT_MODEL: ""
+    });
+
+    expect(response.status).toBe(503);
+    const body = (await readJson(response)) as Record<string, unknown>;
+    expect(body).toHaveProperty("ok", false);
+    expect(body).toHaveProperty("ready", false);
+    expect(body).toHaveProperty("config", false);
   });
 });
 

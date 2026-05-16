@@ -274,7 +274,7 @@ function parseRequestSigningSecrets(
  * Compute a fingerprint from the config-relevant env strings.
  * If these values haven't changed, the parsed config is identical.
  */
-function computeConfigFingerprint(bindings: GatewayBindings): string {
+export function computeConfigFingerprint(bindings: GatewayBindings): string {
   return [
     bindings.AIRLOCK_MODE,
     bindings.AIRLOCK_GATEWAY_API_KEYS,
