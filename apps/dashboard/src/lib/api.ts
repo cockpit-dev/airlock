@@ -127,7 +127,7 @@ export class ApiError extends Error {
   }
 }
 
-// Response types (matching gateway admin API responses)
+// Response types — matching gateway admin API response shapes exactly.
 
 export interface GatewayStatusResponse {
   configFingerprint: string;
@@ -136,34 +136,46 @@ export interface GatewayStatusResponse {
     externalModel: string;
     primaryTarget: { provider: string; providerModel: string };
     fallbackCount: number;
-    targetSelection?: { strategy: string };
+    targetSelection?: { strategy: string; hasRequestClassAffinity: boolean };
+    requiredKeyTier?: string;
+    requiredKeyTags?: string[];
   }>;
   providers: Array<{ id: string; configured: boolean; routeCount: number }>;
   keys: { total: number; configured: number; registryOwned: number };
   circuitBreaker: {
     totalTargets: number;
-    openTargets: number;
-    halfOpenTargets: number;
+    openTargets: string[];
+    halfOpenTargets: string[];
   };
   config: {
     providerTimeoutMs: number;
+    providerMaxRetries: number;
+    providerStreamIdleTimeoutMs: number;
     maxRequestBodyBytes: number;
-    streamIdleTimeoutMs: number;
-    maxRetries: number;
+    routingLatencyFreshnessMs: number;
+    routingCostFreshnessMs: number;
+    routingFailureFreshnessMs: number;
+    routingRecoveryWindowMs: number;
+    circuitBreakerThreshold?: number;
+    circuitBreakerCooldownMs?: number;
   };
 }
 
 export interface MetricsSnapshot {
-  requests: { total: number; errors: number; avgDurationMs: number };
-  byRoute: Record<string, { count: number; errors: number; avgDurationMs: number }>;
-  byStatus: Record<string, number>;
+  window: { durationMs: number; collectedSince: string };
+  requests: number;
+  errors: number;
+  errorRate: number;
+  avgDurationMs: number;
+  statusCodes: Record<number, number>;
+  byRoute: Record<string, { requests: number; errors: number; avgDurationMs: number }>;
 }
 
 export interface AdminConfigResponse {
   providers: {
-    openai?: { baseUrl: string };
-    anthropic?: { baseUrl: string };
-    gemini?: { baseUrl: string };
+    openai: { baseUrl: string; defaultModel: string; configured: true };
+    anthropic?: { baseUrl: string; defaultMaxTokens: number; configured: true };
+    gemini?: { baseUrl: string; configured: true };
   };
   routes: Array<{
     externalModel: string;
@@ -174,7 +186,7 @@ export interface AdminConfigResponse {
   modelGroups: Record<string, string[]>;
   keys: { total: number; configured: number; registryOwned: number };
   features: {
-    circuitBreaker: boolean;
+    circuitBreaker: { enabled: boolean; persistent: boolean };
     quota: boolean;
     tokenQuota: boolean;
     concurrency: boolean;
@@ -187,7 +199,7 @@ export interface AdminConfigResponse {
   limits: {
     providerTimeoutMs: number;
     maxRequestBodyBytes: number;
-    streamIdleTimeoutMs: number;
+    providerStreamIdleTimeoutMs: number;
     maxRetries: number;
     retryBackoffMs: number;
   };
@@ -195,14 +207,42 @@ export interface AdminConfigResponse {
 
 export interface RoutingHealthResponse {
   targets: Record<string, {
-    circuitState: string;
-    healthSnapshot?: { errorRate?: number; recoveryScore?: number };
+    circuitState: Record<string, unknown>;
+    healthSnapshot: Record<string, unknown>;
+    metrics: {
+      errorRate: number;
+      recoveryScore: number;
+      freshness: {
+        latencyFreshMs: number | null;
+        costFreshMs: number | null;
+        failureFreshMs: number | null;
+      };
+    };
   }>;
   routes: Record<string, {
-    strategy?: string;
+    strategy: string;
     targets: string[];
-    healthStatus: string;
+    healthStatus: "healthy" | "degraded" | "down";
     healthyTargetCount: number;
     totalTargetCount: number;
+    costs?: Record<string, number>;
+    weights?: Record<string, number>;
+    latencySloMs?: Record<string, number>;
   }>;
+  config: {
+    circuitBreakerPolicy: {
+      threshold: number;
+      cooldownMs: number;
+      errorRateWindowMs?: number;
+      errorRateThreshold?: number;
+      minAttemptsInWindow?: number;
+    };
+    freshnessWindows: {
+      latencyFreshnessMs: number;
+      costFreshnessMs: number;
+      failureFreshnessMs: number;
+      recoveryWindowMs: number;
+    };
+    persistentBackend: boolean;
+  };
 }
