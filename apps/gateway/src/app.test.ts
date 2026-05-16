@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TelemetrySink } from "@airlock/telemetry";
 
@@ -36800,5 +36800,192 @@ describe("gateway app", () => {
       }
     });
     expect(response.headers.get("request-id")).toBeTruthy();
+  });
+});
+
+describe("GET /_airlock/routing/health", () => {
+  beforeEach(() => {
+    resetProviderCircuitBreakerState();
+  });
+
+  afterEach(() => {
+    resetProviderCircuitBreakerState();
+  });
+
+  it("requires admin authentication", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/routing/health",
+      {
+        headers: { authorization: "Bearer wrong-token" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it("returns routing health with empty targets when no traffic", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/routing/health",
+      {
+        headers: { authorization: "Bearer admin-secret" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await readJson(response)) as Record<string, unknown>;
+
+    expect(body).toMatchObject({
+      targets: {},
+      config: {
+        circuitBreakerPolicy: {
+          threshold: 3,
+          cooldownMs: 30000
+        },
+        persistentBackend: false
+      }
+    });
+
+    // Routes should reflect configured model aliases
+    const routes = body.routes as Record<string, unknown>;
+    expect(routes).toHaveProperty("gpt-4.1-mini");
+    expect(routes).toHaveProperty("claude-sonnet-4-5");
+  });
+
+  it("exposes circuit breaker state after recorded failures", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: { message: "rate limit", type: "rate_limit_error" }
+        }),
+        { status: 429, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    // Trigger a retryable failure by sending a request that hits a 429
+    await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer gateway-secret",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    // Now query health
+    const response = await app.request(
+      "http://localhost/_airlock/routing/health",
+      {
+        headers: { authorization: "Bearer admin-secret" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await readJson(response)) as Record<string, unknown>;
+    const targets = body.targets as Record<string, unknown>;
+
+    // At least one target should have recorded state
+    expect(Object.keys(targets).length).toBeGreaterThan(0);
+
+    // The failed target should show failures
+    const firstTarget = Object.values(targets)[0] as Record<string, unknown>;
+    const circuitState = firstTarget.circuitState as Record<string, unknown>;
+    expect(circuitState.consecutiveRetryableFailures).toBeGreaterThan(0);
+  });
+
+  it("includes route strategy and target configuration", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/routing/health",
+      {
+        headers: { authorization: "Bearer admin-secret" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES: "gpt-4.1-mini=openai:gpt-4.1-mini",
+        AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
+          "gpt-4.1-mini": ["anthropic:claude-sonnet-4-5"]
+        }),
+        AIRLOCK_MODEL_TARGET_SELECTION: JSON.stringify({
+          "gpt-4.1-mini": {
+            strategy: "weighted",
+            weights: {
+              "openai:gpt-4.1-mini": 0.7,
+              "anthropic:claude-sonnet-4-5": 0.3
+            }
+          }
+        }),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await readJson(response)) as Record<string, unknown>;
+    const routes = body.routes as Record<string, unknown>;
+
+    expect(routes).toHaveProperty("gpt-4.1-mini");
+    const gptRoute = (routes as Record<string, Record<string, unknown>>)[
+      "gpt-4.1-mini"
+    ];
+    expect(gptRoute.strategy).toBe("weighted");
+    expect(gptRoute.weights).toMatchObject({
+      "openai:gpt-4.1-mini": 0.7,
+      "anthropic:claude-sonnet-4-5": 0.3
+    });
+  });
+
+  it("includes freshness windows from config", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/routing/health",
+      {
+        headers: { authorization: "Bearer admin-secret" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_ROUTING_LATENCY_FRESHNESS_MS: "60000",
+        AIRLOCK_ROUTING_COST_FRESHNESS_MS: "120000",
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await readJson(response)) as Record<string, unknown>;
+    const config = body.config as Record<string, unknown>;
+    const freshnessWindows = config.freshnessWindows as Record<string, unknown>;
+
+    expect(freshnessWindows.latencyFreshnessMs).toBe(60000);
+    expect(freshnessWindows.costFreshnessMs).toBe(120000);
   });
 });

@@ -333,6 +333,13 @@ export async function getProviderTargetCircuitState(
   };
 }
 
+export function getAllInMemoryCircuitBreakerStates(): ReadonlyMap<
+  string,
+  ProviderCircuitState
+> {
+  return providerCircuitStates;
+}
+
 export function resetProviderCircuitBreakerState() {
   providerCircuitStates.clear();
 }

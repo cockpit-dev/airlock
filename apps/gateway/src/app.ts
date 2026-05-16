@@ -6,6 +6,7 @@ import { toErrorResponse } from "./errors.js";
 import type { GatewayBindings } from "./env.js";
 import { createRequestId } from "./request-id.js";
 import { registerAdminKeyGovernanceRoutes } from "./routes/admin-key-governance.js";
+import { registerAdminRoutingHealthRoutes } from "./routes/admin-routing-health.js";
 import { handleChatCompletions } from "./routes/chat-completions.js";
 import { handleHealth } from "./routes/health.js";
 import { handleMessages } from "./routes/messages.js";
@@ -64,11 +65,7 @@ export function createApp(options: CreateAppOptions = {}) {
       );
     }
 
-    return toErrorResponse(
-      error,
-      requestId,
-      new URL(context.req.url).pathname
-    );
+    return toErrorResponse(error, requestId, new URL(context.req.url).pathname);
   });
 
   app.use("*", async (context, next) => {
@@ -86,6 +83,10 @@ export function createApp(options: CreateAppOptions = {}) {
   app.get("/healthz", handleHealth);
   app.get("/readyz", handleReady);
   registerAdminKeyGovernanceRoutes(app);
+  registerAdminRoutingHealthRoutes(
+    app,
+    options.now ? () => options.now! : undefined
+  );
   app.get("/v1/models", handleModels);
   app.get("/v1/models/:model", handleModelById);
   app.post("/v1/chat/completions", handleChatCompletions);
