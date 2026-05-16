@@ -56,7 +56,7 @@ export class AirlockClient {
   }
 
   getKey(keyId: string) {
-    return this.request<unknown>(`/_airlock/keys/${keyId}`);
+    return this.request<unknown>(`/_airlock/keys/${encodeURIComponent(keyId)}`);
   }
 
   createKey(payload: unknown) {
@@ -67,7 +67,7 @@ export class AirlockClient {
   }
 
   deleteKey(keyId: string, payload?: unknown) {
-    return this.request<unknown>(`/_airlock/keys/${keyId}`, {
+    return this.request<unknown>(`/_airlock/keys/${encodeURIComponent(keyId)}`, {
       method: "DELETE",
       ...(payload ? { body: JSON.stringify(payload) } : {})
     });
@@ -115,12 +115,12 @@ export class AirlockClient {
   }
 
   getConfigStoreSection(section: string) {
-    return this.request<ConfigStoreSection>(`/_airlock/config/manage/${section}`);
+    return this.request<ConfigStoreSection>(`/_airlock/config/manage/${encodeURIComponent(section)}`);
   }
 
   putConfigStoreSection(section: string, data: unknown) {
     return this.request<ConfigStoreSectionWriteResult>(
-      `/_airlock/config/manage/${section}`,
+      `/_airlock/config/manage/${encodeURIComponent(section)}`,
       {
         method: "PUT",
         body: JSON.stringify(data)
@@ -130,7 +130,7 @@ export class AirlockClient {
 
   deleteConfigStoreSection(section: string) {
     return this.request<{ deleted: boolean; section: string }>(
-      `/_airlock/config/manage/${section}`,
+      `/_airlock/config/manage/${encodeURIComponent(section)}`,
       { method: "DELETE" }
     );
   }

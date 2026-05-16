@@ -192,6 +192,7 @@
   }
 
   function deleteRoute(index: number) {
+    if (!confirm("Delete this route? This cannot be undone.")) return;
     routes = routes.filter((_, i) => i !== index);
     saveRoutes();
   }

@@ -154,6 +154,7 @@
   }
 
   function deleteAccount(email: string) {
+    if (!confirm(`Delete account ${email}? This cannot be undone.`)) return;
     accounts = accounts.filter((a) => a.email !== email);
     saveAccounts();
   }

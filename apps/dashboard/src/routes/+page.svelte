@@ -46,7 +46,9 @@
 
     const m = data.metrics;
     if (m && statusChartEl) {
-      const ok = m.requests - m.errors;
+      const existing = Chart.getChart(statusChartEl);
+      if (existing) existing.destroy();
+      const ok = Math.max(0, m.requests - m.errors);
       new Chart(statusChartEl, {
         type: "doughnut",
         data: {
@@ -70,6 +72,8 @@
 
     const rh = data.routingHealth;
     if (rh && routeChartEl) {
+      const existing = Chart.getChart(routeChartEl);
+      if (existing) existing.destroy();
       const routeEntries = Object.entries(rh.routes);
       if (routeEntries.length > 0) {
         const healthy = routeEntries.filter(([, r]) => r.healthStatus === "healthy").length;
