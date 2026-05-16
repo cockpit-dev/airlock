@@ -151,6 +151,33 @@ function getOriginalTargetOrder(
   );
 }
 
+const CAPABILITY_REQUIREMENTS: readonly {
+  requirement: keyof CanonicalRequestCapabilityRequirements;
+  support: keyof ProviderCapabilityDescriptor;
+  capabilityName: string;
+}[] = [
+  { requirement: "requiresSystemMessages", support: "supportsSystemMessages", capabilityName: "system_messages" },
+  { requirement: "requiresStreaming", support: "supportsStreaming", capabilityName: "streaming" },
+  { requirement: "requiresTools", support: "supportsTools", capabilityName: "tools" },
+  { requirement: "requiresToolReplay", support: "supportsToolReplay", capabilityName: "tool_replay" },
+  { requirement: "requiresStreamingTools", support: "supportsStreamingTools", capabilityName: "streaming_tools" },
+  { requirement: "requiresMultimodalInput", support: "supportsMultimodalInput", capabilityName: "multimodal_input" },
+  { requirement: "requiresEndUserId", support: "supportsEndUserId", capabilityName: "end_user_id" },
+  { requirement: "requiresPreviousResponseId", support: "supportsPreviousResponseId", capabilityName: "previous_response_id" },
+  { requirement: "requiresConversationId", support: "supportsConversationId", capabilityName: "conversation" },
+  { requirement: "requiresPrompt", support: "supportsPrompt", capabilityName: "prompt" },
+  { requirement: "requiresReasoning", support: "supportsReasoning", capabilityName: "reasoning" },
+  { requirement: "requiresStructuredOutputs", support: "supportsStructuredOutputs", capabilityName: "structured_outputs" },
+  { requirement: "requiresStreamingStructuredOutputs", support: "supportsStreamingStructuredOutputs", capabilityName: "streaming_structured_outputs" },
+  { requirement: "requiresParallelToolCallControl", support: "supportsParallelToolCallControl", capabilityName: "parallel_tool_call_control" },
+  { requirement: "requiresOpenAIRequestMetadata", support: "supportsOpenAIRequestMetadata", capabilityName: "openai_request_metadata" },
+  { requirement: "requiresOpenAIResponsesTextControls", support: "supportsOpenAIResponsesTextControls", capabilityName: "openai_responses_text_controls" },
+  { requirement: "requiresToolChoice", support: "supportsToolChoice", capabilityName: "tool_choice" },
+  { requirement: "requiresStopSequences", support: "supportsStopSequences", capabilityName: "stop_sequences" },
+  { requirement: "requiresSamplingParameters", support: "supportsSamplingParameters", capabilityName: "sampling_parameters" },
+  { requirement: "requiresAnthropicRequestMetadata", support: "supportsAnthropicRequestMetadata", capabilityName: "anthropic_request_metadata" }
+];
+
 export function assertProviderSupportsCanonicalRequest(
   descriptor: ProviderCapabilityDescriptor,
   request: CanonicalRequest,
@@ -158,200 +185,14 @@ export function assertProviderSupportsCanonicalRequest(
 ) {
   const requirements = getCanonicalRequestCapabilityRequirements(request);
 
-  if (
-    requirements.requiresSystemMessages &&
-    !descriptor.supportsSystemMessages
-  ) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "system_messages",
-      requestId
-    );
-  }
-
-  if (requirements.requiresStreaming && !descriptor.supportsStreaming) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "streaming",
-      requestId
-    );
-  }
-
-  if (requirements.requiresTools && !descriptor.supportsTools) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "tools",
-      requestId
-    );
-  }
-
-  if (requirements.requiresToolReplay && !descriptor.supportsToolReplay) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "tool_replay",
-      requestId
-    );
-  }
-
-  if (
-    requirements.requiresStreamingTools &&
-    !descriptor.supportsStreamingTools
-  ) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "streaming_tools",
-      requestId
-    );
-  }
-
-  if (
-    requirements.requiresMultimodalInput &&
-    !descriptor.supportsMultimodalInput
-  ) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "multimodal_input",
-      requestId
-    );
-  }
-
-  if (requirements.requiresEndUserId && !descriptor.supportsEndUserId) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "end_user_id",
-      requestId
-    );
-  }
-
-  if (
-    requirements.requiresPreviousResponseId &&
-    !descriptor.supportsPreviousResponseId
-  ) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "previous_response_id",
-      requestId
-    );
-  }
-
-  if (
-    requirements.requiresConversationId &&
-    !descriptor.supportsConversationId
-  ) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "conversation",
-      requestId
-    );
-  }
-
-  if (requirements.requiresPrompt && !descriptor.supportsPrompt) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "prompt",
-      requestId
-    );
-  }
-
-  if (requirements.requiresReasoning && !descriptor.supportsReasoning) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "reasoning",
-      requestId
-    );
-  }
-
-  if (
-    requirements.requiresStructuredOutputs &&
-    !descriptor.supportsStructuredOutputs
-  ) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "structured_outputs",
-      requestId
-    );
-  }
-
-  if (
-    requirements.requiresStreamingStructuredOutputs &&
-    !descriptor.supportsStreamingStructuredOutputs
-  ) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "streaming_structured_outputs",
-      requestId
-    );
-  }
-
-  if (
-    requirements.requiresParallelToolCallControl &&
-    !descriptor.supportsParallelToolCallControl
-  ) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "parallel_tool_call_control",
-      requestId
-    );
-  }
-
-  if (
-    requirements.requiresOpenAIRequestMetadata &&
-    !descriptor.supportsOpenAIRequestMetadata
-  ) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "openai_request_metadata",
-      requestId
-    );
-  }
-
-  if (
-    requirements.requiresOpenAIResponsesTextControls &&
-    !descriptor.supportsOpenAIResponsesTextControls
-  ) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "openai_responses_text_controls",
-      requestId
-    );
-  }
-
-  if (requirements.requiresToolChoice && !descriptor.supportsToolChoice) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "tool_choice",
-      requestId
-    );
-  }
-
-  if (requirements.requiresStopSequences && !descriptor.supportsStopSequences) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "stop_sequences",
-      requestId
-    );
-  }
-
-  if (
-    requirements.requiresSamplingParameters &&
-    !descriptor.supportsSamplingParameters
-  ) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "sampling_parameters",
-      requestId
-    );
-  }
-
-  if (
-    requirements.requiresAnthropicRequestMetadata &&
-    !descriptor.supportsAnthropicRequestMetadata
-  ) {
-    throw createUnsupportedCapabilityError(
-      descriptor.provider,
-      "anthropic_request_metadata",
-      requestId
-    );
+  for (const entry of CAPABILITY_REQUIREMENTS) {
+    if (requirements[entry.requirement] && !descriptor[entry.support]) {
+      throw createUnsupportedCapabilityError(
+        descriptor.provider,
+        entry.capabilityName,
+        requestId
+      );
+    }
   }
 }
 
