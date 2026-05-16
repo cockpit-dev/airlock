@@ -31,6 +31,7 @@ export interface GatewayConfig {
   providerMaxRetries: number;
   providerRetryBackoffMs: number;
   providerStreamIdleTimeoutMs: number;
+  maxRequestBodyBytes: number;
   providerCircuitBreakerThreshold?: number;
   providerCircuitBreakerCooldownMs?: number;
   providerCircuitBreakerPersistent?: boolean;
@@ -374,6 +375,7 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
     providerMaxRetries: env.AIRLOCK_PROVIDER_MAX_RETRIES,
     providerRetryBackoffMs: env.AIRLOCK_PROVIDER_RETRY_BACKOFF_MS,
     providerStreamIdleTimeoutMs: env.AIRLOCK_PROVIDER_STREAM_IDLE_TIMEOUT_MS,
+    maxRequestBodyBytes: env.AIRLOCK_MAX_REQUEST_BODY_BYTES,
     providerCircuitBreakerThreshold:
       env.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD,
     providerCircuitBreakerCooldownMs:

@@ -142,6 +142,20 @@ export async function handleResponses(
     });
   }
 
+  const contentLength = context.req.header("content-length");
+  if (
+    contentLength !== undefined &&
+    Number(contentLength) > config.maxRequestBodyBytes
+  ) {
+    throw new GatewayError("Request body exceeds maximum allowed size", {
+      code: "request_body_too_large",
+      category: "request",
+      httpStatus: 413,
+      retryable: false,
+      requestId
+    });
+  }
+
   let json: unknown;
   try {
     json = await context.req.json();
