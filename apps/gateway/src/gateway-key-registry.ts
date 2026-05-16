@@ -157,6 +157,65 @@ const DYNAMIC_KEY_OPERATION_INDEX_PREFIX = "dynamic_operation:";
 const CONFIGURED_KEY_AUDIT_EVENTS_PREFIX = "configured_events:";
 const CONFIGURED_KEY_OPERATION_INDEX_PREFIX = "configured_operation:";
 
+async function dispatchDynamicRegistryMutation<T>(
+  env: GatewayBindings,
+  requestId: string,
+  kind: string,
+  requestInit: {
+    method: string;
+    keyId?: string;
+    body?: unknown;
+  },
+  responseHandlers: {
+    parse(value: unknown): T;
+    handleStatus?(response: Response): Promise<T | undefined> | T | undefined;
+  }
+): Promise<T> {
+  const namespace = requireDynamicGatewayKeyRegistryNamespace(env, requestId);
+  return fetchParsedRegistryResponse<T>(
+    () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
+    buildRegistryRequest(requestId, kind, {
+      method: requestInit.method,
+      ...(requestInit.keyId != null ? { keyId: requestInit.keyId } : {}),
+      headers: {
+        "content-type": "application/json"
+      },
+      ...(requestInit.body != null
+        ? { body: JSON.stringify(requestInit.body) }
+        : {})
+    }),
+    requestId,
+    responseHandlers
+  );
+}
+
+function makeIsConfiguredKey(
+  configuredGatewayApiKeys: readonly GatewayApiKeyRecord[]
+) {
+  return (candidateKeyId: string) =>
+    isConfiguredGatewayApiKeyId(configuredGatewayApiKeys, candidateKeyId);
+}
+
+function makeGetRegistryKey(env: GatewayBindings, requestId: string) {
+  return async (candidateKeyId: string) =>
+    getGatewayRegistryApiKey(env, candidateKeyId, requestId);
+}
+
+function makeGetRegistryKeys(env: GatewayBindings, requestId: string) {
+  return async (keyIds: readonly string[]) =>
+    Promise.all(
+      keyIds.map(async (id) => getGatewayRegistryApiKey(env, id, requestId))
+    );
+}
+
+function makeValidateRuntimeDependencies(
+  env: GatewayBindings,
+  requestId: string
+) {
+  return (gatewayApiKey: GatewayApiKeyRecord) =>
+    assertGatewayKeyRuntimeDependencies(env, gatewayApiKey, requestId);
+}
+
 interface GatewayKeyRegistryLookupRequest {
   bearerToken: string;
 }
