@@ -251,11 +251,18 @@ function resolveProviderConfig(
         apiKey: config.gemini?.apiKey ?? "",
         baseUrl: config.gemini?.baseUrl ?? ""
       };
-    default:
+    case "openai":
       return {
         apiKey: config.openAI.apiKey,
         baseUrl: config.openAI.baseUrl
       };
+    default:
+      throw new GatewayError(`Unknown provider: ${provider}`, {
+        code: "provider_not_supported",
+        category: "configuration",
+        httpStatus: 500,
+        retryable: false
+      });
   }
 }
 
