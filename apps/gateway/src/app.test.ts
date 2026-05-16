@@ -7391,6 +7391,40 @@ describe("gateway app", () => {
     });
   });
 
+  it("fails closed when streaming json_object is sent to anthropic provider", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          stream: true,
+          response_format: {
+            type: "json_object"
+          },
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(400);
+    await expect(readJson(response)).resolves.toEqual({
+      error: {
+        message:
+          "Provider anthropic does not support required capability: structured_outputs",
+        type: "routing",
+        code: "provider_capability_not_supported"
+      }
+    });
+  });
+
   it("accepts chat response_format.type=json_object and forwards it upstream for gemini", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
