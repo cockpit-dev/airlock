@@ -298,13 +298,23 @@ export async function handleMessages(
         );
 
         if (event.usage) {
-          await reconcileGatewayKeyTokenQuotaReservation(
-            context.env,
-            gatewayApiKey,
-            requestId,
-            tokenReservation,
-            event.usage.totalTokens
-          );
+          try {
+            await reconcileGatewayKeyTokenQuotaReservation(
+              context.env,
+              gatewayApiKey,
+              requestId,
+              tokenReservation,
+              event.usage.totalTokens
+            );
+          } catch {
+            // Reconcile failed — release the reservation instead of leaking it
+            void releaseGatewayKeyTokenQuotaReservation(
+              context.env,
+              gatewayApiKey,
+              requestId,
+              tokenReservation
+            );
+          }
           streamUsage = event.usage;
         }
       }
@@ -531,13 +541,23 @@ export async function handleMessages(
     requestId
   );
   if (canonicalResponse.usage) {
-    await reconcileGatewayKeyTokenQuotaReservation(
-      context.env,
-      gatewayApiKey,
-      requestId,
-      tokenReservation,
-      canonicalResponse.usage.totalTokens
-    );
+    try {
+      await reconcileGatewayKeyTokenQuotaReservation(
+        context.env,
+        gatewayApiKey,
+        requestId,
+        tokenReservation,
+        canonicalResponse.usage.totalTokens
+      );
+    } catch {
+      // Reconcile failed — release the reservation instead of leaking it
+      void releaseGatewayKeyTokenQuotaReservation(
+        context.env,
+        gatewayApiKey,
+        requestId,
+        tokenReservation
+      );
+    }
   }
 
   void emitGatewayRequestSuccessTelemetry({
