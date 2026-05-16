@@ -1,10 +1,18 @@
 import { describe, it, expect } from "vitest";
 
+import type { CanonicalResponse } from "@airlock/canonical";
 import type { ProviderAdapter } from "./types.js";
 import {
   createProviderAdapterFromRegistry,
   registerProviderAdapterFactory
 } from "./adapter-registry.js";
+
+const stubCanonicalResponse: CanonicalResponse = {
+  id: "test",
+  model: "test-model",
+  outputText: "",
+  finishReason: "stop"
+};
 
 describe("Provider adapter registry", () => {
   describe("built-in providers", () => {
@@ -50,12 +58,7 @@ describe("Provider adapter registry", () => {
     it("allows registering a custom provider factory", () => {
       const mockAdapter: ProviderAdapter = {
         complete() {
-          return Promise.resolve({
-            id: "test",
-            model: "test-model",
-            choices: [],
-            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-          });
+          return Promise.resolve(stubCanonicalResponse);
         }
       };
 

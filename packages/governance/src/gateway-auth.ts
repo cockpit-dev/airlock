@@ -132,7 +132,7 @@ const DEFAULT_INTERNAL_ADMIN_SCOPES: InternalAdminScope[] = [
   "keys.write"
 ];
 
-function createUnauthorizedError(requestId: string): GatewayError {
+export function createUnauthorizedError(requestId: string): GatewayError {
   return new GatewayError("Unauthorized", {
     code: "auth_invalid_api_key",
     category: "authentication",

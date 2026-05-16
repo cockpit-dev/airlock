@@ -31,7 +31,7 @@ import {
   type GatewayKeyAuditOwnership,
   type GatewayApiKeyRecord
 } from "@airlock/governance";
-import { GatewayError } from "@airlock/shared";
+import { createUnauthorizedError } from "@airlock/governance";
 
 import type { GatewayBindings } from "./env.js";
 import {
@@ -170,7 +170,7 @@ export async function assertGatewayKeyNotRevoked(
   requestId: string
 ): Promise<void> {
   if (gatewayApiKey.status === "revoked") {
-    throw createUnauthorizedGatewayKeyError(requestId);
+    throw createUnauthorizedError(requestId);
   }
 
   if (!isGatewayKeyRevocationEnabled(env)) {
@@ -195,7 +195,7 @@ export async function assertGatewayKeyNotRevoked(
   );
 
   if (state.revoked) {
-    throw createUnauthorizedGatewayKeyError(requestId);
+    throw createUnauthorizedError(requestId);
   }
 }
 
@@ -753,14 +753,4 @@ async function resolveGatewayKeyAuditOwnership(
   );
 
   return registryKey ? "registry" : "configured";
-}
-
-function createUnauthorizedGatewayKeyError(requestId: string): GatewayError {
-  return new GatewayError("Unauthorized", {
-    code: "auth_invalid_api_key",
-    category: "authentication",
-    httpStatus: 401,
-    retryable: false,
-    requestId
-  });
 }

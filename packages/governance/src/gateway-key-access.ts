@@ -2,6 +2,7 @@ import { GatewayError, type ProviderId } from "@airlock/shared";
 
 import {
   assertGatewayApiKeyIsActive,
+  createUnauthorizedError,
   extractBearerToken,
   matchGatewayApiKeyByToken,
   type GatewayApiKeyRecord
@@ -21,16 +22,6 @@ export interface GatewayKeyAuthorizationPort {
     bearerToken: string
   ): Promise<GatewayApiKeyRecord | undefined>;
   assertNotRevoked(gatewayApiKey: GatewayApiKeyRecord): Promise<void>;
-}
-
-function createUnauthorizedError(requestId: string): GatewayError {
-  return new GatewayError("Unauthorized", {
-    code: "auth_invalid_api_key",
-    category: "authentication",
-    httpStatus: 401,
-    retryable: false,
-    requestId
-  });
 }
 
 export async function authorizeGatewayKeyAccess(
