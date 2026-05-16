@@ -855,11 +855,13 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
 
     if (!response.ok) {
       let errorMessage = "Upstream provider error";
+      let upstreamErrorCode: string | undefined;
       try {
         const payload = (await response.json()) as {
-          error?: { message?: string };
+          error?: { message?: string; code?: string; type?: string };
         };
         errorMessage = payload.error?.message ?? errorMessage;
+        upstreamErrorCode = payload.error?.code ?? payload.error?.type;
       } catch {
         // Non-JSON error body — use generic message
       }
@@ -870,7 +872,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         httpStatus: response.status,
         retryable: response.status >= 500 || response.status === 429,
         provider: "openai",
-        requestId: context.requestId
+        requestId: context.requestId,
+        ...(upstreamErrorCode ? { upstreamErrorCode } : {})
       });
     }
 
@@ -1076,11 +1079,13 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
 
     if (!response.ok) {
       let errorMessage = "Upstream provider error";
+      let upstreamErrorCode: string | undefined;
       try {
         const payload = (await response.json()) as {
-          error?: { message?: string };
+          error?: { message?: string; code?: string; type?: string };
         };
         errorMessage = payload.error?.message ?? errorMessage;
+        upstreamErrorCode = payload.error?.code ?? payload.error?.type;
       } catch {
         // Non-JSON error body — use generic message
       }
@@ -1098,7 +1103,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         httpStatus: response.status,
         retryable: response.status >= 500 || response.status === 429,
         provider: "openai",
-        requestId: context.requestId
+        requestId: context.requestId,
+        ...(upstreamErrorCode ? { upstreamErrorCode } : {})
       });
     }
 
@@ -1657,11 +1663,13 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
 
     if (!response.ok) {
       let errorMessage = "Upstream provider error";
+      let upstreamErrorCode: string | undefined;
       try {
         const payload = (await response.json()) as {
-          error?: { message?: string };
+          error?: { message?: string; code?: string; type?: string };
         };
         errorMessage = payload.error?.message ?? errorMessage;
+        upstreamErrorCode = payload.error?.code ?? payload.error?.type;
       } catch {
         // Non-JSON error body — use generic message
       }
@@ -1672,7 +1680,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         httpStatus: response.status,
         retryable: response.status >= 500 || response.status === 429,
         provider: "openai",
-        requestId: context.requestId
+        requestId: context.requestId,
+        ...(upstreamErrorCode ? { upstreamErrorCode } : {})
       });
     }
 
@@ -2171,11 +2180,13 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
 
     if (!response.ok) {
       let errorMessage = "Upstream provider error";
+      let upstreamErrorCode: string | undefined;
       try {
         const payload = (await response.json()) as {
-          error?: { message?: string };
+          error?: { message?: string; code?: string; type?: string };
         };
         errorMessage = payload.error?.message ?? errorMessage;
+        upstreamErrorCode = payload.error?.code ?? payload.error?.type;
       } catch {
         // Non-JSON error body — use generic message
       }
@@ -2193,7 +2204,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         httpStatus: response.status,
         retryable: response.status >= 500 || response.status === 429,
         provider: "openai",
-        requestId: context.requestId
+        requestId: context.requestId,
+        ...(upstreamErrorCode ? { upstreamErrorCode } : {})
       });
     }
 

@@ -287,7 +287,15 @@ describe("createAnalyticsEngineTelemetryDataPoint", () => {
       })
     ).toMatchObject({
       indexes: ["gateway_request", "scale", "/v1/chat/completions"],
-      blobs: ["success", "openai", "gpt-4.1-mini", "gpt-4.1-mini", "gak_1", ""],
+      blobs: [
+        "success",
+        "openai",
+        "gpt-4.1-mini",
+        "gpt-4.1-mini",
+        "gak_1",
+        "",
+        ""
+      ],
       doubles: [42, 200, 0, 12, 8, 20, 0, 0, 0, 0]
     });
   });
@@ -357,5 +365,41 @@ describe("createAnalyticsEngineTelemetryDataPoint", () => {
 
     expect(dataPoint.doubles).toContain(30000);
     expect(dataPoint.doubles).toContain(25500);
+  });
+
+  it("includes upstreamErrorCode blob on error events", () => {
+    const dataPoint = createAnalyticsEngineTelemetryDataPoint({
+      kind: "gateway_request",
+      occurredAt: "2026-05-16T00:00:00.000Z",
+      requestId: "req_upstream_err",
+      mode: "scale",
+      routePath: "/v1/chat/completions",
+      stream: false,
+      durationMs: 1200,
+      statusCode: 429,
+      outcome: "error",
+      errorCode: "provider_upstream_error",
+      errorCategory: "provider",
+      retryable: true,
+      upstreamErrorCode: "rate_limit_exceeded"
+    });
+
+    expect(dataPoint.blobs).toContain("rate_limit_exceeded");
+  });
+
+  it("uses empty string for upstreamErrorCode on success events", () => {
+    const dataPoint = createAnalyticsEngineTelemetryDataPoint({
+      kind: "gateway_request",
+      occurredAt: "2026-05-16T00:00:00.000Z",
+      requestId: "req_success_no_upstream",
+      mode: "free",
+      routePath: "/v1/chat/completions",
+      stream: false,
+      durationMs: 10,
+      statusCode: 200,
+      outcome: "success"
+    });
+
+    expect(dataPoint.blobs).toContain("");
   });
 });

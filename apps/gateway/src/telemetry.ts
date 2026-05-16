@@ -99,7 +99,10 @@ export async function emitGatewayRequestErrorTelemetry(
     outcome: "error",
     errorCode: error.code,
     errorCategory: error.category,
-    retryable: error.retryable
+    retryable: error.retryable,
+    ...(error.upstreamErrorCode
+      ? { upstreamErrorCode: error.upstreamErrorCode }
+      : {})
   });
 }
 

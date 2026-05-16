@@ -21,7 +21,10 @@ export function createAnalyticsEngineTelemetryDataPoint(
       event.providerModel ?? "",
       event.externalModel ?? "",
       event.gatewayKeyId ?? "",
-      event.routingStrategy ?? ""
+      event.routingStrategy ?? "",
+      event.outcome === "error" && "upstreamErrorCode" in event
+        ? (event.upstreamErrorCode ?? "")
+        : ""
     ],
     doubles: [
       event.durationMs,

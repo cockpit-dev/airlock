@@ -140,11 +140,17 @@ export class GeminiProviderAdapter implements ProviderAdapter {
 
     if (!response.ok) {
       let errorMessage = "Upstream provider error";
+      let upstreamErrorCode: string | undefined;
       try {
         const payload = (await response.json()) as {
-          error?: { message?: string };
+          error?: { message?: string; status?: string; code?: number };
         };
         errorMessage = payload.error?.message ?? errorMessage;
+        upstreamErrorCode =
+          payload.error?.status ??
+          (payload.error?.code !== undefined
+            ? String(payload.error.code)
+            : undefined);
       } catch {
         // Non-JSON error body — use generic message
       }
@@ -155,7 +161,8 @@ export class GeminiProviderAdapter implements ProviderAdapter {
         httpStatus: response.status,
         retryable: response.status >= 500 || response.status === 429,
         provider: "gemini",
-        requestId: context.requestId
+        requestId: context.requestId,
+        ...(upstreamErrorCode ? { upstreamErrorCode } : {})
       });
     }
 
@@ -317,11 +324,17 @@ export class GeminiProviderAdapter implements ProviderAdapter {
 
     if (!response.ok) {
       let errorMessage = "Upstream provider error";
+      let upstreamErrorCode: string | undefined;
       try {
         const payload = (await response.json()) as {
-          error?: { message?: string };
+          error?: { message?: string; status?: string; code?: number };
         };
         errorMessage = payload.error?.message ?? errorMessage;
+        upstreamErrorCode =
+          payload.error?.status ??
+          (payload.error?.code !== undefined
+            ? String(payload.error.code)
+            : undefined);
       } catch {
         // Non-JSON error body — use generic message
       }
@@ -339,7 +352,8 @@ export class GeminiProviderAdapter implements ProviderAdapter {
         httpStatus: response.status,
         retryable: response.status >= 500 || response.status === 429,
         provider: "gemini",
-        requestId: context.requestId
+        requestId: context.requestId,
+        ...(upstreamErrorCode ? { upstreamErrorCode } : {})
       });
     }
 

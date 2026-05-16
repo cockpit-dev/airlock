@@ -396,11 +396,13 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
 
     if (!response.ok) {
       let errorMessage = "Upstream provider error";
+      let upstreamErrorCode: string | undefined;
       try {
         const payload = (await response.json()) as {
-          error?: { message?: string };
+          error?: { message?: string; type?: string };
         };
         errorMessage = payload.error?.message ?? errorMessage;
+        upstreamErrorCode = payload.error?.type;
       } catch {
         // Non-JSON error body — use generic message
       }
@@ -411,7 +413,8 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
         httpStatus: response.status,
         retryable: response.status >= 500 || response.status === 429,
         provider: "anthropic",
-        requestId: context.requestId
+        requestId: context.requestId,
+        ...(upstreamErrorCode ? { upstreamErrorCode } : {})
       });
     }
 
@@ -585,11 +588,13 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
 
     if (!response.ok) {
       let errorMessage = "Upstream provider error";
+      let upstreamErrorCode: string | undefined;
       try {
         const payload = (await response.json()) as {
-          error?: { message?: string };
+          error?: { message?: string; type?: string };
         };
         errorMessage = payload.error?.message ?? errorMessage;
+        upstreamErrorCode = payload.error?.type;
       } catch {
         // Non-JSON error body — use generic message
       }
@@ -607,7 +612,8 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
         httpStatus: response.status,
         retryable: response.status >= 500 || response.status === 429,
         provider: "anthropic",
-        requestId: context.requestId
+        requestId: context.requestId,
+        ...(upstreamErrorCode ? { upstreamErrorCode } : {})
       });
     }
 

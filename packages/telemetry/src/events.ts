@@ -39,7 +39,8 @@ const gatewayRequestTelemetryErrorSchema =
     outcome: z.literal("error"),
     errorCode: z.string().min(1),
     errorCategory: z.string().min(1),
-    retryable: z.boolean()
+    retryable: z.boolean(),
+    upstreamErrorCode: z.string().min(1).optional()
   });
 
 export const gatewayRequestTelemetryEventSchema = z.union([
