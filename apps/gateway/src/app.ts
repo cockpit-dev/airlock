@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { TelemetrySink } from "@airlock/telemetry";
 import { GatewayError } from "@airlock/shared";
 
-import { toErrorResponse } from "./errors.js";
+import { toErrorResponse, toNotFoundResponse } from "./errors.js";
 import type { GatewayBindings } from "./env.js";
 import { createRequestId } from "./request-id.js";
 import { registerAdminKeyGovernanceRoutes } from "./routes/admin-key-governance.js";
@@ -13,7 +13,10 @@ import { handleMessages } from "./routes/messages.js";
 import { handleModelById, handleModels } from "./routes/models.js";
 import { handleReady } from "./routes/ready.js";
 import { handleResponses } from "./routes/responses.js";
-import { emitGatewayRequestErrorTelemetry } from "./telemetry.js";
+import {
+  emitGatewayRequestErrorTelemetry,
+  emitGatewayRequestUnknownErrorTelemetry
+} from "./telemetry.js";
 
 export interface CreateAppOptions {
   fetcher?: typeof fetch;
@@ -45,27 +48,42 @@ export function createApp(options: CreateAppOptions = {}) {
     const telemetrySink = context.get("telemetrySink");
     const requestStartedAt = context.get("requestStartedAt");
     const telemetryErrorEmitted = context.get("telemetryErrorEmitted");
+    const pathname = new URL(context.req.url).pathname;
 
-    if (
-      !telemetryErrorEmitted &&
-      error instanceof GatewayError &&
-      requestStartedAt !== undefined
-    ) {
-      void emitGatewayRequestErrorTelemetry(
-        {
+    if (!telemetryErrorEmitted && requestStartedAt !== undefined) {
+      if (error instanceof GatewayError) {
+        void emitGatewayRequestErrorTelemetry(
+          {
+            telemetrySink,
+            requestId,
+            routePath: pathname,
+            mode: context.env.AIRLOCK_MODE ?? "free",
+            startedAt: requestStartedAt,
+            stream: false,
+            statusCode: error.httpStatus
+          },
+          error
+        );
+      } else {
+        void emitGatewayRequestUnknownErrorTelemetry({
           telemetrySink,
           requestId,
-          routePath: new URL(context.req.url).pathname,
+          routePath: pathname,
           mode: context.env.AIRLOCK_MODE ?? "free",
           startedAt: requestStartedAt,
           stream: false,
-          statusCode: error.httpStatus
-        },
-        error
-      );
+          statusCode: 500
+        });
+      }
     }
 
-    return toErrorResponse(error, requestId, new URL(context.req.url).pathname);
+    return toErrorResponse(error, requestId, pathname);
+  });
+
+  app.notFound((context) => {
+    const requestId = context.get("requestId") ?? createRequestId();
+    const pathname = new URL(context.req.url).pathname;
+    return toNotFoundResponse(requestId, pathname);
   });
 
   app.use("*", async (context, next) => {

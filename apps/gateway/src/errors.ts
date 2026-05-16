@@ -6,6 +6,49 @@ function detectErrorProtocol(pathname: string): ErrorProtocol {
   return pathname.startsWith("/v1/messages") ? "anthropic" : "openai";
 }
 
+export function toNotFoundResponse(
+  requestId: string,
+  pathname: string
+): Response {
+  const protocol = detectErrorProtocol(pathname);
+
+  if (protocol === "anthropic") {
+    return Response.json(
+      {
+        type: "error",
+        error: {
+          type: "not_found",
+          message: "Not found"
+        },
+        request_id: requestId
+      },
+      {
+        status: 404,
+        headers: {
+          "request-id": requestId,
+          "x-request-id": requestId
+        }
+      }
+    );
+  }
+
+  return Response.json(
+    {
+      error: {
+        message: "Not found",
+        type: "invalid_request_error",
+        code: "route_not_found"
+      }
+    },
+    {
+      status: 404,
+      headers: {
+        "x-request-id": requestId
+      }
+    }
+  );
+}
+
 export function toErrorResponse(
   error: unknown,
   requestId: string,
@@ -24,16 +67,16 @@ export function toErrorResponse(
           },
           request_id: requestId
         },
-      {
-        status: error.httpStatus,
-        headers: {
-          "request-id": requestId,
-          "x-request-id": requestId,
-          ...(error.headers ?? {})
+        {
+          status: error.httpStatus,
+          headers: {
+            "request-id": requestId,
+            "x-request-id": requestId,
+            ...(error.headers ?? {})
+          }
         }
-      }
-    );
-  }
+      );
+    }
 
     return Response.json(
       {
