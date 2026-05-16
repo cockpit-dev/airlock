@@ -31,5 +31,6 @@ test.describe("Navigation bar", () => {
     await expect(nav.getByText("Routes")).toBeVisible();
     await expect(nav.getByText("Config")).toBeVisible();
     await expect(nav.getByText("Providers")).toBeVisible();
+    await expect(nav.getByText("Routes")).toBeVisible();
   });
 });
