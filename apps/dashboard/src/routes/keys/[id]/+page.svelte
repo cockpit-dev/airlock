@@ -10,6 +10,9 @@
       ? (data.key as Record<string, unknown>)
       : null
   );
+  let lifecycle = $derived(
+    k ? ((k.lifecycleStatus ?? k.status ?? "active") as string) : "active"
+  );
   let status = $derived(
     data.status && typeof data.status === "object"
       ? (data.status as Record<string, unknown>)
@@ -121,18 +124,15 @@
         </div>
         <div>
           <p class="text-sm text-gray-500 mb-1">Status</p>
-          {@const lifecycle = (k.lifecycleStatus ?? k.status ?? "active") as string}
-          <span
-            class="px-2 py-1 rounded text-xs font-medium {lifecycle === 'active'
-              ? 'bg-green-900 text-green-300'
-              : lifecycle === 'archived'
-                ? 'bg-gray-800 text-gray-400'
-                : lifecycle === 'revoked'
-                  ? 'bg-red-900 text-red-300'
-                  : 'bg-yellow-900 text-yellow-300'}"
-          >
-            {lifecycle}
-          </span>
+          {#if lifecycle === 'active'}
+            <span class="px-2 py-1 rounded text-xs font-medium bg-green-900 text-green-300">{lifecycle}</span>
+          {:else if lifecycle === 'archived'}
+            <span class="px-2 py-1 rounded text-xs font-medium bg-gray-800 text-gray-400">{lifecycle}</span>
+          {:else if lifecycle === 'revoked'}
+            <span class="px-2 py-1 rounded text-xs font-medium bg-red-900 text-red-300">{lifecycle}</span>
+          {:else}
+            <span class="px-2 py-1 rounded text-xs font-medium bg-yellow-900 text-yellow-300">{lifecycle}</span>
+          {/if}
         </div>
         <div>
           <p class="text-sm text-gray-500 mb-1">Created</p>
