@@ -433,6 +433,12 @@ export async function handleChatCompletions(
           requestId,
           tokenReservation
         );
+        void releaseGatewayKeyConcurrencyLease(
+          context.env,
+          gatewayApiKey,
+          concurrencyLeaseId,
+          requestId
+        );
       }
     });
 

@@ -532,6 +532,12 @@ export async function handleResponses(
           requestId,
           tokenReservation
         );
+        void releaseGatewayKeyConcurrencyLease(
+          context.env,
+          gatewayApiKey,
+          concurrencyLeaseId,
+          requestId
+        );
       }
     });
 

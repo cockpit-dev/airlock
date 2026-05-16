@@ -407,6 +407,12 @@ export async function handleMessages(
           requestId,
           tokenReservation
         );
+        void releaseGatewayKeyConcurrencyLease(
+          context.env,
+          gatewayApiKey,
+          concurrencyLeaseId,
+          requestId
+        );
       }
     });
 
