@@ -205,6 +205,9 @@ dist
 # Cloudflare Workers local dev secrets
 .dev.vars
 
+# SvelteKit
+.svelte-kit/
+
 # yarn v2
 .yarn/cache
 .yarn/unplugged

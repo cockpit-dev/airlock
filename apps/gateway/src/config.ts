@@ -324,7 +324,9 @@ export function computeConfigFingerprint(bindings: GatewayBindings): string {
     bindings.AIRLOCK_GATEWAY_KEY_REVOCATION !== undefined ? "1" : "0",
     bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER !== undefined ? "1" : "0",
     bindings.AIRLOCK_IP_RATE_LIMIT !== undefined ? "1" : "0",
-    bindings.AIRLOCK_IP_RATE_LIMIT_POLICY ?? ""
+    bindings.AIRLOCK_IP_RATE_LIMIT_POLICY ?? "",
+    bindings.AIRLOCK_TELEMETRY ?? "",
+    bindings.AIRLOCK_REQUEST_LOGGING ?? ""
   ].join("\0");
 }
 
