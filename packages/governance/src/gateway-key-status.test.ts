@@ -27,15 +27,12 @@ function createConfiguredKey(
 describe("getGatewayKeyRevocationStatus", () => {
   it("assembles a stable revocation-status response", async () => {
     await expect(
-      getGatewayKeyRevocationStatus(
-        createConfiguredKey(),
-        {
-          readOverlayState: vi.fn().mockResolvedValue({
-            revoked: true,
-            updatedAt: "2026-05-14T00:00:00.000Z"
-          })
-        }
-      )
+      getGatewayKeyRevocationStatus(createConfiguredKey(), {
+        readOverlayState: vi.fn().mockResolvedValue({
+          revoked: true,
+          updatedAt: "2026-05-14T00:00:00.000Z"
+        })
+      })
     ).resolves.toEqual({
       keyId: "key_configured",
       revoked: true,
@@ -126,14 +123,10 @@ describe("getGatewayApiKeyStatusSnapshot", () => {
     });
 
     await expect(
-      getGatewayApiKeyStatusSnapshot(
-        createConfiguredKey(),
-        "configured",
-        {
-          readOverlayState,
-          resolveRuntimeKey
-        }
-      )
+      getGatewayApiKeyStatusSnapshot(createConfiguredKey(), "configured", {
+        readOverlayState,
+        resolveRuntimeKey
+      })
     ).resolves.toMatchObject({
       keyId: "key_configured",
       ownership: "configured",
@@ -182,14 +175,14 @@ describe("getGatewayApiKeyStatusSnapshot", () => {
 
 describe("listGatewayApiKeyStatuses", () => {
   it("merges configured and registry entries and filters archived registry keys by default", async () => {
-    const resolveRuntimeKey = vi.fn().mockImplementation(
-      (gatewayApiKey: GatewayApiKeyRecord) => {
+    const resolveRuntimeKey = vi
+      .fn()
+      .mockImplementation((gatewayApiKey: GatewayApiKeyRecord) => {
         return {
           runtimeGatewayApiKey: gatewayApiKey,
           registryOverride: null
         };
-      }
-    );
+      });
 
     const entries = await listGatewayApiKeyStatuses(
       [

@@ -58,8 +58,7 @@ export interface ClearConfiguredGatewayKeyRegistryOverridePort {
   }>;
 }
 
-export interface ConfiguredGatewayApiKeyStatusSnapshotPort
-  extends GatewayKeyStatusSnapshotPort {
+export interface ConfiguredGatewayApiKeyStatusSnapshotPort extends GatewayKeyStatusSnapshotPort {
   gatewayApiKeys: readonly GatewayApiKeyRecord[];
 }
 
@@ -77,7 +76,9 @@ function createConfiguredKeyRegistryOverridePayloadError(cause?: unknown) {
   });
 }
 
-export function parseConfiguredGatewayKeyRegistryOverrideUpdatePayload(payload: unknown): {
+export function parseConfiguredGatewayKeyRegistryOverrideUpdatePayload(
+  payload: unknown
+): {
   override: GatewayApiKeyMetadataOverride;
   reason?: string;
 } {
@@ -130,7 +131,9 @@ export function parseConfiguredGatewayKeyRegistryOverrideUpdatePayload(payload: 
   }
 }
 
-export function parseConfiguredGatewayKeyRegistryOverrideClearPayload(payload: unknown): {
+export function parseConfiguredGatewayKeyRegistryOverrideClearPayload(
+  payload: unknown
+): {
   reason?: string;
 } {
   if (payload === undefined || payload === null) {
@@ -202,9 +205,8 @@ export async function updateConfiguredGatewayKeyRegistryOverride(
     keyId,
     requestId
   );
-  const parsedPayload = parseConfiguredGatewayKeyRegistryOverrideUpdatePayload(
-    payload
-  );
+  const parsedPayload =
+    parseConfiguredGatewayKeyRegistryOverrideUpdatePayload(payload);
   const writeResult = await port.writeRegistryOverride(
     gatewayApiKey,
     parsedPayload.override,
@@ -266,9 +268,8 @@ export async function clearConfiguredGatewayKeyRegistryOverride(
     keyId,
     requestId
   );
-  const parsedPayload = parseConfiguredGatewayKeyRegistryOverrideClearPayload(
-    payload
-  );
+  const parsedPayload =
+    parseConfiguredGatewayKeyRegistryOverrideClearPayload(payload);
 
   const clearResult = await port.clearRegistryOverride(gatewayApiKey, {
     ...(audit?.actorContext ? { actorContext: audit.actorContext } : {}),
@@ -437,6 +438,4 @@ export function parseGatewayKeyRegistryOverrideClearRequest(value: unknown): {
   };
 }
 
-export type {
-  GatewayApiKeyMetadataOverride
-};
+export type { GatewayApiKeyMetadataOverride };

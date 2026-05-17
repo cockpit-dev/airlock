@@ -8,9 +8,7 @@ import {
   type GatewayConfig
 } from "../config.js";
 import { type ModelRoute } from "@airlock/routing";
-import {
-  type ProviderCircuitState
-} from "@airlock/governance";
+import { type ProviderCircuitState } from "@airlock/governance";
 import { getAllInMemoryCircuitBreakerStates } from "../circuit-breaker.js";
 
 type GatewayApp = Hono<{
@@ -209,7 +207,11 @@ export function registerAdminGatewayStatusRoutes(app: GatewayApp): void {
     const circuitBreakerStates = getAllInMemoryCircuitBreakerStates();
     const configFingerprint = computeConfigFingerprint(context.env);
     return context.json(
-      buildGatewayStatusResponse(config, circuitBreakerStates, configFingerprint)
+      buildGatewayStatusResponse(
+        config,
+        circuitBreakerStates,
+        configFingerprint
+      )
     );
   });
 }

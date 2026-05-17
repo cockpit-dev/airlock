@@ -91,16 +91,20 @@ export function requireDynamicGatewayKeyRegistryNamespace(
 }
 
 export async function fetchParsedRegistryResponse<T>(
-  getStub: () => Promise<{
-    fetch(request: Request): Promise<Response>;
-  }> | {
-    fetch(request: Request): Promise<Response>;
-  },
+  getStub: () =>
+    | Promise<{
+        fetch(request: Request): Promise<Response>;
+      }>
+    | {
+        fetch(request: Request): Promise<Response>;
+      },
   request: Request,
   requestId: string,
   options: {
     parse(value: unknown): T;
-    handleStatus?: (response: Response) => Promise<T | undefined> | T | undefined;
+    handleStatus?: (
+      response: Response
+    ) => Promise<T | undefined> | T | undefined;
   }
 ): Promise<T> {
   return dispatchGovernanceTransport(getStub, request, requestId, {

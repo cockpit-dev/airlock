@@ -114,7 +114,9 @@ describe("fetchParsedRegistryResponse", () => {
       fetchParsedRegistryResponse(
         () => {
           return {
-            fetch: vi.fn().mockResolvedValue(new Response("Not found", { status: 404 }))
+            fetch: vi
+              .fn()
+              .mockResolvedValue(new Response("Not found", { status: 404 }))
           };
         },
         buildRegistryRequest("req_123", "dynamic", {
@@ -174,13 +176,14 @@ describe("fetchParsedRegistryResponse", () => {
         }),
         "req_123",
         {
-          parse: (value) => value as {
-            keyId: string;
-            override: {
-              label: string;
-              updatedAt: string;
-            };
-          }
+          parse: (value) =>
+            value as {
+              keyId: string;
+              override: {
+                label: string;
+                updatedAt: string;
+              };
+            }
         }
       )
     ).resolves.toEqual({

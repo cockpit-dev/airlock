@@ -117,9 +117,7 @@ import {
 } from "./gateway-key-registry-transport.js";
 import type { DurableObjectStateLike } from "./durable-object-state.js";
 
-function handleRotationPrecondition(
-  fn: () => void
-): Response | null {
+function handleRotationPrecondition(fn: () => void): Response | null {
   try {
     fn();
     return null;
@@ -1264,7 +1262,9 @@ export class GatewayKeyRegistryDurableObject {
           buildGatewayKeyAuditContext({
             ...(operationId ? { operationId } : {}),
             reason: parsedRequest.auditMetadata?.reason,
-            actorContext: gatewayKeyAuditActorContextFromRegistryRequest(parsedRequest.auditMetadata ?? {})
+            actorContext: gatewayKeyAuditActorContextFromRegistryRequest(
+              parsedRequest.auditMetadata ?? {}
+            )
           })
         );
         await appendStoredConfiguredKeyAuditEvent(
@@ -1285,11 +1285,15 @@ export class GatewayKeyRegistryDurableObject {
           ? await request.json()
           : {};
         const parsedRequest = parseGatewayKeyRegistryOverrideClearRequest(body);
-        const result = await clearStoredOverride(this.state.storage, keyId,
+        const result = await clearStoredOverride(
+          this.state.storage,
+          keyId,
           buildGatewayKeyAuditContext({
             ...(operationId ? { operationId } : {}),
             reason: parsedRequest.auditMetadata?.reason,
-            actorContext: gatewayKeyAuditActorContextFromRegistryRequest(parsedRequest.auditMetadata ?? {})
+            actorContext: gatewayKeyAuditActorContextFromRegistryRequest(
+              parsedRequest.auditMetadata ?? {}
+            )
           })
         );
         await appendStoredConfiguredKeyAuditEvent(
@@ -1508,7 +1512,9 @@ export async function createGatewayRegistryApiKey(
             ...(createRequest.auditMetadata?.reason
               ? { reason: createRequest.auditMetadata.reason }
               : {}),
-            ...resolveAuditActorRecord(actorContext ?? createRequest.actorContext)
+            ...resolveAuditActorRecord(
+              actorContext ?? createRequest.actorContext
+            )
           } satisfies GatewayKeyRegistryCreateRequest)
         }),
         requestId,
@@ -1573,7 +1579,9 @@ export async function bulkCreateGatewayRegistryApiKeys(
             ...(createRequest.auditMetadata?.reason
               ? { reason: createRequest.auditMetadata.reason }
               : {}),
-            ...resolveAuditActorRecord(actorContext ?? createRequest.actorContext)
+            ...resolveAuditActorRecord(
+              actorContext ?? createRequest.actorContext
+            )
           } satisfies {
             keys: GatewayApiKeyRecord[];
             actor?: string;
@@ -1725,7 +1733,10 @@ export async function updateGatewayRegistryApiKey(
             ...(updateRequest.auditMetadata.reason
               ? { reason: updateRequest.auditMetadata.reason }
               : {}),
-            ...resolveAuditActorRecord(actorContext, updateRequest.auditMetadata)
+            ...resolveAuditActorRecord(
+              actorContext,
+              updateRequest.auditMetadata
+            )
           })
         }),
         requestId,
@@ -2172,7 +2183,10 @@ export async function bulkFinalizeGatewayRegistryApiKeyRotations(
               ...(bulkRequest.auditMetadata.reason
                 ? { reason: bulkRequest.auditMetadata.reason }
                 : {}),
-              ...resolveAuditActorRecord(actorContext, bulkRequest.auditMetadata)
+              ...resolveAuditActorRecord(
+                actorContext,
+                bulkRequest.auditMetadata
+              )
             } satisfies {
               keyIds: string[];
               reason?: string;
@@ -2244,7 +2258,10 @@ export async function bulkCancelGatewayRegistryApiKeyRotations(
               ...(bulkRequest.auditMetadata.reason
                 ? { reason: bulkRequest.auditMetadata.reason }
                 : {}),
-              ...resolveAuditActorRecord(actorContext, bulkRequest.auditMetadata)
+              ...resolveAuditActorRecord(
+                actorContext,
+                bulkRequest.auditMetadata
+              )
             } satisfies {
               keyIds: string[];
               reason?: string;

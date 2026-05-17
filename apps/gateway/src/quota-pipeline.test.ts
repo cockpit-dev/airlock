@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  didUseFallback,
-  routingSignals
-} from "./quota-pipeline.js";
+import { didUseFallback, routingSignals } from "./quota-pipeline.js";
 import type { QuotaResources } from "./quota-pipeline.js";
 
 function makeQuota(overrides: Partial<QuotaResources> = {}): QuotaResources {

@@ -4,9 +4,13 @@
   let { data } = $props<{ data: { keys: unknown } }>();
 
   let keys = $derived(
-    Array.isArray(data.keys) ? data.keys : data.keys && typeof data.keys === "object" && "keys" in (data.keys as Record<string, unknown>)
-      ? (data.keys as { keys: unknown[] }).keys
-      : []
+    Array.isArray(data.keys)
+      ? data.keys
+      : data.keys &&
+          typeof data.keys === "object" &&
+          "keys" in (data.keys as Record<string, unknown>)
+        ? (data.keys as { keys: unknown[] }).keys
+        : []
   );
 
   let showCreate = $state(false);
@@ -83,10 +87,16 @@
   </div>
 
   {#if showCreate}
-    <form onsubmit={handleCreate} class="bg-gray-900 border border-gray-800 rounded-lg p-4 mb-6">
+    <form
+      onsubmit={handleCreate}
+      class="bg-gray-900 border border-gray-800 rounded-lg p-4 mb-6"
+    >
       <div class="flex gap-4 items-end">
         <div class="flex-1">
-          <label for="label" class="block text-sm font-medium text-gray-300 mb-1">Label</label>
+          <label
+            for="label"
+            class="block text-sm font-medium text-gray-300 mb-1">Label</label
+          >
           <input
             id="label"
             type="text"
@@ -123,15 +133,24 @@
         <tbody>
           {#each keys as key}
             {@const k = key as Record<string, unknown>}
-            {@const status = (k.lifecycleStatus ?? k.status ?? "active") as string}
+            {@const status = (k.lifecycleStatus ??
+              k.status ??
+              "active") as string}
             <tr class="border-b border-gray-800 last:border-0">
               <td class="px-4 py-3">
-                <a href="/keys/{k.id}" class="text-blue-400 hover:text-blue-300 font-mono text-xs">{k.id as string}</a>
+                <a
+                  href="/keys/{k.id}"
+                  class="text-blue-400 hover:text-blue-300 font-mono text-xs"
+                  >{k.id as string}</a
+                >
               </td>
-              <td class="px-4 py-3 text-gray-300">{k.label as string ?? "-"}</td>
+              <td class="px-4 py-3 text-gray-300"
+                >{(k.label as string) ?? "-"}</td
+              >
               <td class="px-4 py-3">
                 <span
-                  class="px-2 py-1 rounded text-xs font-medium {status === 'active'
+                  class="px-2 py-1 rounded text-xs font-medium {status ===
+                  'active'
                     ? 'bg-green-900 text-green-300'
                     : status === 'archived'
                       ? 'bg-gray-800 text-gray-400'

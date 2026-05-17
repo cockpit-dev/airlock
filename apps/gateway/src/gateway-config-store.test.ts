@@ -29,11 +29,7 @@ function createMockState(): {
   return { state, storage };
 }
 
-function createRequest(
-  method: string,
-  path: string,
-  body?: unknown
-): Request {
+function createRequest(method: string, path: string, body?: unknown): Request {
   const init: RequestInit = { method };
   if (body !== undefined) {
     init.headers = { "content-type": "application/json" };
@@ -214,14 +210,11 @@ describe("GatewayConfigStoreDurableObject", () => {
   it("rejects PUT with invalid JSON", async () => {
     const { state } = createMockState();
     const do_ = new GatewayConfigStoreDurableObject(state);
-    const request = new Request(
-      "https://airlock.internal/sections/providers",
-      {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: "not json"
-      }
-    );
+    const request = new Request("https://airlock.internal/sections/providers", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: "not json"
+    });
     const response = await do_.fetch(request);
     expect(response.status).toBe(400);
   });
@@ -230,17 +223,14 @@ describe("GatewayConfigStoreDurableObject", () => {
     const { state } = createMockState();
     const do_ = new GatewayConfigStoreDurableObject(state);
 
-    const request = new Request(
-      "https://airlock.internal/sections/providers",
-      {
-        method: "PUT",
-        headers: {
-          "content-type": "application/json",
-          "x-airlock-admin-actor": "admin@example.com"
-        },
-        body: JSON.stringify({})
-      }
-    );
+    const request = new Request("https://airlock.internal/sections/providers", {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        "x-airlock-admin-actor": "admin@example.com"
+      },
+      body: JSON.stringify({})
+    });
     const response = await do_.fetch(request);
     const body = (await response.json()) as StoredConfigSection;
     expect(body.updatedBy).toBe("admin@example.com");

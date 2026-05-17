@@ -8,9 +8,7 @@ import {
   sortGatewayKeyAuditEventsDescending,
   type GatewayKeyAuditEvent
 } from "./gateway-key-audit.js";
-import type {
-  GatewayKeyRegistryDynamicKeyView
-} from "./gateway-key-registry.js";
+import type { GatewayKeyRegistryDynamicKeyView } from "./gateway-key-registry.js";
 import { createGatewayKeyNotFoundError } from "./gateway-key-registry-validation.js";
 
 export interface GatewayAdminKeyInventoryFilters {
@@ -20,13 +18,15 @@ export interface GatewayAdminKeyInventoryFilters {
 }
 
 export interface GatewayAdminKeyReadPort {
-  listKeySnapshots(filters: GatewayAdminKeyInventoryFilters): Promise<
-    GatewayApiKeyRegistrySnapshot[]
-  >;
+  listKeySnapshots(
+    filters: GatewayAdminKeyInventoryFilters
+  ): Promise<GatewayApiKeyRegistrySnapshot[]>;
 }
 
 export interface GatewayAdminRegistryKeyReadPort {
-  getRegistryKey(keyId: string): Promise<GatewayKeyRegistryDynamicKeyView | null>;
+  getRegistryKey(
+    keyId: string
+  ): Promise<GatewayKeyRegistryDynamicKeyView | null>;
 }
 
 export interface GatewayAdminKeyRevocationReadPort {
@@ -48,8 +48,12 @@ export interface GatewayAdminKeyEventsReadPort {
 }
 
 export interface GatewayAdminKeyOperationEventsReadPort {
-  getRegistryOperationEvents(operationId: string): Promise<GatewayKeyAuditEvent[]>;
-  getRevocationOperationEvents(operationId: string): Promise<GatewayKeyAuditEvent[]>;
+  getRegistryOperationEvents(
+    operationId: string
+  ): Promise<GatewayKeyAuditEvent[]>;
+  getRevocationOperationEvents(
+    operationId: string
+  ): Promise<GatewayKeyAuditEvent[]>;
 }
 
 export interface GatewayAdminConfiguredKeyRegistryViewPort {
@@ -57,8 +61,6 @@ export interface GatewayAdminConfiguredKeyRegistryViewPort {
     keyId: string
   ): Promise<GatewayApiKeyRegistrySnapshot>;
 }
-
-
 
 export function parseGatewayAdminKeyInventoryFilters(
   query: URLSearchParams
@@ -105,7 +107,9 @@ export async function listGatewayAdminKeys(
   keys: GatewayApiKeyRegistrySnapshot[];
 }> {
   return {
-    keys: await port.listKeySnapshots(parseGatewayAdminKeyInventoryFilters(query))
+    keys: await port.listKeySnapshots(
+      parseGatewayAdminKeyInventoryFilters(query)
+    )
   };
 }
 
@@ -258,9 +262,7 @@ export function toGatewayAdminKeyStatusReadPort(
 }
 
 export function toGatewayAdminKeyRevocationReadPort(
-  getKeyRevocationStatus: (
-    keyId: string
-  ) => Promise<{
+  getKeyRevocationStatus: (keyId: string) => Promise<{
     keyId: string;
     revoked: boolean;
     updatedAt: string;

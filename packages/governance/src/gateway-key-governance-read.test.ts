@@ -85,12 +85,9 @@ describe("listGatewayAdminKeys", () => {
     const listKeySnapshots = vi.fn().mockResolvedValue([snapshot]);
 
     await expect(
-      listGatewayAdminKeys(
-        new URLSearchParams("acceptedNow=false"),
-        {
-          listKeySnapshots
-        }
-      )
+      listGatewayAdminKeys(new URLSearchParams("acceptedNow=false"), {
+        listKeySnapshots
+      })
     ).resolves.toEqual({
       keys: [snapshot]
     });
@@ -104,13 +101,9 @@ describe("listGatewayAdminKeys", () => {
 describe("getGatewayAdminKey", () => {
   it("throws a not-found governance error when the key is absent", async () => {
     await expect(
-      getGatewayAdminKey(
-        "missing-key",
-        "req_123",
-        {
-          getRegistryKey: vi.fn().mockResolvedValue(null)
-        }
-      )
+      getGatewayAdminKey("missing-key", "req_123", {
+        getRegistryKey: vi.fn().mockResolvedValue(null)
+      })
     ).rejects.toMatchObject({
       code: "gateway_key_not_found"
     });
@@ -373,7 +366,9 @@ describe("getGatewayAdminKeyOperationEvents", () => {
 
 describe("createGatewayAdminKeyRegistryView", () => {
   it("projects a status snapshot into the registry-view response shape", () => {
-    expect(createGatewayAdminKeyRegistryView(createConfiguredSnapshot())).toEqual({
+    expect(
+      createGatewayAdminKeyRegistryView(createConfiguredSnapshot())
+    ).toEqual({
       keyId: "key_1",
       configured: {
         keyId: "key_1",

@@ -34,8 +34,35 @@
 
   async function initCharts() {
     ChartModule = await import("chart.js");
-    const { Chart, ArcElement, DoughnutController, Tooltip, Legend, LineController, LineElement, BarController, BarElement, LinearScale, CategoryScale, PointElement, Filler } = ChartModule;
-    Chart.register(ArcElement, DoughnutController, LineController, LineElement, BarController, BarElement, LinearScale, CategoryScale, PointElement, Tooltip, Legend, Filler);
+    const {
+      Chart,
+      ArcElement,
+      DoughnutController,
+      Tooltip,
+      Legend,
+      LineController,
+      LineElement,
+      BarController,
+      BarElement,
+      LinearScale,
+      CategoryScale,
+      PointElement,
+      Filler
+    } = ChartModule;
+    Chart.register(
+      ArcElement,
+      DoughnutController,
+      LineController,
+      LineElement,
+      BarController,
+      BarElement,
+      LinearScale,
+      CategoryScale,
+      PointElement,
+      Tooltip,
+      Legend,
+      Filler
+    );
 
     renderStaticCharts();
   }
@@ -57,12 +84,14 @@
         type: "doughnut",
         data: {
           labels: ["Success", "Error"],
-          datasets: [{
-            data: [ok, m.errors],
-            backgroundColor: ["#22c55e", "#ef4444"],
-            borderColor: ["#166534", "#991b1b"],
-            borderWidth: 1
-          }]
+          datasets: [
+            {
+              data: [ok, m.errors],
+              backgroundColor: ["#22c55e", "#ef4444"],
+              borderColor: ["#166534", "#991b1b"],
+              borderWidth: 1
+            }
+          ]
         },
         options: {
           responsive: true,
@@ -80,19 +109,25 @@
       if (existing) existing.destroy();
       const routeEntries = Object.entries(rh.routes);
       if (routeEntries.length > 0) {
-        const healthy = routeEntries.filter(([, r]) => r.healthStatus === "healthy").length;
-        const degraded = routeEntries.filter(([, r]) => r.healthStatus === "degraded").length;
+        const healthy = routeEntries.filter(
+          ([, r]) => r.healthStatus === "healthy"
+        ).length;
+        const degraded = routeEntries.filter(
+          ([, r]) => r.healthStatus === "degraded"
+        ).length;
         const down = routeEntries.length - healthy - degraded;
         new Chart(routeChartEl, {
           type: "doughnut",
           data: {
             labels: ["Healthy", "Degraded", "Down"],
-            datasets: [{
-              data: [healthy, degraded, down],
-              backgroundColor: ["#22c55e", "#eab308", "#ef4444"],
-              borderColor: ["#166534", "#854d0e", "#991b1b"],
-              borderWidth: 1
-            }]
+            datasets: [
+              {
+                data: [healthy, degraded, down],
+                backgroundColor: ["#22c55e", "#eab308", "#ef4444"],
+                borderColor: ["#166534", "#854d0e", "#991b1b"],
+                borderWidth: 1
+              }
+            ]
           },
           options: {
             responsive: true,
@@ -108,13 +143,26 @@
 
   function pushMetricsPoint(m: MetricsSnapshot) {
     const now = new Date();
-    const label = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const label = now.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
 
     trendLabels = [...trendLabels.slice(-(MAX_DATA_POINTS - 1)), label];
-    trendRequests = [...trendRequests.slice(-(MAX_DATA_POINTS - 1)), m.requests];
+    trendRequests = [
+      ...trendRequests.slice(-(MAX_DATA_POINTS - 1)),
+      m.requests
+    ];
     trendErrors = [...trendErrors.slice(-(MAX_DATA_POINTS - 1)), m.errors];
-    trendErrorRates = [...trendErrorRates.slice(-(MAX_DATA_POINTS - 1)), +(m.errorRate * 100).toFixed(1)];
-    trendLatencies = [...trendLatencies.slice(-(MAX_DATA_POINTS - 1)), m.avgDurationMs];
+    trendErrorRates = [
+      ...trendErrorRates.slice(-(MAX_DATA_POINTS - 1)),
+      +(m.errorRate * 100).toFixed(1)
+    ];
+    trendLatencies = [
+      ...trendLatencies.slice(-(MAX_DATA_POINTS - 1)),
+      m.avgDurationMs
+    ];
 
     renderTrendCharts();
     renderLatencyChart(m);
@@ -160,8 +208,15 @@
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: { ticks: { color: "#6b7280", maxTicksLimit: 10 }, grid: { color: "#1f2937" } },
-          y: { ticks: { color: "#6b7280" }, grid: { color: "#1f2937" }, beginAtZero: true }
+          x: {
+            ticks: { color: "#6b7280", maxTicksLimit: 10 },
+            grid: { color: "#1f2937" }
+          },
+          y: {
+            ticks: { color: "#6b7280" },
+            grid: { color: "#1f2937" },
+            beginAtZero: true
+          }
         },
         plugins: {
           legend: { labels: { color: "#9ca3af" } }
@@ -174,19 +229,35 @@
       type: "bar",
       data: {
         labels: toPlainArray(trendLabels),
-        datasets: [{
-          label: "Error Rate (%)",
-          data: toPlainArray(trendErrorRates),
-          backgroundColor: toPlainArray(trendErrorRates).map((r) => (r > 5 ? "rgba(239,68,68,0.7)" : r > 1 ? "rgba(234,179,8,0.7)" : "rgba(34,197,94,0.7)")),
-          borderRadius: 2
-        }]
+        datasets: [
+          {
+            label: "Error Rate (%)",
+            data: toPlainArray(trendErrorRates),
+            backgroundColor: toPlainArray(trendErrorRates).map((r) =>
+              r > 5
+                ? "rgba(239,68,68,0.7)"
+                : r > 1
+                  ? "rgba(234,179,8,0.7)"
+                  : "rgba(34,197,94,0.7)"
+            ),
+            borderRadius: 2
+          }
+        ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: { ticks: { color: "#6b7280", maxTicksLimit: 10 }, grid: { color: "#1f2937" } },
-          y: { ticks: { color: "#6b7280" }, grid: { color: "#1f2937" }, beginAtZero: true, max: 100 }
+          x: {
+            ticks: { color: "#6b7280", maxTicksLimit: 10 },
+            grid: { color: "#1f2937" }
+          },
+          y: {
+            ticks: { color: "#6b7280" },
+            grid: { color: "#1f2937" },
+            beginAtZero: true,
+            max: 100
+          }
         },
         plugins: {
           legend: { labels: { color: "#9ca3af" } }
@@ -209,24 +280,38 @@
       type: "bar",
       data: {
         labels: routes.map(([name]) => name),
-        datasets: [{
-          label: "Avg Latency (ms)",
-          data: routes.map(([, r]) => r.avgDurationMs),
-          backgroundColor: routes.map(([, r]) =>
-            r.avgDurationMs > 3000 ? "rgba(239,68,68,0.7)"
-            : r.avgDurationMs > 1000 ? "rgba(234,179,8,0.7)"
-            : "rgba(59,130,246,0.7)"
-          ),
-          borderRadius: 2
-        }]
+        datasets: [
+          {
+            label: "Avg Latency (ms)",
+            data: routes.map(([, r]) => r.avgDurationMs),
+            backgroundColor: routes.map(([, r]) =>
+              r.avgDurationMs > 3000
+                ? "rgba(239,68,68,0.7)"
+                : r.avgDurationMs > 1000
+                  ? "rgba(234,179,8,0.7)"
+                  : "rgba(59,130,246,0.7)"
+            ),
+            borderRadius: 2
+          }
+        ]
       },
       options: {
         indexAxis: "y",
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: { ticks: { color: "#6b7280" }, grid: { color: "#1f2937" }, beginAtZero: true },
-          y: { ticks: { color: "#9ca3af", font: { family: "monospace", size: 11 } }, grid: { display: false } }
+          x: {
+            ticks: { color: "#6b7280" },
+            grid: { color: "#1f2937" },
+            beginAtZero: true
+          },
+          y: {
+            ticks: {
+              color: "#9ca3af",
+              font: { family: "monospace", size: 11 }
+            },
+            grid: { display: false }
+          }
         },
         plugins: {
           legend: { display: false }
@@ -266,7 +351,9 @@
   <div class="flex items-center justify-between mb-6">
     <h2 class="text-xl font-bold text-gray-100">Dashboard</h2>
     {#if data.status}
-      <span class="text-xs text-gray-500 font-mono">fingerprint: {data.status.configFingerprint.slice(0, 12)}...</span>
+      <span class="text-xs text-gray-500 font-mono"
+        >fingerprint: {data.status.configFingerprint.slice(0, 12)}...</span
+      >
     {/if}
   </div>
 
@@ -275,26 +362,38 @@
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
       <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
         <p class="text-sm text-gray-400 mb-1">Mode</p>
-        <p class="text-lg font-semibold text-white uppercase">{data.status.mode}</p>
+        <p class="text-lg font-semibold text-white uppercase">
+          {data.status.mode}
+        </p>
       </div>
       <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
         <p class="text-sm text-gray-400 mb-1">Routes</p>
-        <p class="text-lg font-semibold text-white">{data.status.routes.length}</p>
+        <p class="text-lg font-semibold text-white">
+          {data.status.routes.length}
+        </p>
       </div>
       <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
         <p class="text-sm text-gray-400 mb-1">Keys</p>
         <p class="text-lg font-semibold text-white">
           {data.status.keys.total}
-          <span class="text-sm text-gray-500">({data.status.keys.registryOwned} registry)</span>
+          <span class="text-sm text-gray-500"
+            >({data.status.keys.registryOwned} registry)</span
+          >
         </p>
       </div>
       <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
         <p class="text-sm text-gray-400 mb-1">Circuit Breakers</p>
         <p class="text-lg font-semibold text-white">
-          <span class={data.status.circuitBreaker.openTargets.length > 0 ? "text-red-400" : "text-green-400"}>
+          <span
+            class={data.status.circuitBreaker.openTargets.length > 0
+              ? "text-red-400"
+              : "text-green-400"}
+          >
             {data.status.circuitBreaker.openTargets.length}
           </span>
-          <span class="text-sm text-gray-500">open / {data.status.circuitBreaker.totalTargets} total</span>
+          <span class="text-sm text-gray-500"
+            >open / {data.status.circuitBreaker.totalTargets} total</span
+          >
         </p>
       </div>
     </div>
@@ -306,22 +405,40 @@
         <div class="space-y-4">
           <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <p class="text-sm text-gray-400 mb-1">Total Requests</p>
-            <p class="text-2xl font-bold text-white">{data.metrics.requests.toLocaleString()}</p>
-            <p class="text-xs text-gray-500 mt-1">window: {(data.metrics.window.durationMs / 1000).toFixed(0)}s</p>
+            <p class="text-2xl font-bold text-white">
+              {data.metrics.requests.toLocaleString()}
+            </p>
+            <p class="text-xs text-gray-500 mt-1">
+              window: {(data.metrics.window.durationMs / 1000).toFixed(0)}s
+            </p>
           </div>
           <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <p class="text-sm text-gray-400 mb-1">Error Rate</p>
             <p class="text-2xl font-bold text-white">
-              <span class={data.metrics.errorRate > 0.05 ? "text-red-400" : data.metrics.errorRate > 0.01 ? "text-yellow-400" : "text-green-400"}>
+              <span
+                class={data.metrics.errorRate > 0.05
+                  ? "text-red-400"
+                  : data.metrics.errorRate > 0.01
+                    ? "text-yellow-400"
+                    : "text-green-400"}
+              >
                 {(data.metrics.errorRate * 100).toFixed(1)}%
               </span>
             </p>
-            <p class="text-xs text-gray-500 mt-1">{data.metrics.errors} errors</p>
+            <p class="text-xs text-gray-500 mt-1">
+              {data.metrics.errors} errors
+            </p>
           </div>
           <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <p class="text-sm text-gray-400 mb-1">Avg Latency</p>
             <p class="text-2xl font-bold text-white">
-              <span class={data.metrics.avgDurationMs > 3000 ? "text-red-400" : data.metrics.avgDurationMs > 1000 ? "text-yellow-400" : "text-green-400"}>
+              <span
+                class={data.metrics.avgDurationMs > 3000
+                  ? "text-red-400"
+                  : data.metrics.avgDurationMs > 1000
+                    ? "text-yellow-400"
+                    : "text-green-400"}
+              >
                 {data.metrics.avgDurationMs}ms
               </span>
             </p>
@@ -367,7 +484,9 @@
       <!-- Per-Route Latency Chart -->
       {#if data.metrics && Object.keys(data.metrics.byRoute).length > 0}
         <div class="mb-8">
-          <h3 class="text-lg font-semibold text-gray-200 mb-3">Route Latency</h3>
+          <h3 class="text-lg font-semibold text-gray-200 mb-3">
+            Route Latency
+          </h3>
           <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <div class="h-64">
               <canvas bind:this={latencyChartEl}></canvas>
@@ -382,8 +501,18 @@
           <h3 class="text-lg font-semibold text-gray-200 mb-3">Status Codes</h3>
           <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
             {#each Object.entries(data.metrics.statusCodes).sort(([a], [b]) => Number(a) - Number(b)) as [code, count]}
-              <div class="bg-gray-900 border border-gray-800 rounded-lg p-3 text-center">
-                <p class="text-lg font-bold {Number(code) < 300 ? 'text-green-400' : Number(code) < 400 ? 'text-yellow-400' : 'text-red-400'}">{code}</p>
+              <div
+                class="bg-gray-900 border border-gray-800 rounded-lg p-3 text-center"
+              >
+                <p
+                  class="text-lg font-bold {Number(code) < 300
+                    ? 'text-green-400'
+                    : Number(code) < 400
+                      ? 'text-yellow-400'
+                      : 'text-red-400'}"
+                >
+                  {code}
+                </p>
                 <p class="text-sm text-gray-400">{count}</p>
               </div>
             {/each}
@@ -394,8 +523,12 @@
       <!-- Per-Route Metrics -->
       {#if Object.keys(data.metrics.byRoute).length > 0}
         <div class="mb-8">
-          <h3 class="text-lg font-semibold text-gray-200 mb-3">Route Metrics</h3>
-          <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+          <h3 class="text-lg font-semibold text-gray-200 mb-3">
+            Route Metrics
+          </h3>
+          <div
+            class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
+          >
             <table class="w-full text-sm">
               <thead>
                 <tr class="border-b border-gray-800 text-gray-400 text-left">
@@ -408,13 +541,26 @@
               <tbody>
                 {#each Object.entries(data.metrics.byRoute) as [name, rm]}
                   <tr class="border-b border-gray-800 last:border-0">
-                    <td class="px-4 py-3 text-white font-mono text-xs">{name}</td>
-                    <td class="px-4 py-3 text-gray-300">{rm.requests.toLocaleString()}</td>
+                    <td class="px-4 py-3 text-white font-mono text-xs"
+                      >{name}</td
+                    >
+                    <td class="px-4 py-3 text-gray-300"
+                      >{rm.requests.toLocaleString()}</td
+                    >
                     <td class="px-4 py-3">
-                      <span class={rm.errors > 0 ? "text-red-400" : "text-gray-300"}>{rm.errors}</span>
+                      <span
+                        class={rm.errors > 0 ? "text-red-400" : "text-gray-300"}
+                        >{rm.errors}</span
+                      >
                     </td>
                     <td class="px-4 py-3">
-                      <span class={rm.avgDurationMs > 3000 ? "text-red-400" : rm.avgDurationMs > 1000 ? "text-yellow-400" : "text-gray-300"}>
+                      <span
+                        class={rm.avgDurationMs > 3000
+                          ? "text-red-400"
+                          : rm.avgDurationMs > 1000
+                            ? "text-yellow-400"
+                            : "text-gray-300"}
+                      >
                         {rm.avgDurationMs}ms
                       </span>
                     </td>
@@ -432,10 +578,16 @@
       <h3 class="text-lg font-semibold text-gray-200 mb-3">Providers</h3>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         {#each data.status.providers as provider}
-          <div class="bg-gray-900 border border-gray-800 rounded-lg p-4 flex items-center justify-between">
+          <div
+            class="bg-gray-900 border border-gray-800 rounded-lg p-4 flex items-center justify-between"
+          >
             <div>
               <p class="font-medium text-white">{provider.id}</p>
-              <p class="text-sm text-gray-400">{provider.routeCount} route{provider.routeCount !== 1 ? 's' : ''}</p>
+              <p class="text-sm text-gray-400">
+                {provider.routeCount} route{provider.routeCount !== 1
+                  ? "s"
+                  : ""}
+              </p>
             </div>
             <span
               class="px-2 py-1 rounded text-xs font-medium {provider.configured
@@ -453,7 +605,9 @@
     {#if data.routingHealth?.routes}
       <div>
         <h3 class="text-lg font-semibold text-gray-200 mb-3">Route Health</h3>
-        <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+        <div
+          class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
+        >
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-gray-800 text-gray-400 text-left">
@@ -482,7 +636,9 @@
                   <td class="px-4 py-3 text-gray-300"
                     >{route.healthyTargetCount} / {route.totalTargetCount}</td
                   >
-                  <td class="px-4 py-3 text-gray-400">{route.strategy ?? "default"}</td>
+                  <td class="px-4 py-3 text-gray-400"
+                    >{route.strategy ?? "default"}</td
+                  >
                 </tr>
               {/each}
             </tbody>
@@ -492,7 +648,9 @@
     {/if}
   {:else}
     <div class="bg-gray-900 border border-gray-800 rounded-lg p-8 text-center">
-      <p class="text-gray-400">Failed to load gateway status. Check your connection.</p>
+      <p class="text-gray-400">
+        Failed to load gateway status. Check your connection.
+      </p>
     </div>
   {/if}
 </main>

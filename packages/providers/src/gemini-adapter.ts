@@ -100,7 +100,9 @@ export class GeminiProviderAdapter implements ProviderAdapter {
           mergeRequestShapingProfiles(this.#shaping, context.requestShaping)
         );
     const abortController = new AbortController();
-    context.signal?.addEventListener("abort", () => abortController.abort(), { once: true });
+    context.signal?.addEventListener("abort", () => abortController.abort(), {
+      once: true
+    });
     const timeoutHandle =
       context.timeoutMs !== undefined
         ? setTimeout(() => {
@@ -277,7 +279,9 @@ export class GeminiProviderAdapter implements ProviderAdapter {
           mergeRequestShapingProfiles(this.#shaping, context.requestShaping)
         );
     const abortController = new AbortController();
-    context.signal?.addEventListener("abort", () => abortController.abort(), { once: true });
+    context.signal?.addEventListener("abort", () => abortController.abort(), {
+      once: true
+    });
     const timeoutHandle =
       context.timeoutMs !== undefined
         ? setTimeout(() => {

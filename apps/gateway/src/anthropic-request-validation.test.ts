@@ -39,16 +39,14 @@ describe("assertAllowedAnthropicTopLevelFields", () => {
 
   it("includes field name in error message", () => {
     try {
-      assertAllowedAnthropicTopLevelFields(
-        { foo: 1 },
-        REQ_ID,
-        ["model"]
-      );
+      assertAllowedAnthropicTopLevelFields({ foo: 1 }, REQ_ID, ["model"]);
       expect.unreachable("should have thrown");
     } catch (e) {
       expect(e).toBeInstanceOf(GatewayError);
       expect((e as GatewayError).message).toContain("foo");
-      expect((e as GatewayError).code).toBe("request_unsupported_anthropic_semantics");
+      expect((e as GatewayError).code).toBe(
+        "request_unsupported_anthropic_semantics"
+      );
       expect((e as GatewayError).httpStatus).toBe(400);
     }
   });
@@ -181,7 +179,9 @@ describe("parseAnthropicRequestSchema", () => {
       expect.unreachable("should have thrown");
     } catch (e) {
       expect(e).toBeInstanceOf(GatewayError);
-      expect((e as GatewayError).code).toBe("request_invalid_anthropic_payload");
+      expect((e as GatewayError).code).toBe(
+        "request_invalid_anthropic_payload"
+      );
       expect((e as GatewayError).httpStatus).toBe(400);
     }
   });

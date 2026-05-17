@@ -101,7 +101,11 @@ describe("gateway-key-token-quota", () => {
       const now = Date.now();
       const windowStartedAt = now - (now % 60_000);
 
-      const state = createTokenQuotaWindowState(undefined, windowStartedAt, now);
+      const state = createTokenQuotaWindowState(
+        undefined,
+        windowStartedAt,
+        now
+      );
 
       expect(state).toEqual({
         windowStartedAt,

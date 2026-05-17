@@ -1,4 +1,7 @@
-import { createGatewayKeyAuditEvent, type GatewayKeyAuditEvent } from "./gateway-key-audit.js";
+import {
+  createGatewayKeyAuditEvent,
+  type GatewayKeyAuditEvent
+} from "./gateway-key-audit.js";
 import {
   createStoredGatewayRegistryFieldDiffs,
   type GatewayKeyRegistryStoredDynamicKey
@@ -56,7 +59,10 @@ function buildGatewayRegistryLifecycleTransition(
 
 export function buildArchiveGatewayRegistryKeyTransition(
   previousKey: GatewayKeyRegistryStoredDynamicKey,
-  metadata: Omit<GatewayKeyRegistryLifecycleTransitionAuditMetadata, "operationId">,
+  metadata: Omit<
+    GatewayKeyRegistryLifecycleTransitionAuditMetadata,
+    "operationId"
+  >,
   now = new Date().toISOString()
 ): GatewayKeyRegistryLifecycleTransition {
   const nextKey: GatewayKeyRegistryStoredDynamicKey = {
@@ -75,7 +81,10 @@ export function buildArchiveGatewayRegistryKeyTransition(
 
 export function buildRestoreGatewayRegistryKeyTransition(
   previousKey: GatewayKeyRegistryStoredDynamicKey,
-  metadata: Omit<GatewayKeyRegistryLifecycleTransitionAuditMetadata, "operationId">,
+  metadata: Omit<
+    GatewayKeyRegistryLifecycleTransitionAuditMetadata,
+    "operationId"
+  >,
   now = new Date().toISOString()
 ): GatewayKeyRegistryLifecycleTransition {
   const nextKey: GatewayKeyRegistryStoredDynamicKey = {
@@ -94,7 +103,10 @@ export function buildRestoreGatewayRegistryKeyTransition(
 
 export function buildFinalizeGatewayRegistryKeyRotationTransition(
   previousKey: GatewayKeyRegistryStoredDynamicKey,
-  metadata: Omit<GatewayKeyRegistryLifecycleTransitionAuditMetadata, "operationId">,
+  metadata: Omit<
+    GatewayKeyRegistryLifecycleTransitionAuditMetadata,
+    "operationId"
+  >,
   now = new Date().toISOString()
 ): GatewayKeyRegistryLifecycleTransition {
   const nextKey: GatewayKeyRegistryStoredDynamicKey = {
@@ -114,7 +126,10 @@ export function buildFinalizeGatewayRegistryKeyRotationTransition(
 
 export function buildCancelGatewayRegistryKeyRotationTransition(
   previousKey: GatewayKeyRegistryStoredDynamicKey,
-  metadata: Omit<GatewayKeyRegistryLifecycleTransitionAuditMetadata, "operationId">,
+  metadata: Omit<
+    GatewayKeyRegistryLifecycleTransitionAuditMetadata,
+    "operationId"
+  >,
   now = new Date().toISOString()
 ): GatewayKeyRegistryLifecycleTransition {
   const nextKey: GatewayKeyRegistryStoredDynamicKey = {
@@ -153,9 +168,14 @@ export function buildBulkArchiveGatewayRegistryKeyTransitions(
   metadata: GatewayKeyRegistryLifecycleTransitionAuditMetadata,
   now = new Date().toISOString()
 ): GatewayKeyRegistryLifecycleTransition[] {
-  return buildBulkGatewayRegistryKeyTransitions(keys, metadata, now, (key, entry, occurredAt) => {
-    return buildArchiveGatewayRegistryKeyTransition(key, entry, occurredAt);
-  });
+  return buildBulkGatewayRegistryKeyTransitions(
+    keys,
+    metadata,
+    now,
+    (key, entry, occurredAt) => {
+      return buildArchiveGatewayRegistryKeyTransition(key, entry, occurredAt);
+    }
+  );
 }
 
 export function buildBulkRestoreGatewayRegistryKeyTransitions(
@@ -163,9 +183,14 @@ export function buildBulkRestoreGatewayRegistryKeyTransitions(
   metadata: GatewayKeyRegistryLifecycleTransitionAuditMetadata,
   now = new Date().toISOString()
 ): GatewayKeyRegistryLifecycleTransition[] {
-  return buildBulkGatewayRegistryKeyTransitions(keys, metadata, now, (key, entry, occurredAt) => {
-    return buildRestoreGatewayRegistryKeyTransition(key, entry, occurredAt);
-  });
+  return buildBulkGatewayRegistryKeyTransitions(
+    keys,
+    metadata,
+    now,
+    (key, entry, occurredAt) => {
+      return buildRestoreGatewayRegistryKeyTransition(key, entry, occurredAt);
+    }
+  );
 }
 
 export function buildBulkFinalizeGatewayRegistryKeyRotationTransitions(
@@ -173,9 +198,18 @@ export function buildBulkFinalizeGatewayRegistryKeyRotationTransitions(
   metadata: GatewayKeyRegistryLifecycleTransitionAuditMetadata,
   now = new Date().toISOString()
 ): GatewayKeyRegistryLifecycleTransition[] {
-  return buildBulkGatewayRegistryKeyTransitions(keys, metadata, now, (key, entry, occurredAt) => {
-    return buildFinalizeGatewayRegistryKeyRotationTransition(key, entry, occurredAt);
-  });
+  return buildBulkGatewayRegistryKeyTransitions(
+    keys,
+    metadata,
+    now,
+    (key, entry, occurredAt) => {
+      return buildFinalizeGatewayRegistryKeyRotationTransition(
+        key,
+        entry,
+        occurredAt
+      );
+    }
+  );
 }
 
 export function buildBulkCancelGatewayRegistryKeyRotationTransitions(
@@ -183,7 +217,16 @@ export function buildBulkCancelGatewayRegistryKeyRotationTransitions(
   metadata: GatewayKeyRegistryLifecycleTransitionAuditMetadata,
   now = new Date().toISOString()
 ): GatewayKeyRegistryLifecycleTransition[] {
-  return buildBulkGatewayRegistryKeyTransitions(keys, metadata, now, (key, entry, occurredAt) => {
-    return buildCancelGatewayRegistryKeyRotationTransition(key, entry, occurredAt);
-  });
+  return buildBulkGatewayRegistryKeyTransitions(
+    keys,
+    metadata,
+    now,
+    (key, entry, occurredAt) => {
+      return buildCancelGatewayRegistryKeyRotationTransition(
+        key,
+        entry,
+        occurredAt
+      );
+    }
+  );
 }

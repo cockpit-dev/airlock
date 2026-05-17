@@ -25,7 +25,11 @@
   let editProvider = $state<string | null>(null);
 
   let providers = $state<ProvidersConfig>({
-    openai: { apiKey: "", baseUrl: "https://api.openai.com/v1", defaultModel: "gpt-4.1-mini" }
+    openai: {
+      apiKey: "",
+      baseUrl: "https://api.openai.com/v1",
+      defaultModel: "gpt-4.1-mini"
+    }
   });
 
   let showAnthropic = $state(false);
@@ -43,7 +47,11 @@
     gemini: "https://generativelanguage.googleapis.com/v1beta"
   };
 
-  const allProtocols = ["openai_chat", "openai_responses", "anthropic_messages"];
+  const allProtocols = [
+    "openai_chat",
+    "openai_responses",
+    "anthropic_messages"
+  ];
   const providerFieldIds: Record<string, Record<string, string>> = {
     openai: {
       apiKey: "provider-openai-api-key",
@@ -79,7 +87,8 @@
       const section = snapshot.sections["providers"];
       if (section?.data && typeof section.data === "object") {
         const data = section.data as ProvidersConfig;
-        if (data.openai) providers.openai = { ...providers.openai, ...data.openai };
+        if (data.openai)
+          providers.openai = { ...providers.openai, ...data.openai };
         if (data.anthropic) {
           showAnthropic = true;
           providers.anthropic = { ...data.anthropic };
@@ -168,13 +177,17 @@
   </div>
 
   {#if error}
-    <div class="bg-red-900/30 border border-red-800 rounded-lg p-3 mb-4 text-red-300 text-sm">
+    <div
+      class="bg-red-900/30 border border-red-800 rounded-lg p-3 mb-4 text-red-300 text-sm"
+    >
       {error}
     </div>
   {/if}
 
   {#if success}
-    <div class="bg-green-900/30 border border-green-800 rounded-lg p-3 mb-4 text-green-300 text-sm">
+    <div
+      class="bg-green-900/30 border border-green-800 rounded-lg p-3 mb-4 text-green-300 text-sm"
+    >
       {success}
     </div>
   {/if}
@@ -184,7 +197,9 @@
   {:else}
     <!-- OpenAI (always shown) -->
     {#snippet providerCard(name: string, config: ProviderConfig)}
-      <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+      <div
+        class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
+      >
         <button
           type="button"
           class="flex w-full items-center justify-between px-5 py-3 bg-gray-850 text-left cursor-pointer"
@@ -200,7 +215,8 @@
                 >Configured</span
               >
             {:else}
-              <span class="px-2 py-0.5 rounded text-xs bg-gray-800 text-gray-500"
+              <span
+                class="px-2 py-0.5 rounded text-xs bg-gray-800 text-gray-500"
                 >Not configured</span
               >
             {/if}
@@ -295,14 +311,13 @@
                 {#each allProtocols as protocol}
                   <button
                     type="button"
-                    class="px-3 py-1.5 rounded text-xs font-medium border transition-colors {(config.protocols ?? []).includes(protocol)
+                    class="px-3 py-1.5 rounded text-xs font-medium border transition-colors {(
+                      config.protocols ?? []
+                    ).includes(protocol)
                       ? 'bg-blue-900/50 border-blue-700 text-blue-300'
                       : 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300'}"
                     onclick={() =>
-                      toggleProtocol(
-                        name as keyof ProvidersConfig,
-                        protocol
-                      )}
+                      toggleProtocol(name as keyof ProvidersConfig, protocol)}
                   >
                     {protocol}
                   </button>

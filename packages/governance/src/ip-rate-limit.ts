@@ -23,23 +23,15 @@ export interface IpRateLimitPolicy {
   windowSeconds: number;
 }
 
-export function parseIpRateLimitPolicy(
-  value: unknown
-): IpRateLimitPolicy {
+export function parseIpRateLimitPolicy(value: unknown): IpRateLimitPolicy {
   if (!isRecord(value)) {
     throw new Error("IP rate limit policy must be an object");
   }
 
   const { limit, windowSeconds } = value;
 
-  if (
-    typeof limit !== "number" ||
-    !Number.isInteger(limit) ||
-    limit <= 0
-  ) {
-    throw new Error(
-      "IP rate limit policy limit must be a positive integer"
-    );
+  if (typeof limit !== "number" || !Number.isInteger(limit) || limit <= 0) {
+    throw new Error("IP rate limit policy limit must be a positive integer");
   }
 
   if (
@@ -70,9 +62,7 @@ export interface IpRateLimitStorage {
   count?: number;
 }
 
-export function parseIpRateLimitDecision(
-  value: unknown
-): IpRateLimitDecision {
+export function parseIpRateLimitDecision(value: unknown): IpRateLimitDecision {
   if (!isRecord(value)) {
     throw new Error("IP rate limit decision must be an object");
   }

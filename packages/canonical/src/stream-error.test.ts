@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   encodeOpenAIChatStreamError,
   encodeOpenAIResponsesStreamError,
-  encodeAnthropicMessagesStreamError,
+  encodeAnthropicMessagesStreamError
 } from "./stream-error.js";
 
 describe("stream-error", () => {
@@ -10,7 +10,7 @@ describe("stream-error", () => {
     it("encodes error with code and category fields", () => {
       const error = Object.assign(new Error("provider timeout"), {
         code: "provider_timeout",
-        category: "upstream",
+        category: "upstream"
       });
       const result = encodeOpenAIChatStreamError(error);
       expect(result).toContain(`"message":"provider timeout"`);
@@ -41,7 +41,7 @@ describe("stream-error", () => {
     it("encodes error with code", () => {
       const error = Object.assign(new Error("rate limited"), {
         code: "rate_limit_exceeded",
-        category: "throttle",
+        category: "throttle"
       });
       const result = encodeOpenAIResponsesStreamError(error);
       expect(result).toContain(`"type":"error"`);
@@ -60,7 +60,7 @@ describe("stream-error", () => {
     it("encodes error with category as type", () => {
       const error = Object.assign(new Error("overloaded"), {
         code: "provider_overloaded",
-        category: "upstream",
+        category: "upstream"
       });
       const result = encodeAnthropicMessagesStreamError(error);
       expect(result).toContain("event: error\n");

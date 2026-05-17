@@ -422,18 +422,15 @@ export async function handleResponses(
             await writeStreamEvent(nextChunk.value, controller);
           }
 
-          emitSuccessTelemetry(
-            telemetryBase,
-            true,
-            200,
-            streamUsage
-          );
+          emitSuccessTelemetry(telemetryBase, true, 200, streamUsage);
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         } catch (error) {
           await handleStreamingError(error);
           try {
-            controller.enqueue(encoder.encode(encodeOpenAIResponsesStreamError(error)));
+            controller.enqueue(
+              encoder.encode(encodeOpenAIResponsesStreamError(error))
+            );
             controller.close();
           } catch {
             // Controller may already be closed or errored
@@ -520,12 +517,7 @@ export async function handleResponses(
     );
   }
 
-  emitSuccessTelemetry(
-    telemetryBase,
-    false,
-    200,
-    canonicalResponse.usage
-  );
+  emitSuccessTelemetry(telemetryBase, false, 200, canonicalResponse.usage);
 
   return context.json(
     encodeCanonicalToOpenAIResponsesResponse(canonicalResponse),

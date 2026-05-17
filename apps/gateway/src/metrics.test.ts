@@ -37,9 +37,21 @@ describe("GatewayMetricsCollector", () => {
 
   it("counts 4xx and 5xx as errors", () => {
     const collector = new GatewayMetricsCollector(10_000, 10);
-    collector.record({ routePath: "/v1/chat/completions", statusCode: 200, durationMs: 100 });
-    collector.record({ routePath: "/v1/chat/completions", statusCode: 400, durationMs: 50 });
-    collector.record({ routePath: "/v1/chat/completions", statusCode: 500, durationMs: 200 });
+    collector.record({
+      routePath: "/v1/chat/completions",
+      statusCode: 200,
+      durationMs: 100
+    });
+    collector.record({
+      routePath: "/v1/chat/completions",
+      statusCode: 400,
+      durationMs: 50
+    });
+    collector.record({
+      routePath: "/v1/chat/completions",
+      statusCode: 500,
+      durationMs: 200
+    });
 
     const snapshot = collector.snapshot();
     expect(snapshot.requests).toBe(3);
@@ -51,10 +63,26 @@ describe("GatewayMetricsCollector", () => {
 
   it("aggregates metrics by route", () => {
     const collector = new GatewayMetricsCollector(10_000, 10);
-    collector.record({ routePath: "/v1/chat/completions", statusCode: 200, durationMs: 100 });
-    collector.record({ routePath: "/v1/messages", statusCode: 200, durationMs: 200 });
-    collector.record({ routePath: "/v1/responses", statusCode: 200, durationMs: 300 });
-    collector.record({ routePath: "/v1/chat/completions", statusCode: 500, durationMs: 150 });
+    collector.record({
+      routePath: "/v1/chat/completions",
+      statusCode: 200,
+      durationMs: 100
+    });
+    collector.record({
+      routePath: "/v1/messages",
+      statusCode: 200,
+      durationMs: 200
+    });
+    collector.record({
+      routePath: "/v1/responses",
+      statusCode: 200,
+      durationMs: 300
+    });
+    collector.record({
+      routePath: "/v1/chat/completions",
+      statusCode: 500,
+      durationMs: 150
+    });
 
     const snapshot = collector.snapshot();
     expect(snapshot.requests).toBe(4);
@@ -136,9 +164,21 @@ describe("GatewayMetricsCollector", () => {
 
   it("computes average duration correctly", () => {
     const collector = new GatewayMetricsCollector(10_000, 10);
-    collector.record({ routePath: "/v1/chat/completions", statusCode: 200, durationMs: 100 });
-    collector.record({ routePath: "/v1/chat/completions", statusCode: 200, durationMs: 200 });
-    collector.record({ routePath: "/v1/chat/completions", statusCode: 200, durationMs: 300 });
+    collector.record({
+      routePath: "/v1/chat/completions",
+      statusCode: 200,
+      durationMs: 100
+    });
+    collector.record({
+      routePath: "/v1/chat/completions",
+      statusCode: 200,
+      durationMs: 200
+    });
+    collector.record({
+      routePath: "/v1/chat/completions",
+      statusCode: 200,
+      durationMs: 300
+    });
 
     const snapshot = collector.snapshot();
     expect(snapshot.avgDurationMs).toBe(200);
@@ -146,7 +186,11 @@ describe("GatewayMetricsCollector", () => {
 
   it("reset clears all data", () => {
     const collector = new GatewayMetricsCollector(10_000, 10);
-    collector.record({ routePath: "/v1/chat/completions", statusCode: 200, durationMs: 100 });
+    collector.record({
+      routePath: "/v1/chat/completions",
+      statusCode: 200,
+      durationMs: 100
+    });
     collector.reset();
 
     const snapshot = collector.snapshot();

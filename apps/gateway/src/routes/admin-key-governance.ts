@@ -458,11 +458,9 @@ async function readOptionalJsonBody(request: Request): Promise<unknown> {
   }
 }
 
-async function parseAdminJsonBody(
-  context: {
-    req: { json(): Promise<unknown>; header(name: string): string | undefined };
-  }
-): Promise<unknown> {
+async function parseAdminJsonBody(context: {
+  req: { json(): Promise<unknown>; header(name: string): string | undefined };
+}): Promise<unknown> {
   const contentType = context.req.header("content-type");
   if (!contentType || !contentType.includes("application/json")) {
     throw new GatewayError("Content-Type must be application/json", {

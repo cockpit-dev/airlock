@@ -22,8 +22,7 @@ export async function requireAdminScope(
     adminCredentials: parseInternalAdminCredentials(
       context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS
     ),
-    structuredCredentialsConfig:
-      context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS,
+    structuredCredentialsConfig: context.env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS,
     requiredScope,
     requestId: context.get("requestId")
   });

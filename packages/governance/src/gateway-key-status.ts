@@ -18,8 +18,7 @@ export interface GatewayKeyOverlayStateReadPort {
   ): Promise<GatewayKeyRevocationOverlayState>;
 }
 
-export interface GatewayKeyStatusByIdReadPort
-  extends GatewayKeyOverlayStateReadPort {
+export interface GatewayKeyStatusByIdReadPort extends GatewayKeyOverlayStateReadPort {
   resolveKeyById(keyId: string): Promise<{
     gatewayApiKey: GatewayApiKeyRecord;
     ownership: GatewayApiKeyOwnership;
@@ -29,16 +28,20 @@ export interface GatewayKeyStatusByIdReadPort
 export interface GatewayConfiguredRuntimeKeyResolutionPort {
   resolveRuntimeKey(gatewayApiKey: GatewayApiKeyRecord): Promise<{
     runtimeGatewayApiKey: GatewayApiKeyRecord;
-    registryOverride: (GatewayApiKeyMetadataOverride & { updatedAt: string }) | null;
+    registryOverride:
+      | (GatewayApiKeyMetadataOverride & { updatedAt: string })
+      | null;
   }>;
 }
 
 export interface GatewayKeyStatusSnapshotPort
-  extends GatewayKeyOverlayStateReadPort,
+  extends
+    GatewayKeyOverlayStateReadPort,
     Partial<GatewayConfiguredRuntimeKeyResolutionPort> {}
 
 export interface GatewayKeyStatusInventoryPort
-  extends GatewayKeyOverlayStateReadPort,
+  extends
+    GatewayKeyOverlayStateReadPort,
     GatewayConfiguredRuntimeKeyResolutionPort {
   listRegistryKeys(): Promise<GatewayKeyRegistryDynamicKeyView[]>;
 }
@@ -95,7 +98,10 @@ export async function getGatewayApiKeyStatusSnapshot(
 
   const { runtimeGatewayApiKey, registryOverride } =
     await port.resolveRuntimeKey(gatewayApiKey);
-  const runtimeStatus = await getGatewayApiKeyStatus(runtimeGatewayApiKey, port);
+  const runtimeStatus = await getGatewayApiKeyStatus(
+    runtimeGatewayApiKey,
+    port
+  );
 
   return createGatewayApiKeyRegistrySnapshot({
     ownership,
@@ -118,11 +124,7 @@ export async function listGatewayApiKeyStatuses(
 ): Promise<GatewayApiKeyRegistrySnapshot[]> {
   const configuredEntries = await Promise.all(
     gatewayApiKeys.map(async (gatewayApiKey) => {
-      return getGatewayApiKeyStatusSnapshot(
-        gatewayApiKey,
-        "configured",
-        port
-      );
+      return getGatewayApiKeyStatusSnapshot(gatewayApiKey, "configured", port);
     })
   );
   const registryEntries = await Promise.all(

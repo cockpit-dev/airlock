@@ -1140,15 +1140,13 @@ describe("deriveGatewayApiKeyStatusView", () => {
 
   it("treats archived registry keys as archived lifecycle state", () => {
     expect(
-      evaluateGatewayApiKeyLifecycle(
-        {
-          id: "dyn_1",
-          label: "Archived Runtime Key",
-          valueHash: gatewaySecretHash,
-          status: "active",
-          archivedAt: "2026-05-14T00:00:00.000Z"
-        } as never
-      )
+      evaluateGatewayApiKeyLifecycle({
+        id: "dyn_1",
+        label: "Archived Runtime Key",
+        valueHash: gatewaySecretHash,
+        status: "active",
+        archivedAt: "2026-05-14T00:00:00.000Z"
+      } as never)
     ).toBe("archived");
 
     expect(
@@ -1294,13 +1292,10 @@ describe("createGatewayApiKeyRegistrySnapshot", () => {
       status: "active" as const,
       archivedAt: "2026-05-14T00:00:00.000Z"
     };
-    const status = deriveGatewayApiKeyStatusView(
-      registryKey,
-      {
-        revoked: false,
-        updatedAt: "2026-05-14T00:00:00.000Z"
-      }
-    );
+    const status = deriveGatewayApiKeyStatusView(registryKey, {
+      revoked: false,
+      updatedAt: "2026-05-14T00:00:00.000Z"
+    });
 
     expect(
       createGatewayApiKeyRegistrySnapshot({

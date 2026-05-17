@@ -178,7 +178,12 @@ describe("gateway-key-request-quota", () => {
       );
       // Exhaust the quota
       const { decision: denied } = computeRequestQuotaConsume(
-        { windowStartedAt: decision.resetAt ? Date.now() - (Date.now() % 60_000) : Date.now(), count: 1 },
+        {
+          windowStartedAt: decision.resetAt
+            ? Date.now() - (Date.now() % 60_000)
+            : Date.now(),
+          count: 1
+        },
         1,
         60,
         Date.now()

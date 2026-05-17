@@ -67,25 +67,29 @@ export interface BulkUpdateGatewayAdminKeysPort {
         policy?: object | null;
       }>;
     }
-  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDynamicKeyView[] }>;
+  ): Promise<{
+    operationId?: string;
+    keys: GatewayKeyRegistryDynamicKeyView[];
+  }>;
 }
 
 export interface BulkCreateGatewayAdminKeysPort {
-  bulkCreateRegistryKeys(
-    payload: {
-      keys: Array<{
-        id: string;
-        label: string;
-        valueHash: string;
-        status: "active" | "revoked";
-        notBefore?: string;
-        expiresAt?: string;
-        policy?: object;
-      }>;
-      actor?: string;
-      actorSource?: "payload" | "trusted_header" | "credential";
-    }
-  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDynamicKeyView[] }>;
+  bulkCreateRegistryKeys(payload: {
+    keys: Array<{
+      id: string;
+      label: string;
+      valueHash: string;
+      status: "active" | "revoked";
+      notBefore?: string;
+      expiresAt?: string;
+      policy?: object;
+    }>;
+    actor?: string;
+    actorSource?: "payload" | "trusted_header" | "credential";
+  }): Promise<{
+    operationId?: string;
+    keys: GatewayKeyRegistryDynamicKeyView[];
+  }>;
 }
 
 export interface BulkDeleteGatewayAdminKeysPort {
@@ -94,7 +98,10 @@ export interface BulkDeleteGatewayAdminKeysPort {
     payload: GatewayKeyRegistryBulkDeleteRequest["auditMetadata"] & {
       keyIds: string[];
     }
-  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDeleteResponse[] }>;
+  ): Promise<{
+    operationId?: string;
+    keys: GatewayKeyRegistryDeleteResponse[];
+  }>;
 }
 
 export interface BulkArchiveGatewayAdminKeysPort {
@@ -103,7 +110,10 @@ export interface BulkArchiveGatewayAdminKeysPort {
     payload: GatewayKeyRegistryBulkArchiveRequest["auditMetadata"] & {
       keyIds: string[];
     }
-  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDynamicKeyView[] }>;
+  ): Promise<{
+    operationId?: string;
+    keys: GatewayKeyRegistryDynamicKeyView[];
+  }>;
 }
 
 export interface BulkRestoreGatewayAdminKeysPort {
@@ -112,7 +122,10 @@ export interface BulkRestoreGatewayAdminKeysPort {
     payload: GatewayKeyRegistryBulkRestoreRequest["auditMetadata"] & {
       keyIds: string[];
     }
-  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDynamicKeyView[] }>;
+  ): Promise<{
+    operationId?: string;
+    keys: GatewayKeyRegistryDynamicKeyView[];
+  }>;
 }
 
 export interface BulkRotateGatewayAdminKeysPort {
@@ -125,31 +138,36 @@ export interface BulkRotateGatewayAdminKeysPort {
         overlapSeconds?: number;
       }>;
     }
-  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDynamicKeyView[] }>;
+  ): Promise<{
+    operationId?: string;
+    keys: GatewayKeyRegistryDynamicKeyView[];
+  }>;
 }
 
 export interface BulkFinalizeGatewayAdminKeyRotationsPort {
   isConfiguredKey(keyId: string): boolean;
-  bulkFinalizeRegistryKeyRotations(
-    payload: {
-      keyIds: string[];
-      reason?: string;
-      actor?: string;
-      actorSource?: "payload" | "trusted_header" | "credential";
-    }
-  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDynamicKeyView[] }>;
+  bulkFinalizeRegistryKeyRotations(payload: {
+    keyIds: string[];
+    reason?: string;
+    actor?: string;
+    actorSource?: "payload" | "trusted_header" | "credential";
+  }): Promise<{
+    operationId?: string;
+    keys: GatewayKeyRegistryDynamicKeyView[];
+  }>;
 }
 
 export interface BulkCancelGatewayAdminKeyRotationsPort {
   isConfiguredKey(keyId: string): boolean;
-  bulkCancelRegistryKeyRotations(
-    payload: {
-      keyIds: string[];
-      reason?: string;
-      actor?: string;
-      actorSource?: "payload" | "trusted_header" | "credential";
-    }
-  ): Promise<{ operationId?: string; keys: GatewayKeyRegistryDynamicKeyView[] }>;
+  bulkCancelRegistryKeyRotations(payload: {
+    keyIds: string[];
+    reason?: string;
+    actor?: string;
+    actorSource?: "payload" | "trusted_header" | "credential";
+  }): Promise<{
+    operationId?: string;
+    keys: GatewayKeyRegistryDynamicKeyView[];
+  }>;
 }
 
 export interface FinalizeGatewayAdminKeyRotationPort {
@@ -179,7 +197,10 @@ export interface UpdateGatewayAdminKeyRegistryOverridePort {
 }
 
 export interface ClearGatewayAdminKeyRegistryOverridePort {
-  clearRegistryOverride(keyId: string, payload?: unknown): Promise<{
+  clearRegistryOverride(
+    keyId: string,
+    payload?: unknown
+  ): Promise<{
     auditEvent?: object;
   } | void>;
 }
@@ -505,7 +526,10 @@ export async function clearGatewayAdminKeyRegistryOverride(
   return {
     keyId,
     override: null,
-    ...(result && typeof result === "object" && "auditEvent" in result && result.auditEvent
+    ...(result &&
+    typeof result === "object" &&
+    "auditEvent" in result &&
+    result.auditEvent
       ? { auditEvent: result.auditEvent }
       : {})
   };

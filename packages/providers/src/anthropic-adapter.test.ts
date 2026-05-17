@@ -481,7 +481,7 @@ describe("AnthropicProviderAdapter", () => {
       {
         id: "toolu_123",
         name: "lookup_weather",
-        arguments: "{\"city\":\"Shanghai\"}"
+        arguments: '{"city":"Shanghai"}'
       }
     ]);
   });
@@ -732,13 +732,13 @@ describe("AnthropicProviderAdapter", () => {
               {
                 id: "call_123",
                 name: "lookup_weather",
-                arguments: "{\"city\":\"Shanghai\"}"
+                arguments: '{"city":"Shanghai"}'
               }
             ]
           },
           {
             role: "tool",
-            content: "{\"temperature_c\":26}",
+            content: '{"temperature_c":26}',
             toolCallId: "call_123"
           }
         ]
@@ -775,7 +775,7 @@ describe("AnthropicProviderAdapter", () => {
             {
               type: "tool_result",
               tool_use_id: "call_123",
-              content: "{\"temperature_c\":26}"
+              content: '{"temperature_c":26}'
             }
           ]
         }
@@ -840,7 +840,7 @@ describe("AnthropicProviderAdapter", () => {
               {
                 id: "call_123",
                 name: "lookup_weather",
-                arguments: "{\"city\":\"Shanghai\"}"
+                arguments: '{"city":"Shanghai"}'
               }
             ]
           }
@@ -990,7 +990,7 @@ describe("AnthropicProviderAdapter", () => {
           },
           {
             role: "tool",
-            content: "{\"temperature_c\":26}",
+            content: '{"temperature_c":26}',
             toolCallId: "call_123"
           },
           {
@@ -1018,7 +1018,7 @@ describe("AnthropicProviderAdapter", () => {
             {
               type: "tool_result",
               tool_use_id: "call_123",
-              content: "{\"temperature_c\":26}"
+              content: '{"temperature_c":26}'
             },
             {
               type: "text",
@@ -1075,7 +1075,7 @@ describe("AnthropicProviderAdapter", () => {
       {
         id: "call_123",
         name: "lookup_weather",
-        arguments: "{\"city\":\"Shanghai\"}"
+        arguments: '{"city":"Shanghai"}'
       }
     ]);
     expect(response.finishReason).toBe("tool_calls");
@@ -1310,15 +1310,19 @@ describe("AnthropicProviderAdapter", () => {
   });
 
   it("maps aborted upstream fetches into a retryable timeout gateway error", async () => {
-    const fetcher = vi.fn().mockImplementation(async (_input, init?: RequestInit) => {
-      const signal = init?.signal;
+    const fetcher = vi
+      .fn()
+      .mockImplementation(async (_input, init?: RequestInit) => {
+        const signal = init?.signal;
 
-      return await new Promise<Response>((_resolve, reject) => {
-        signal?.addEventListener("abort", () => {
-          reject(new DOMException("The operation was aborted.", "AbortError"));
+        return await new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            reject(
+              new DOMException("The operation was aborted.", "AbortError")
+            );
+          });
         });
       });
-    });
 
     const adapter = new AnthropicProviderAdapter({
       apiKey: "test-key",
@@ -1583,7 +1587,7 @@ describe("AnthropicProviderAdapter", () => {
         toolCallId: "call_123",
         toolIndex: 0,
         toolName: "lookup_weather",
-        argumentsDelta: "{\"city\":\"Shang"
+        argumentsDelta: '{"city":"Shang'
       },
       {
         type: "tool_call_delta",
@@ -1592,7 +1596,7 @@ describe("AnthropicProviderAdapter", () => {
         toolCallId: "call_123",
         toolIndex: 0,
         toolName: "lookup_weather",
-        argumentsDelta: "hai\"}"
+        argumentsDelta: 'hai"}'
       },
       {
         type: "response_completed",
@@ -1693,15 +1697,19 @@ describe("AnthropicProviderAdapter", () => {
 
   describe("streaming error mapping", () => {
     it("maps streaming timeout into a retryable provider_timeout gateway error", async () => {
-      const fetcher = vi.fn().mockImplementation(async (_input, init?: RequestInit) => {
-        const signal = init?.signal;
+      const fetcher = vi
+        .fn()
+        .mockImplementation(async (_input, init?: RequestInit) => {
+          const signal = init?.signal;
 
-        return await new Promise<Response>((_resolve, reject) => {
-          signal?.addEventListener("abort", () => {
-            reject(new DOMException("The operation was aborted.", "AbortError"));
+          return await new Promise<Response>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => {
+              reject(
+                new DOMException("The operation was aborted.", "AbortError")
+              );
+            });
           });
         });
-      });
 
       const adapter = new AnthropicProviderAdapter({
         apiKey: "test-key",
@@ -1866,9 +1874,9 @@ describe("AnthropicProviderAdapter", () => {
     });
 
     it("maps streaming non-200 without error message into a generic provider_upstream_error", async () => {
-      const fetcher = vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({}), { status: 503 })
-      );
+      const fetcher = vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({}), { status: 503 }));
 
       const adapter = new AnthropicProviderAdapter({
         apiKey: "test-key",

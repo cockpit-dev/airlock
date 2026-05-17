@@ -126,9 +126,9 @@ describe("auth module", () => {
         new TypeError("network error")
       );
       const { verifyCredentials } = await import("./auth.js");
-      await expect(
-        verifyCredentials("http://gw", "tok")
-      ).rejects.toThrow("network error");
+      await expect(verifyCredentials("http://gw", "tok")).rejects.toThrow(
+        "network error"
+      );
     });
   });
 });

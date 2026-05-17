@@ -281,7 +281,9 @@ function parseRequestSigningSecrets(
  * If these values haven't changed, the parsed config is identical.
  */
 export function computeConfigFingerprint(bindings: GatewayBindings): string {
-  const stringValue = (value: string | number | boolean | undefined): string => {
+  const stringValue = (
+    value: string | number | boolean | undefined
+  ): string => {
     return value === undefined ? "" : String(value);
   };
 
@@ -684,10 +686,12 @@ function validateMergedProviderConfig(config: GatewayConfig): void {
 
 const DASHBOARD_OVERLAY_TTL_MS = 5_000;
 
-let overlayCache: {
-  snapshot: StoredConfigSnapshot;
-  fetchedAt: number;
-} | undefined;
+let overlayCache:
+  | {
+      snapshot: StoredConfigSnapshot;
+      fetchedAt: number;
+    }
+  | undefined;
 
 export function resetDashboardOverlayCache(): void {
   overlayCache = undefined;
@@ -738,7 +742,10 @@ export function mergeConfigWithOverlay(
 
   const limitsSection = overlay.sections["limits"];
   if (limitsSection) {
-    config = mergeLimitsConfig(config, limitsSection.data as DashboardLimitsOverlay);
+    config = mergeLimitsConfig(
+      config,
+      limitsSection.data as DashboardLimitsOverlay
+    );
   }
 
   return config;
@@ -811,7 +818,7 @@ function mergeProvidersConfig(
               ? { defaultModel: providers.openai.defaultModel }
               : {})
           }
-        : {}),
+        : {})
     },
     ...(providers.anthropic
       ? {
@@ -862,13 +869,22 @@ function mergeLimitsConfig(
       ? { providerRetryBackoffMs: limits.providerRetryBackoffMs }
       : {}),
     ...(limits.providerCircuitBreakerThreshold !== undefined
-      ? { providerCircuitBreakerThreshold: limits.providerCircuitBreakerThreshold }
+      ? {
+          providerCircuitBreakerThreshold:
+            limits.providerCircuitBreakerThreshold
+        }
       : {}),
     ...(limits.providerCircuitBreakerCooldownMs !== undefined
-      ? { providerCircuitBreakerCooldownMs: limits.providerCircuitBreakerCooldownMs }
+      ? {
+          providerCircuitBreakerCooldownMs:
+            limits.providerCircuitBreakerCooldownMs
+        }
       : {}),
     ...(limits.providerCircuitBreakerPersistent !== undefined
-      ? { providerCircuitBreakerPersistent: limits.providerCircuitBreakerPersistent }
+      ? {
+          providerCircuitBreakerPersistent:
+            limits.providerCircuitBreakerPersistent
+        }
       : {})
   };
 }

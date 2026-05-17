@@ -20,7 +20,8 @@ function createMockStorage(
       store.set(key, value);
       return Promise.resolve();
     },
-    delete: (key: string): Promise<boolean> => Promise.resolve(store.delete(key))
+    delete: (key: string): Promise<boolean> =>
+      Promise.resolve(store.delete(key))
   };
 }
 
@@ -38,9 +39,7 @@ describe("readActiveLeases", () => {
       { leaseId: "lease-1", expiresAt: now + 5000 },
       { leaseId: "lease-2", expiresAt: now - 1000 }
     ];
-    const storage = createMockStorage(
-      new Map([["leases", leases]])
-    );
+    const storage = createMockStorage(new Map([["leases", leases]]));
 
     const active = await readActiveLeases(storage, now);
 
@@ -79,9 +78,7 @@ describe("readActiveLeases", () => {
   });
 
   it("handles non-array stored value gracefully", async () => {
-    const storage = createMockStorage(
-      new Map([["leases", "not-an-array"]])
-    );
+    const storage = createMockStorage(new Map([["leases", "not-an-array"]]));
 
     const active = await readActiveLeases(storage, 1000);
 
@@ -96,14 +93,13 @@ describe("acquireGatewayKeyConcurrencyLeaseFromStorage", () => {
 
   it("allows acquire in empty state", async () => {
     const storage = createMockStorage();
-    const decision =
-      await acquireGatewayKeyConcurrencyLeaseFromStorage(
-        storage,
-        policy,
-        "lease-1",
-        ttlMs,
-        now
-      );
+    const decision = await acquireGatewayKeyConcurrencyLeaseFromStorage(
+      storage,
+      policy,
+      "lease-1",
+      ttlMs,
+      now
+    );
 
     expect(decision.allowed).toBe(true);
   });
@@ -130,18 +126,15 @@ describe("acquireGatewayKeyConcurrencyLeaseFromStorage", () => {
     const existingLeases: GatewayKeyConcurrencyLease[] = [
       { leaseId: "lease-1", expiresAt: now + 5000 }
     ];
-    const storage = createMockStorage(
-      new Map([["leases", existingLeases]])
-    );
+    const storage = createMockStorage(new Map([["leases", existingLeases]]));
 
-    const decision =
-      await acquireGatewayKeyConcurrencyLeaseFromStorage(
-        storage,
-        policy,
-        "lease-2",
-        ttlMs,
-        now
-      );
+    const decision = await acquireGatewayKeyConcurrencyLeaseFromStorage(
+      storage,
+      policy,
+      "lease-2",
+      ttlMs,
+      now
+    );
 
     expect(decision.allowed).toBe(true);
   });
@@ -151,18 +144,15 @@ describe("acquireGatewayKeyConcurrencyLeaseFromStorage", () => {
       { leaseId: "lease-1", expiresAt: now + 5000 },
       { leaseId: "lease-2", expiresAt: now + 5000 }
     ];
-    const storage = createMockStorage(
-      new Map([["leases", existingLeases]])
-    );
+    const storage = createMockStorage(new Map([["leases", existingLeases]]));
 
-    const decision =
-      await acquireGatewayKeyConcurrencyLeaseFromStorage(
-        storage,
-        policy,
-        "lease-3",
-        ttlMs,
-        now
-      );
+    const decision = await acquireGatewayKeyConcurrencyLeaseFromStorage(
+      storage,
+      policy,
+      "lease-3",
+      ttlMs,
+      now
+    );
 
     expect(decision.allowed).toBe(false);
   });
@@ -172,18 +162,15 @@ describe("acquireGatewayKeyConcurrencyLeaseFromStorage", () => {
       { leaseId: "lease-1", expiresAt: now + 5000 },
       { leaseId: "lease-2", expiresAt: now - 1000 }
     ];
-    const storage = createMockStorage(
-      new Map([["leases", existingLeases]])
-    );
+    const storage = createMockStorage(new Map([["leases", existingLeases]]));
 
-    const decision =
-      await acquireGatewayKeyConcurrencyLeaseFromStorage(
-        storage,
-        policy,
-        "lease-3",
-        ttlMs,
-        now
-      );
+    const decision = await acquireGatewayKeyConcurrencyLeaseFromStorage(
+      storage,
+      policy,
+      "lease-3",
+      ttlMs,
+      now
+    );
 
     expect(decision.allowed).toBe(true);
   });
@@ -194,18 +181,15 @@ describe("acquireGatewayKeyConcurrencyLeaseFromStorage", () => {
       { leaseId: "lease-1", expiresAt: futureNow + 5000 },
       { leaseId: "lease-2", expiresAt: futureNow + 5000 }
     ];
-    const storage = createMockStorage(
-      new Map([["leases", existingLeases]])
-    );
+    const storage = createMockStorage(new Map([["leases", existingLeases]]));
 
-    const decision =
-      await acquireGatewayKeyConcurrencyLeaseFromStorage(
-        storage,
-        policy,
-        "lease-3",
-        ttlMs,
-        futureNow
-      );
+    const decision = await acquireGatewayKeyConcurrencyLeaseFromStorage(
+      storage,
+      policy,
+      "lease-3",
+      ttlMs,
+      futureNow
+    );
 
     expect(decision.allowed).toBe(false);
   });
@@ -222,11 +206,7 @@ describe("releaseGatewayKeyConcurrencyLeaseFromStorage", () => {
     const store = new Map([["leases", existingLeases]]);
     const storage = createMockStorage(store);
 
-    await releaseGatewayKeyConcurrencyLeaseFromStorage(
-      storage,
-      "lease-1",
-      now
-    );
+    await releaseGatewayKeyConcurrencyLeaseFromStorage(storage, "lease-1", now);
 
     const remaining = store.get("leases") as GatewayKeyConcurrencyLease[];
     expect(remaining).toHaveLength(1);
@@ -255,11 +235,7 @@ describe("releaseGatewayKeyConcurrencyLeaseFromStorage", () => {
     const storage = createMockStorage();
 
     await expect(
-      releaseGatewayKeyConcurrencyLeaseFromStorage(
-        storage,
-        "lease-1",
-        now
-      )
+      releaseGatewayKeyConcurrencyLeaseFromStorage(storage, "lease-1", now)
     ).resolves.toBeUndefined();
   });
 });

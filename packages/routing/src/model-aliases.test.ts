@@ -193,7 +193,10 @@ describe("resolveModelRoute", () => {
     const routes = [
       {
         externalModel: "openai/gpt-4.1-mini",
-        target: { provider: "anthropic" as const, providerModel: "claude-sonnet-4-5" }
+        target: {
+          provider: "anthropic" as const,
+          providerModel: "claude-sonnet-4-5"
+        }
       }
     ];
 

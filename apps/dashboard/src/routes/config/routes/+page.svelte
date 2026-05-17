@@ -69,7 +69,9 @@
     formExternalModel = route.externalModel;
     formTargetProvider = route.target.provider;
     formTargetModel = route.target.providerModel;
-    formFallbacks = route.fallbacks ? route.fallbacks.map((f) => ({ ...f })) : [];
+    formFallbacks = route.fallbacks
+      ? route.fallbacks.map((f) => ({ ...f }))
+      : [];
     formStrategy = route.strategy ?? "";
     formRequiredKeyTier = route.requiredKeyTier ?? "";
     formRequiredKeyTags = route.requiredKeyTags?.join(", ") ?? "";
@@ -208,7 +210,10 @@
   }
 
   function addFallback() {
-    formFallbacks = [...formFallbacks, { provider: "openai", providerModel: "" }];
+    formFallbacks = [
+      ...formFallbacks,
+      { provider: "openai", providerModel: "" }
+    ];
   }
 
   function removeFallback(index: number) {
@@ -277,7 +282,9 @@
         {#if editRouteIndex === index}
           {@render routeForm("Edit Route", applyEdit)}
         {:else}
-          <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+          <div
+            class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
+          >
             <div
               class="flex items-center justify-between px-5 py-3 cursor-pointer hover:bg-gray-850"
             >
@@ -286,7 +293,8 @@
                   >{route.externalModel}</span
                 >
                 <span class="text-gray-500">&rarr;</span>
-                <span class="px-2 py-0.5 rounded text-xs bg-blue-900/50 text-blue-300"
+                <span
+                  class="px-2 py-0.5 rounded text-xs bg-blue-900/50 text-blue-300"
                   >{route.target.provider}</span
                 >
                 <span class="font-mono text-xs text-gray-300"
@@ -294,7 +302,8 @@
                 >
                 {#if route.fallbacks && route.fallbacks.length > 0}
                   <span class="text-gray-500 text-xs"
-                    >+{route.fallbacks.length} fallback{route.fallbacks.length > 1
+                    >+{route.fallbacks.length} fallback{route.fallbacks.length >
+                    1
                       ? "s"
                       : ""}</span
                   >
@@ -342,7 +351,10 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
-        <label class="block text-sm text-gray-400 mb-1" for={fieldIds.externalModel}>External Model</label>
+        <label
+          class="block text-sm text-gray-400 mb-1"
+          for={fieldIds.externalModel}>External Model</label
+        >
         <input
           id={fieldIds.externalModel}
           type="text"
@@ -353,7 +365,10 @@
       </div>
 
       <div>
-        <label class="block text-sm text-gray-400 mb-1" for={fieldIds.targetStrategy}>Target Strategy</label>
+        <label
+          class="block text-sm text-gray-400 mb-1"
+          for={fieldIds.targetStrategy}>Target Strategy</label
+        >
         <select
           id={fieldIds.targetStrategy}
           class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -369,7 +384,10 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
-        <label class="block text-sm text-gray-400 mb-1" for={fieldIds.targetProvider}>Target Provider</label>
+        <label
+          class="block text-sm text-gray-400 mb-1"
+          for={fieldIds.targetProvider}>Target Provider</label
+        >
         <select
           id={fieldIds.targetProvider}
           class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -382,7 +400,10 @@
       </div>
 
       <div>
-        <label class="block text-sm text-gray-400 mb-1" for={fieldIds.targetModel}>Target Model</label>
+        <label
+          class="block text-sm text-gray-400 mb-1"
+          for={fieldIds.targetModel}>Target Model</label
+        >
         <input
           id={fieldIds.targetModel}
           type="text"
@@ -396,7 +417,9 @@
     <!-- Fallbacks -->
     <div>
       <div class="flex items-center justify-between mb-2">
-        <span class="text-sm text-gray-400" id={fieldIds.fallbackTargets}>Fallback Targets</span>
+        <span class="text-sm text-gray-400" id={fieldIds.fallbackTargets}
+          >Fallback Targets</span
+        >
         <button
           type="button"
           class="px-2 py-1 text-xs text-blue-400 hover:text-blue-300 border border-blue-900 rounded"
@@ -406,46 +429,53 @@
         </button>
       </div>
       <div aria-labelledby={fieldIds.fallbackTargets}>
-      {#each formFallbacks as fb, i}
-        <div class="flex items-center gap-2 mb-2">
-          <select
-            class="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500"
-            value={fb.provider}
-            onchange={(e) =>
-              updateFallback(i, "provider", (e.target as HTMLSelectElement).value)}
-          >
-            {#each providerOptions as provider}
-              <option value={provider}>{provider}</option>
-            {/each}
-          </select>
-          <input
-            type="text"
-            class="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-blue-500"
-            placeholder="model-name"
-            value={fb.providerModel}
-            oninput={(e) =>
-              updateFallback(
-                i,
-                "providerModel",
-                (e.target as HTMLInputElement).value
-              )}
-          />
-          <button
-            type="button"
-            class="px-2 py-1 text-xs text-red-400 hover:text-red-300"
-            onclick={() => removeFallback(i)}
-          >
-            &times;
-          </button>
-        </div>
-      {/each}
+        {#each formFallbacks as fb, i}
+          <div class="flex items-center gap-2 mb-2">
+            <select
+              class="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500"
+              value={fb.provider}
+              onchange={(e) =>
+                updateFallback(
+                  i,
+                  "provider",
+                  (e.target as HTMLSelectElement).value
+                )}
+            >
+              {#each providerOptions as provider}
+                <option value={provider}>{provider}</option>
+              {/each}
+            </select>
+            <input
+              type="text"
+              class="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-blue-500"
+              placeholder="model-name"
+              value={fb.providerModel}
+              oninput={(e) =>
+                updateFallback(
+                  i,
+                  "providerModel",
+                  (e.target as HTMLInputElement).value
+                )}
+            />
+            <button
+              type="button"
+              class="px-2 py-1 text-xs text-red-400 hover:text-red-300"
+              onclick={() => removeFallback(i)}
+            >
+              &times;
+            </button>
+          </div>
+        {/each}
       </div>
     </div>
 
     <!-- Key Access Policy -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
-        <label class="block text-sm text-gray-400 mb-1" for={fieldIds.requiredKeyTier}>Required Key Tier</label>
+        <label
+          class="block text-sm text-gray-400 mb-1"
+          for={fieldIds.requiredKeyTier}>Required Key Tier</label
+        >
         <input
           id={fieldIds.requiredKeyTier}
           type="text"
@@ -456,7 +486,10 @@
       </div>
 
       <div>
-        <label class="block text-sm text-gray-400 mb-1" for={fieldIds.requiredKeyTags}>Required Key Tags</label>
+        <label
+          class="block text-sm text-gray-400 mb-1"
+          for={fieldIds.requiredKeyTags}>Required Key Tags</label
+        >
         <input
           id={fieldIds.requiredKeyTags}
           type="text"

@@ -1,6 +1,4 @@
-import {
-  resolveAdminMutationActorCommand
-} from "./admin-actor.js";
+import { resolveAdminMutationActorCommand } from "./admin-actor.js";
 import { createAdminKeyGovernanceRuntime } from "./admin-key-governance-runtime.js";
 import type { GatewayBindings } from "./env.js";
 
@@ -22,7 +20,9 @@ export function createAdminKeyGovernanceWorkflow(
 
   return {
     async withRead<T>(
-      run: (runtime: ReturnType<typeof createAdminKeyGovernanceRuntime>) => Promise<T> | T
+      run: (
+        runtime: ReturnType<typeof createAdminKeyGovernanceRuntime>
+      ) => Promise<T> | T
     ): Promise<T> {
       return run(getReadRuntime());
     },

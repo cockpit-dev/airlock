@@ -725,7 +725,7 @@ describe("openAIChatCompletionRequestSchema", () => {
               type: "function",
               function: {
                 name: "lookup_weather",
-                arguments: "{\"city\":\"Shanghai\"}"
+                arguments: '{"city":"Shanghai"}'
               }
             }
           ]
@@ -733,7 +733,7 @@ describe("openAIChatCompletionRequestSchema", () => {
         {
           role: "tool",
           tool_call_id: "call_123",
-          content: "{\"temperature_c\":26}"
+          content: '{"temperature_c":26}'
         }
       ]
     });
@@ -750,7 +750,7 @@ describe("openAIChatCompletionRequestSchema", () => {
     expect(parsed.messages[2]).toMatchObject({
       role: "tool",
       tool_call_id: "call_123",
-      content: "{\"temperature_c\":26}"
+      content: '{"temperature_c":26}'
     });
   });
 });
@@ -1373,12 +1373,12 @@ describe("openAIResponsesRequestSchema", () => {
           type: "function_call",
           call_id: "call_123",
           name: "lookup_weather",
-          arguments: "{\"city\":\"Shanghai\"}"
+          arguments: '{"city":"Shanghai"}'
         },
         {
           type: "function_call_output",
           call_id: "call_123",
-          output: "{\"temperature_c\":26}"
+          output: '{"temperature_c":26}'
         }
       ]
     });
@@ -1425,7 +1425,7 @@ describe("openAIResponsesResponseSchema", () => {
       output_text: "hello"
     });
 
-  expect(parsed.object).toBe("response");
+    expect(parsed.object).toBe("response");
   });
 });
 
@@ -1908,7 +1908,7 @@ describe("anthropicMessagesRequestSchema", () => {
             {
               type: "tool_result",
               tool_use_id: "call_123",
-              content: "{\"temperature_c\":26}"
+              content: '{"temperature_c":26}'
             }
           ]
         }

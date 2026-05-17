@@ -36,9 +36,7 @@ function computeProviderReadiness(config: GatewayConfig): {
   };
 }
 
-export function buildReadinessResponse(
-  config: GatewayConfig
-): ReadinessDetail {
+export function buildReadinessResponse(config: GatewayConfig): ReadinessDetail {
   const providers = computeProviderReadiness(config);
   const allProvidersReady = Object.values(providers).every(Boolean);
 

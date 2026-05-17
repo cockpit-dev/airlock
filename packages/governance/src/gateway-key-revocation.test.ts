@@ -49,13 +49,13 @@ describe("parseGatewayKeyRevocationWriteRequest", () => {
         actorSource: "trusted_header"
       })
     ).toEqual({
-        keyId: "gak_1",
-        recordEvent: true,
-        operationId: "req_123",
-        ownership: "registry",
-        reason: "incident containment",
-        actor: "ops@example.com",
-        actorSource: "trusted_header"
+      keyId: "gak_1",
+      recordEvent: true,
+      operationId: "req_123",
+      ownership: "registry",
+      reason: "incident containment",
+      actor: "ops@example.com",
+      actorSource: "trusted_header"
     });
   });
 
@@ -109,14 +109,18 @@ describe("revocation metadata helpers", () => {
 describe("buildGatewayKeyRevocationStateTransition", () => {
   it("builds the next state and audit event when recording is enabled", () => {
     expect(
-      buildGatewayKeyRevocationStateTransition(true, {
-        keyId: "gak_1",
-        operationId: "req_123",
-        ownership: "configured",
-        reason: "incident containment",
-        actor: "ops@example.com",
-        actorSource: "payload"
-      }, "2026-05-13T00:00:00.000Z")
+      buildGatewayKeyRevocationStateTransition(
+        true,
+        {
+          keyId: "gak_1",
+          operationId: "req_123",
+          ownership: "configured",
+          reason: "incident containment",
+          actor: "ops@example.com",
+          actorSource: "payload"
+        },
+        "2026-05-13T00:00:00.000Z"
+      )
     ).toEqual({
       nextState: {
         revoked: true,
@@ -137,10 +141,14 @@ describe("buildGatewayKeyRevocationStateTransition", () => {
 
   it("omits audit events when recordEvent is disabled", () => {
     expect(
-      buildGatewayKeyRevocationStateTransition(false, {
-        keyId: "gak_1",
-        recordEvent: false
-      }, "2026-05-13T00:00:00.000Z")
+      buildGatewayKeyRevocationStateTransition(
+        false,
+        {
+          keyId: "gak_1",
+          recordEvent: false
+        },
+        "2026-05-13T00:00:00.000Z"
+      )
     ).toEqual({
       nextState: {
         revoked: false,

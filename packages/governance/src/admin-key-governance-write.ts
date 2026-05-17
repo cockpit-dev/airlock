@@ -19,8 +19,7 @@ export interface ResolveAdminActorContextInput {
   requestId: string;
 }
 
-export interface BuildAdminMutationActorCommandInput
-  extends ResolveAdminActorContextInput {
+export interface BuildAdminMutationActorCommandInput extends ResolveAdminActorContextInput {
   payload: unknown;
 }
 

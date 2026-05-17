@@ -39,24 +39,34 @@ const openAIResponsesJsonSchemaFormatSchema = z.object({
   strict: z.boolean().optional()
 });
 
-const openAIResponsesTextConfigSchema = z.object({
-  format: z.union([
-    openAIResponsesTextFormatSchema,
-    openAIResponsesJsonObjectFormatSchema,
-    openAIResponsesJsonSchemaFormatSchema
-  ]).optional(),
-  verbosity: z.enum(["low", "medium", "high"]).optional()
-}).refine((value) => value.format !== undefined || value.verbosity !== undefined, {
-  message: "text requires format or verbosity",
-  path: ["format"]
-});
+const openAIResponsesTextConfigSchema = z
+  .object({
+    format: z
+      .union([
+        openAIResponsesTextFormatSchema,
+        openAIResponsesJsonObjectFormatSchema,
+        openAIResponsesJsonSchemaFormatSchema
+      ])
+      .optional(),
+    verbosity: z.enum(["low", "medium", "high"]).optional()
+  })
+  .refine(
+    (value) => value.format !== undefined || value.verbosity !== undefined,
+    {
+      message: "text requires format or verbosity",
+      path: ["format"]
+    }
+  );
 
 const openAIResponsesPromptSchema = z
   .object({
     id: z.string().min(1).optional(),
     prompt_id: z.string().min(1).optional(),
-    version: z.union([z.string().min(1), z.number().int().positive()]).optional(),
-    variables: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+    version: z
+      .union([z.string().min(1), z.number().int().positive()])
+      .optional(),
+    variables: z
+      .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
       .optional()
   })
   .refine((value) => value.id !== undefined || value.prompt_id !== undefined, {
@@ -76,23 +86,27 @@ const openAIResponsesMetadataSchema = z
     message: "metadata can have at most 16 entries"
   });
 
-const openAIResponsesReasoningSchema = z.object({
-  effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]).optional(),
-  summary: z.enum(["auto", "concise", "detailed"]).optional(),
-  generate_summary: z.enum(["auto", "concise", "detailed"]).optional()
-}).superRefine((value, context) => {
-  if (
-    value.summary !== undefined &&
-    value.generate_summary !== undefined &&
-    value.summary !== value.generate_summary
-  ) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "reasoning.summary must match reasoning.generate_summary",
-      path: ["summary"]
-    });
-  }
-});
+const openAIResponsesReasoningSchema = z
+  .object({
+    effort: z
+      .enum(["none", "minimal", "low", "medium", "high", "xhigh"])
+      .optional(),
+    summary: z.enum(["auto", "concise", "detailed"]).optional(),
+    generate_summary: z.enum(["auto", "concise", "detailed"]).optional()
+  })
+  .superRefine((value, context) => {
+    if (
+      value.summary !== undefined &&
+      value.generate_summary !== undefined &&
+      value.summary !== value.generate_summary
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "reasoning.summary must match reasoning.generate_summary",
+        path: ["summary"]
+      });
+    }
+  });
 
 const openAIResponsesStreamOptionsSchema = z.object({
   include_obfuscation: z.literal(false)
@@ -160,48 +174,53 @@ const openAIResponsesTypedInputItemSchema = z.union([
 
 export const openAIResponsesRequestSchema = z
   .object({
-  model: z.string().min(1),
-  stream: z.boolean().default(false),
-  safety_identifier: z.string().min(1).optional(),
-  metadata: openAIResponsesMetadataSchema.optional(),
-  service_tier: z.enum(["auto", "default", "flex", "priority", "scale"]).optional(),
-  store: z.boolean().optional(),
-  prompt_cache_key: z.string().min(1).optional(),
-  prompt_cache_retention: z.enum(["in_memory", "24h"]).optional(),
-  prompt: openAIResponsesPromptSchema.optional(),
-  prompt_id: z.string().min(1).optional(),
-  previous_response_id: z.string().min(1).optional(),
-  conversation: z.union([
-    z.string().min(1),
-    openAIResponsesConversationSchema
-  ]).optional(),
-  truncation: z.enum(["auto", "disabled"]).optional(),
-  stop: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
-  max_output_tokens: z.number().int().positive().optional(),
-  temperature: z.number().min(0).max(2).optional(),
-  top_p: z.number().min(0).max(1).optional(),
-  instructions: z.string().min(1).optional(),
-  reasoning: openAIResponsesReasoningSchema.optional(),
-  text: openAIResponsesTextConfigSchema.optional(),
-  include: openAIResponsesIncludeSchema.optional(),
-  top_logprobs: z.number().int().min(0).max(20).optional(),
-  stream_options: openAIResponsesStreamOptionsSchema.optional(),
-  parallel_tool_calls: z.boolean().optional(),
-  tools: z.array(openAIResponsesFunctionToolSchema).min(1).optional(),
-  tool_choice: z.union([
-    z.literal("auto"),
-    z.literal("required"),
-    z.literal("none"),
-    openAIResponsesForcedFunctionToolChoiceSchema
-  ]).optional(),
-  input: z
-    .union([
-      z.string().min(1),
-      z.array(openAIResponsesInputMessageSchema).min(1),
-      z.array(openAIResponsesTypedInputItemSchema).min(1)
-    ])
-    .optional(),
-  airlock: airlockRequestExtensionsSchema.optional()
+    model: z.string().min(1),
+    stream: z.boolean().default(false),
+    safety_identifier: z.string().min(1).optional(),
+    metadata: openAIResponsesMetadataSchema.optional(),
+    service_tier: z
+      .enum(["auto", "default", "flex", "priority", "scale"])
+      .optional(),
+    store: z.boolean().optional(),
+    prompt_cache_key: z.string().min(1).optional(),
+    prompt_cache_retention: z.enum(["in_memory", "24h"]).optional(),
+    prompt: openAIResponsesPromptSchema.optional(),
+    prompt_id: z.string().min(1).optional(),
+    previous_response_id: z.string().min(1).optional(),
+    conversation: z
+      .union([z.string().min(1), openAIResponsesConversationSchema])
+      .optional(),
+    truncation: z.enum(["auto", "disabled"]).optional(),
+    stop: z
+      .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+      .optional(),
+    max_output_tokens: z.number().int().positive().optional(),
+    temperature: z.number().min(0).max(2).optional(),
+    top_p: z.number().min(0).max(1).optional(),
+    instructions: z.string().min(1).optional(),
+    reasoning: openAIResponsesReasoningSchema.optional(),
+    text: openAIResponsesTextConfigSchema.optional(),
+    include: openAIResponsesIncludeSchema.optional(),
+    top_logprobs: z.number().int().min(0).max(20).optional(),
+    stream_options: openAIResponsesStreamOptionsSchema.optional(),
+    parallel_tool_calls: z.boolean().optional(),
+    tools: z.array(openAIResponsesFunctionToolSchema).min(1).optional(),
+    tool_choice: z
+      .union([
+        z.literal("auto"),
+        z.literal("required"),
+        z.literal("none"),
+        openAIResponsesForcedFunctionToolChoiceSchema
+      ])
+      .optional(),
+    input: z
+      .union([
+        z.string().min(1),
+        z.array(openAIResponsesInputMessageSchema).min(1),
+        z.array(openAIResponsesTypedInputItemSchema).min(1)
+      ])
+      .optional(),
+    airlock: airlockRequestExtensionsSchema.optional()
   })
   .refine(
     (value) =>
@@ -209,8 +228,8 @@ export const openAIResponsesRequestSchema = z
       value.prompt !== undefined ||
       value.prompt_id !== undefined,
     {
-    message: "Either input or prompt is required",
-    path: ["input"]
+      message: "Either input or prompt is required",
+      path: ["input"]
     }
   )
   .refine(
@@ -272,7 +291,9 @@ export const openAIResponsesResponseSchema = z.object({
     })
     .strict()
     .optional(),
-  service_tier: z.enum(["auto", "default", "flex", "priority", "scale"]).optional(),
+  service_tier: z
+    .enum(["auto", "default", "flex", "priority", "scale"])
+    .optional(),
   store: z.boolean().optional(),
   prompt_cache_key: z.string().min(1).optional(),
   prompt_cache_retention: z.enum(["in_memory", "24h"]).optional(),
@@ -292,5 +313,9 @@ export const openAIResponsesResponseSchema = z.object({
     .optional()
 });
 
-export type OpenAIResponsesRequest = z.infer<typeof openAIResponsesRequestSchema>;
-export type OpenAIResponsesResponse = z.infer<typeof openAIResponsesResponseSchema>;
+export type OpenAIResponsesRequest = z.infer<
+  typeof openAIResponsesRequestSchema
+>;
+export type OpenAIResponsesResponse = z.infer<
+  typeof openAIResponsesResponseSchema
+>;

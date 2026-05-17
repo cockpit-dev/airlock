@@ -89,13 +89,16 @@ export function assertGatewayKeyAllowsModelAccess(
   });
 
   if (!isExplicitlyAllowed && !isAllowedByGroup) {
-    throw new GatewayError("Gateway API key is not allowed to access this model", {
-      code: "auth_model_not_allowed",
-      category: "authorization",
-      httpStatus: 403,
-      retryable: false,
-      requestId
-    });
+    throw new GatewayError(
+      "Gateway API key is not allowed to access this model",
+      {
+        code: "auth_model_not_allowed",
+        category: "authorization",
+        httpStatus: 403,
+        retryable: false,
+        requestId
+      }
+    );
   }
 }
 
@@ -122,13 +125,16 @@ export function assertGatewayKeyAllowsRouteAccess(
     });
 
   if (!satisfiesTier || !satisfiesTags) {
-    throw new GatewayError("Gateway API key is not allowed to access this route", {
-      code: "auth_route_policy_not_allowed",
-      category: "authorization",
-      httpStatus: 403,
-      retryable: false,
-      requestId
-    });
+    throw new GatewayError(
+      "Gateway API key is not allowed to access this route",
+      {
+        code: "auth_route_policy_not_allowed",
+        category: "authorization",
+        httpStatus: 403,
+        retryable: false,
+        requestId
+      }
+    );
   }
 }
 
@@ -144,12 +150,15 @@ export function assertGatewayKeyAllowsProviderAccess(
   }
 
   if (!allowedProviders.includes(provider)) {
-    throw new GatewayError("Gateway API key is not allowed to access this provider", {
-      code: "auth_provider_not_allowed",
-      category: "authorization",
-      httpStatus: 403,
-      retryable: false,
-      requestId
-    });
+    throw new GatewayError(
+      "Gateway API key is not allowed to access this provider",
+      {
+        code: "auth_provider_not_allowed",
+        category: "authorization",
+        httpStatus: 403,
+        retryable: false,
+        requestId
+      }
+    );
   }
 }

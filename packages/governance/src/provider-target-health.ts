@@ -298,7 +298,11 @@ export function computeHierarchicalHealthScore(
   const errorRate = getSlidingWindowErrorRate(health);
   const errorRateFactor = 1 - Math.min(errorRate, 1);
 
-  const latency = getFreshSmoothedLatency(health, now, windows.latencyFreshnessMs);
+  const latency = getFreshSmoothedLatency(
+    health,
+    now,
+    windows.latencyFreshnessMs
+  );
   let latencyFactor: number;
   if (latency === Number.POSITIVE_INFINITY) {
     // No latency data — neutral sub-score component

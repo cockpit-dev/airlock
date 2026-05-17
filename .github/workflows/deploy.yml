@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
         with:
-          version: 11.1.0
+          version: 11.1.2
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -34,6 +34,10 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm format
+      - run: pnpm run audit
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e
 
   deploy:
     needs: verify
@@ -46,7 +50,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
         with:
-          version: 11.1.0
+          version: 11.1.2
       - uses: actions/setup-node@v5
         with:
           node-version: 24

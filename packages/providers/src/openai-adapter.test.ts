@@ -1527,7 +1527,9 @@ describe("OpenAIProviderAdapter", () => {
     expect(JSON.parse(init.body as string)).toMatchObject({
       stream: true
     });
-    expect(JSON.parse(init.body as string)).not.toHaveProperty("stream_options");
+    expect(JSON.parse(init.body as string)).not.toHaveProperty(
+      "stream_options"
+    );
   });
 
   it("normalizes native responses tool indexes to canonical ordinals after a reasoning output item", async () => {
@@ -1619,7 +1621,7 @@ describe("OpenAIProviderAdapter", () => {
         toolCallId: "call_123",
         toolIndex: 0,
         toolName: "lookup_weather",
-        argumentsDelta: "{\"city\":\"Shanghai\"}"
+        argumentsDelta: '{"city":"Shanghai"}'
       },
       {
         type: "reasoning_summary_delta",
@@ -1804,7 +1806,7 @@ describe("OpenAIProviderAdapter", () => {
         toolCallId: "call_123",
         toolIndex: 0,
         toolName: "lookup_weather",
-        argumentsDelta: "{\"city\":\"Shanghai\"}"
+        argumentsDelta: '{"city":"Shanghai"}'
       },
       {
         type: "response_completed",
@@ -1905,7 +1907,7 @@ describe("OpenAIProviderAdapter", () => {
         toolCallId: "call_123",
         toolIndex: 0,
         toolName: "lookup_weather",
-        argumentsDelta: "{\"city\":\"Shanghai\"}"
+        argumentsDelta: '{"city":"Shanghai"}'
       },
       {
         type: "response_completed",
@@ -1938,7 +1940,7 @@ describe("OpenAIProviderAdapter", () => {
               finish_reason: "stop",
               message: {
                 role: "assistant",
-                content: "{\"city\":\"Shanghai\"}"
+                content: '{"city":"Shanghai"}'
               }
             }
           ]
@@ -2006,7 +2008,7 @@ describe("OpenAIProviderAdapter", () => {
               finish_reason: "stop",
               message: {
                 role: "assistant",
-                content: "{\"city\":\"Shanghai\"}"
+                content: '{"city":"Shanghai"}'
               }
             }
           ]
@@ -2066,7 +2068,7 @@ describe("OpenAIProviderAdapter", () => {
               content: [
                 {
                   type: "output_text",
-                  text: "{\"city\":\"Shanghai\"}",
+                  text: '{"city":"Shanghai"}',
                   annotations: []
                 }
               ]
@@ -2141,7 +2143,7 @@ describe("OpenAIProviderAdapter", () => {
               content: [
                 {
                   type: "output_text",
-                  text: "{\"city\":\"Shanghai\"}",
+                  text: '{"city":"Shanghai"}',
                   annotations: []
                 }
               ]
@@ -2785,7 +2787,7 @@ describe("OpenAIProviderAdapter", () => {
                     type: "function",
                     function: {
                       name: "lookup_weather",
-                      arguments: "{\"city\":\"Shanghai\"}"
+                      arguments: '{"city":"Shanghai"}'
                     }
                   }
                 ]
@@ -2860,7 +2862,7 @@ describe("OpenAIProviderAdapter", () => {
       {
         id: "call_123",
         name: "lookup_weather",
-        arguments: "{\"city\":\"Shanghai\"}"
+        arguments: '{"city":"Shanghai"}'
       }
     ]);
     expect(response.finishReason).toBe("tool_calls");
@@ -2887,7 +2889,7 @@ describe("OpenAIProviderAdapter", () => {
                     type: "function",
                     function: {
                       name: "lookup_weather",
-                      arguments: "{\"city\":\"Shanghai\"}"
+                      arguments: '{"city":"Shanghai"}'
                     }
                   }
                 ]
@@ -2964,7 +2966,7 @@ describe("OpenAIProviderAdapter", () => {
                     type: "function",
                     function: {
                       name: "lookup_weather",
-                      arguments: "{\"city\":\"Shanghai\"}"
+                      arguments: '{"city":"Shanghai"}'
                     }
                   }
                 ]
@@ -3130,13 +3132,13 @@ describe("OpenAIProviderAdapter", () => {
               {
                 id: "call_123",
                 name: "lookup_weather",
-                arguments: "{\"city\":\"Shanghai\"}"
+                arguments: '{"city":"Shanghai"}'
               }
             ]
           },
           {
             role: "tool",
-            content: "{\"temperature_c\":26}",
+            content: '{"temperature_c":26}',
             toolCallId: "call_123"
           }
         ]
@@ -3163,7 +3165,7 @@ describe("OpenAIProviderAdapter", () => {
               type: "function",
               function: {
                 name: "lookup_weather",
-                arguments: "{\"city\":\"Shanghai\"}"
+                arguments: '{"city":"Shanghai"}'
               }
             }
           ]
@@ -3171,7 +3173,7 @@ describe("OpenAIProviderAdapter", () => {
         {
           role: "tool",
           tool_call_id: "call_123",
-          content: "{\"temperature_c\":26}"
+          content: '{"temperature_c":26}'
         }
       ]
     });
@@ -3198,7 +3200,7 @@ describe("OpenAIProviderAdapter", () => {
                     type: "function",
                     function: {
                       name: "lookup_weather",
-                      arguments: "{\"city\":\"Shanghai\"}"
+                      arguments: '{"city":"Shanghai"}'
                     }
                   }
                 ]
@@ -3244,7 +3246,7 @@ describe("OpenAIProviderAdapter", () => {
       {
         id: "call_123",
         name: "lookup_weather",
-        arguments: "{\"city\":\"Shanghai\"}"
+        arguments: '{"city":"Shanghai"}'
       }
     ]);
   });
@@ -3637,15 +3639,17 @@ describe("OpenAIProviderAdapter", () => {
       fetcher
     });
 
-    const streamIterator = adapter.stream(
-      {
-        ...createCanonicalRequest(),
-        stream: true
-      },
-      {
-        requestId: "req_stream_implicit_usage"
-      }
-    )[Symbol.asyncIterator]();
+    const streamIterator = adapter
+      .stream(
+        {
+          ...createCanonicalRequest(),
+          stream: true
+        },
+        {
+          requestId: "req_stream_implicit_usage"
+        }
+      )
+      [Symbol.asyncIterator]();
 
     while (true) {
       const nextChunk = await streamIterator.next();
@@ -3732,7 +3736,7 @@ describe("OpenAIProviderAdapter", () => {
         toolCallId: "call_123",
         toolIndex: 0,
         toolName: "lookup_weather",
-        argumentsDelta: "{\"city\":\"Shang"
+        argumentsDelta: '{"city":"Shang'
       },
       {
         type: "tool_call_delta",
@@ -3742,7 +3746,7 @@ describe("OpenAIProviderAdapter", () => {
         toolCallId: "call_123",
         toolIndex: 0,
         toolName: "lookup_weather",
-        argumentsDelta: "hai\"}"
+        argumentsDelta: 'hai"}'
       },
       {
         type: "response_completed",
@@ -3907,7 +3911,9 @@ describe("OpenAIProviderAdapter", () => {
 
     const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
 
-    expect(url).toBe("https://api.openai.com/v1/chat/completions?trace=request");
+    expect(url).toBe(
+      "https://api.openai.com/v1/chat/completions?trace=request"
+    );
     expect(init.headers).toMatchObject({
       "openai-beta": "responses=v2"
     });
@@ -3921,15 +3927,19 @@ describe("OpenAIProviderAdapter", () => {
   });
 
   it("maps aborted upstream fetches into a retryable timeout gateway error", async () => {
-    const fetcher = vi.fn().mockImplementation(async (_input, init?: RequestInit) => {
-      const signal = init?.signal;
+    const fetcher = vi
+      .fn()
+      .mockImplementation(async (_input, init?: RequestInit) => {
+        const signal = init?.signal;
 
-      return await new Promise<Response>((_resolve, reject) => {
-        signal?.addEventListener("abort", () => {
-          reject(new DOMException("The operation was aborted.", "AbortError"));
+        return await new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            reject(
+              new DOMException("The operation was aborted.", "AbortError")
+            );
+          });
         });
       });
-    });
 
     const adapter = new OpenAIProviderAdapter({
       apiKey: "test-key",
@@ -3952,15 +3962,19 @@ describe("OpenAIProviderAdapter", () => {
 
   describe("streaming error mapping", () => {
     it("maps streaming timeout into a retryable provider_timeout gateway error", async () => {
-      const fetcher = vi.fn().mockImplementation(async (_input, init?: RequestInit) => {
-        const signal = init?.signal;
+      const fetcher = vi
+        .fn()
+        .mockImplementation(async (_input, init?: RequestInit) => {
+          const signal = init?.signal;
 
-        return await new Promise<Response>((_resolve, reject) => {
-          signal?.addEventListener("abort", () => {
-            reject(new DOMException("The operation was aborted.", "AbortError"));
+          return await new Promise<Response>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => {
+              reject(
+                new DOMException("The operation was aborted.", "AbortError")
+              );
+            });
           });
         });
-      });
 
       const adapter = new OpenAIProviderAdapter({
         apiKey: "test-key",
@@ -4120,9 +4134,9 @@ describe("OpenAIProviderAdapter", () => {
     });
 
     it("maps streaming non-200 without error message into a generic provider_upstream_error", async () => {
-      const fetcher = vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({}), { status: 503 })
-      );
+      const fetcher = vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({}), { status: 503 }));
 
       const adapter = new OpenAIProviderAdapter({
         apiKey: "test-key",

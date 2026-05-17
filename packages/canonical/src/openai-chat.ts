@@ -91,12 +91,12 @@ type OpenAIResponsesEnvelopeStreamEvent = Extract<
   { type: "response_started" | "response_completed" }
 >;
 
-function parseToolCallArguments(
-  argumentsStr: string
-): Record<string, unknown> {
+function parseToolCallArguments(argumentsStr: string): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(argumentsStr);
-    return typeof parsed === "object" && parsed !== null ? parsed as Record<string, unknown> : {};
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : {};
   } catch {
     return {};
   }
@@ -140,9 +140,7 @@ function encodeCanonicalAnthropicStopReason(
   return finishReason === "max_tokens" ? "max_tokens" : "end_turn";
 }
 
-function encodeCanonicalUsage(
-  usage: CanonicalUsageValue
-) {
+function encodeCanonicalUsage(usage: CanonicalUsageValue) {
   if (!usage) {
     return undefined;
   }
@@ -154,9 +152,7 @@ function encodeCanonicalUsage(
   };
 }
 
-function encodeCanonicalResponsesUsage(
-  usage: CanonicalUsageValue
-) {
+function encodeCanonicalResponsesUsage(usage: CanonicalUsageValue) {
   if (!usage) {
     return undefined;
   }
@@ -168,9 +164,7 @@ function encodeCanonicalResponsesUsage(
   };
 }
 
-function encodeCanonicalAnthropicUsage(
-  usage: CanonicalUsageValue
-) {
+function encodeCanonicalAnthropicUsage(usage: CanonicalUsageValue) {
   if (!usage) {
     return undefined;
   }
@@ -283,9 +277,7 @@ function createOpenAIResponsesFunctionCallItem(
   };
 }
 
-function createOpenAIResponsesReasoningItem(
-  summaryText?: string
-) {
+function createOpenAIResponsesReasoningItem(summaryText?: string) {
   return {
     type: "reasoning" as const,
     summary:
@@ -472,9 +464,7 @@ function normalizeOpenAIResponsesTextFormat(
     type: "json_schema" as const,
     name: text.format.name,
     schema: text.format.schema,
-    ...(text.format.strict !== undefined
-      ? { strict: text.format.strict }
-      : {})
+    ...(text.format.strict !== undefined ? { strict: text.format.strict } : {})
   };
 }
 
@@ -598,28 +588,28 @@ export function normalizeOpenAIChatRequest(
     request.stop === undefined
       ? undefined
       : typeof request.stop === "string"
-      ? [request.stop]
-      : request.stop;
+        ? [request.stop]
+        : request.stop;
   const toolChoice = normalizeOpenAIToolChoice(request.tool_choice);
-  const outputFormat = normalizeOpenAIChatResponseFormat(request.response_format);
+  const outputFormat = normalizeOpenAIChatResponseFormat(
+    request.response_format
+  );
 
   return {
     model: request.model,
     stream: request.stream,
     ...(endUserId !== undefined ? { endUserId } : {}),
-    ...((request.frequency_penalty !== undefined ||
-      request.logprobs === true ||
-      request.metadata !== undefined ||
-      request.presence_penalty !== undefined ||
-      request.seed !== undefined ||
-      request.top_logprobs !== undefined ||
-      request.stream_options?.include_usage === true)
+    ...(request.frequency_penalty !== undefined ||
+    request.logprobs === true ||
+    request.metadata !== undefined ||
+    request.presence_penalty !== undefined ||
+    request.seed !== undefined ||
+    request.top_logprobs !== undefined ||
+    request.stream_options?.include_usage === true
       ? {
           providerMetadata: {
             openai: {
-              ...(request.logprobs === true
-                ? { logprobs: true }
-                : {}),
+              ...(request.logprobs === true ? { logprobs: true } : {}),
               ...(request.metadata !== undefined
                 ? { metadata: request.metadata }
                 : {}),
@@ -719,10 +709,12 @@ export function normalizeOpenAIResponsesRequest(
         ? [{ role: "user" as const, content: request.input }]
         : isOpenAIResponsesTypedInputItems(request.input)
           ? normalizeOpenAIResponsesTypedInputItems(request.input)
-          : (request.input as Array<{
-              role: "user" | "assistant" | "system" | "developer";
-              content: string | OpenAIResponsesTextInputBlockValue[];
-            }>).map((message) => {
+          : (
+              request.input as Array<{
+                role: "user" | "assistant" | "system" | "developer";
+                content: string | OpenAIResponsesTextInputBlockValue[];
+              }>
+            ).map((message) => {
               return {
                 role:
                   message.role === "developer"
@@ -736,7 +728,9 @@ export function normalizeOpenAIResponsesRequest(
     : [];
   const toolChoice = normalizeOpenAIToolChoice(request.tool_choice);
   const outputFormat = normalizeOpenAIResponsesTextFormat(request.text);
-  const conversationId = normalizeOpenAIResponsesConversation(request.conversation);
+  const conversationId = normalizeOpenAIResponsesConversation(
+    request.conversation
+  );
 
   return {
     model: request.model,
@@ -744,14 +738,16 @@ export function normalizeOpenAIResponsesRequest(
     ...(request.safety_identifier !== undefined
       ? { endUserId: request.safety_identifier }
       : {}),
-    ...((request.metadata !== undefined ||
-      request.stream_options?.include_obfuscation === false ||
-      request.include?.includes("message.output_text.logprobs") ||
-      request.top_logprobs !== undefined)
+    ...(request.metadata !== undefined ||
+    request.stream_options?.include_obfuscation === false ||
+    request.include?.includes("message.output_text.logprobs") ||
+    request.top_logprobs !== undefined
       ? {
           providerMetadata: {
             openai: {
-              ...(request.metadata !== undefined ? { metadata: request.metadata } : {}),
+              ...(request.metadata !== undefined
+                ? { metadata: request.metadata }
+                : {}),
               ...(request.include?.includes("message.output_text.logprobs")
                 ? { responsesOutputTextLogprobs: true }
                 : {}),
@@ -854,7 +850,9 @@ export function normalizeAnthropicMessagesRequest(
           text: string;
         }>
   ) {
-    return typeof content === "string" ? content : joinAnthropicTextBlocks(content);
+    return typeof content === "string"
+      ? content
+      : joinAnthropicTextBlocks(content);
   }
 
   const systemMessages = request.system
@@ -899,7 +897,8 @@ export function normalizeAnthropicMessagesRequest(
     }
 
     if (message.role === "user") {
-      const normalizedMessages: Array<CanonicalRequest["messages"][number]> = [];
+      const normalizedMessages: Array<CanonicalRequest["messages"][number]> =
+        [];
       let pendingTextBlocks: Array<{
         type: "text";
         text: string;
@@ -980,10 +979,10 @@ export function normalizeAnthropicMessagesRequest(
                 ? "required"
                 : request.tool_choice.type === "none"
                   ? "none"
-              : {
-                  type: "tool" as const,
-                  name: request.tool_choice.name
-                }
+                  : {
+                      type: "tool" as const,
+                      name: request.tool_choice.name
+                    }
         }
       : {}),
     messages: [...systemMessages, ...messages]
@@ -1141,9 +1140,7 @@ export function encodeCanonicalToOpenAIChatResponse(
     ...(response.systemFingerprint !== undefined
       ? { system_fingerprint: response.systemFingerprint }
       : {}),
-    ...(response.metadata !== undefined
-      ? { metadata: response.metadata }
-      : {}),
+    ...(response.metadata !== undefined ? { metadata: response.metadata } : {}),
     ...(response.serviceTier !== undefined
       ? { service_tier: response.serviceTier }
       : {}),
@@ -1212,9 +1209,7 @@ export function encodeCanonicalToOpenAIResponsesResponse(
     created_at: response.createdAt ?? 0,
     model: response.model,
     status: encodeCanonicalResponsesStatus(response.finishReason),
-    ...(response.metadata !== undefined
-      ? { metadata: response.metadata }
-      : {}),
+    ...(response.metadata !== undefined ? { metadata: response.metadata } : {}),
     ...(response.serviceTier !== undefined
       ? { service_tier: response.serviceTier }
       : {}),
@@ -1451,7 +1446,8 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
   }
 
   const outputText = state.outputText ?? "";
-  const reasoningSummary = event.reasoningSummary ?? state.reasoningSummary ?? "";
+  const reasoningSummary =
+    event.reasoningSummary ?? state.reasoningSummary ?? "";
   const responseStatus = encodeCanonicalResponsesStatus(event.finishReason);
   const isToolCallCompletion = event.finishReason === "tool_calls";
   const completedResponse = {
@@ -1470,9 +1466,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
           )
         }
       : {}),
-    ...(event.metadata !== undefined
-      ? { metadata: event.metadata }
-      : {}),
+    ...(event.metadata !== undefined ? { metadata: event.metadata } : {}),
     ...(event.serviceTier !== undefined
       ? { service_tier: event.serviceTier }
       : {}),
@@ -1575,7 +1569,8 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
         ? [
             {
               type: "response.output_text.done" as const,
-              sequence_number: state.sequenceNumber + reasoningCompletionEvents.length,
+              sequence_number:
+                state.sequenceNumber + reasoningCompletionEvents.length,
               item_id: itemId,
               output_index: state.startedReasoningOutput ? 1 : 0,
               content_index: state.contentIndex,
@@ -1586,7 +1581,8 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
             },
             {
               type: "response.content_part.done" as const,
-              sequence_number: state.sequenceNumber + reasoningCompletionEvents.length + 1,
+              sequence_number:
+                state.sequenceNumber + reasoningCompletionEvents.length + 1,
               item_id: itemId,
               output_index: state.startedReasoningOutput ? 1 : 0,
               content_index: state.contentIndex,
@@ -1594,7 +1590,8 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
             },
             {
               type: "response.output_item.done" as const,
-              sequence_number: state.sequenceNumber + reasoningCompletionEvents.length + 2,
+              sequence_number:
+                state.sequenceNumber + reasoningCompletionEvents.length + 2,
               output_index: state.startedReasoningOutput ? 1 : 0,
               item: createOpenAIResponsesOutputMessage(
                 event.responseId,
@@ -1642,8 +1639,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
         }),
         {
           type: "response.completed" as const,
-          sequence_number:
-            toolSequenceStart + completedToolCalls.length * 2,
+          sequence_number: toolSequenceStart + completedToolCalls.length * 2,
           response: {
             ...completedResponse,
             output: [
@@ -1673,8 +1669,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
           }
         }
       ],
-      nextSequenceNumber:
-        toolSequenceStart + completedToolCalls.length * 2 + 1
+      nextSequenceNumber: toolSequenceStart + completedToolCalls.length * 2 + 1
     };
   }
 
@@ -1712,7 +1707,8 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
       ? [
           {
             type: "response.output_text.done" as const,
-            sequence_number: state.sequenceNumber + reasoningCompletionEvents.length,
+            sequence_number:
+              state.sequenceNumber + reasoningCompletionEvents.length,
             item_id: itemId,
             output_index: state.startedReasoningOutput ? 1 : state.outputIndex,
             content_index: state.contentIndex,
@@ -1868,7 +1864,8 @@ export function encodeCanonicalToAnthropicMessagesStreamEvents(
   if (event.type === "tool_call_delta") {
     const toolIndex = event.toolIndex;
     const toolBlockIndex = state.startedTextBlock ? toolIndex + 1 : toolIndex;
-    const encodedToolStartNeeded = !state.startedToolBlocks.includes(toolBlockIndex);
+    const encodedToolStartNeeded =
+      !state.startedToolBlocks.includes(toolBlockIndex);
 
     if (encodedToolStartNeeded) {
       state.startedToolBlocks.push(toolBlockIndex);

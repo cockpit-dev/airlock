@@ -1,4 +1,7 @@
-import type { RequestShapingProfile, OutboundSigningStrategy } from "@airlock/request-shaping";
+import type {
+  RequestShapingProfile,
+  OutboundSigningStrategy
+} from "@airlock/request-shaping";
 
 import type { ProviderId } from "@airlock/shared";
 
@@ -31,7 +34,9 @@ export type ProviderAdapterFactory = (
 
 const adapterFactories = new Map<ProviderId, ProviderAdapterFactory>();
 
-function openAIFactory(options: ProviderAdapterConstructionOptions): ProviderAdapter {
+function openAIFactory(
+  options: ProviderAdapterConstructionOptions
+): ProviderAdapter {
   return new OpenAIProviderAdapter({
     apiKey: options.apiKey,
     baseUrl: options.baseUrl,
@@ -42,7 +47,9 @@ function openAIFactory(options: ProviderAdapterConstructionOptions): ProviderAda
   });
 }
 
-function anthropicFactory(options: ProviderAdapterConstructionOptions): ProviderAdapter {
+function anthropicFactory(
+  options: ProviderAdapterConstructionOptions
+): ProviderAdapter {
   return new AnthropicProviderAdapter({
     apiKey: options.apiKey,
     baseUrl: options.baseUrl,
@@ -54,7 +61,9 @@ function anthropicFactory(options: ProviderAdapterConstructionOptions): Provider
   });
 }
 
-function geminiFactory(options: ProviderAdapterConstructionOptions): ProviderAdapter {
+function geminiFactory(
+  options: ProviderAdapterConstructionOptions
+): ProviderAdapter {
   return new GeminiProviderAdapter({
     apiKey: options.apiKey,
     baseUrl: options.baseUrl,
@@ -87,7 +96,9 @@ export function createProviderAdapterFromRegistry(
 ): ProviderAdapter {
   const factory = adapterFactories.get(providerId);
   if (!factory) {
-    throw new Error(`No adapter factory registered for provider: ${providerId}`);
+    throw new Error(
+      `No adapter factory registered for provider: ${providerId}`
+    );
   }
   return factory(options);
 }

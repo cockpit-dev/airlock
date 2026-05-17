@@ -30,16 +30,13 @@ export function assertAllowedAnthropicTopLevelFields(
 
   for (const field of Object.keys(payload)) {
     if (!allowedFieldSet.has(field)) {
-      throw new GatewayError(
-        `Unsupported Anthropic semantic field: ${field}`,
-        {
-          code: "request_unsupported_anthropic_semantics",
-          category: "request",
-          httpStatus: 400,
-          retryable: false,
-          requestId
-        }
-      );
+      throw new GatewayError(`Unsupported Anthropic semantic field: ${field}`, {
+        code: "request_unsupported_anthropic_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      });
     }
   }
 }

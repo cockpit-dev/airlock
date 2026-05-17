@@ -10,7 +10,10 @@ import {
   type GatewayKeyAuditEvent,
   type GatewayKeyAuditOwnership
 } from "./gateway-key-audit.js";
-import type { GatewayApiKeyRecord, GatewayApiKeyOwnership } from "./gateway-auth.js";
+import type {
+  GatewayApiKeyRecord,
+  GatewayApiKeyOwnership
+} from "./gateway-auth.js";
 
 export interface GatewayKeyRevocationState {
   revoked: boolean;
@@ -71,7 +74,10 @@ export function parseGatewayKeyRevocationWriteRequest(
   let actor: string | undefined;
   let actorSource: GatewayKeyAuditActorSource | undefined;
 
-  if (keyId !== undefined && (typeof keyId !== "string" || keyId.length === 0)) {
+  if (
+    keyId !== undefined &&
+    (typeof keyId !== "string" || keyId.length === 0)
+  ) {
     throw new Error("Revocation write request keyId is invalid");
   }
 
@@ -122,8 +128,9 @@ export function parseGatewayKeyRevocationWriteRequest(
 export function requestKeyIdFromGatewayKeyRevocationWriteRequest(
   request: GatewayKeyRevocationWriteRequest
 ): string {
-  const keyId = (request as GatewayKeyRevocationWriteRequest & { keyId?: unknown })
-    .keyId;
+  const keyId = (
+    request as GatewayKeyRevocationWriteRequest & { keyId?: unknown }
+  ).keyId;
 
   if (typeof keyId !== "string" || keyId.length === 0) {
     throw new Error("Revocation write request keyId is invalid");
@@ -270,9 +277,11 @@ async function writeGatewayKeyRevocationRuntime(
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
   const recordEvent = request?.recordEvent ?? true;
   const ownership = recordEvent
-    ? request?.ownership ?? (await port.resolveOwnership(gatewayApiKey))
+    ? (request?.ownership ?? (await port.resolveOwnership(gatewayApiKey)))
     : undefined;
-  const operationId = recordEvent ? request?.operationId ?? requestId : undefined;
+  const operationId = recordEvent
+    ? (request?.operationId ?? requestId)
+    : undefined;
   const nextRequest: GatewayKeyRevocationWriteRequest = {
     keyId: gatewayApiKey.id,
     ...(request?.recordEvent === false ? { recordEvent: false } : {}),

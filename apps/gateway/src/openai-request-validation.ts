@@ -60,16 +60,13 @@ export function assertSupportedOpenAIChatStreamOptions(
   const streamOptions = payload.stream_options;
 
   if (payload.stream !== true) {
-    throw new GatewayError(
-      "OpenAI Chat stream_options requires stream=true",
-      {
-        code: "request_unsupported_openai_semantics",
-        category: "request",
-        httpStatus: 400,
-        retryable: false,
-        requestId
-      }
-    );
+    throw new GatewayError("OpenAI Chat stream_options requires stream=true", {
+      code: "request_unsupported_openai_semantics",
+      category: "request",
+      httpStatus: 400,
+      retryable: false,
+      requestId
+    });
   }
 
   if (
@@ -92,9 +89,7 @@ export function assertSupportedOpenAIChatStreamOptions(
   }
 }
 
-export function assertSupportedOpenAIChatLogprobsSemantics(
-  payload: unknown
-) {
+export function assertSupportedOpenAIChatLogprobsSemantics(payload: unknown) {
   if (!isRecord(payload)) {
     return;
   }
@@ -118,7 +113,10 @@ export function assertSupportedOpenAIChatToolsSemantics(
   const hasDeclaredTools = "tools" in payload && payload.tools !== undefined;
 
   if (!hasDeclaredTools) {
-    if ("parallel_tool_calls" in payload && payload.parallel_tool_calls !== undefined) {
+    if (
+      "parallel_tool_calls" in payload &&
+      payload.parallel_tool_calls !== undefined
+    ) {
       throw new GatewayError(
         "Unsupported OpenAI Chat tools semantics: parallel_tool_calls requires declared tools",
         {
@@ -134,7 +132,10 @@ export function assertSupportedOpenAIChatToolsSemantics(
     return;
   }
 
-  if ("parallel_tool_calls" in payload && typeof payload.parallel_tool_calls !== "boolean") {
+  if (
+    "parallel_tool_calls" in payload &&
+    typeof payload.parallel_tool_calls !== "boolean"
+  ) {
     throw new GatewayError(
       "Unsupported OpenAI Chat tools semantics: parallel_tool_calls must be a boolean",
       {
@@ -159,7 +160,10 @@ export function assertSupportedOpenAIResponsesToolsSemantics(
   const hasDeclaredTools = "tools" in payload && payload.tools !== undefined;
 
   if (!hasDeclaredTools) {
-    if ("parallel_tool_calls" in payload && payload.parallel_tool_calls !== undefined) {
+    if (
+      "parallel_tool_calls" in payload &&
+      payload.parallel_tool_calls !== undefined
+    ) {
       throw new GatewayError(
         "Unsupported OpenAI Responses tools semantics: parallel_tool_calls requires declared tools",
         {
@@ -175,7 +179,10 @@ export function assertSupportedOpenAIResponsesToolsSemantics(
     return;
   }
 
-  if ("parallel_tool_calls" in payload && typeof payload.parallel_tool_calls !== "boolean") {
+  if (
+    "parallel_tool_calls" in payload &&
+    typeof payload.parallel_tool_calls !== "boolean"
+  ) {
     throw new GatewayError(
       "Unsupported OpenAI Responses tools semantics: parallel_tool_calls must be a boolean",
       {
@@ -198,20 +205,14 @@ export function assertSupportedOpenAIResponsesSemantics(
   }
 
   if ("reasoning" in payload && payload.reasoning !== undefined) {
-    if (
-      typeof payload.reasoning !== "object" ||
-      payload.reasoning === null
-    ) {
-      throw new GatewayError(
-        "Unsupported OpenAI Responses reasoning config",
-        {
-          code: "request_unsupported_openai_semantics",
-          category: "request",
-          httpStatus: 400,
-          retryable: false,
-          requestId
-        }
-      );
+    if (typeof payload.reasoning !== "object" || payload.reasoning === null) {
+      throw new GatewayError("Unsupported OpenAI Responses reasoning config", {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      });
     }
   }
 
@@ -221,7 +222,9 @@ export function assertSupportedOpenAIResponsesSemantics(
         typeof payload.stop === "string" ||
         (Array.isArray(payload.stop) &&
           payload.stop.length > 0 &&
-          payload.stop.every((entry) => typeof entry === "string" && entry.length > 0))
+          payload.stop.every(
+            (entry) => typeof entry === "string" && entry.length > 0
+          ))
       )
     ) {
       throw new GatewayError(
@@ -308,7 +311,10 @@ export function assertSupportedOpenAIChatResponseFormat(
     return;
   }
 
-  if (!("response_format" in payload) || payload.response_format === undefined) {
+  if (
+    !("response_format" in payload) ||
+    payload.response_format === undefined
+  ) {
     return;
   }
 

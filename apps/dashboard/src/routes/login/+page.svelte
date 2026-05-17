@@ -30,7 +30,9 @@
 </script>
 
 <div class="min-h-screen bg-gray-950 flex items-center justify-center">
-  <div class="bg-gray-900 rounded-lg p-8 w-full max-w-md border border-gray-800">
+  <div
+    class="bg-gray-900 rounded-lg p-8 w-full max-w-md border border-gray-800"
+  >
     <h1 class="text-2xl font-bold text-white mb-2">Airlock Dashboard</h1>
     <p class="text-gray-400 text-sm mb-6">Sign in to manage your AI gateway</p>
 

@@ -4,10 +4,7 @@
  */
 export const MAX_SSE_BUFFER_SIZE = 1_048_576;
 
-export function assertSseBufferSize(
-  buffer: string,
-  provider: string
-): void {
+export function assertSseBufferSize(buffer: string, provider: string): void {
   if (buffer.length > MAX_SSE_BUFFER_SIZE) {
     throw new Error(
       `SSE buffer exceeded maximum size (${buffer.length} > ${MAX_SSE_BUFFER_SIZE}) for provider ${provider}`

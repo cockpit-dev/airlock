@@ -11,9 +11,11 @@ const test = base.extend({
 
 test.describe("Dashboard home page", () => {
   test("shows dashboard heading after login", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: /dashboard/i })).toBeVisible({
-      timeout: 5000
-    });
+    await expect(page.getByRole("heading", { name: /dashboard/i })).toBeVisible(
+      {
+        timeout: 5000
+      }
+    );
   });
 
   test("shows status section", async ({ page }) => {
@@ -43,41 +45,41 @@ test.describe("Dashboard home page", () => {
 test.describe("Keys management page", () => {
   test("shows keys heading", async ({ page }) => {
     await page.goto("/keys");
-    await expect(
-      page.getByRole("heading", { name: /keys/i })
-    ).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: /keys/i })).toBeVisible({
+      timeout: 5000
+    });
   });
 });
 
 test.describe("Config pages", () => {
   test("shows providers config", async ({ page }) => {
     await page.goto("/config/providers");
-    await expect(
-      page.getByRole("heading", { name: /provider/i })
-    ).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: /provider/i })).toBeVisible({
+      timeout: 5000
+    });
   });
 
   test("shows accounts config", async ({ page }) => {
     await page.goto("/config/accounts");
-    await expect(
-      page.getByRole("heading", { name: /account/i })
-    ).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: /account/i })).toBeVisible({
+      timeout: 5000
+    });
   });
 
   test("shows routes config", async ({ page }) => {
     await page.goto("/config/routes");
-    await expect(
-      page.getByRole("heading", { name: /route/i })
-    ).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: /route/i })).toBeVisible({
+      timeout: 5000
+    });
   });
 });
 
 test.describe("Route health page", () => {
   test("shows routing health heading", async ({ page }) => {
     await page.goto("/routes");
-    await expect(
-      page.getByRole("heading", { name: /route/i })
-    ).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: /route/i })).toBeVisible({
+      timeout: 5000
+    });
   });
 });
 

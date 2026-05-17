@@ -72,7 +72,12 @@ export function createAdminKeyGovernanceRuntime(
     read: {
       listKeySnapshots(filters: {
         acceptedNow?: boolean;
-        effectiveStatus?: "active" | "revoked" | "not_yet_active" | "expired" | "archived";
+        effectiveStatus?:
+          | "active"
+          | "revoked"
+          | "not_yet_active"
+          | "expired"
+          | "archived";
         includeArchived?: boolean;
       }) {
         return listGatewayApiKeyStatuses(
@@ -365,7 +370,10 @@ export function createAdminKeyGovernanceRuntime(
           actorContext
         );
       },
-      finalizeRegistryKeyRotation(candidateKeyId: string, candidatePayload: unknown) {
+      finalizeRegistryKeyRotation(
+        candidateKeyId: string,
+        candidatePayload: unknown
+      ) {
         return finalizeGatewayRegistryApiKeyRotation(
           env,
           getGatewayApiKeys(),
@@ -375,7 +383,10 @@ export function createAdminKeyGovernanceRuntime(
           actorContext
         );
       },
-      cancelRegistryKeyRotation(candidateKeyId: string, candidatePayload: unknown) {
+      cancelRegistryKeyRotation(
+        candidateKeyId: string,
+        candidatePayload: unknown
+      ) {
         return cancelGatewayRegistryApiKeyRotation(
           env,
           getGatewayApiKeys(),
@@ -385,7 +396,10 @@ export function createAdminKeyGovernanceRuntime(
           actorContext
         );
       },
-      async updateRegistryOverride(candidateKeyId: string, candidatePayload: unknown) {
+      async updateRegistryOverride(
+        candidateKeyId: string,
+        candidatePayload: unknown
+      ) {
         return updateConfiguredGatewayKeyRegistryOverride(
           getGatewayApiKeys(),
           candidateKeyId,
@@ -413,7 +427,10 @@ export function createAdminKeyGovernanceRuntime(
           }
         );
       },
-      async clearRegistryOverride(candidateKeyId: string, candidatePayload?: unknown) {
+      async clearRegistryOverride(
+        candidateKeyId: string,
+        candidatePayload?: unknown
+      ) {
         return clearConfiguredGatewayKeyRegistryOverride(
           getGatewayApiKeys(),
           candidateKeyId,

@@ -179,7 +179,8 @@ describe("bulk write transition builders", () => {
   it("preserves request order and attaches operation metadata", () => {
     const keyA = createStoredKey("key_dynamic_a");
     const keyB = createStoredKey("key_dynamic_b", {
-      valueHash: "3e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6"
+      valueHash:
+        "3e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6"
     });
     const metadata = {
       operationId: "req_bulk_123",

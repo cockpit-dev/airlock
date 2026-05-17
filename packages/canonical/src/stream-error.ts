@@ -17,13 +17,13 @@ function toStreamErrorInput(error: unknown): StreamErrorInput {
     return {
       message: e.message,
       code: e.code,
-      type: e.category ?? "internal_error",
+      type: e.category ?? "internal_error"
     };
   }
   return {
     message: error instanceof Error ? error.message : "Internal server error",
     code: "stream_error",
-    type: "internal_error",
+    type: "internal_error"
   };
 }
 
@@ -33,8 +33,8 @@ export function encodeOpenAIChatStreamError(error: unknown): string {
     error: {
       message: e.message,
       type: e.type,
-      code: e.code,
-    },
+      code: e.code
+    }
   })}\n\ndata: [DONE]\n\n`;
 }
 
@@ -43,7 +43,7 @@ export function encodeOpenAIResponsesStreamError(error: unknown): string {
   return `data: ${JSON.stringify({
     type: "error",
     code: e.code,
-    message: e.message,
+    message: e.message
   })}\n\ndata: [DONE]\n\n`;
 }
 
@@ -53,7 +53,7 @@ export function encodeAnthropicMessagesStreamError(error: unknown): string {
     type: "error",
     error: {
       type: e.type,
-      message: e.message,
-    },
+      message: e.message
+    }
   })}\n\n`;
 }

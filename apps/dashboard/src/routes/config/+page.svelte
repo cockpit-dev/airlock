@@ -24,28 +24,42 @@
         {#each Object.entries(data.config.providers) as [name, provider]}
           <div class="bg-gray-900 border border-gray-800 rounded-lg p-5">
             <div class="flex items-center justify-between mb-3">
-              <p class="font-semibold text-white">{providerLabels[name] ?? name}</p>
+              <p class="font-semibold text-white">
+                {providerLabels[name] ?? name}
+              </p>
               {#if provider.configured}
-                <span class="px-2 py-1 rounded text-xs font-medium bg-green-900 text-green-300">Active</span>
+                <span
+                  class="px-2 py-1 rounded text-xs font-medium bg-green-900 text-green-300"
+                  >Active</span
+                >
               {:else}
-                <span class="px-2 py-1 rounded text-xs font-medium bg-gray-800 text-gray-500">Not configured</span>
+                <span
+                  class="px-2 py-1 rounded text-xs font-medium bg-gray-800 text-gray-500"
+                  >Not configured</span
+                >
               {/if}
             </div>
             <div class="space-y-2 text-sm">
               <div class="flex justify-between">
                 <span class="text-gray-400">Base URL</span>
-                <span class="text-gray-300 font-mono text-xs">{provider.baseUrl}</span>
+                <span class="text-gray-300 font-mono text-xs"
+                  >{provider.baseUrl}</span
+                >
               </div>
               {#if "defaultModel" in provider}
                 <div class="flex justify-between">
                   <span class="text-gray-400">Default Model</span>
-                  <span class="text-gray-300 font-mono text-xs">{provider.defaultModel}</span>
+                  <span class="text-gray-300 font-mono text-xs"
+                    >{provider.defaultModel}</span
+                  >
                 </div>
               {/if}
               {#if "defaultMaxTokens" in provider}
                 <div class="flex justify-between">
                   <span class="text-gray-400">Max Tokens</span>
-                  <span class="text-gray-300">{provider.defaultMaxTokens.toLocaleString()}</span>
+                  <span class="text-gray-300"
+                    >{provider.defaultMaxTokens.toLocaleString()}</span
+                  >
                 </div>
               {/if}
             </div>
@@ -56,8 +70,12 @@
 
     <!-- Routes -->
     <div class="mb-8">
-      <h3 class="text-lg font-semibold text-gray-200 mb-3">Routes ({data.config.routes.length})</h3>
-      <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+      <h3 class="text-lg font-semibold text-gray-200 mb-3">
+        Routes ({data.config.routes.length})
+      </h3>
+      <div
+        class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
+      >
         <table class="w-full text-sm">
           <thead>
             <tr class="border-b border-gray-800 text-gray-400 text-left">
@@ -70,12 +88,19 @@
           <tbody>
             {#each data.config.routes as route}
               <tr class="border-b border-gray-800 last:border-0">
-                <td class="px-4 py-3 text-white font-medium font-mono">{route.externalModel}</td>
+                <td class="px-4 py-3 text-white font-medium font-mono"
+                  >{route.externalModel}</td
+                >
                 <td class="px-4 py-3">
                   <div class="text-gray-300">
-                    <span class="px-1.5 py-0.5 rounded text-xs bg-blue-900/50 text-blue-300">{route.target.provider}</span>
+                    <span
+                      class="px-1.5 py-0.5 rounded text-xs bg-blue-900/50 text-blue-300"
+                      >{route.target.provider}</span
+                    >
                     <span class="text-gray-500 mx-1">/</span>
-                    <span class="font-mono text-xs">{route.target.providerModel}</span>
+                    <span class="font-mono text-xs"
+                      >{route.target.providerModel}</span
+                    >
                   </div>
                 </td>
                 <td class="px-4 py-3 text-gray-400">
@@ -83,7 +108,10 @@
                     <div class="space-y-1">
                       {#each route.fallbacks as fb}
                         <div class="text-xs">
-                          <span class="px-1.5 py-0.5 rounded bg-gray-800 text-gray-300">{fb.provider}</span>
+                          <span
+                            class="px-1.5 py-0.5 rounded bg-gray-800 text-gray-300"
+                            >{fb.provider}</span
+                          >
                           <span class="text-gray-500">/</span>
                           <span class="font-mono">{fb.providerModel}</span>
                         </div>
@@ -95,7 +123,10 @@
                 </td>
                 <td class="px-4 py-3">
                   {#if route.strategy}
-                    <span class="px-2 py-1 rounded text-xs bg-purple-900/50 text-purple-300">{route.strategy}</span>
+                    <span
+                      class="px-2 py-1 rounded text-xs bg-purple-900/50 text-purple-300"
+                      >{route.strategy}</span
+                    >
                   {:else}
                     <span class="text-gray-600">default</span>
                   {/if}
@@ -117,7 +148,10 @@
               <p class="font-medium text-white mb-2">{group}</p>
               <div class="flex flex-wrap gap-1">
                 {#each models as model}
-                  <span class="px-2 py-0.5 rounded text-xs bg-gray-800 text-gray-300 font-mono">{model}</span>
+                  <span
+                    class="px-2 py-0.5 rounded text-xs bg-gray-800 text-gray-300 font-mono"
+                    >{model}</span
+                  >
                 {/each}
               </div>
             </div>
@@ -137,7 +171,9 @@
           >
             <span class="text-sm text-gray-300">{feature}</span>
             <span
-              class="w-3 h-3 rounded-full {enabled ? 'bg-green-500' : 'bg-gray-700'}"
+              class="w-3 h-3 rounded-full {enabled
+                ? 'bg-green-500'
+                : 'bg-gray-700'}"
             ></span>
           </div>
         {/each}
@@ -148,16 +184,26 @@
     <div class="mb-8">
       <h3 class="text-lg font-semibold text-gray-200 mb-3">Keys</h3>
       <div class="grid grid-cols-3 gap-4">
-        <div class="bg-gray-900 border border-gray-800 rounded-lg p-4 text-center">
+        <div
+          class="bg-gray-900 border border-gray-800 rounded-lg p-4 text-center"
+        >
           <p class="text-2xl font-bold text-white">{data.config.keys.total}</p>
           <p class="text-sm text-gray-400">Total</p>
         </div>
-        <div class="bg-gray-900 border border-gray-800 rounded-lg p-4 text-center">
-          <p class="text-2xl font-bold text-white">{data.config.keys.configured}</p>
+        <div
+          class="bg-gray-900 border border-gray-800 rounded-lg p-4 text-center"
+        >
+          <p class="text-2xl font-bold text-white">
+            {data.config.keys.configured}
+          </p>
           <p class="text-sm text-gray-400">Configured</p>
         </div>
-        <div class="bg-gray-900 border border-gray-800 rounded-lg p-4 text-center">
-          <p class="text-2xl font-bold text-white">{data.config.keys.registryOwned}</p>
+        <div
+          class="bg-gray-900 border border-gray-800 rounded-lg p-4 text-center"
+        >
+          <p class="text-2xl font-bold text-white">
+            {data.config.keys.registryOwned}
+          </p>
           <p class="text-sm text-gray-400">Registry</p>
         </div>
       </div>
@@ -172,9 +218,9 @@
             <p class="text-sm text-gray-400">{name}</p>
             <p class="text-lg font-semibold text-white">
               {typeof value === "number" && value >= 1000
-                ? (value >= 1_000_000
-                    ? (value / 1_000_000).toFixed(1) + "MB"
-                    : (value / 1000).toFixed(0) + "ms")
+                ? value >= 1_000_000
+                  ? (value / 1_000_000).toFixed(1) + "MB"
+                  : (value / 1000).toFixed(0) + "ms"
                 : String(value)}
             </p>
           </div>

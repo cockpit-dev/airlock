@@ -100,7 +100,9 @@ export interface GatewayApiKeyRegistrySnapshotInput {
   configuredStatus: GatewayApiKeyStatusView;
   runtimeKey?: GatewayApiKeyRecord;
   runtimeStatus?: GatewayApiKeyStatusView;
-  registryOverride?: (GatewayApiKeyMetadataOverride & { updatedAt: string }) | null;
+  registryOverride?:
+    | (GatewayApiKeyMetadataOverride & { updatedAt: string })
+    | null;
 }
 
 export interface InternalAdminCredential {
@@ -288,9 +290,7 @@ function parseAdminRole(value: unknown): AdminRole | undefined {
   return undefined;
 }
 
-function parseInternalAdminScopes(
-  value: unknown
-): AdminScope[] {
+function parseInternalAdminScopes(value: unknown): AdminScope[] {
   if (value === undefined) {
     return [...DEFAULT_INTERNAL_ADMIN_SCOPES];
   }
@@ -350,7 +350,9 @@ function validateLifecycleWindow(
   }
 }
 
-function parseGatewayApiKeyPolicy(value: unknown): GatewayApiKeyPolicy | undefined {
+function parseGatewayApiKeyPolicy(
+  value: unknown
+): GatewayApiKeyPolicy | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -640,7 +642,9 @@ export function parseGatewayApiKeyMetadataOverride(
   return override;
 }
 
-function parseStructuredGatewayApiKeys(value: string): GatewayApiKeyRecord[] | undefined {
+function parseStructuredGatewayApiKeys(
+  value: string
+): GatewayApiKeyRecord[] | undefined {
   if (!value.trim().startsWith("[")) {
     return undefined;
   }
@@ -672,7 +676,9 @@ function parseStructuredGatewayApiKeys(value: string): GatewayApiKeyRecord[] | u
     const label = typeof entry.label === "string" ? entry.label.trim() : "";
     const rawValue = typeof entry.value === "string" ? entry.value.trim() : "";
     const rawValueHash =
-      typeof entry.valueHash === "string" ? entry.valueHash.trim().toLowerCase() : "";
+      typeof entry.valueHash === "string"
+        ? entry.valueHash.trim().toLowerCase()
+        : "";
     const status = entry.status;
     const notBefore =
       typeof entry.notBefore === "string" ? entry.notBefore.trim() : undefined;
@@ -713,11 +719,11 @@ function parseStructuredGatewayApiKeys(value: string): GatewayApiKeyRecord[] | u
     return {
       id,
       label,
-    ...(hasValue ? { value: rawValue } : {}),
-    ...(hasValueHash ? { valueHash: rawValueHash } : {}),
-    status,
-    ...(notBefore !== undefined ? { notBefore } : {}),
-    ...(expiresAt !== undefined ? { expiresAt } : {}),
+      ...(hasValue ? { value: rawValue } : {}),
+      ...(hasValueHash ? { valueHash: rawValueHash } : {}),
+      status,
+      ...(notBefore !== undefined ? { notBefore } : {}),
+      ...(expiresAt !== undefined ? { expiresAt } : {}),
       ...(policy !== undefined ? { policy } : {})
     };
   });
@@ -736,7 +742,9 @@ export function parseGatewayDynamicApiKeyRecord(
   const id = typeof value.id === "string" ? value.id.trim() : "";
   const label = typeof value.label === "string" ? value.label.trim() : "";
   const rawValueHash =
-    typeof value.valueHash === "string" ? value.valueHash.trim().toLowerCase() : "";
+    typeof value.valueHash === "string"
+      ? value.valueHash.trim().toLowerCase()
+      : "";
   const status = value.status;
   const notBefore =
     typeof value.notBefore === "string" ? value.notBefore.trim() : undefined;
@@ -834,9 +842,10 @@ export function parseInternalAdminCredentials(
         : "";
     const actor = parseInternalAdminActor(entry.actor);
     const role = parseAdminRole(entry.role) ?? "admin";
-    const scopes = entry.scopes !== undefined
-      ? parseInternalAdminScopes(entry.scopes)
-      : [...(ADMIN_ROLE_SCOPES[role] ?? DEFAULT_INTERNAL_ADMIN_SCOPES)];
+    const scopes =
+      entry.scopes !== undefined
+        ? parseInternalAdminScopes(entry.scopes)
+        : [...(ADMIN_ROLE_SCOPES[role] ?? DEFAULT_INTERNAL_ADMIN_SCOPES)];
 
     if (id.length === 0) {
       throw createInvalidGatewayKeyConfigError(
@@ -887,7 +896,9 @@ function validateGatewayApiKeyRecords(records: GatewayApiKeyRecord[]) {
     }
 
     const material =
-      record.value !== undefined ? `value:${record.value}` : `valueHash:${record.valueHash}`;
+      record.value !== undefined
+        ? `value:${record.value}`
+        : `valueHash:${record.valueHash}`;
 
     if (secretMaterial.has(material)) {
       throw createInvalidGatewayKeyConfigError(
@@ -980,8 +991,8 @@ export function deriveGatewayApiKeyStatusView(
     lifecycleStatus === "archived"
       ? "archived"
       : overlayState.revoked || lifecycleStatus === "revoked"
-      ? "revoked"
-      : lifecycleStatus;
+        ? "revoked"
+        : lifecycleStatus;
 
   return {
     keyId: gatewayApiKey.id,
@@ -1141,11 +1152,16 @@ export async function assertInternalAdminAuthorization(
 export async function resolveInternalAdminAuthorization(
   request: InternalAdminAuthorizationRequest
 ): Promise<InternalAdminAuthorization | undefined> {
-  if (!hasStructuredAdminCredentialsConfig(request.structuredCredentialsConfig)) {
+  if (
+    !hasStructuredAdminCredentialsConfig(request.structuredCredentialsConfig)
+  ) {
     return undefined;
   }
 
-  const bearerToken = extractBearerToken(request.authorization, request.requestId);
+  const bearerToken = extractBearerToken(
+    request.authorization,
+    request.requestId
+  );
   const authorization = await validateInternalAdminCredential(
     bearerToken,
     request.adminCredentials,

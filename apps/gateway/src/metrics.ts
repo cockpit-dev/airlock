@@ -148,11 +148,8 @@ export class GatewayMetricsCollector {
       requests,
       errors,
       errorRate:
-        requests > 0
-          ? Math.round((errors / requests) * 10000) / 10000
-          : 0,
-      avgDurationMs:
-        requests > 0 ? Math.round(totalDurationMs / requests) : 0,
+        requests > 0 ? Math.round((errors / requests) * 10000) / 10000 : 0,
+      avgDurationMs: requests > 0 ? Math.round(totalDurationMs / requests) : 0,
       statusCodes: Object.fromEntries(
         [...statusCodes.entries()].sort(([a], [b]) => a - b)
       ),
@@ -181,9 +178,7 @@ function serializeRouteMetrics(
       requests: data.requests,
       errors: data.errors,
       avgDurationMs:
-        data.requests > 0
-          ? Math.round(data.totalDurationMs / data.requests)
-          : 0
+        data.requests > 0 ? Math.round(data.totalDurationMs / data.requests) : 0
     };
   }
   return result;

@@ -48,8 +48,7 @@ export const ErrorCodes = {
     "config_missing_gateway_key_revocation",
   CONFIG_MISSING_PROVIDER_CIRCUIT_BREAKER:
     "config_missing_provider_circuit_breaker",
-  CONFIG_MISSING_IP_RATE_LIMIT_BINDING:
-    "config_missing_ip_rate_limit_binding",
+  CONFIG_MISSING_IP_RATE_LIMIT_BINDING: "config_missing_ip_rate_limit_binding",
   CONFIG_MISSING_ANTHROPIC: "config_missing_anthropic",
   CONFIG_MISSING_GEMINI: "config_missing_gemini",
   PROVIDER_NOT_SUPPORTED: "provider_not_supported",
@@ -59,8 +58,7 @@ export const ErrorCodes = {
   GATEWAY_KEY_NOT_REGISTRY_OWNED: "gateway_key_not_registry_owned",
   GATEWAY_KEY_NOT_FOUND: "gateway_key_not_found",
   GATEWAY_KEY_ROTATION_NOT_STAGED: "gateway_key_rotation_not_staged",
-  GATEWAY_KEY_ROTATION_NOT_CANCELABLE:
-    "gateway_key_rotation_not_cancelable",
+  GATEWAY_KEY_ROTATION_NOT_CANCELABLE: "gateway_key_rotation_not_cancelable",
   GATEWAY_KEY_ALREADY_ARCHIVED: "gateway_key_already_archived",
   GATEWAY_KEY_NOT_ARCHIVED: "gateway_key_not_archived",
   GATEWAY_KEY_REVOCATION_INVALID_PAYLOAD:
@@ -71,21 +69,17 @@ export const ErrorCodes = {
   GATEWAY_KEY_REGISTRY_UNAVAILABLE: "gateway_key_registry_unavailable",
   GATEWAY_KEY_REGISTRY_INVALID_RESPONSE:
     "gateway_key_registry_invalid_response",
-  GATEWAY_KEY_REVOCATION_UNAVAILABLE:
-    "gateway_key_revocation_unavailable",
+  GATEWAY_KEY_REVOCATION_UNAVAILABLE: "gateway_key_revocation_unavailable",
   GATEWAY_KEY_REVOCATION_INVALID_RESPONSE:
     "gateway_key_revocation_invalid_response",
   GATEWAY_KEY_QUOTA_UNAVAILABLE: "gateway_key_quota_unavailable",
-  GATEWAY_KEY_QUOTA_INVALID_RESPONSE:
-    "gateway_key_quota_invalid_response",
-  GATEWAY_KEY_TOKEN_QUOTA_UNAVAILABLE:
-    "gateway_key_token_quota_unavailable",
+  GATEWAY_KEY_QUOTA_INVALID_RESPONSE: "gateway_key_quota_invalid_response",
+  GATEWAY_KEY_TOKEN_QUOTA_UNAVAILABLE: "gateway_key_token_quota_unavailable",
   GATEWAY_KEY_TOKEN_QUOTA_INVALID_RESPONSE:
     "gateway_key_token_quota_invalid_response",
   GATEWAY_KEY_TOKEN_QUOTA_INVALID_USAGE:
     "gateway_key_token_quota_invalid_usage",
-  GATEWAY_KEY_CONCURRENCY_UNAVAILABLE:
-    "gateway_key_concurrency_unavailable",
+  GATEWAY_KEY_CONCURRENCY_UNAVAILABLE: "gateway_key_concurrency_unavailable",
   GATEWAY_KEY_CONCURRENCY_INVALID_RESPONSE:
     "gateway_key_concurrency_invalid_response",
   IP_RATE_LIMIT_UNAVAILABLE: "ip_rate_limit_unavailable",
@@ -108,8 +102,7 @@ export const ErrorCodes = {
   REQUEST_INVALID_JSON: "request_invalid_json",
   REQUEST_MISSING_MODEL: "request_missing_model",
   REQUEST_INVALID_TOOL_ARGUMENTS: "request_invalid_tool_arguments",
-  REQUEST_UNSUPPORTED_OPENAI_SEMANTICS:
-    "request_unsupported_openai_semantics",
+  REQUEST_UNSUPPORTED_OPENAI_SEMANTICS: "request_unsupported_openai_semantics",
   REQUEST_INVALID_OPENAI_PAYLOAD: "request_invalid_openai_payload",
   REQUEST_UNSUPPORTED_ANTHROPIC_SEMANTICS:
     "request_unsupported_anthropic_semantics",

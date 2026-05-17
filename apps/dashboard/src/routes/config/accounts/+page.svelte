@@ -118,7 +118,7 @@
       email: formEmail.trim(),
       role: formRole,
       enabled: formEnabled,
-      createdAt: Date.now(),
+      createdAt: Date.now()
     };
 
     accounts = [...accounts, newAccount];
@@ -141,7 +141,7 @@
             ...a,
             email: formEmail.trim(),
             role: formRole,
-            enabled: formEnabled,
+            enabled: formEnabled
           }
         : a
     );
@@ -228,7 +228,9 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm text-gray-400 mb-1" for={fieldIds.email}>Email</label>
+            <label class="block text-sm text-gray-400 mb-1" for={fieldIds.email}
+              >Email</label
+            >
             <input
               id={fieldIds.email}
               type="email"
@@ -240,7 +242,9 @@
           </div>
 
           <div>
-            <label class="block text-sm text-gray-400 mb-1" for={fieldIds.role}>Role</label>
+            <label class="block text-sm text-gray-400 mb-1" for={fieldIds.role}
+              >Role</label
+            >
             <select
               id={fieldIds.role}
               class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -304,7 +308,9 @@
               </td>
               <td class="px-4 py-3">
                 <span
-                  class="px-2 py-0.5 rounded text-xs border {roleBadgeClass(account.role)}"
+                  class="px-2 py-0.5 rounded text-xs border {roleBadgeClass(
+                    account.role
+                  )}"
                 >
                   {account.role}
                 </span>
@@ -343,10 +349,7 @@
 
           {#if accounts.length === 0}
             <tr>
-              <td
-                colspan="4"
-                class="px-4 py-8 text-center text-gray-500"
-              >
+              <td colspan="4" class="px-4 py-8 text-center text-gray-500">
                 No accounts configured. Click "Add Account" to create one.
               </td>
             </tr>

@@ -168,10 +168,14 @@ describe("gateway-key-concurrency-quota", () => {
 
   describe("createGatewayKeyConcurrencyExceededError", () => {
     it("creates a 429 error with concurrency code", () => {
-      const decision = createConcurrencyDecision(2, [
-        { leaseId: "l1", expiresAt: Date.now() + 5000 },
-        { leaseId: "l2", expiresAt: Date.now() + 5000 }
-      ], 10_000);
+      const decision = createConcurrencyDecision(
+        2,
+        [
+          { leaseId: "l1", expiresAt: Date.now() + 5000 },
+          { leaseId: "l2", expiresAt: Date.now() + 5000 }
+        ],
+        10_000
+      );
 
       const error = createGatewayKeyConcurrencyExceededError(
         decision,
@@ -180,9 +184,7 @@ describe("gateway-key-concurrency-quota", () => {
 
       expect(error.httpStatus).toBe(429);
       expect(error.code).toBe("quota_concurrency_exceeded");
-      expect(error.message).toBe(
-        "Gateway API key concurrency quota exceeded"
-      );
+      expect(error.message).toBe("Gateway API key concurrency quota exceeded");
       expect(error.requestId).toBe("req_abc");
       expect(error.headers).toBeDefined();
     });

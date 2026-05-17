@@ -8,10 +8,10 @@ import {
 import type { GatewayKeyRegistryDynamicKeyView } from "./gateway-key-registry.js";
 
 export interface GatewayApiKeyOwnershipResolutionPort {
-  getRegistryKey(keyId: string): Promise<GatewayKeyRegistryDynamicKeyView | null>;
+  getRegistryKey(
+    keyId: string
+  ): Promise<GatewayKeyRegistryDynamicKeyView | null>;
 }
-
-
 
 export function isConfiguredGatewayApiKeyId(
   gatewayApiKeys: readonly GatewayApiKeyRecord[],

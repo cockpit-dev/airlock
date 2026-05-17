@@ -40,7 +40,10 @@ import {
 export interface QuotaResources {
   ipRateLimitDecision: IpRateLimitDecision | undefined;
   tokenReservationResult:
-    | { handle: GatewayKeyTokenReservationHandle; decision: GatewayKeyTokenQuotaDecision }
+    | {
+        handle: GatewayKeyTokenReservationHandle;
+        decision: GatewayKeyTokenQuotaDecision;
+      }
     | undefined;
   tokenReservation: GatewayKeyTokenReservationHandle | undefined;
   requestQuotaDecision: RateLimitDecision | undefined;
@@ -48,7 +51,9 @@ export interface QuotaResources {
     | { leaseId: string; decision: GatewayKeyConcurrencyDecision }
     | undefined;
   concurrencyLeaseId: string | undefined;
-  circuitBreakerBackend: ReturnType<typeof createPersistentCircuitBreakerBackend> | undefined;
+  circuitBreakerBackend:
+    | ReturnType<typeof createPersistentCircuitBreakerBackend>
+    | undefined;
   routingMetadata: RoutingMetadataAccumulator;
   attemptedTarget: ProviderTarget | undefined;
 }

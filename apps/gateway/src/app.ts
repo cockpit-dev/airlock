@@ -2,10 +2,7 @@ import { Hono } from "hono";
 import type { TelemetrySink } from "@airlock/telemetry";
 import { GatewayError } from "@airlock/shared";
 
-import {
-  AdminRateLimiter,
-  extractIp
-} from "./admin-rate-limit.js";
+import { AdminRateLimiter, extractIp } from "./admin-rate-limit.js";
 import {
   corsHeaders,
   createPreflightResponse,
@@ -220,8 +217,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.get("/readyz", handleReady);
 
   // Rate limiting for admin endpoints
-  const rateLimiter =
-    options.adminRateLimiter ?? new AdminRateLimiter();
+  const rateLimiter = options.adminRateLimiter ?? new AdminRateLimiter();
   app.use("/_airlock/*", async (context, next) => {
     const ip = extractIp(context.req);
     const now = context.get("now")?.() ?? Date.now();

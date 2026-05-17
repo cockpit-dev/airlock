@@ -77,19 +77,19 @@ key governance, and a built-in admin dashboard.
 
 ### Package Structure
 
-| Package | Purpose |
-|---------|---------|
-| `apps/gateway` | Cloudflare Worker entry point, HTTP routing, admin API |
-| `apps/dashboard` | SvelteKit 5 admin dashboard (Cloudflare Pages) |
-| `packages/protocols` | External protocol schemas and codecs (OpenAI Chat, OpenAI Responses, Anthropic Messages) |
-| `packages/canonical` | Canonical request/response model, cross-protocol normalization, stream reassembly |
-| `packages/providers` | Provider adapters (OpenAI, Anthropic, Gemini) with capability descriptors |
-| `packages/routing` | Model routing, target selection, fallback, circuit breakers |
-| `packages/governance` | Key authentication, quotas, revocation, dynamic registry, audit |
-| `packages/request-shaping` | Structured outbound request modification and HMAC signing |
-| `packages/telemetry` | Request event schema, queue consumer, Analytics Engine integration |
-| `packages/shared` | GatewayError, error codes, environment utilities |
-| `packages/testing` | Test factories and helpers |
+| Package                    | Purpose                                                                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------- |
+| `apps/gateway`             | Cloudflare Worker entry point, HTTP routing, admin API                                   |
+| `apps/dashboard`           | SvelteKit 5 admin dashboard (Cloudflare Pages)                                           |
+| `packages/protocols`       | External protocol schemas and codecs (OpenAI Chat, OpenAI Responses, Anthropic Messages) |
+| `packages/canonical`       | Canonical request/response model, cross-protocol normalization, stream reassembly        |
+| `packages/providers`       | Provider adapters (OpenAI, Anthropic, Gemini) with capability descriptors                |
+| `packages/routing`         | Model routing, target selection, fallback, circuit breakers                              |
+| `packages/governance`      | Key authentication, quotas, revocation, dynamic registry, audit                          |
+| `packages/request-shaping` | Structured outbound request modification and HMAC signing                                |
+| `packages/telemetry`       | Request event schema, queue consumer, Analytics Engine integration                       |
+| `packages/shared`          | GatewayError, error codes, environment utilities                                         |
+| `packages/testing`         | Test factories and helpers                                                               |
 
 ---
 
@@ -159,26 +159,26 @@ descriptions and defaults.
 
 ### Required
 
-| Variable | Description |
-|----------|-------------|
+| Variable                   | Description                                              |
+| -------------------------- | -------------------------------------------------------- |
 | `AIRLOCK_GATEWAY_API_KEYS` | API keys for caller auth (comma-separated or JSON array) |
-| `OPENAI_API_KEY` | OpenAI provider API key |
-| `OPENAI_BASE_URL` | OpenAI API base URL |
-| `OPENAI_DEFAULT_MODEL` | Default model for routing fallback |
+| `OPENAI_API_KEY`           | OpenAI provider API key                                  |
+| `OPENAI_BASE_URL`          | OpenAI API base URL                                      |
+| `OPENAI_DEFAULT_MODEL`     | Default model for routing fallback                       |
 
 ### Key Optional Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `AIRLOCK_MODE` | Operating mode: `free` or `scale` | `free` |
-| `AIRLOCK_MODEL_ALIASES` | Model routing (JSON) | — |
-| `AIRLOCK_MODEL_FALLBACKS` | Fallback targets (JSON) | — |
-| `AIRLOCK_PROVIDER_TIMEOUT_MS` | Upstream request timeout | `30000` |
-| `AIRLOCK_PROVIDER_MAX_RETRIES` | Max cross-provider retries | `0` |
-| `AIRLOCK_CORS_ORIGINS` | Allowed CORS origins | — |
-| `AIRLOCK_REQUEST_LOGGING` | Enable structured logging | `false` |
-| `AIRLOCK_INTERNAL_ADMIN_TOKEN` | Admin API token | — |
-| `AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED` | Enable dynamic key registry | `false` |
+| Variable                               | Description                       | Default |
+| -------------------------------------- | --------------------------------- | ------- |
+| `AIRLOCK_MODE`                         | Operating mode: `free` or `scale` | `free`  |
+| `AIRLOCK_MODEL_ALIASES`                | Model routing (JSON)              | —       |
+| `AIRLOCK_MODEL_FALLBACKS`              | Fallback targets (JSON)           | —       |
+| `AIRLOCK_PROVIDER_TIMEOUT_MS`          | Upstream request timeout          | `30000` |
+| `AIRLOCK_PROVIDER_MAX_RETRIES`         | Max cross-provider retries        | `0`     |
+| `AIRLOCK_CORS_ORIGINS`                 | Allowed CORS origins              | —       |
+| `AIRLOCK_REQUEST_LOGGING`              | Enable structured logging         | `false` |
+| `AIRLOCK_INTERNAL_ADMIN_TOKEN`         | Admin API token                   | —       |
+| `AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED` | Enable dynamic key registry       | `false` |
 
 ---
 
@@ -186,37 +186,37 @@ descriptions and defaults.
 
 ### Data Plane
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/v1/chat/completions` | POST | OpenAI Chat Completions protocol |
-| `/v1/responses` | POST | OpenAI Responses protocol |
-| `/v1/messages` | POST | Anthropic Messages protocol |
-| `/v1/models` | GET | List available models |
-| `/v1/models/:model` | GET | Get model details |
-| `/healthz` | GET | Liveness probe |
-| `/readyz` | GET | Readiness probe (provider verification) |
+| Endpoint               | Method | Description                             |
+| ---------------------- | ------ | --------------------------------------- |
+| `/v1/chat/completions` | POST   | OpenAI Chat Completions protocol        |
+| `/v1/responses`        | POST   | OpenAI Responses protocol               |
+| `/v1/messages`         | POST   | Anthropic Messages protocol             |
+| `/v1/models`           | GET    | List available models                   |
+| `/v1/models/:model`    | GET    | Get model details                       |
+| `/healthz`             | GET    | Liveness probe                          |
+| `/readyz`              | GET    | Readiness probe (provider verification) |
 
 All data plane endpoints require an API key via the `Authorization: Bearer <key>`
 header (or legacy `x-api-key` header).
 
 ### Admin Plane
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/_airlock/status` | GET | Gateway status and config fingerprint |
-| `/_airlock/metrics` | GET | Request metrics (sliding window) |
-| `/_airlock/config` | GET | Active configuration (secrets redacted) |
-| `/_airlock/routing/health` | GET | Per-route health and circuit breaker state |
-| `/_airlock/keys` | GET | List gateway keys |
-| `/_airlock/keys` | POST | Create a key |
-| `/_airlock/keys/:id` | GET | Get key details |
-| `/_airlock/keys/:id` | DELETE | Delete a key |
-| `/_airlock/keys/:id/rotate` | POST | Rotate a key |
-| `/_airlock/keys/:id/archive` | POST | Archive a key |
-| `/_airlock/keys/:id/restore` | POST | Restore an archived key |
-| `/_airlock/keys/:id/revocation` | POST | Revoke a key |
-| `/_airlock/keys/:id/status` | GET | Key quota status |
-| `/_airlock/keys/:id/events` | GET | Key audit events |
+| Endpoint                        | Method | Description                                |
+| ------------------------------- | ------ | ------------------------------------------ |
+| `/_airlock/status`              | GET    | Gateway status and config fingerprint      |
+| `/_airlock/metrics`             | GET    | Request metrics (sliding window)           |
+| `/_airlock/config`              | GET    | Active configuration (secrets redacted)    |
+| `/_airlock/routing/health`      | GET    | Per-route health and circuit breaker state |
+| `/_airlock/keys`                | GET    | List gateway keys                          |
+| `/_airlock/keys`                | POST   | Create a key                               |
+| `/_airlock/keys/:id`            | GET    | Get key details                            |
+| `/_airlock/keys/:id`            | DELETE | Delete a key                               |
+| `/_airlock/keys/:id/rotate`     | POST   | Rotate a key                               |
+| `/_airlock/keys/:id/archive`    | POST   | Archive a key                              |
+| `/_airlock/keys/:id/restore`    | POST   | Restore an archived key                    |
+| `/_airlock/keys/:id/revocation` | POST   | Revoke a key                               |
+| `/_airlock/keys/:id/status`     | GET    | Key quota status                           |
+| `/_airlock/keys/:id/events`     | GET    | Key audit events                           |
 
 Admin endpoints require authentication via `Authorization: Bearer <admin-token>`.
 
@@ -265,9 +265,7 @@ Two GitHub Actions workflows are included:
   {
     "external": "gpt-4",
     "target": { "provider": "openai", "model": "gpt-4.1-mini" },
-    "fallbacks": [
-      { "provider": "anthropic", "model": "claude-sonnet-4-5" }
-    ]
+    "fallbacks": [{ "provider": "anthropic", "model": "claude-sonnet-4-5" }]
   },
   {
     "external": "claude",

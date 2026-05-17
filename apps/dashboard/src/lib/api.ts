@@ -69,10 +69,13 @@ export class AirlockClient {
   }
 
   deleteKey(keyId: string, payload?: unknown) {
-    return this.request<unknown>(`/_airlock/keys/${encodeURIComponent(keyId)}`, {
-      method: "DELETE",
-      ...(payload ? { body: JSON.stringify(payload) } : {})
-    });
+    return this.request<unknown>(
+      `/_airlock/keys/${encodeURIComponent(keyId)}`,
+      {
+        method: "DELETE",
+        ...(payload ? { body: JSON.stringify(payload) } : {})
+      }
+    );
   }
 
   rotateKey(keyId: string, payload?: unknown) {
@@ -133,7 +136,9 @@ export class AirlockClient {
   }
 
   getConfigStoreSection(section: string) {
-    return this.request<ConfigStoreSection>(`/_airlock/config/manage/${encodeURIComponent(section)}`);
+    return this.request<ConfigStoreSection>(
+      `/_airlock/config/manage/${encodeURIComponent(section)}`
+    );
   }
 
   putConfigStoreSection(section: string, data: unknown) {
@@ -212,7 +217,10 @@ export interface MetricsSnapshot {
   errorRate: number;
   avgDurationMs: number;
   statusCodes: Record<number, number>;
-  byRoute: Record<string, { requests: number; errors: number; avgDurationMs: number }>;
+  byRoute: Record<
+    string,
+    { requests: number; errors: number; avgDurationMs: number }
+  >;
 }
 
 export interface AdminConfigResponse {
@@ -266,29 +274,35 @@ export interface ConfigStoreSectionWriteResult extends ConfigStoreSection {
 }
 
 export interface RoutingHealthResponse {
-  targets: Record<string, {
-    circuitState: Record<string, unknown>;
-    healthSnapshot: Record<string, unknown>;
-    metrics: {
-      errorRate: number;
-      recoveryScore: number;
-      freshness: {
-        latencyFreshMs: number | null;
-        costFreshMs: number | null;
-        failureFreshMs: number | null;
+  targets: Record<
+    string,
+    {
+      circuitState: Record<string, unknown>;
+      healthSnapshot: Record<string, unknown>;
+      metrics: {
+        errorRate: number;
+        recoveryScore: number;
+        freshness: {
+          latencyFreshMs: number | null;
+          costFreshMs: number | null;
+          failureFreshMs: number | null;
+        };
       };
-    };
-  }>;
-  routes: Record<string, {
-    strategy: string;
-    targets: string[];
-    healthStatus: "healthy" | "degraded" | "down";
-    healthyTargetCount: number;
-    totalTargetCount: number;
-    costs?: Record<string, number>;
-    weights?: Record<string, number>;
-    latencySloMs?: Record<string, number>;
-  }>;
+    }
+  >;
+  routes: Record<
+    string,
+    {
+      strategy: string;
+      targets: string[];
+      healthStatus: "healthy" | "degraded" | "down";
+      healthyTargetCount: number;
+      totalTargetCount: number;
+      costs?: Record<string, number>;
+      weights?: Record<string, number>;
+      latencySloMs?: Record<string, number>;
+    }
+  >;
   config: {
     circuitBreakerPolicy: {
       threshold: number;

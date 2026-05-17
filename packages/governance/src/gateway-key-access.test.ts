@@ -14,10 +14,7 @@ import { GatewayError } from "@airlock/shared";
 const gatewaySecretHash =
   "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6";
 
-function expectGatewayErrorCode(
-  fn: () => void,
-  code: string
-) {
+function expectGatewayErrorCode(fn: () => void, code: string) {
   try {
     fn();
   } catch (error) {
@@ -102,17 +99,12 @@ describe("authorizeGatewayKeyAccess", () => {
 
   it("rejects missing configured and registry matches", async () => {
     await expect(
-      authorizeGatewayKeyAccess(
-        "Bearer gateway-secret",
-        [],
-        "req_123",
-        {
-          registryEnabled: true,
-          resolveConfiguredRuntimeKey: vi.fn(),
-          findRegistryKeyByToken: vi.fn().mockResolvedValue(undefined),
-          assertNotRevoked: vi.fn()
-        }
-      )
+      authorizeGatewayKeyAccess("Bearer gateway-secret", [], "req_123", {
+        registryEnabled: true,
+        resolveConfiguredRuntimeKey: vi.fn(),
+        findRegistryKeyByToken: vi.fn().mockResolvedValue(undefined),
+        assertNotRevoked: vi.fn()
+      })
     ).rejects.toMatchObject({
       code: "auth_invalid_api_key"
     });

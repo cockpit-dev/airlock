@@ -48,9 +48,7 @@ describe("AirlockClient", () => {
     });
 
     it("throws ApiError with message from body on non-ok", async () => {
-      mockFetch(
-        jsonRes({ error: { message: "bad request" } }, 400)
-      );
+      mockFetch(jsonRes({ error: { message: "bad request" } }, 400));
       const c = new AirlockClient("http://host", "tok");
       try {
         await c.getStatus();

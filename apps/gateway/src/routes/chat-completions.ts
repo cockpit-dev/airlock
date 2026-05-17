@@ -321,18 +321,15 @@ export async function handleChatCompletions(
             await writeStreamEvent(nextChunk.value, controller);
           }
 
-          emitSuccessTelemetry(
-            telemetryBase,
-            true,
-            200,
-            streamUsage
-          );
+          emitSuccessTelemetry(telemetryBase, true, 200, streamUsage);
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         } catch (error) {
           await handleStreamingError(error);
           try {
-            controller.enqueue(encoder.encode(encodeOpenAIChatStreamError(error)));
+            controller.enqueue(
+              encoder.encode(encodeOpenAIChatStreamError(error))
+            );
             controller.close();
           } catch {
             // Controller may already be closed or errored
@@ -418,12 +415,7 @@ export async function handleChatCompletions(
     );
   }
 
-  emitSuccessTelemetry(
-    telemetryBase,
-    false,
-    200,
-    canonicalResponse.usage
-  );
+  emitSuccessTelemetry(telemetryBase, false, 200, canonicalResponse.usage);
 
   return context.json(
     encodeCanonicalToOpenAIChatResponse(canonicalResponse),

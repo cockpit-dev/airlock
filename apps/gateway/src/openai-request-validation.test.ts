@@ -197,46 +197,31 @@ describe("assertSupportedOpenAIResponsesSemantics", () => {
 
   it("rejects non-object reasoning", () => {
     expect(() =>
-      assertSupportedOpenAIResponsesSemantics(
-        { reasoning: "high" },
-        REQ_ID
-      )
+      assertSupportedOpenAIResponsesSemantics({ reasoning: "high" }, REQ_ID)
     ).toThrow(GatewayError);
   });
 
   it("passes with string stop", () => {
     expect(() =>
-      assertSupportedOpenAIResponsesSemantics(
-        { stop: "end" },
-        REQ_ID
-      )
+      assertSupportedOpenAIResponsesSemantics({ stop: "end" }, REQ_ID)
     ).not.toThrow();
   });
 
   it("passes with string array stop", () => {
     expect(() =>
-      assertSupportedOpenAIResponsesSemantics(
-        { stop: ["end", "stop"] },
-        REQ_ID
-      )
+      assertSupportedOpenAIResponsesSemantics({ stop: ["end", "stop"] }, REQ_ID)
     ).not.toThrow();
   });
 
   it("accepts single string stop including empty string", () => {
     expect(() =>
-      assertSupportedOpenAIResponsesSemantics(
-        { stop: "" },
-        REQ_ID
-      )
+      assertSupportedOpenAIResponsesSemantics({ stop: "" }, REQ_ID)
     ).not.toThrow();
   });
 
   it("rejects empty array stop", () => {
     expect(() =>
-      assertSupportedOpenAIResponsesSemantics(
-        { stop: [] },
-        REQ_ID
-      )
+      assertSupportedOpenAIResponsesSemantics({ stop: [] }, REQ_ID)
     ).toThrow(GatewayError);
   });
 
@@ -407,7 +392,12 @@ describe("parseOpenAIRequestSchema", () => {
 
   it("throws GatewayError on ZodError with route label", () => {
     try {
-      parseOpenAIRequestSchema(schema, { model: 42 }, REQ_ID, "OpenAI Responses");
+      parseOpenAIRequestSchema(
+        schema,
+        { model: 42 },
+        REQ_ID,
+        "OpenAI Responses"
+      );
       expect.unreachable("should have thrown");
     } catch (e) {
       expect(e).toBeInstanceOf(GatewayError);

@@ -14,7 +14,10 @@ async function readJson(response: Response): Promise<unknown> {
 
 describe("toMethodNotAllowedResponse", () => {
   it("returns OpenAI-style 405 for /v1/chat/completions", async () => {
-    const response = toMethodNotAllowedResponse("req-1", "/v1/chat/completions");
+    const response = toMethodNotAllowedResponse(
+      "req-1",
+      "/v1/chat/completions"
+    );
     expect(response.status).toBe(405);
     expect(response.headers.get("x-request-id")).toBe("req-1");
     expect(response.headers.get("allow")).toBe("POST");

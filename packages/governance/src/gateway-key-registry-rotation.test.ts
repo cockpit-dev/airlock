@@ -243,17 +243,19 @@ describe("bulkRotateGatewayRegistryKeys", () => {
   });
 
   it("validates rotate candidates in request order and clears overlays before delegating", async () => {
-    const validateRotatedKey = vi.fn().mockImplementation(
-      (
-        existingKey: GatewayKeyRegistryDynamicKeyView,
-        valueHash: string
-      ): GatewayApiKeyRecord => {
-        return {
-          ...existingKey.key,
-          valueHash
-        };
-      }
-    );
+    const validateRotatedKey = vi
+      .fn()
+      .mockImplementation(
+        (
+          existingKey: GatewayKeyRegistryDynamicKeyView,
+          valueHash: string
+        ): GatewayApiKeyRecord => {
+          return {
+            ...existingKey.key,
+            valueHash
+          };
+        }
+      );
     const clearRevocationOverlay = vi.fn().mockResolvedValue(undefined);
     const bulkRotateRegistryKeysWrite = vi.fn().mockResolvedValue({
       operationId: "req_bulk_rotate_123",

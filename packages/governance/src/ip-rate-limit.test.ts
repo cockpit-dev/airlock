@@ -243,7 +243,12 @@ describe("ip-rate-limit", () => {
 
   describe("createIpRateLimitHeaders", () => {
     it("creates standard rate limit headers", () => {
-      const { decision } = computeIpRateLimitConsume(undefined, 100, 60, Date.now());
+      const { decision } = computeIpRateLimitConsume(
+        undefined,
+        100,
+        60,
+        Date.now()
+      );
       const headers = createIpRateLimitHeaders(decision);
 
       expect(headers["x-ratelimit-limit"]).toBe("100");

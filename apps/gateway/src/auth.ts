@@ -57,7 +57,11 @@ export async function requireGatewayAuthorization(
         );
       },
       assertNotRevoked: async (gatewayApiKey) => {
-        return assertGatewayKeyNotRevoked(context.env, gatewayApiKey, requestId);
+        return assertGatewayKeyNotRevoked(
+          context.env,
+          gatewayApiKey,
+          requestId
+        );
       }
     }
   );

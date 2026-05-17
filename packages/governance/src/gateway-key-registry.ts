@@ -1599,7 +1599,8 @@ export function resolveAuditActorRecord(
   if (fallback?.actor) {
     return toGatewayKeyAuditActorContextRecord({
       actor: fallback.actor,
-      actorSource: (fallback.actorSource as GatewayKeyAuditActorSource) ?? "payload"
+      actorSource:
+        (fallback.actorSource as GatewayKeyAuditActorSource) ?? "payload"
     });
   }
   return {};

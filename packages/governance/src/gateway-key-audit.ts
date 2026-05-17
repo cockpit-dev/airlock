@@ -150,7 +150,9 @@ export function createGatewayKeyAuditEvent(
   };
 }
 
-function isGatewayKeyAuditDiffField(value: unknown): value is GatewayKeyAuditDiffField {
+function isGatewayKeyAuditDiffField(
+  value: unknown
+): value is GatewayKeyAuditDiffField {
   return (
     value === "label" ||
     value === "status" ||
@@ -208,7 +210,9 @@ function parseGatewayKeyAuditFieldChange(
   };
 }
 
-export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent {
+export function parseGatewayKeyAuditEvent(
+  value: unknown
+): GatewayKeyAuditEvent {
   if (!isRecord(value)) {
     throw new Error("Gateway key audit event must be an object");
   }
@@ -263,7 +267,8 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
 
   const parsedReason = parseOptionalGatewayKeyAuditReason(reason);
   const parsedActor = parseOptionalGatewayKeyAuditActor(actor);
-  const parsedActorSource = parseOptionalGatewayKeyAuditActorSource(actorSource);
+  const parsedActorSource =
+    parseOptionalGatewayKeyAuditActorSource(actorSource);
   const parsedChanges =
     changes === undefined
       ? undefined
@@ -286,7 +291,9 @@ export function parseGatewayKeyAuditEvent(value: unknown): GatewayKeyAuditEvent 
     kind,
     ownership,
     occurredAt,
-    ...(typeof operationId === "string" ? { operationId: operationId.trim() } : {}),
+    ...(typeof operationId === "string"
+      ? { operationId: operationId.trim() }
+      : {}),
     ...(parsedReason ? { reason: parsedReason } : {}),
     ...(parsedActor ? { actor: parsedActor } : {}),
     ...(parsedActor && parsedActorSource
@@ -358,10 +365,14 @@ export function parseGatewayKeyOperationEventsResponse(
           summary: {
             operationId,
             keyIds: Array.isArray(value.summary.keyIds)
-              ? value.summary.keyIds.filter((entry) => typeof entry === "string")
+              ? value.summary.keyIds.filter(
+                  (entry) => typeof entry === "string"
+                )
               : [],
             keyCount:
-              typeof value.summary.keyCount === "number" ? value.summary.keyCount : 0,
+              typeof value.summary.keyCount === "number"
+                ? value.summary.keyCount
+                : 0,
             eventCount:
               typeof value.summary.eventCount === "number"
                 ? value.summary.eventCount
@@ -379,11 +390,11 @@ export function parseGatewayKeyOperationEventsResponse(
             firstOccurredAt:
               typeof value.summary.firstOccurredAt === "string"
                 ? value.summary.firstOccurredAt
-                : events[events.length - 1]?.occurredAt ?? operationId,
+                : (events[events.length - 1]?.occurredAt ?? operationId),
             lastOccurredAt:
               typeof value.summary.lastOccurredAt === "string"
                 ? value.summary.lastOccurredAt
-                : events[0]?.occurredAt ?? operationId,
+                : (events[0]?.occurredAt ?? operationId),
             ...(typeof value.summary.reason === "string"
               ? { reason: value.summary.reason }
               : {}),
@@ -391,7 +402,10 @@ export function parseGatewayKeyOperationEventsResponse(
               ? { actor: value.summary.actor }
               : {}),
             ...(typeof value.summary.actorSource === "string"
-              ? { actorSource: value.summary.actorSource as GatewayKeyAuditActorSource }
+              ? {
+                  actorSource: value.summary
+                    .actorSource as GatewayKeyAuditActorSource
+                }
               : {})
           } satisfies GatewayKeyOperationSummary
         }
@@ -408,12 +422,16 @@ export function createGatewayKeyOperationSummary(
   const sortedEventKinds = [...new Set(events.map((event) => event.kind))].sort(
     (left, right) => left.localeCompare(right)
   );
-  const sortedOwnerships = [...new Set(events.map((event) => event.ownership))].sort(
-    (left, right) => left.localeCompare(right)
-  );
+  const sortedOwnerships = [
+    ...new Set(events.map((event) => event.ownership))
+  ].sort((left, right) => left.localeCompare(right));
   const occurredAtValues = events.map((event) => event.occurredAt).sort();
-  const reasons = [...new Set(events.map((event) => event.reason).filter(Boolean))];
-  const actors = [...new Set(events.map((event) => event.actor).filter(Boolean))];
+  const reasons = [
+    ...new Set(events.map((event) => event.reason).filter(Boolean))
+  ];
+  const actors = [
+    ...new Set(events.map((event) => event.actor).filter(Boolean))
+  ];
   const actorSources = [
     ...new Set(events.map((event) => event.actorSource).filter(Boolean))
   ];
@@ -509,9 +527,7 @@ export function parseOptionalGatewayKeyAuditActorSource(
   return value;
 }
 
-export function toGatewayAuditRecord(
-  value: object
-): Record<string, unknown> {
+export function toGatewayAuditRecord(value: object): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(value).filter(([, entry]) => entry !== undefined)
   );

@@ -24,9 +24,9 @@ describe("parseCorsOrigins", () => {
   });
 
   it("returns trimmed comma-separated origins", () => {
-    expect(parseCorsOrigins("http://localhost:3000, https://example.com")).toEqual(
-      { allowedOrigins: "http://localhost:3000, https://example.com" }
-    );
+    expect(
+      parseCorsOrigins("http://localhost:3000, https://example.com")
+    ).toEqual({ allowedOrigins: "http://localhost:3000, https://example.com" });
   });
 
   it("trims surrounding whitespace", () => {
@@ -38,7 +38,9 @@ describe("parseCorsOrigins", () => {
 
 describe("corsHeaders", () => {
   it("returns empty object when CORS is disabled", () => {
-    expect(corsHeaders("http://localhost:3000", { allowedOrigins: undefined })).toEqual({});
+    expect(
+      corsHeaders("http://localhost:3000", { allowedOrigins: undefined })
+    ).toEqual({});
   });
 
   it("returns wildcard headers when origins is asterisk", () => {
@@ -52,7 +54,9 @@ describe("corsHeaders", () => {
     const headers = corsHeaders("http://localhost:3000", {
       allowedOrigins: "http://localhost:3000, https://example.com"
     });
-    expect(headers["Access-Control-Allow-Origin"]).toBe("http://localhost:3000");
+    expect(headers["Access-Control-Allow-Origin"]).toBe(
+      "http://localhost:3000"
+    );
     expect(headers["Access-Control-Allow-Methods"]).toBe("GET, POST, OPTIONS");
   });
 

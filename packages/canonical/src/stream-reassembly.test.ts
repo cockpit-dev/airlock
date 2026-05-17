@@ -56,7 +56,11 @@ describe("createStreamReassemblyIterable", () => {
   it("passes through a normal complete stream unchanged", async () => {
     const input = [STARTED, DELTA, COMPLETED];
     const result = await collect(
-      createStreamReassemblyIterable(fromEvents(input), "fallback_1", "fallback-model")
+      createStreamReassemblyIterable(
+        fromEvents(input),
+        "fallback_1",
+        "fallback-model"
+      )
     );
     expect(result).toEqual(input);
   });
@@ -64,7 +68,11 @@ describe("createStreamReassemblyIterable", () => {
   it("synthesizes response_started when missing", async () => {
     const input = [DELTA, COMPLETED];
     const result = await collect(
-      createStreamReassemblyIterable(fromEvents(input), "fallback_1", "fallback-model")
+      createStreamReassemblyIterable(
+        fromEvents(input),
+        "fallback_1",
+        "fallback-model"
+      )
     );
     expect(result).toHaveLength(3);
     expect(result[0]?.type).toBe("response_started");
@@ -77,7 +85,11 @@ describe("createStreamReassemblyIterable", () => {
   it("synthesizes response_completed when missing", async () => {
     const input = [STARTED, DELTA];
     const result = await collect(
-      createStreamReassemblyIterable(fromEvents(input), "fallback_1", "fallback-model")
+      createStreamReassemblyIterable(
+        fromEvents(input),
+        "fallback_1",
+        "fallback-model"
+      )
     );
     expect(result).toHaveLength(3);
     expect(result[0]).toEqual(STARTED);
@@ -92,7 +104,11 @@ describe("createStreamReassemblyIterable", () => {
   it("synthesizes both started and completed when both are missing", async () => {
     const input = [DELTA, TOOL_DELTA];
     const result = await collect(
-      createStreamReassemblyIterable(fromEvents(input), "fallback_1", "fallback-model")
+      createStreamReassemblyIterable(
+        fromEvents(input),
+        "fallback_1",
+        "fallback-model"
+      )
     );
     expect(result).toHaveLength(4);
     expect(result[0]?.type).toBe("response_started");
@@ -103,14 +119,22 @@ describe("createStreamReassemblyIterable", () => {
 
   it("yields nothing for an empty stream", async () => {
     const result = await collect(
-      createStreamReassemblyIterable(fromEvents([]), "fallback_1", "fallback-model")
+      createStreamReassemblyIterable(
+        fromEvents([]),
+        "fallback_1",
+        "fallback-model"
+      )
     );
     expect(result).toEqual([]);
   });
 
   it("synthesizes completion when only started is present", async () => {
     const result = await collect(
-      createStreamReassemblyIterable(fromEvents([STARTED]), "fallback_1", "fallback-model")
+      createStreamReassemblyIterable(
+        fromEvents([STARTED]),
+        "fallback_1",
+        "fallback-model"
+      )
     );
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual(STARTED);
@@ -119,7 +143,11 @@ describe("createStreamReassemblyIterable", () => {
 
   it("synthesizes started when only completed is present", async () => {
     const result = await collect(
-      createStreamReassemblyIterable(fromEvents([COMPLETED]), "fallback_1", "fallback-model")
+      createStreamReassemblyIterable(
+        fromEvents([COMPLETED]),
+        "fallback_1",
+        "fallback-model"
+      )
     );
     expect(result).toHaveLength(2);
     expect(result[0]?.type).toBe("response_started");

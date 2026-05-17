@@ -513,7 +513,7 @@ describe("normalizeOpenAIChatRequest", () => {
               type: "function",
               function: {
                 name: "lookup_weather",
-                arguments: "{\"city\":\"Shanghai\"}"
+                arguments: '{"city":"Shanghai"}'
               }
             }
           ]
@@ -521,7 +521,7 @@ describe("normalizeOpenAIChatRequest", () => {
         {
           role: "tool",
           tool_call_id: "call_123",
-          content: "{\"temperature_c\":26}"
+          content: '{"temperature_c":26}'
         }
       ]
     });
@@ -535,13 +535,13 @@ describe("normalizeOpenAIChatRequest", () => {
           {
             id: "call_123",
             name: "lookup_weather",
-            arguments: "{\"city\":\"Shanghai\"}"
+            arguments: '{"city":"Shanghai"}'
           }
         ]
       },
       {
         role: "tool",
-        content: "{\"temperature_c\":26}",
+        content: '{"temperature_c":26}',
         toolCallId: "call_123"
       }
     ]);
@@ -685,7 +685,7 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
         {
           id: "toolu_123",
           name: "lookup_weather",
-          arguments: "{\"city\":\"Shanghai\"}"
+          arguments: '{"city":"Shanghai"}'
         }
       ]
     });
@@ -700,7 +700,7 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
           type: "function",
           function: {
             name: "lookup_weather",
-            arguments: "{\"city\":\"Shanghai\"}"
+            arguments: '{"city":"Shanghai"}'
           }
         }
       ]
@@ -717,7 +717,7 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
         {
           id: "toolu_123",
           name: "lookup_weather",
-          arguments: "{\"city\":\"Shanghai\"}"
+          arguments: '{"city":"Shanghai"}'
         }
       ]
     });
@@ -732,7 +732,7 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
           type: "function",
           function: {
             name: "lookup_weather",
-            arguments: "{\"city\":\"Shanghai\"}"
+            arguments: '{"city":"Shanghai"}'
           }
         }
       ]
@@ -742,9 +742,8 @@ describe("encodeCanonicalToOpenAIChatResponse", () => {
 
 describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
   it("encodes a response_started event into an assistant role chunk", async () => {
-    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIChatStreamChunk } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIChatStreamChunk(
@@ -773,9 +772,8 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
   });
 
   it("preserves createdAt in OpenAI chat stream chunks", async () => {
-    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIChatStreamChunk } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIChatStreamChunk(
@@ -808,9 +806,8 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
   });
 
   it("encodes system_fingerprint into response_started and response_completed chat chunks", async () => {
-    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIChatStreamChunk } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIChatStreamChunk(
@@ -843,9 +840,8 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
   });
 
   it("encodes an output_text_delta event into a content delta chunk", async () => {
-    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIChatStreamChunk } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIChatStreamChunk(
@@ -875,9 +871,8 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
   });
 
   it("encodes a tool_call_delta event into a tool_calls delta chunk", async () => {
-    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIChatStreamChunk } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIChatStreamChunk(
@@ -888,7 +883,7 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
           toolCallId: "call_123",
           toolIndex: 0,
           toolName: "lookup_weather",
-          argumentsDelta: "{\"city\":\"Shang"
+          argumentsDelta: '{"city":"Shang'
         },
         "chatcmpl-stream-123"
       )
@@ -908,7 +903,7 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
                 type: "function",
                 function: {
                   name: "lookup_weather",
-                  arguments: "{\"city\":\"Shang"
+                  arguments: '{"city":"Shang'
                 }
               }
             ]
@@ -920,9 +915,8 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
   });
 
   it("encodes a response_completed event into a finish chunk", async () => {
-    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIChatStreamChunk } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIChatStreamChunk(
@@ -960,9 +954,8 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
   });
 
   it("omits usage from a response_completed chunk when includeUsage=false", async () => {
-    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIChatStreamChunk } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIChatStreamChunk(
@@ -996,9 +989,8 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
   });
 
   it("encodes a max_tokens completion event into an OpenAI length finish chunk", async () => {
-    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIChatStreamChunk } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIChatStreamChunk(
@@ -1026,9 +1018,8 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
   });
 
   it("encodes a tool_calls completion event into an OpenAI tool_calls finish chunk", async () => {
-    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIChatStreamChunk } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIChatStreamChunk(
@@ -1056,9 +1047,8 @@ describe("encodeCanonicalToOpenAIChatStreamChunk", () => {
   });
 
   it("encodes output-text logprobs into OpenAI chat streaming chunks", async () => {
-    const { encodeCanonicalToOpenAIChatStreamChunk } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIChatStreamChunk } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIChatStreamChunk(
@@ -1858,12 +1848,12 @@ describe("normalizeOpenAIResponsesRequest", () => {
           type: "function_call",
           call_id: "call_123",
           name: "lookup_weather",
-          arguments: "{\"city\":\"Shanghai\"}"
+          arguments: '{"city":"Shanghai"}'
         },
         {
           type: "function_call_output",
           call_id: "call_123",
-          output: "{\"temperature_c\":26}"
+          output: '{"temperature_c":26}'
         }
       ]
     });
@@ -1877,13 +1867,13 @@ describe("normalizeOpenAIResponsesRequest", () => {
           {
             id: "call_123",
             name: "lookup_weather",
-            arguments: "{\"city\":\"Shanghai\"}"
+            arguments: '{"city":"Shanghai"}'
           }
         ]
       },
       {
         role: "tool",
-        content: "{\"temperature_c\":26}",
+        content: '{"temperature_c":26}',
         toolCallId: "call_123"
       }
     ]);
@@ -2098,7 +2088,7 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
         {
           id: "call_123",
           name: "lookup_weather",
-          arguments: "{\"city\":\"Shanghai\"}"
+          arguments: '{"city":"Shanghai"}'
         }
       ]
     });
@@ -2122,7 +2112,7 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
         type: "function_call",
         call_id: "call_123",
         name: "lookup_weather",
-        arguments: "{\"city\":\"Shanghai\"}",
+        arguments: '{"city":"Shanghai"}',
         status: "completed"
       }
     ]);
@@ -2178,9 +2168,8 @@ describe("encodeCanonicalToOpenAIResponsesResponse", () => {
 
 describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
   it("encodes a response_started event into the official initial responses event sequence", async () => {
-    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIResponsesStreamEvent(
@@ -2225,9 +2214,8 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
   });
 
   it("preserves createdAt on responses lifecycle stream events", async () => {
-    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIResponsesStreamEvent(
@@ -2289,9 +2277,8 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
   });
 
   it("encodes a first output_text_delta event into text start plus delta events", async () => {
-    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIResponsesStreamEvent(
@@ -2347,9 +2334,8 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
   });
 
   it("encodes a response_completed event into the official terminal responses event sequence", async () => {
-    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIResponsesStreamEvent(
@@ -2467,9 +2453,8 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
   });
 
   it("encodes reasoning summary deltas and terminal reasoning output items", async () => {
-    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIResponsesStreamEvent(
@@ -2596,9 +2581,8 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
   });
 
   it("encodes response_started events with responses envelope fidelity fields", async () => {
-    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIResponsesStreamEvent(
@@ -2685,9 +2669,8 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
   });
 
   it("encodes a tool_calls completion event into a minimal responses function_call terminal event sequence", async () => {
-    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIResponsesStreamEvent(
@@ -2698,7 +2681,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           toolCallId: "call_123",
           toolIndex: 0,
           toolName: "lookup_weather",
-          argumentsDelta: "{\"city\":\"Shang"
+          argumentsDelta: '{"city":"Shang'
         },
         {
           sequenceNumber: 5,
@@ -2716,7 +2699,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
             type: "function_call",
             call_id: "call_123",
             name: "lookup_weather",
-            arguments: "{\"city\":\"Shang",
+            arguments: '{"city":"Shang',
             status: "completed"
           }
         },
@@ -2725,7 +2708,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           sequence_number: 6,
           item_id: "call_123",
           output_index: 0,
-          delta: "{\"city\":\"Shang"
+          delta: '{"city":"Shang'
         }
       ],
       nextSequenceNumber: 7
@@ -2746,7 +2729,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           outputText: "",
           toolCallId: "call_123",
           toolCallName: "lookup_weather",
-          toolCallArguments: "{\"city\":\"Shanghai\"}"
+          toolCallArguments: '{"city":"Shanghai"}'
         }
       )
     ).toEqual({
@@ -2756,7 +2739,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           sequence_number: 7,
           item_id: "call_123",
           output_index: 0,
-          arguments: "{\"city\":\"Shanghai\"}"
+          arguments: '{"city":"Shanghai"}'
         },
         {
           type: "response.output_item.done",
@@ -2766,7 +2749,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
             type: "function_call",
             call_id: "call_123",
             name: "lookup_weather",
-            arguments: "{\"city\":\"Shanghai\"}",
+            arguments: '{"city":"Shanghai"}',
             status: "completed"
           }
         },
@@ -2784,7 +2767,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
                 type: "function_call",
                 call_id: "call_123",
                 name: "lookup_weather",
-                arguments: "{\"city\":\"Shanghai\"}",
+                arguments: '{"city":"Shanghai"}',
                 status: "completed"
               }
             ],
@@ -2798,9 +2781,8 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
   });
 
   it("preserves zero-argument responses tool starts as empty streamed arguments", async () => {
-    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIResponsesStreamEvent(
@@ -2916,9 +2898,8 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
   });
 
   it("encodes multiple responses tool calls as separate output items and completion records", async () => {
-    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIResponsesStreamEvent(
@@ -2929,7 +2910,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           toolCallId: "call_456",
           toolIndex: 1,
           toolName: "lookup_calendar",
-          argumentsDelta: "{\"date\":\"2026-05-14\"}"
+          argumentsDelta: '{"date":"2026-05-14"}'
         },
         {
           sequenceNumber: 10,
@@ -2947,7 +2928,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
             type: "function_call",
             call_id: "call_456",
             name: "lookup_calendar",
-            arguments: "{\"date\":\"2026-05-14\"}",
+            arguments: '{"date":"2026-05-14"}',
             status: "completed"
           }
         },
@@ -2956,7 +2937,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           sequence_number: 11,
           item_id: "call_456",
           output_index: 1,
-          delta: "{\"date\":\"2026-05-14\"}"
+          delta: '{"date":"2026-05-14"}'
         }
       ],
       nextSequenceNumber: 12
@@ -2979,13 +2960,13 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
             {
               toolCallId: "call_123",
               toolCallName: "lookup_weather",
-              toolCallArguments: "{\"city\":\"Shanghai\"}",
+              toolCallArguments: '{"city":"Shanghai"}',
               outputIndex: 0
             },
             {
               toolCallId: "call_456",
               toolCallName: "lookup_calendar",
-              toolCallArguments: "{\"date\":\"2026-05-14\"}",
+              toolCallArguments: '{"date":"2026-05-14"}',
               outputIndex: 1
             }
           ]
@@ -2998,7 +2979,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           sequence_number: 12,
           item_id: "call_123",
           output_index: 0,
-          arguments: "{\"city\":\"Shanghai\"}"
+          arguments: '{"city":"Shanghai"}'
         },
         {
           type: "response.output_item.done",
@@ -3008,7 +2989,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
             type: "function_call",
             call_id: "call_123",
             name: "lookup_weather",
-            arguments: "{\"city\":\"Shanghai\"}",
+            arguments: '{"city":"Shanghai"}',
             status: "completed"
           }
         },
@@ -3017,7 +2998,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           sequence_number: 14,
           item_id: "call_456",
           output_index: 1,
-          arguments: "{\"date\":\"2026-05-14\"}"
+          arguments: '{"date":"2026-05-14"}'
         },
         {
           type: "response.output_item.done",
@@ -3027,7 +3008,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
             type: "function_call",
             call_id: "call_456",
             name: "lookup_calendar",
-            arguments: "{\"date\":\"2026-05-14\"}",
+            arguments: '{"date":"2026-05-14"}',
             status: "completed"
           }
         },
@@ -3045,14 +3026,14 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
                 type: "function_call",
                 call_id: "call_123",
                 name: "lookup_weather",
-                arguments: "{\"city\":\"Shanghai\"}",
+                arguments: '{"city":"Shanghai"}',
                 status: "completed"
               },
               {
                 type: "function_call",
                 call_id: "call_456",
                 name: "lookup_calendar",
-                arguments: "{\"date\":\"2026-05-14\"}",
+                arguments: '{"date":"2026-05-14"}',
                 status: "completed"
               }
             ],
@@ -3066,9 +3047,8 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
   });
 
   it("keeps text and tool output items distinct in mixed responses streaming completion", async () => {
-    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIResponsesStreamEvent(
@@ -3088,7 +3068,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
             {
               toolCallId: "call_123",
               toolCallName: "lookup_weather",
-              toolCallArguments: "{\"city\":\"Shanghai\"}",
+              toolCallArguments: '{"city":"Shanghai"}',
               outputIndex: 1
             }
           ]
@@ -3139,7 +3119,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           sequence_number: 20,
           item_id: "call_123",
           output_index: 1,
-          arguments: "{\"city\":\"Shanghai\"}"
+          arguments: '{"city":"Shanghai"}'
         },
         {
           type: "response.output_item.done",
@@ -3149,7 +3129,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
             type: "function_call",
             call_id: "call_123",
             name: "lookup_weather",
-            arguments: "{\"city\":\"Shanghai\"}",
+            arguments: '{"city":"Shanghai"}',
             status: "completed"
           }
         },
@@ -3180,7 +3160,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
                 type: "function_call",
                 call_id: "call_123",
                 name: "lookup_weather",
-                arguments: "{\"city\":\"Shanghai\"}",
+                arguments: '{"city":"Shanghai"}',
                 status: "completed"
               }
             ],
@@ -3194,9 +3174,8 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
   });
 
   it("keeps reasoning, text, and tool output items distinct in mixed responses streaming completion", async () => {
-    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToOpenAIResponsesStreamEvent(
@@ -3218,7 +3197,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
             {
               toolCallId: "call_123",
               toolCallName: "lookup_weather",
-              toolCallArguments: "{\"city\":\"Shanghai\"}",
+              toolCallArguments: '{"city":"Shanghai"}',
               outputIndex: 2
             }
           ]
@@ -3300,7 +3279,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
           sequence_number: 23,
           item_id: "call_123",
           output_index: 2,
-          arguments: "{\"city\":\"Shanghai\"}"
+          arguments: '{"city":"Shanghai"}'
         },
         {
           type: "response.output_item.done",
@@ -3310,7 +3289,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
             type: "function_call",
             call_id: "call_123",
             name: "lookup_weather",
-            arguments: "{\"city\":\"Shanghai\"}",
+            arguments: '{"city":"Shanghai"}',
             status: "completed"
           }
         },
@@ -3350,7 +3329,7 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
                 type: "function_call",
                 call_id: "call_123",
                 name: "lookup_weather",
-                arguments: "{\"city\":\"Shanghai\"}",
+                arguments: '{"city":"Shanghai"}',
                 status: "completed"
               }
             ],
@@ -3364,9 +3343,8 @@ describe("encodeCanonicalToOpenAIResponsesStreamEvent", () => {
   });
 
   it("encodes a max_tokens completion event into an incomplete terminal responses event sequence", async () => {
-    const { encodeCanonicalToOpenAIResponsesStreamEvent } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToOpenAIResponsesStreamEvent } =
+      await import("./openai-chat.js");
     const encoded = encodeCanonicalToOpenAIResponsesStreamEvent(
       {
         type: "response_completed",
@@ -3687,7 +3665,7 @@ describe("normalizeAnthropicMessagesRequest", () => {
             {
               type: "tool_result",
               tool_use_id: "call_123",
-              content: "{\"temperature_c\":26}"
+              content: '{"temperature_c":26}'
             }
           ]
         }
@@ -3703,13 +3681,13 @@ describe("normalizeAnthropicMessagesRequest", () => {
           {
             id: "call_123",
             name: "lookup_weather",
-            arguments: "{\"city\":\"Shanghai\"}"
+            arguments: '{"city":"Shanghai"}'
           }
         ]
       },
       {
         role: "tool",
-        content: "{\"temperature_c\":26}",
+        content: '{"temperature_c":26}',
         toolCallId: "call_123"
       }
     ]);
@@ -3768,7 +3746,7 @@ describe("normalizeAnthropicMessagesRequest", () => {
             {
               type: "tool_result",
               tool_use_id: "call_123",
-              content: "{\"temperature_c\":26}"
+              content: '{"temperature_c":26}'
             },
             {
               type: "text",
@@ -3786,7 +3764,7 @@ describe("normalizeAnthropicMessagesRequest", () => {
       },
       {
         role: "tool",
-        content: "{\"temperature_c\":26}",
+        content: '{"temperature_c":26}',
         toolCallId: "call_123"
       },
       {
@@ -3835,7 +3813,7 @@ describe("encodeCanonicalToAnthropicMessagesResponse", () => {
         {
           id: "call_123",
           name: "lookup_weather",
-          arguments: "{\"city\":\"Shanghai\"}"
+          arguments: '{"city":"Shanghai"}'
         }
       ]
     });
@@ -3863,7 +3841,7 @@ describe("encodeCanonicalToAnthropicMessagesResponse", () => {
         {
           id: "call_123",
           name: "lookup_weather",
-          arguments: "{\"city\":\"Shanghai\"}"
+          arguments: '{"city":"Shanghai"}'
         }
       ]
     });
@@ -3899,9 +3877,8 @@ describe("encodeCanonicalToAnthropicMessagesResponse", () => {
 
 describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
   it("encodes a response_started event into a message_start event", async () => {
-    const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToAnthropicMessagesStreamEvents } =
+      await import("./openai-chat.js");
 
     expect(
       encodeCanonicalToAnthropicMessagesStreamEvents({
@@ -3923,9 +3900,8 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
   });
 
   it("encodes a first output_text_delta event into content_block_start and content_block_delta events", async () => {
-    const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToAnthropicMessagesStreamEvents } =
+      await import("./openai-chat.js");
     const state = {
       startedTextBlock: false,
       startedToolBlocks: [],
@@ -3933,12 +3909,15 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
     };
 
     expect(
-      encodeCanonicalToAnthropicMessagesStreamEvents({
-        type: "output_text_delta",
-        responseId: "msg_123",
-        model: "claude-sonnet-4-5",
-        delta: "hel"
-      }, state)
+      encodeCanonicalToAnthropicMessagesStreamEvents(
+        {
+          type: "output_text_delta",
+          responseId: "msg_123",
+          model: "claude-sonnet-4-5",
+          delta: "hel"
+        },
+        state
+      )
     ).toEqual([
       {
         type: "content_block_start",
@@ -3960,9 +3939,8 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
   });
 
   it("encodes a tool_call_delta event into tool_use start and input_json_delta events", async () => {
-    const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToAnthropicMessagesStreamEvents } =
+      await import("./openai-chat.js");
     const state = {
       startedTextBlock: false,
       startedToolBlocks: [],
@@ -3970,15 +3948,18 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
     };
 
     expect(
-      encodeCanonicalToAnthropicMessagesStreamEvents({
-        type: "tool_call_delta",
-        responseId: "msg_123",
-        model: "claude-sonnet-4-5",
-        toolCallId: "call_123",
-        toolIndex: 0,
-        toolName: "lookup_weather",
-        argumentsDelta: "{\"city\":\"Shang"
-      }, state)
+      encodeCanonicalToAnthropicMessagesStreamEvents(
+        {
+          type: "tool_call_delta",
+          responseId: "msg_123",
+          model: "claude-sonnet-4-5",
+          toolCallId: "call_123",
+          toolIndex: 0,
+          toolName: "lookup_weather",
+          argumentsDelta: '{"city":"Shang'
+        },
+        state
+      )
     ).toEqual([
       {
         type: "content_block_start",
@@ -3995,16 +3976,15 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
         index: 0,
         delta: {
           type: "input_json_delta",
-          partial_json: "{\"city\":\"Shang"
+          partial_json: '{"city":"Shang'
         }
       }
     ]);
   });
 
   it("shifts anthropic tool block indexes after a started text block", async () => {
-    const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToAnthropicMessagesStreamEvents } =
+      await import("./openai-chat.js");
     const state = {
       startedTextBlock: true,
       startedToolBlocks: [],
@@ -4012,15 +3992,18 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
     };
 
     expect(
-      encodeCanonicalToAnthropicMessagesStreamEvents({
-        type: "tool_call_delta",
-        responseId: "msg_123",
-        model: "claude-sonnet-4-5",
-        toolCallId: "call_123",
-        toolIndex: 0,
-        toolName: "lookup_weather",
-        argumentsDelta: "{\"city\":\"Shang"
-      }, state)
+      encodeCanonicalToAnthropicMessagesStreamEvents(
+        {
+          type: "tool_call_delta",
+          responseId: "msg_123",
+          model: "claude-sonnet-4-5",
+          toolCallId: "call_123",
+          toolIndex: 0,
+          toolName: "lookup_weather",
+          argumentsDelta: '{"city":"Shang'
+        },
+        state
+      )
     ).toEqual([
       {
         type: "content_block_start",
@@ -4037,16 +4020,15 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
         index: 1,
         delta: {
           type: "input_json_delta",
-          partial_json: "{\"city\":\"Shang"
+          partial_json: '{"city":"Shang'
         }
       }
     ]);
   });
 
   it("encodes a response_completed event into content_block_stop, message_delta, and message_stop events", async () => {
-    const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToAnthropicMessagesStreamEvents } =
+      await import("./openai-chat.js");
     const state = {
       startedTextBlock: true,
       startedToolBlocks: [],
@@ -4054,17 +4036,20 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
     };
 
     expect(
-      encodeCanonicalToAnthropicMessagesStreamEvents({
-        type: "response_completed",
-        responseId: "msg_123",
-        model: "claude-sonnet-4-5",
-        finishReason: "stop",
-        usage: {
-          inputTokens: 12,
-          outputTokens: 8,
-          totalTokens: 20
-        }
-      }, state)
+      encodeCanonicalToAnthropicMessagesStreamEvents(
+        {
+          type: "response_completed",
+          responseId: "msg_123",
+          model: "claude-sonnet-4-5",
+          finishReason: "stop",
+          usage: {
+            inputTokens: 12,
+            outputTokens: 8,
+            totalTokens: 20
+          }
+        },
+        state
+      )
     ).toEqual([
       {
         type: "content_block_stop",
@@ -4088,9 +4073,8 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
   });
 
   it("encodes a max_tokens completion event into an Anthropic max_tokens message_delta", async () => {
-    const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToAnthropicMessagesStreamEvents } =
+      await import("./openai-chat.js");
     const state = {
       startedTextBlock: true,
       startedToolBlocks: [],
@@ -4098,12 +4082,15 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
     };
 
     expect(
-      encodeCanonicalToAnthropicMessagesStreamEvents({
-        type: "response_completed",
-        responseId: "msg_123",
-        model: "claude-sonnet-4-5",
-        finishReason: "max_tokens"
-      }, state)
+      encodeCanonicalToAnthropicMessagesStreamEvents(
+        {
+          type: "response_completed",
+          responseId: "msg_123",
+          model: "claude-sonnet-4-5",
+          finishReason: "max_tokens"
+        },
+        state
+      )
     ).toEqual([
       {
         type: "content_block_stop",
@@ -4123,9 +4110,8 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
   });
 
   it("encodes a tool_calls completion event after a tool block into tool stop and tool_use stop reason", async () => {
-    const { encodeCanonicalToAnthropicMessagesStreamEvents } = await import(
-      "./openai-chat.js"
-    );
+    const { encodeCanonicalToAnthropicMessagesStreamEvents } =
+      await import("./openai-chat.js");
     const state = {
       startedTextBlock: false,
       startedToolBlocks: [0],
@@ -4133,12 +4119,15 @@ describe("encodeCanonicalToAnthropicMessagesStreamEvents", () => {
     };
 
     expect(
-      encodeCanonicalToAnthropicMessagesStreamEvents({
-        type: "response_completed",
-        responseId: "msg_123",
-        model: "claude-sonnet-4-5",
-        finishReason: "tool_calls"
-      }, state)
+      encodeCanonicalToAnthropicMessagesStreamEvents(
+        {
+          type: "response_completed",
+          responseId: "msg_123",
+          model: "claude-sonnet-4-5",
+          finishReason: "tool_calls"
+        },
+        state
+      )
     ).toEqual([
       {
         type: "content_block_stop",

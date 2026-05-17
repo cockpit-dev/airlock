@@ -38,7 +38,10 @@ export function registerAdminConfigManageRoutes(app: GatewayApp): void {
   app.get("/_airlock/config/manage/:section", async (context) => {
     await requireAdminScope(context, "config.read");
     const section = context.req.param("section");
-    if (!section || !CONFIG_SECTION_NAMES.includes(section as ConfigSectionName)) {
+    if (
+      !section ||
+      !CONFIG_SECTION_NAMES.includes(section as ConfigSectionName)
+    ) {
       return context.json(
         { error: `Invalid section: ${section}` },
         { status: 400 }
@@ -56,10 +59,7 @@ export function registerAdminConfigManageRoutes(app: GatewayApp): void {
     const snapshot = await fetchConfigStoreSnapshot(namespace);
     const sectionData = snapshot.sections[section];
     if (!sectionData) {
-      return context.json(
-        { error: "Section not found" },
-        { status: 404 }
-      );
+      return context.json({ error: "Section not found" }, { status: 404 });
     }
 
     return context.json(sectionData);
@@ -68,7 +68,10 @@ export function registerAdminConfigManageRoutes(app: GatewayApp): void {
   app.put("/_airlock/config/manage/:section", async (context) => {
     await requireAdminScope(context, "config.write");
     const section = context.req.param("section");
-    if (!section || !CONFIG_SECTION_NAMES.includes(section as ConfigSectionName)) {
+    if (
+      !section ||
+      !CONFIG_SECTION_NAMES.includes(section as ConfigSectionName)
+    ) {
       return context.json(
         { error: `Invalid section: ${section}` },
         { status: 400 }
@@ -95,10 +98,7 @@ export function registerAdminConfigManageRoutes(app: GatewayApp): void {
     try {
       data = await context.req.json();
     } catch {
-      return context.json(
-        { error: "Invalid JSON body" },
-        { status: 400 }
-      );
+      return context.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
     const actor = context.req.header("x-airlock-admin-actor") ?? "system";
@@ -115,7 +115,10 @@ export function registerAdminConfigManageRoutes(app: GatewayApp): void {
   app.delete("/_airlock/config/manage/:section", async (context) => {
     await requireAdminScope(context, "config.write");
     const section = context.req.param("section");
-    if (!section || !CONFIG_SECTION_NAMES.includes(section as ConfigSectionName)) {
+    if (
+      !section ||
+      !CONFIG_SECTION_NAMES.includes(section as ConfigSectionName)
+    ) {
       return context.json(
         { error: `Invalid section: ${section}` },
         { status: 400 }

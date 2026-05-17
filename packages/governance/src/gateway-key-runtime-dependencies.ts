@@ -18,7 +18,9 @@ function createMissingGatewayKeyQuotaError(requestId?: string): GatewayError {
   });
 }
 
-function createMissingGatewayKeyTokenQuotaError(requestId?: string): GatewayError {
+function createMissingGatewayKeyTokenQuotaError(
+  requestId?: string
+): GatewayError {
   return new GatewayError("Gateway key token quota binding is required", {
     code: "config_missing_gateway_key_token_quota",
     category: "configuration",
@@ -28,7 +30,9 @@ function createMissingGatewayKeyTokenQuotaError(requestId?: string): GatewayErro
   });
 }
 
-function createMissingGatewayKeyConcurrencyError(requestId?: string): GatewayError {
+function createMissingGatewayKeyConcurrencyError(
+  requestId?: string
+): GatewayError {
   return new GatewayError("Gateway key concurrency binding is required", {
     code: "config_missing_gateway_key_concurrency",
     category: "configuration",

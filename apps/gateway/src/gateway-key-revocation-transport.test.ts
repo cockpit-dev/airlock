@@ -69,12 +69,12 @@ describe("revocation transport request builders", () => {
     expect(eventsUrl.searchParams.get("kind")).toBe("events");
     expect(eventsUrl.searchParams.get("keyId")).toBe("key_dynamic");
 
-    const operationEventsRequest = buildGatewayKeyRevocationOperationEventsRequest(
-      "req_123",
-      "op_123"
-    );
+    const operationEventsRequest =
+      buildGatewayKeyRevocationOperationEventsRequest("req_123", "op_123");
     const operationEventsUrl = new URL(operationEventsRequest.url);
-    expect(operationEventsUrl.searchParams.get("kind")).toBe("operation_events");
+    expect(operationEventsUrl.searchParams.get("kind")).toBe(
+      "operation_events"
+    );
     expect(operationEventsUrl.searchParams.get("operationId")).toBe("op_123");
     expect(REVOCATION_OPERATION_LOG_OBJECT_NAME).toBe(
       "gateway-key-revocation-operations"
@@ -106,7 +106,7 @@ describe("fetchParsedRevocationResponse", () => {
         "req_123",
         {
           parse: async (response) => {
-            return await response.json() as { revoked: boolean };
+            return (await response.json()) as { revoked: boolean };
           }
         }
       )
@@ -118,7 +118,9 @@ describe("fetchParsedRevocationResponse", () => {
       fetchParsedRevocationResponse(
         () => {
           return {
-            fetch: vi.fn().mockResolvedValue(new Response("Not found", { status: 404 }))
+            fetch: vi
+              .fn()
+              .mockResolvedValue(new Response("Not found", { status: 404 }))
           };
         },
         buildGatewayKeyRevocationOperationEventsRequest("req_123", "op_123"),
@@ -144,7 +146,9 @@ describe("fetchParsedRevocationResponse", () => {
       fetchParsedRevocationResponse(
         () => {
           return {
-            fetch: vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+            fetch: vi
+              .fn()
+              .mockResolvedValue(new Response(null, { status: 204 }))
           };
         },
         buildGatewayKeyRevocationOperationEventsRequest("req_123", "op_123"),

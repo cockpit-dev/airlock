@@ -2,7 +2,11 @@
   import Nav from "$components/Nav.svelte";
 
   let { data } = $props<{
-    data: { key: unknown | null; status: unknown | null; events: unknown | null };
+    data: {
+      key: unknown | null;
+      status: unknown | null;
+      events: unknown | null;
+    };
   }>();
 
   let k = $derived(
@@ -19,7 +23,9 @@
       : null
   );
   let events = $derived(
-    data.events && typeof data.events === "object" && "events" in (data.events as Record<string, unknown>)
+    data.events &&
+      typeof data.events === "object" &&
+      "events" in (data.events as Record<string, unknown>)
       ? ((data.events as { events: unknown[] }).events ?? [])
       : Array.isArray(data.events)
         ? data.events
@@ -86,26 +92,32 @@
     <h2 class="text-xl font-bold text-gray-100">Key Details</h2>
     <div class="flex gap-2">
       {#if k}
-        {@const lifecycle = (k.lifecycleStatus ?? k.status ?? "active") as string}
+        {@const lifecycle = (k.lifecycleStatus ??
+          k.status ??
+          "active") as string}
         {#if lifecycle === "active"}
           <button
             onclick={handleRevoke}
             class="text-sm text-gray-400 hover:text-red-300 px-3 py-1.5 border border-gray-700 rounded-md transition-colors"
-          >Revoke</button>
+            >Revoke</button
+          >
           <button
             onclick={handleArchive}
             class="text-sm text-gray-400 hover:text-yellow-300 px-3 py-1.5 border border-gray-700 rounded-md transition-colors"
-          >Archive</button>
+            >Archive</button
+          >
         {:else if lifecycle === "archived"}
           <button
             onclick={handleRestore}
             class="text-sm text-gray-400 hover:text-green-300 px-3 py-1.5 border border-gray-700 rounded-md transition-colors"
-          >Restore</button>
+            >Restore</button
+          >
         {/if}
         <button
           onclick={handleDelete}
           class="text-sm text-gray-400 hover:text-red-300 px-3 py-1.5 border border-gray-700 rounded-md transition-colors"
-        >Delete</button>
+          >Delete</button
+        >
       {/if}
     </div>
   </div>
@@ -120,23 +132,35 @@
         </div>
         <div>
           <p class="text-sm text-gray-500 mb-1">Label</p>
-          <p class="text-white text-sm">{k.label as string ?? "-"}</p>
+          <p class="text-white text-sm">{(k.label as string) ?? "-"}</p>
         </div>
         <div>
           <p class="text-sm text-gray-500 mb-1">Status</p>
-          {#if lifecycle === 'active'}
-            <span class="px-2 py-1 rounded text-xs font-medium bg-green-900 text-green-300">{lifecycle}</span>
-          {:else if lifecycle === 'archived'}
-            <span class="px-2 py-1 rounded text-xs font-medium bg-gray-800 text-gray-400">{lifecycle}</span>
-          {:else if lifecycle === 'revoked'}
-            <span class="px-2 py-1 rounded text-xs font-medium bg-red-900 text-red-300">{lifecycle}</span>
+          {#if lifecycle === "active"}
+            <span
+              class="px-2 py-1 rounded text-xs font-medium bg-green-900 text-green-300"
+              >{lifecycle}</span
+            >
+          {:else if lifecycle === "archived"}
+            <span
+              class="px-2 py-1 rounded text-xs font-medium bg-gray-800 text-gray-400"
+              >{lifecycle}</span
+            >
+          {:else if lifecycle === "revoked"}
+            <span
+              class="px-2 py-1 rounded text-xs font-medium bg-red-900 text-red-300"
+              >{lifecycle}</span
+            >
           {:else}
-            <span class="px-2 py-1 rounded text-xs font-medium bg-yellow-900 text-yellow-300">{lifecycle}</span>
+            <span
+              class="px-2 py-1 rounded text-xs font-medium bg-yellow-900 text-yellow-300"
+              >{lifecycle}</span
+            >
           {/if}
         </div>
         <div>
           <p class="text-sm text-gray-500 mb-1">Created</p>
-          <p class="text-white text-sm">{k.createdAt as string ?? "-"}</p>
+          <p class="text-white text-sm">{(k.createdAt as string) ?? "-"}</p>
         </div>
       </div>
     </div>
@@ -150,7 +174,11 @@
           {#each Object.entries(s) as [name, value]}
             <div class="bg-gray-800 rounded-lg p-3">
               <p class="text-xs text-gray-500">{name}</p>
-              <p class="text-white font-medium">{typeof value === "object" ? JSON.stringify(value) : String(value ?? "-")}</p>
+              <p class="text-white font-medium">
+                {typeof value === "object"
+                  ? JSON.stringify(value)
+                  : String(value ?? "-")}
+              </p>
             </div>
           {/each}
         </div>
@@ -159,7 +187,9 @@
 
     <!-- Audit Events -->
     {#if events.length > 0}
-      <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+      <div
+        class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
+      >
         <div class="px-6 py-4 border-b border-gray-800">
           <h3 class="text-lg font-semibold text-gray-200">Audit Events</h3>
         </div>
@@ -176,14 +206,23 @@
             {#each events as event}
               {@const e = event as Record<string, unknown>}
               <tr class="border-b border-gray-800 last:border-0">
-                <td class="px-4 py-3 text-gray-400 text-xs font-mono">{e.timestamp as string ?? "-"}</td>
-                <td class="px-4 py-3 text-white font-mono text-xs">{e.operation as string ?? "-"}</td>
-                <td class="px-4 py-3 text-gray-300 text-xs">{e.actor as string ?? "-"}</td>
+                <td class="px-4 py-3 text-gray-400 text-xs font-mono"
+                  >{(e.timestamp as string) ?? "-"}</td
+                >
+                <td class="px-4 py-3 text-white font-mono text-xs"
+                  >{(e.operation as string) ?? "-"}</td
+                >
+                <td class="px-4 py-3 text-gray-300 text-xs"
+                  >{(e.actor as string) ?? "-"}</td
+                >
                 <td class="px-4 py-3">
-                  <span class="px-2 py-1 rounded text-xs font-medium {e.status === 'success'
-                    ? 'bg-green-900 text-green-300'
-                    : 'bg-red-900 text-red-300'}">
-                    {e.status as string ?? "-"}
+                  <span
+                    class="px-2 py-1 rounded text-xs font-medium {e.status ===
+                    'success'
+                      ? 'bg-green-900 text-green-300'
+                      : 'bg-red-900 text-red-300'}"
+                  >
+                    {(e.status as string) ?? "-"}
                   </span>
                 </td>
               </tr>

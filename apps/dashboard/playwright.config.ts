@@ -22,8 +22,7 @@ export default defineConfig({
     url: "http://localhost:5173",
     reuseExistingServer: !process.env.CI,
     env: {
-      AUTH_SECRET:
-        "playwright-auth-secret-for-local-dashboard-tests-0001"
+      AUTH_SECRET: "playwright-auth-secret-for-local-dashboard-tests-0001"
     },
     timeout: 30000
   }

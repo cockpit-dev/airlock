@@ -13,7 +13,7 @@ describe("GatewayError", () => {
       requestId: "req_abc123",
       headers: { "x-ratelimit-remaining": "0" },
       cause,
-      upstreamErrorCode: "timeout_exceeded",
+      upstreamErrorCode: "timeout_exceeded"
     });
 
     expect(err).toBeInstanceOf(Error);
@@ -36,7 +36,7 @@ describe("GatewayError", () => {
       code: "INVALID_INPUT",
       category: "client",
       httpStatus: 400,
-      retryable: false,
+      retryable: false
     });
 
     expect(err.message).toBe("bad request");
@@ -58,7 +58,7 @@ describe("GatewayError", () => {
       category: "network",
       httpStatus: 502,
       retryable: true,
-      cause: root,
+      cause: root
     });
 
     expect(err.cause).toBe(root);
@@ -70,7 +70,7 @@ describe("GatewayError", () => {
       code: "RATE_LIMITED",
       category: "throttle",
       httpStatus: 429,
-      retryable: true,
+      retryable: true
     });
 
     expect(err.cause).toBeUndefined();
@@ -83,7 +83,7 @@ describe("GatewayError", () => {
         category: "auth",
         httpStatus: 401,
         retryable: false,
-        provider: "anthropic",
+        provider: "anthropic"
       });
     };
 
@@ -103,7 +103,7 @@ describe("GatewayError", () => {
       code: "TEST",
       category: "test",
       httpStatus: 200,
-      retryable: false,
+      retryable: false
     });
 
     // Runtime check: assignment should not change the value

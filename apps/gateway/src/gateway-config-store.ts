@@ -157,9 +157,7 @@ export class GatewayConfigStoreDurableObject {
     return Response.json(snapshot);
   }
 
-  private async handleGetSection(
-    name: ConfigSectionName
-  ): Promise<Response> {
+  private async handleGetSection(name: ConfigSectionName): Promise<Response> {
     const section = await this.state.storage.get<StoredConfigSection>(
       `section:${name}`
     );
@@ -177,13 +175,11 @@ export class GatewayConfigStoreDurableObject {
     try {
       data = await request.json();
     } catch {
-      return Response.json(
-        { error: "Invalid JSON body" },
-        { status: 400 }
-      );
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const actorHeader = request.headers.get("x-airlock-admin-actor") ?? "system";
+    const actorHeader =
+      request.headers.get("x-airlock-admin-actor") ?? "system";
     const globalVersion =
       (await this.state.storage.get<number>("global_version")) ?? 0;
     const existingSection = await this.state.storage.get<StoredConfigSection>(
@@ -294,7 +290,9 @@ export async function putConfigStoreSection(
     );
   }
 
-  return (await response.json()) as StoredConfigSection & { globalVersion: number };
+  return (await response.json()) as StoredConfigSection & {
+    globalVersion: number;
+  };
 }
 
 export async function deleteConfigStoreSection(

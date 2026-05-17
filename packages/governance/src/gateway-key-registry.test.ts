@@ -977,16 +977,22 @@ describe("doesDynamicKeyMatchValueHash", () => {
   };
 
   it("matches current valueHash for active key", () => {
-    expect(doesDynamicKeyMatchValueHash(baseKey, "hash-abc", Date.now())).toBe(true);
+    expect(doesDynamicKeyMatchValueHash(baseKey, "hash-abc", Date.now())).toBe(
+      true
+    );
   });
 
   it("does not match different valueHash", () => {
-    expect(doesDynamicKeyMatchValueHash(baseKey, "hash-other", Date.now())).toBe(false);
+    expect(
+      doesDynamicKeyMatchValueHash(baseKey, "hash-other", Date.now())
+    ).toBe(false);
   });
 
   it("does not match archived key", () => {
     const archived = { ...baseKey, archivedAt: "2026-01-02T00:00:00Z" };
-    expect(doesDynamicKeyMatchValueHash(archived, "hash-abc", Date.now())).toBe(false);
+    expect(doesDynamicKeyMatchValueHash(archived, "hash-abc", Date.now())).toBe(
+      false
+    );
   });
 
   it("matches previousValueHash within overlap window", () => {
@@ -1017,7 +1023,9 @@ describe("doesDynamicKeyMatchValueHash", () => {
       valueHash: "hash-new",
       previousValueHash: "hash-abc"
     };
-    expect(doesDynamicKeyMatchValueHash(rotated, "hash-abc", Date.now())).toBe(false);
+    expect(doesDynamicKeyMatchValueHash(rotated, "hash-abc", Date.now())).toBe(
+      false
+    );
   });
 });
 
@@ -1068,7 +1076,11 @@ describe("findDynamicKeyByValueHash", () => {
   });
 
   it("returns undefined when no key matches", () => {
-    const found = findDynamicKeyByValueHash(keys, "hash-nonexistent", Date.now());
+    const found = findDynamicKeyByValueHash(
+      keys,
+      "hash-nonexistent",
+      Date.now()
+    );
     expect(found).toBeUndefined();
   });
 });

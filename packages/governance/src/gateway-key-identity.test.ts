@@ -21,9 +21,9 @@ const configuredKeys = [
 
 describe("isConfiguredGatewayApiKeyId", () => {
   it("returns true only for configured key ids", () => {
-    expect(
-      isConfiguredGatewayApiKeyId(configuredKeys, "key_configured")
-    ).toBe(true);
+    expect(isConfiguredGatewayApiKeyId(configuredKeys, "key_configured")).toBe(
+      true
+    );
     expect(isConfiguredGatewayApiKeyId(configuredKeys, "key_registry")).toBe(
       false
     );

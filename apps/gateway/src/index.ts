@@ -31,14 +31,14 @@ export default {
             }
           },
           {
-            freeSuccessSampleRate: parsedEnv.AIRLOCK_TELEMETRY_SUCCESS_SAMPLE_RATE_FREE,
-            scaleSuccessSampleRate: parsedEnv.AIRLOCK_TELEMETRY_SUCCESS_SAMPLE_RATE_SCALE
+            freeSuccessSampleRate:
+              parsedEnv.AIRLOCK_TELEMETRY_SUCCESS_SAMPLE_RATE_FREE,
+            scaleSuccessSampleRate:
+              parsedEnv.AIRLOCK_TELEMETRY_SUCCESS_SAMPLE_RATE_SCALE
           }
         )
       : undefined;
-    const app = createApp(
-      telemetrySink === undefined ? {} : { telemetrySink }
-    );
+    const app = createApp(telemetrySink === undefined ? {} : { telemetrySink });
 
     return app.fetch(request, env, executionContext);
   },
@@ -59,7 +59,10 @@ export default {
       return;
     }
 
-    await processTelemetryQueueBatch(batch, parsedEnv.AIRLOCK_TELEMETRY_DATASET);
+    await processTelemetryQueueBatch(
+      batch,
+      parsedEnv.AIRLOCK_TELEMETRY_DATASET
+    );
   }
 };
 

@@ -1,4 +1,7 @@
-import { parseRequestRequestShaping, type RequestShapingProfile } from "@airlock/request-shaping";
+import {
+  parseRequestRequestShaping,
+  type RequestShapingProfile
+} from "@airlock/request-shaping";
 
 export function parseRequestShapingExtension(
   input: unknown

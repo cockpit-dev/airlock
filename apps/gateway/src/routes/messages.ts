@@ -299,17 +299,14 @@ export async function handleMessages(
             await writeStreamEvent(nextChunk.value, controller);
           }
 
-          emitSuccessTelemetry(
-            telemetryBase,
-            true,
-            200,
-            streamUsage
-          );
+          emitSuccessTelemetry(telemetryBase, true, 200, streamUsage);
           controller.close();
         } catch (error) {
           await handleStreamingError(error);
           try {
-            controller.enqueue(encoder.encode(encodeAnthropicMessagesStreamError(error)));
+            controller.enqueue(
+              encoder.encode(encodeAnthropicMessagesStreamError(error))
+            );
             controller.close();
           } catch {
             // Controller may already be closed or errored
@@ -397,12 +394,7 @@ export async function handleMessages(
     );
   }
 
-  emitSuccessTelemetry(
-    telemetryBase,
-    false,
-    200,
-    canonicalResponse.usage
-  );
+  emitSuccessTelemetry(telemetryBase, false, 200, canonicalResponse.usage);
 
   return context.json(
     encodeCanonicalToAnthropicMessagesResponse(canonicalResponse),

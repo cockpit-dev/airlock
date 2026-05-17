@@ -123,18 +123,25 @@ describe("gateway-key-registry-validation", () => {
       const key: GatewayKeyRegistryDynamicKeyView = {
         keyId: "key_1",
         ownership: "registry",
-        key: { id: "key_1", label: "test", valueHash: "hash_1", status: "active" },
+        key: {
+          id: "key_1",
+          label: "test",
+          valueHash: "hash_1",
+          status: "active"
+        },
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
-      const getRegistryKey = async (_keyId: string) => await Promise.resolve(key);
+      const getRegistryKey = async (_keyId: string) =>
+        await Promise.resolve(key);
 
       const result = await requireRegistryKey("key_1", "req_1", getRegistryKey);
       expect(result).toBe(key);
     });
 
     it("throws 404 when key not found", async () => {
-      const getRegistryKey = async (_keyId: string) => await Promise.resolve(null);
+      const getRegistryKey = async (_keyId: string) =>
+        await Promise.resolve(null);
 
       await expect(
         requireRegistryKey("missing", "req_1", getRegistryKey)
@@ -169,7 +176,8 @@ describe("gateway-key-registry-validation", () => {
     };
 
     it("returns all keys when all found", async () => {
-      const getRegistryKeys = async (_keyIds: readonly string[]) => await Promise.resolve([key1, key2]);
+      const getRegistryKeys = async (_keyIds: readonly string[]) =>
+        await Promise.resolve([key1, key2]);
       const result = await requireRegistryKeys(
         ["key_1", "key_2"],
         "req_1",
@@ -179,14 +187,16 @@ describe("gateway-key-registry-validation", () => {
     });
 
     it("throws 404 when any key is null", async () => {
-      const getRegistryKeys = async (_keyIds: readonly string[]) => await Promise.resolve([key1, null]);
+      const getRegistryKeys = async (_keyIds: readonly string[]) =>
+        await Promise.resolve([key1, null]);
       await expect(
         requireRegistryKeys(["key_1", "key_2"], "req_1", getRegistryKeys)
       ).rejects.toThrow(GatewayError);
     });
 
     it("throws on length mismatch", async () => {
-      const getRegistryKeys = async (_keyIds: readonly string[]) => await Promise.resolve([key1]);
+      const getRegistryKeys = async (_keyIds: readonly string[]) =>
+        await Promise.resolve([key1]);
       await expect(
         requireRegistryKeys(["key_1", "key_2"], "req_1", getRegistryKeys)
       ).rejects.toThrow("Registry key batch response length mismatch");

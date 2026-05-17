@@ -303,14 +303,16 @@ describe("updateGatewayRegistryKey", () => {
   });
 
   it("validates updated runtime candidates before delegating", async () => {
-    const applyUpdate = vi.fn().mockImplementation(
-      (existingKey: GatewayApiKeyRecord, update: Record<string, unknown>) => {
-        return {
-          ...existingKey,
-          ...update
-        };
-      }
-    );
+    const applyUpdate = vi
+      .fn()
+      .mockImplementation(
+        (existingKey: GatewayApiKeyRecord, update: Record<string, unknown>) => {
+          return {
+            ...existingKey,
+            ...update
+          };
+        }
+      );
     const validateRuntimeDependencies = vi.fn();
     const updateRegistryKeyWrite = vi.fn().mockResolvedValue(
       createRegistryView({
@@ -395,7 +397,9 @@ describe("bulkUpdateGatewayRegistryKeys", () => {
         "req_123",
         {
           isConfiguredKey: vi.fn().mockReturnValue(false),
-          getRegistryKeys: vi.fn().mockResolvedValue([createRegistryView(), null]),
+          getRegistryKeys: vi
+            .fn()
+            .mockResolvedValue([createRegistryView(), null]),
           applyUpdate: vi.fn(),
           validateRuntimeDependencies: vi.fn(),
           bulkUpdateRegistryKeys: vi.fn()

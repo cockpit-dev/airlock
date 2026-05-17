@@ -557,8 +557,12 @@ function reorderTargetsForRoute(
     const leftAffinity = ctx.affinityByTarget?.get(leftKey) ?? 0;
     const rightAffinity = ctx.affinityByTarget?.get(rightKey) ?? 0;
     const AFFINITY_WEIGHT_FACTOR = 2;
-    const leftWeight = leftBaseWeight * leftRamp * (1 + leftAffinity * AFFINITY_WEIGHT_FACTOR);
-    const rightWeight = rightBaseWeight * rightRamp * (1 + rightAffinity * AFFINITY_WEIGHT_FACTOR);
+    const leftWeight =
+      leftBaseWeight * leftRamp * (1 + leftAffinity * AFFINITY_WEIGHT_FACTOR);
+    const rightWeight =
+      rightBaseWeight *
+      rightRamp *
+      (1 + rightAffinity * AFFINITY_WEIGHT_FACTOR);
     const rightScore = scoreWeightedTarget(
       route,
       right,

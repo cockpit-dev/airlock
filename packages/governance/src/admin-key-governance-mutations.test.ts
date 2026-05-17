@@ -56,15 +56,10 @@ describe("createGatewayAdminKey", () => {
 describe("deleteGatewayAdminKey", () => {
   it("rejects deletion of configured keys", async () => {
     await expect(
-      deleteGatewayAdminKey(
-        "key_env",
-        {},
-        "req_123",
-        {
-          isConfiguredKey: vi.fn().mockReturnValue(true),
-          deleteRegistryKey: vi.fn()
-        }
-      )
+      deleteGatewayAdminKey("key_env", {}, "req_123", {
+        isConfiguredKey: vi.fn().mockReturnValue(true),
+        deleteRegistryKey: vi.fn()
+      })
     ).rejects.toMatchObject({
       code: "gateway_key_not_registry_owned"
     });
@@ -74,15 +69,10 @@ describe("deleteGatewayAdminKey", () => {
     const deleteRegistryKey = vi.fn().mockResolvedValue(undefined);
 
     await expect(
-      deleteGatewayAdminKey(
-        "key_dynamic",
-        { reason: "cleanup" },
-        "req_123",
-        {
-          isConfiguredKey: vi.fn().mockReturnValue(false),
-          deleteRegistryKey
-        }
-      )
+      deleteGatewayAdminKey("key_dynamic", { reason: "cleanup" }, "req_123", {
+        isConfiguredKey: vi.fn().mockReturnValue(false),
+        deleteRegistryKey
+      })
     ).resolves.toEqual({
       keyId: "key_dynamic",
       deleted: true
@@ -245,15 +235,10 @@ describe("updateGatewayAdminKey", () => {
 
   it("rejects updates for configured keys", async () => {
     await expect(
-      updateGatewayAdminKey(
-        "key_env",
-        { label: "Nope" },
-        "req_123",
-        {
-          isConfiguredKey: vi.fn().mockReturnValue(true),
-          updateRegistryKey: vi.fn()
-        }
-      )
+      updateGatewayAdminKey("key_env", { label: "Nope" }, "req_123", {
+        isConfiguredKey: vi.fn().mockReturnValue(true),
+        updateRegistryKey: vi.fn()
+      })
     ).rejects.toMatchObject({
       code: "gateway_key_not_registry_owned"
     });
@@ -718,15 +703,10 @@ describe("bulkRestoreGatewayAdminKeys", () => {
 describe("finalizeGatewayAdminKeyRotation", () => {
   it("rejects finalization of configured keys", async () => {
     await expect(
-      finalizeGatewayAdminKeyRotation(
-        "key_env",
-        {},
-        "req_123",
-        {
-          isConfiguredKey: vi.fn().mockReturnValue(true),
-          finalizeRegistryKeyRotation: vi.fn()
-        }
-      )
+      finalizeGatewayAdminKeyRotation("key_env", {}, "req_123", {
+        isConfiguredKey: vi.fn().mockReturnValue(true),
+        finalizeRegistryKeyRotation: vi.fn()
+      })
     ).rejects.toMatchObject({
       code: "gateway_key_not_registry_owned"
     });
@@ -886,13 +866,9 @@ describe("clearGatewayAdminKeyRegistryOverride", () => {
     const clearRegistryOverride = vi.fn().mockResolvedValue(undefined);
 
     await expect(
-      clearGatewayAdminKeyRegistryOverride(
-        "key_env",
-        undefined,
-        {
-          clearRegistryOverride
-        }
-      )
+      clearGatewayAdminKeyRegistryOverride("key_env", undefined, {
+        clearRegistryOverride
+      })
     ).resolves.toEqual({
       keyId: "key_env",
       override: null

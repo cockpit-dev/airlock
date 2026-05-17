@@ -16,7 +16,8 @@ function createMockStorage(
       store.set(key, value);
       return Promise.resolve();
     },
-    delete: (key: string): Promise<boolean> => Promise.resolve(store.delete(key))
+    delete: (key: string): Promise<boolean> =>
+      Promise.resolve(store.delete(key))
   };
 }
 
@@ -41,9 +42,7 @@ describe("consumeGatewayKeyQuotaFromStorage", () => {
       windowStartedAt: windowStart,
       count: 2
     };
-    const storage = createMockStorage(
-      new Map([["request_quota", existing]])
-    );
+    const storage = createMockStorage(new Map([["request_quota", existing]]));
     const decision = await consumeGatewayKeyQuotaFromStorage(
       storage,
       policy,
@@ -59,9 +58,7 @@ describe("consumeGatewayKeyQuotaFromStorage", () => {
       windowStartedAt: windowStart,
       count: 3
     };
-    const storage = createMockStorage(
-      new Map([["request_quota", existing]])
-    );
+    const storage = createMockStorage(new Map([["request_quota", existing]]));
     const decision = await consumeGatewayKeyQuotaFromStorage(
       storage,
       policy,
@@ -76,9 +73,7 @@ describe("consumeGatewayKeyQuotaFromStorage", () => {
       windowStartedAt: windowStart,
       count: 3
     };
-    const storage = createMockStorage(
-      new Map([["request_quota", existing]])
-    );
+    const storage = createMockStorage(new Map([["request_quota", existing]]));
     const nextWindowStart = windowStart + 60000;
     const decision = await consumeGatewayKeyQuotaFromStorage(
       storage,
@@ -95,9 +90,7 @@ describe("consumeGatewayKeyQuotaFromStorage", () => {
       windowStartedAt: windowStart,
       count: 1
     };
-    const storage = createMockStorage(
-      new Map([["request_quota", existing]])
-    );
+    const storage = createMockStorage(new Map([["request_quota", existing]]));
     const decision = await consumeGatewayKeyQuotaFromStorage(
       storage,
       policy,

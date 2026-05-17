@@ -158,13 +158,14 @@ describe("buildCancelGatewayRegistryKeyRotationTransition", () => {
       updatedAt: "2026-05-14T01:00:00.000Z"
     };
 
-    const { nextKey, auditEvent } = buildCancelGatewayRegistryKeyRotationTransition(
-      existingKey,
-      {
-        reason: "rollback"
-      },
-      "2026-05-14T02:00:00.000Z"
-    );
+    const { nextKey, auditEvent } =
+      buildCancelGatewayRegistryKeyRotationTransition(
+        existingKey,
+        {
+          reason: "rollback"
+        },
+        "2026-05-14T02:00:00.000Z"
+      );
 
     expect(nextKey.valueHash).toBe(previousHash);
     expect(nextKey.previousValueHash).toBeUndefined();

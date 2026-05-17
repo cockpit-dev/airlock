@@ -11,35 +11,35 @@ describe("airlockRequestExtensionsSchema", () => {
     const result = airlockRequestExtensionsSchema.safeParse({
       requestShaping: {
         headers: { "x-custom": "value" },
-        query: { trace: "1" },
-      },
+        query: { trace: "1" }
+      }
     });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.requestShaping).toEqual({
         headers: { "x-custom": "value" },
-        query: { trace: "1" },
+        query: { trace: "1" }
       });
     }
   });
 
   it("accepts requestShaping as a simple object", () => {
     const result = airlockRequestExtensionsSchema.safeParse({
-      requestShaping: { jsonBody: { key: "val" } },
+      requestShaping: { jsonBody: { key: "val" } }
     });
     expect(result.success).toBe(true);
   });
 
   it("accepts requestShaping with null value", () => {
     const result = airlockRequestExtensionsSchema.safeParse({
-      requestShaping: null,
+      requestShaping: null
     });
     expect(result.success).toBe(true);
   });
 
   it("accepts requestShaping as a string", () => {
     const result = airlockRequestExtensionsSchema.safeParse({
-      requestShaping: "any-string",
+      requestShaping: "any-string"
     });
     expect(result.success).toBe(true);
   });
@@ -47,7 +47,7 @@ describe("airlockRequestExtensionsSchema", () => {
   it("rejects unknown top-level keys (strict mode)", () => {
     const result = airlockRequestExtensionsSchema.safeParse({
       requestShaping: {},
-      unknownField: "not allowed",
+      unknownField: "not allowed"
     });
     expect(result.success).toBe(false);
   });

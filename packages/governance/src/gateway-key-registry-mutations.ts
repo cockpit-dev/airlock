@@ -27,13 +27,17 @@ import {
 export interface CreateGatewayRegistryKeyPort {
   listComparableKeysForCreate(): Promise<GatewayApiKeyRecord[]>;
   validateRuntimeDependencies(key: GatewayApiKeyRecord): void;
-  createRegistryKey(request: ReturnType<typeof parseGatewayKeyRegistryCreateRequest>): Promise<GatewayKeyRegistryDynamicKeyView>;
+  createRegistryKey(
+    request: ReturnType<typeof parseGatewayKeyRegistryCreateRequest>
+  ): Promise<GatewayKeyRegistryDynamicKeyView>;
 }
 
 export interface BulkCreateGatewayRegistryKeysPort {
   listComparableKeysForCreate(): Promise<GatewayApiKeyRecord[]>;
   validateRuntimeDependencies(key: GatewayApiKeyRecord): void;
-  bulkCreateRegistryKeys(request: GatewayKeyRegistryBulkCreateRequest): Promise<{
+  bulkCreateRegistryKeys(
+    request: GatewayKeyRegistryBulkCreateRequest
+  ): Promise<{
     operationId?: string;
     keys: GatewayKeyRegistryDynamicKeyView[];
   }>;
@@ -41,7 +45,9 @@ export interface BulkCreateGatewayRegistryKeysPort {
 
 export interface UpdateGatewayRegistryKeyPort {
   isConfiguredKey(keyId: string): boolean;
-  getRegistryKey(keyId: string): Promise<GatewayKeyRegistryDynamicKeyView | null>;
+  getRegistryKey(
+    keyId: string
+  ): Promise<GatewayKeyRegistryDynamicKeyView | null>;
   applyUpdate(
     existingKey: GatewayApiKeyRecord,
     update: GatewayApiKeyMetadataOverride
@@ -50,7 +56,9 @@ export interface UpdateGatewayRegistryKeyPort {
   updateRegistryKey(request: {
     keyId: string;
     update: GatewayApiKeyMetadataOverride;
-    auditMetadata: ReturnType<typeof parseGatewayKeyRegistryUpdateRequest>["auditMetadata"];
+    auditMetadata: ReturnType<
+      typeof parseGatewayKeyRegistryUpdateRequest
+    >["auditMetadata"];
   }): Promise<GatewayKeyRegistryDynamicKeyView>;
 }
 
@@ -64,7 +72,9 @@ export interface BulkUpdateGatewayRegistryKeysPort {
     update: GatewayApiKeyMetadataOverride
   ): GatewayApiKeyRecord;
   validateRuntimeDependencies(key: GatewayApiKeyRecord): void;
-  bulkUpdateRegistryKeys(request: GatewayKeyRegistryBulkUpdateRequest): Promise<{
+  bulkUpdateRegistryKeys(
+    request: GatewayKeyRegistryBulkUpdateRequest
+  ): Promise<{
     operationId?: string;
     keys: GatewayKeyRegistryDynamicKeyView[];
   }>;
@@ -72,7 +82,9 @@ export interface BulkUpdateGatewayRegistryKeysPort {
 
 export interface DeleteGatewayRegistryKeyPort {
   isConfiguredKey(keyId: string): boolean;
-  getRegistryKey(keyId: string): Promise<GatewayKeyRegistryDynamicKeyView | null>;
+  getRegistryKey(
+    keyId: string
+  ): Promise<GatewayKeyRegistryDynamicKeyView | null>;
   clearRevocationOverlay(key: GatewayKeyRegistryDynamicKeyView): Promise<void>;
   deleteRegistryKey(
     keyId: string,
@@ -86,13 +98,13 @@ export interface BulkDeleteGatewayRegistryKeysPort {
     keyIds: readonly string[]
   ): Promise<Array<GatewayKeyRegistryDynamicKeyView | null>>;
   clearRevocationOverlay(key: GatewayKeyRegistryDynamicKeyView): Promise<void>;
-  bulkDeleteRegistryKeys(request: GatewayKeyRegistryBulkDeleteRequest): Promise<{
+  bulkDeleteRegistryKeys(
+    request: GatewayKeyRegistryBulkDeleteRequest
+  ): Promise<{
     operationId?: string;
     keys: GatewayKeyRegistryDeleteResponse[];
   }>;
 }
-
-
 
 export async function createGatewayRegistryKey(
   payload: unknown,
@@ -184,7 +196,9 @@ export async function bulkUpdateGatewayRegistryKeys(
       return port.getRegistryKeys(keyIds);
     }
   );
-  const existingKeysById = new Map(existingKeys.map((key) => [key.keyId, key] as const));
+  const existingKeysById = new Map(
+    existingKeys.map((key) => [key.keyId, key] as const)
+  );
 
   for (const entry of request.updates) {
     const existingKey = existingKeysById.get(entry.keyId);
@@ -258,6 +272,4 @@ export async function bulkDeleteGatewayRegistryKeys(
   return port.bulkDeleteRegistryKeys(request);
 }
 
-export {
-  applyGatewayApiKeyMetadataOverride
-};
+export { applyGatewayApiKeyMetadataOverride };

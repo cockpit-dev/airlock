@@ -1,4 +1,7 @@
-import { createGatewayKeyAuditEvent, type GatewayKeyAuditEvent } from "./gateway-key-audit.js";
+import {
+  createGatewayKeyAuditEvent,
+  type GatewayKeyAuditEvent
+} from "./gateway-key-audit.js";
 import {
   createStoredGatewayRegistryDynamicKey,
   createStoredGatewayRegistryFieldDiffs,
@@ -52,7 +55,10 @@ function buildWriteTransitionAuditEvent(
 
 export function buildCreateGatewayRegistryKeyTransition(
   gatewayApiKey: GatewayApiKeyRecord,
-  metadata: Omit<GatewayKeyRegistryWriteTransitionAuditMetadata, "operationId" | "reason">,
+  metadata: Omit<
+    GatewayKeyRegistryWriteTransitionAuditMetadata,
+    "operationId" | "reason"
+  >,
   now = new Date().toISOString()
 ): GatewayKeyRegistryWriteTransition {
   const nextKey = createStoredGatewayRegistryDynamicKey(gatewayApiKey, now);
@@ -69,7 +75,11 @@ export function buildBulkCreateGatewayRegistryKeyTransitions(
   now = new Date().toISOString()
 ): GatewayKeyRegistryWriteTransition[] {
   return gatewayApiKeys.map((gatewayApiKey) => {
-    return buildCreateGatewayRegistryKeyTransition(gatewayApiKey, metadata, now);
+    return buildCreateGatewayRegistryKeyTransition(
+      gatewayApiKey,
+      metadata,
+      now
+    );
   });
 }
 
@@ -223,7 +233,9 @@ export function buildBulkRotateGatewayRegistryKeyTransitions(
     );
 
     simulatedKeys = simulatedKeys.map((candidate) => {
-      return candidate.id === entry.previousKey.id ? transition.nextKey : candidate;
+      return candidate.id === entry.previousKey.id
+        ? transition.nextKey
+        : candidate;
     });
 
     return transition;

@@ -1,14 +1,18 @@
 export async function dispatchGovernanceTransport<T>(
-  getStub: () => Promise<{
-    fetch(request: Request): Promise<Response>;
-  }> | {
-    fetch(request: Request): Promise<Response>;
-  },
+  getStub: () =>
+    | Promise<{
+        fetch(request: Request): Promise<Response>;
+      }>
+    | {
+        fetch(request: Request): Promise<Response>;
+      },
   request: Request,
   requestId: string,
   options: {
     parse(response: Response): Promise<T> | T;
-    handleStatus?: (response: Response) => Promise<T | undefined> | T | undefined;
+    handleStatus?: (
+      response: Response
+    ) => Promise<T | undefined> | T | undefined;
     createUnavailableError(requestId: string, cause?: unknown): Error;
     createInvalidResponseError(requestId: string, cause?: unknown): Error;
   }

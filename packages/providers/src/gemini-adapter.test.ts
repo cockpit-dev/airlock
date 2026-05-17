@@ -639,7 +639,7 @@ describe("GeminiProviderAdapter", () => {
                 role: "model",
                 parts: [
                   {
-                    text: "{\"city\":\"Shanghai\"}"
+                    text: '{"city":"Shanghai"}'
                   }
                 ]
               }
@@ -694,7 +694,7 @@ describe("GeminiProviderAdapter", () => {
                 role: "model",
                 parts: [
                   {
-                    text: "{\"city\":\"Shanghai\"}"
+                    text: '{"city":"Shanghai"}'
                   }
                 ]
               }
@@ -811,7 +811,7 @@ describe("GeminiProviderAdapter", () => {
       toolCalls: [
         {
           name: "lookup_weather",
-          arguments: "{\"city\":\"Shanghai\"}"
+          arguments: '{"city":"Shanghai"}'
         }
       ]
     });
@@ -887,7 +887,7 @@ describe("GeminiProviderAdapter", () => {
         {
           id: "gemini_call_0",
           name: "lookup_weather",
-          arguments: "{\"city\":\"Shanghai\"}"
+          arguments: '{"city":"Shanghai"}'
         }
       ]
     });
@@ -952,14 +952,14 @@ describe("GeminiProviderAdapter", () => {
               {
                 id: "call_123",
                 name: "lookup_weather",
-                arguments: "{\"city\":\"Shanghai\"}"
+                arguments: '{"city":"Shanghai"}'
               }
             ]
           },
           {
             role: "tool",
             toolCallId: "call_123",
-            content: "{\"temperature_c\":26}"
+            content: '{"temperature_c":26}'
           }
         ]
       },
@@ -1065,7 +1065,7 @@ describe("GeminiProviderAdapter", () => {
               {
                 id: "call_123",
                 name: "lookup_weather",
-                arguments: "{\"city\":\"Shanghai\"}"
+                arguments: '{"city":"Shanghai"}'
               }
             ]
           },
@@ -1076,7 +1076,7 @@ describe("GeminiProviderAdapter", () => {
           {
             role: "tool",
             toolCallId: "call_123",
-            content: "{\"temperature_c\":26}"
+            content: '{"temperature_c":26}'
           },
           {
             role: "user",
@@ -1352,15 +1352,19 @@ describe("GeminiProviderAdapter", () => {
   });
 
   it("maps aborted upstream fetches into a retryable timeout gateway error", async () => {
-    const fetcher = vi.fn().mockImplementation(async (_input, init?: RequestInit) => {
-      const signal = init?.signal;
+    const fetcher = vi
+      .fn()
+      .mockImplementation(async (_input, init?: RequestInit) => {
+        const signal = init?.signal;
 
-      return await new Promise<Response>((_resolve, reject) => {
-        signal?.addEventListener("abort", () => {
-          reject(new DOMException("The operation was aborted.", "AbortError"));
+        return await new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            reject(
+              new DOMException("The operation was aborted.", "AbortError")
+            );
+          });
         });
       });
-    });
 
     const adapter = new GeminiProviderAdapter({
       apiKey: "test-key",
@@ -1549,7 +1553,7 @@ describe("GeminiProviderAdapter", () => {
         toolCallId: "gemini-response-123_tool_0",
         toolIndex: 0,
         toolName: "lookup_weather",
-        argumentsDelta: "{\"city\":\"Shanghai\"}"
+        argumentsDelta: '{"city":"Shanghai"}'
       },
       {
         type: "response_completed",
@@ -1560,7 +1564,7 @@ describe("GeminiProviderAdapter", () => {
           {
             id: "gemini-response-123_tool_0",
             name: "lookup_weather",
-            arguments: "{\"city\":\"Shanghai\"}"
+            arguments: '{"city":"Shanghai"}'
           }
         ],
         usage: {
@@ -1642,7 +1646,7 @@ describe("GeminiProviderAdapter", () => {
         type: "output_text_delta",
         responseId: "gemini-response-123",
         model: "gemini-2.5-flash",
-        delta: "{\"city\":\"Shanghai\"}"
+        delta: '{"city":"Shanghai"}'
       },
       {
         type: "response_completed",
@@ -1712,14 +1716,14 @@ describe("GeminiProviderAdapter", () => {
               {
                 id: "call_123",
                 name: "lookup_weather",
-                arguments: "{\"city\":\"Shanghai\"}"
+                arguments: '{"city":"Shanghai"}'
               }
             ]
           },
           {
             role: "tool",
             toolCallId: "call_123",
-            content: "{\"temperature_c\":26}"
+            content: '{"temperature_c":26}'
           }
         ]
       },
@@ -1886,15 +1890,19 @@ describe("GeminiProviderAdapter", () => {
   });
 
   it("maps streaming upstream timeout into a retryable provider_timeout gateway error", async () => {
-    const fetcher = vi.fn().mockImplementation(async (_input, init?: RequestInit) => {
-      const signal = init?.signal;
+    const fetcher = vi
+      .fn()
+      .mockImplementation(async (_input, init?: RequestInit) => {
+        const signal = init?.signal;
 
-      return await new Promise<Response>((_resolve, reject) => {
-        signal?.addEventListener("abort", () => {
-          reject(new DOMException("The operation was aborted.", "AbortError"));
+        return await new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            reject(
+              new DOMException("The operation was aborted.", "AbortError")
+            );
+          });
         });
       });
-    });
 
     const adapter = new GeminiProviderAdapter({
       apiKey: "test-key",
@@ -2054,9 +2062,9 @@ describe("GeminiProviderAdapter", () => {
   });
 
   it("maps streaming non-200 without error message into a generic provider_upstream_error", async () => {
-    const fetcher = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({}), { status: 503 })
-    );
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({}), { status: 503 }));
 
     const adapter = new GeminiProviderAdapter({
       apiKey: "test-key",

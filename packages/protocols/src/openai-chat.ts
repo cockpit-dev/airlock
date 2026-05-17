@@ -106,39 +106,47 @@ export const openAIChatMessageSchema = z.union([
 
 export const openAIChatCompletionRequestSchema = z
   .object({
-  model: z.string().min(1),
-  stream: z.boolean().default(false),
-  user: z.string().min(1).optional(),
-  safety_identifier: z.string().min(1).optional(),
-  metadata: openAIChatMetadataSchema.optional(),
-  service_tier: z.enum(["auto", "default", "flex", "priority", "scale"]).optional(),
-  store: z.boolean().nullable().optional(),
-  prompt_cache_key: z.string().min(1).optional(),
-  prompt_cache_retention: z.enum(["in_memory", "24h"]).optional(),
-  max_tokens: z.number().int().positive().optional(),
-  max_completion_tokens: z.number().int().positive().optional(),
-  reasoning_effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]).optional(),
-  temperature: z.number().min(0).max(2).optional(),
-  top_p: z.number().min(0).max(1).optional(),
-  logprobs: z.boolean().optional(),
-  top_logprobs: z.number().int().min(0).max(20).optional(),
-  frequency_penalty: z.number().min(-2).max(2).optional(),
-  presence_penalty: z.number().min(-2).max(2).optional(),
-  seed: z.number().int().optional(),
-  response_format: openAIChatResponseFormatSchema.optional(),
-  modalities: z.array(z.literal("text")).length(1).optional(),
-  stop: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).optional(),
-  stream_options: openAIChatStreamOptionsSchema.optional(),
-  parallel_tool_calls: z.boolean().optional(),
-  tools: z.array(openAIChatFunctionToolSchema).min(1).optional(),
-  tool_choice: z.union([
-    z.literal("auto"),
-    z.literal("required"),
-    z.literal("none"),
-    openAIChatForcedFunctionToolChoiceSchema
-  ]).optional(),
-  messages: z.array(openAIChatMessageSchema).min(1),
-  airlock: airlockRequestExtensionsSchema.optional()
+    model: z.string().min(1),
+    stream: z.boolean().default(false),
+    user: z.string().min(1).optional(),
+    safety_identifier: z.string().min(1).optional(),
+    metadata: openAIChatMetadataSchema.optional(),
+    service_tier: z
+      .enum(["auto", "default", "flex", "priority", "scale"])
+      .optional(),
+    store: z.boolean().nullable().optional(),
+    prompt_cache_key: z.string().min(1).optional(),
+    prompt_cache_retention: z.enum(["in_memory", "24h"]).optional(),
+    max_tokens: z.number().int().positive().optional(),
+    max_completion_tokens: z.number().int().positive().optional(),
+    reasoning_effort: z
+      .enum(["none", "minimal", "low", "medium", "high", "xhigh"])
+      .optional(),
+    temperature: z.number().min(0).max(2).optional(),
+    top_p: z.number().min(0).max(1).optional(),
+    logprobs: z.boolean().optional(),
+    top_logprobs: z.number().int().min(0).max(20).optional(),
+    frequency_penalty: z.number().min(-2).max(2).optional(),
+    presence_penalty: z.number().min(-2).max(2).optional(),
+    seed: z.number().int().optional(),
+    response_format: openAIChatResponseFormatSchema.optional(),
+    modalities: z.array(z.literal("text")).length(1).optional(),
+    stop: z
+      .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+      .optional(),
+    stream_options: openAIChatStreamOptionsSchema.optional(),
+    parallel_tool_calls: z.boolean().optional(),
+    tools: z.array(openAIChatFunctionToolSchema).min(1).optional(),
+    tool_choice: z
+      .union([
+        z.literal("auto"),
+        z.literal("required"),
+        z.literal("none"),
+        openAIChatForcedFunctionToolChoiceSchema
+      ])
+      .optional(),
+    messages: z.array(openAIChatMessageSchema).min(1),
+    airlock: airlockRequestExtensionsSchema.optional()
   })
   .superRefine((value, context) => {
     if (

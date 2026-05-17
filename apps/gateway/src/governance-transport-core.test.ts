@@ -32,10 +32,12 @@ describe("dispatchGovernanceTransport", () => {
         "req_123",
         {
           parse: async (response) => {
-            return await response.json() as { ok: boolean };
+            return (await response.json()) as { ok: boolean };
           },
           createUnavailableError: (requestId, cause) => {
-            return new Error(`unavailable:${requestId}:${describeCause(cause)}`);
+            return new Error(
+              `unavailable:${requestId}:${describeCause(cause)}`
+            );
           },
           createInvalidResponseError: (requestId, cause) => {
             return new Error(`invalid:${requestId}:${describeCause(cause)}`);
@@ -50,7 +52,9 @@ describe("dispatchGovernanceTransport", () => {
       dispatchGovernanceTransport(
         () => {
           return {
-            fetch: vi.fn().mockResolvedValue(new Response("Not found", { status: 404 }))
+            fetch: vi
+              .fn()
+              .mockResolvedValue(new Response("Not found", { status: 404 }))
           };
         },
         new Request("https://airlock.internal/test", { method: "GET" }),
@@ -67,7 +71,9 @@ describe("dispatchGovernanceTransport", () => {
             return undefined;
           },
           createUnavailableError: (requestId, cause) => {
-            return new Error(`unavailable:${requestId}:${describeCause(cause)}`);
+            return new Error(
+              `unavailable:${requestId}:${describeCause(cause)}`
+            );
           },
           createInvalidResponseError: (requestId, cause) => {
             return new Error(`invalid:${requestId}:${describeCause(cause)}`);
@@ -90,7 +96,9 @@ describe("dispatchGovernanceTransport", () => {
             return await response.json();
           },
           createUnavailableError: (requestId, cause) => {
-            return new Error(`unavailable:${requestId}:${(cause as Error).message}`);
+            return new Error(
+              `unavailable:${requestId}:${(cause as Error).message}`
+            );
           },
           createInvalidResponseError: (requestId, cause) => {
             return new Error(`invalid:${requestId}:${describeCause(cause)}`);
@@ -122,7 +130,9 @@ describe("dispatchGovernanceTransport", () => {
             return await response.json();
           },
           createUnavailableError: (requestId, cause) => {
-            return new Error(`unavailable:${requestId}:${describeCause(cause)}`);
+            return new Error(
+              `unavailable:${requestId}:${describeCause(cause)}`
+            );
           },
           createInvalidResponseError: (requestId, cause) => {
             return new Error(`invalid:${requestId}:${describeCause(cause)}`);

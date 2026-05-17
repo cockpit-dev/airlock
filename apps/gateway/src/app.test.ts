@@ -1869,7 +1869,10 @@ describe("gateway app", () => {
     }
 
     expect(payload.data.map((model) => model.id)).toEqual(
-      expect.arrayContaining(["openai/gpt-4.1-mini", "anthropic/claude-sonnet-4-5"])
+      expect.arrayContaining([
+        "openai/gpt-4.1-mini",
+        "anthropic/claude-sonnet-4-5"
+      ])
     );
   });
 
@@ -2420,7 +2423,10 @@ describe("gateway app", () => {
 
     const response = await app.request("http://localhost/readyz", undefined, {
       ...createBindings(),
-      AIRLOCK_IP_RATE_LIMIT_POLICY: JSON.stringify({ limit: 100, windowSeconds: 60 })
+      AIRLOCK_IP_RATE_LIMIT_POLICY: JSON.stringify({
+        limit: 100,
+        windowSeconds: 60
+      })
     });
 
     expect(response.status).toBe(503);
@@ -37528,11 +37534,7 @@ describe("GET /_airlock/metrics", () => {
     const app = createApp({ fetcher: vi.fn() });
 
     // Make a request that will be recorded
-    await app.request(
-      "http://localhost/healthz",
-      {},
-      createBindings()
-    );
+    await app.request("http://localhost/healthz", {}, createBindings());
 
     const response = await app.request(
       "http://localhost/_airlock/metrics",
@@ -37781,9 +37783,7 @@ describe("request-class-aware routing affinity", () => {
     );
   }
 
-  function affinityBindings(
-    requestClassAffinity: Record<string, unknown>
-  ) {
+  function affinityBindings(requestClassAffinity: Record<string, unknown>) {
     return {
       ...createBindings(),
       AIRLOCK_MODEL_ALIASES:
@@ -38203,10 +38203,10 @@ describe("health_score target selection strategy", () => {
     const fetcher = vi.fn();
     fetcher
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ error: { message: "rate limited" } }),
-          { status: 429, headers: { "content-type": "application/json" } }
-        )
+        new Response(JSON.stringify({ error: { message: "rate limited" } }), {
+          status: 429,
+          headers: { "content-type": "application/json" }
+        })
       )
       .mockResolvedValueOnce(anthropicResponse.clone())
       .mockResolvedValueOnce(anthropicResponse.clone());

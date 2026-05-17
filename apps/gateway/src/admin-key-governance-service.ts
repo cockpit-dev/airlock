@@ -37,9 +37,11 @@ export async function listAdminGatewayKeys(
   requestId: string,
   query: URLSearchParams
 ) {
-  return createAdminKeyGovernanceWorkflow(env, requestId).withRead((runtime) => {
-    return readGatewayAdminKeys(query, runtime.read);
-  });
+  return createAdminKeyGovernanceWorkflow(env, requestId).withRead(
+    (runtime) => {
+      return readGatewayAdminKeys(query, runtime.read);
+    }
+  );
 }
 
 export async function createAdminGatewayKey(
@@ -280,9 +282,11 @@ export async function getAdminGatewayKey(
   keyId: string,
   requestId: string
 ) {
-  return createAdminKeyGovernanceWorkflow(env, requestId).withRead((runtime) => {
-    return readGatewayAdminKey(keyId, requestId, runtime.read);
-  });
+  return createAdminKeyGovernanceWorkflow(env, requestId).withRead(
+    (runtime) => {
+      return readGatewayAdminKey(keyId, requestId, runtime.read);
+    }
+  );
 }
 
 export async function updateAdminGatewayKey(
@@ -444,9 +448,11 @@ export async function getAdminGatewayKeyRevocationStatus(
   keyId: string,
   requestId: string
 ) {
-  return createAdminKeyGovernanceWorkflow(env, requestId).withRead((runtime) => {
-    return readGatewayAdminKeyRevocationStatus(keyId, runtime.read);
-  });
+  return createAdminKeyGovernanceWorkflow(env, requestId).withRead(
+    (runtime) => {
+      return readGatewayAdminKeyRevocationStatus(keyId, runtime.read);
+    }
+  );
 }
 
 export async function getAdminGatewayKeyStatus(
@@ -454,9 +460,11 @@ export async function getAdminGatewayKeyStatus(
   keyId: string,
   requestId: string
 ) {
-  return createAdminKeyGovernanceWorkflow(env, requestId).withRead((runtime) => {
-    return readGatewayAdminKeyStatus(keyId, runtime.read);
-  });
+  return createAdminKeyGovernanceWorkflow(env, requestId).withRead(
+    (runtime) => {
+      return readGatewayAdminKeyStatus(keyId, runtime.read);
+    }
+  );
 }
 
 export async function getAdminGatewayKeyEvents(
@@ -464,9 +472,11 @@ export async function getAdminGatewayKeyEvents(
   keyId: string,
   requestId: string
 ) {
-  return createAdminKeyGovernanceWorkflow(env, requestId).withRead((runtime) => {
-    return readGatewayAdminKeyEvents(keyId, runtime.read);
-  });
+  return createAdminKeyGovernanceWorkflow(env, requestId).withRead(
+    (runtime) => {
+      return readGatewayAdminKeyEvents(keyId, runtime.read);
+    }
+  );
 }
 
 export async function getAdminGatewayKeyOperationEvents(
@@ -474,9 +484,15 @@ export async function getAdminGatewayKeyOperationEvents(
   operationId: string,
   requestId: string
 ) {
-  return createAdminKeyGovernanceWorkflow(env, requestId).withRead((runtime) => {
-    return readGatewayAdminKeyOperationEvents(operationId, requestId, runtime.read);
-  });
+  return createAdminKeyGovernanceWorkflow(env, requestId).withRead(
+    (runtime) => {
+      return readGatewayAdminKeyOperationEvents(
+        operationId,
+        requestId,
+        runtime.read
+      );
+    }
+  );
 }
 
 export async function getAdminGatewayKeyRegistryView(
@@ -484,9 +500,11 @@ export async function getAdminGatewayKeyRegistryView(
   keyId: string,
   requestId: string
 ) {
-  return createAdminKeyGovernanceWorkflow(env, requestId).withRead((runtime) => {
-    return readGatewayAdminKeyRegistryView(keyId, runtime.read);
-  });
+  return createAdminKeyGovernanceWorkflow(env, requestId).withRead(
+    (runtime) => {
+      return readGatewayAdminKeyRegistryView(keyId, runtime.read);
+    }
+  );
 }
 
 export async function updateAdminGatewayKeyRegistryOverride(
