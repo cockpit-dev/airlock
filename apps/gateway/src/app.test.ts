@@ -3173,7 +3173,7 @@ describe("gateway app", () => {
       bindings
     );
 
-    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
 
     const secondResponse = await app.request(
       "http://localhost/v1/chat/completions",
@@ -3325,7 +3325,7 @@ describe("gateway app", () => {
       bindings
     );
 
-    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
 
     const secondResponse = await app.request(
       "http://localhost/v1/responses",
@@ -3473,7 +3473,7 @@ describe("gateway app", () => {
       bindings
     );
 
-    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
 
     const secondResponse = await app.request(
       "http://localhost/v1/messages",
@@ -3645,7 +3645,7 @@ describe("gateway app", () => {
       bindings
     );
 
-    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
 
     const secondResponse = await app.request(
       "http://localhost/v1/chat/completions",
@@ -3795,7 +3795,7 @@ describe("gateway app", () => {
       bindings
     );
 
-    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
 
     const secondResponse = await app.request(
       "http://localhost/v1/responses",
@@ -3946,7 +3946,7 @@ describe("gateway app", () => {
       bindings
     );
 
-    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
 
     const secondResponse = await app.request(
       "http://localhost/v1/messages",
@@ -8317,7 +8317,7 @@ describe("gateway app", () => {
       bindings
     );
 
-    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
 
     const secondResponse = await app.request(
       "http://localhost/v1/chat/completions",
