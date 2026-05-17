@@ -1,5 +1,9 @@
 import { GatewayError } from "@airlock/shared";
-import { ZodError, type ZodType } from "zod";
+import { ZodError } from "zod";
+
+interface PayloadParser<T> {
+  parse(payload: unknown): T;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -41,7 +45,7 @@ export function assertAllowedAnthropicTopLevelFields(
 }
 
 export function parseAnthropicRequestSchema<T>(
-  schema: ZodType<T>,
+  schema: PayloadParser<T>,
   payload: unknown,
   requestId: string
 ) {

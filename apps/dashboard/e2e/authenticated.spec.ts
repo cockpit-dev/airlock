@@ -1,15 +1,10 @@
 import { test as base, expect } from "@playwright/test";
-
-const TEST_URL = "http://localhost:8787";
-const TEST_TOKEN = "test-admin-token";
+import { mockGatewayApi, performTokenLogin } from "./helpers.js";
 
 const test = base.extend({
   page: async ({ page }, use) => {
-    await page.goto("/login");
-    await page.getByLabel("Gateway URL").fill(TEST_URL);
-    await page.getByLabel("Admin Token").fill(TEST_TOKEN);
-    await page.getByRole("button", { name: /login/i }).click();
-    await page.waitForURL("/", { timeout: 10000 }).catch(() => {});
+    await mockGatewayApi(page);
+    await performTokenLogin(page);
     await use(page);
   }
 });
@@ -22,7 +17,9 @@ test.describe("Dashboard home page", () => {
   });
 
   test("shows status section", async ({ page }) => {
-    await expect(page.getByText(/status/i)).toBeVisible({ timeout: 5000 });
+    await expect(
+      page.getByRole("heading", { name: "Request Status" })
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test("shows navigation links", async ({ page }) => {

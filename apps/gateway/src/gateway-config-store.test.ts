@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   GatewayConfigStoreDurableObject,
   CONFIG_SECTION_NAMES,
-  type ConfigSectionName,
   type StoredConfigSection
 } from "./gateway-config-store.js";
 import type { DurableObjectStateLike } from "./durable-object-state.js";

@@ -95,9 +95,10 @@ function parseToolCallArguments(
   argumentsStr: string
 ): Record<string, unknown> {
   try {
-    return JSON.parse(argumentsStr) as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(argumentsStr);
+    return typeof parsed === "object" && parsed !== null ? parsed as Record<string, unknown> : {};
   } catch {
-    return {} as Record<string, unknown>;
+    return {};
   }
 }
 

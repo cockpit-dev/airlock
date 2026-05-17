@@ -4,8 +4,7 @@ import { GatewayError } from "@airlock/shared";
 
 import {
   AdminRateLimiter,
-  extractIp,
-  getAdminRateLimiter
+  extractIp
 } from "./admin-rate-limit.js";
 import {
   corsHeaders,
@@ -187,6 +186,30 @@ export function createApp(options: CreateAppOptions = {}) {
     const config = parseCorsOrigins(context.env.AIRLOCK_CORS_ORIGINS);
     if (config.allowedOrigins) {
       const headers = corsHeaders(context.req.header("Origin"), config);
+      for (const [key, value] of Object.entries(headers)) {
+        context.header(key, value);
+      }
+    }
+  });
+
+  // CORS preflight for browser-based admin dashboard requests
+  app.options("/_airlock/*", (context) => {
+    const config = parseCorsOrigins(context.env.AIRLOCK_CORS_ORIGINS);
+    if (!config.allowedOrigins) {
+      return new Response(null, { status: 405 });
+    }
+    return createPreflightResponse(context.req.header("Origin"), config, {
+      allowAdminMethods: true
+    });
+  });
+
+  app.use("/_airlock/*", async (context, next) => {
+    await next();
+    const config = parseCorsOrigins(context.env.AIRLOCK_CORS_ORIGINS);
+    if (config.allowedOrigins) {
+      const headers = corsHeaders(context.req.header("Origin"), config, {
+        allowAdminMethods: true
+      });
       for (const [key, value] of Object.entries(headers)) {
         context.header(key, value);
       }

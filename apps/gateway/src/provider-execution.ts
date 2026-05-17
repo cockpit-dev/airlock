@@ -1043,13 +1043,11 @@ export async function* executeRoutedStreamRequest(
               ? { requestShaping: streamTargetShaping }
               : {})
           };
-          let sawCompleted = false;
           for await (const event of adapter.stream(
             currentStreamAttemptRequest,
             streamContext
           )) {
             if (event.type === "response_completed") {
-              sawCompleted = true;
               completedUsageTotalTokens = event.usage?.totalTokens;
             }
             yieldedAnyEvent = true;

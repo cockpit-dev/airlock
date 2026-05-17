@@ -1,8 +1,8 @@
 import { createClient } from "$lib/auth.js";
 import type { PageLoad } from "./$types.js";
 
-export const load: PageLoad = async () => {
-  const client = createClient();
+export const load: PageLoad = async ({ fetch }) => {
+  const client = createClient(undefined, undefined, fetch);
   if (!client) return { config: null };
 
   try {

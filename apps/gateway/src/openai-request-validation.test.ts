@@ -419,7 +419,11 @@ describe("parseOpenAIRequestSchema", () => {
   it("re-throws non-ZodError", () => {
     expect(() =>
       parseOpenAIRequestSchema(
-        { parse: () => { throw new Error("oops"); } } as any,
+        {
+          parse: () => {
+            throw new Error("oops");
+          }
+        },
         {},
         REQ_ID,
         "OpenAI Chat"

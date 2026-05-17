@@ -39,9 +39,7 @@ import {
   quotaRateLimitHeaders,
   reconcileTokenQuota,
   releaseConcurrencyLease,
-  releaseStreamResources,
-  routingSignals,
-  type QuotaResources
+  releaseStreamResources
 } from "../quota-pipeline.js";
 import {
   executeRoutedRequest,

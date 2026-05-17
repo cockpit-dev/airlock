@@ -15,6 +15,7 @@ async function collect(
 async function* fromEvents(
   events: CanonicalStreamEvent[]
 ): AsyncIterable<CanonicalStreamEvent> {
+  await Promise.resolve();
   for (const event of events) {
     yield event;
   }
@@ -127,6 +128,7 @@ describe("createStreamReassemblyIterable", () => {
 
   it("propagates errors without synthesizing completion", async () => {
     async function* failingSource(): AsyncIterable<CanonicalStreamEvent> {
+      await Promise.resolve();
       yield STARTED;
       yield DELTA;
       throw new Error("provider disconnected");

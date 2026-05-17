@@ -10,3 +10,15 @@ declare module "@auth/sveltekit" {
     };
   }
 }
+
+declare global {
+  namespace App {
+    interface Platform {
+      env?: Record<string, string | undefined>;
+    }
+
+    interface Locals {
+      auth(): Promise<import("@auth/sveltekit").Session | null>;
+    }
+  }
+}

@@ -1,5 +1,5 @@
 /**
- * CORS handling for public AI API endpoints.
+ * CORS handling for public AI API endpoints and browser-based admin surfaces.
  *
  * Browser clients need CORS headers to call the gateway directly.
  * This module provides:
@@ -8,7 +8,8 @@
  * - Configurable allowed origins via AIRLOCK_CORS_ORIGINS env var
  */
 
-const ALLOWED_METHODS = "GET, POST, OPTIONS";
+const PUBLIC_ALLOWED_METHODS = "GET, POST, OPTIONS";
+const ADMIN_ALLOWED_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
 const ALLOWED_HEADERS =
   "Content-Type, Authorization, X-Api-Key, X-Request-ID, Accept, Accept-Encoding";
 const MAX_AGE = 86400; // 24 hours — browsers cache preflight results
@@ -51,7 +52,8 @@ function resolveAllowOrigin(
 
 export function corsHeaders(
   requestOrigin: string | undefined,
-  config: CorsConfig
+  config: CorsConfig,
+  options?: { allowAdminMethods?: boolean }
 ): Record<string, string> {
   const allowOrigin = resolveAllowOrigin(requestOrigin, config);
   if (!allowOrigin) {
@@ -59,7 +61,9 @@ export function corsHeaders(
   }
   return {
     "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Methods": ALLOWED_METHODS,
+    "Access-Control-Allow-Methods": options?.allowAdminMethods
+      ? ADMIN_ALLOWED_METHODS
+      : PUBLIC_ALLOWED_METHODS,
     "Access-Control-Allow-Headers": ALLOWED_HEADERS,
     "Access-Control-Max-Age": String(MAX_AGE),
     "Access-Control-Expose-Headers":
@@ -73,9 +77,10 @@ export function isPreflightRequest(request: Request): boolean {
 
 export function createPreflightResponse(
   requestOrigin: string | undefined,
-  config: CorsConfig
+  config: CorsConfig,
+  options?: { allowAdminMethods?: boolean }
 ): Response {
-  const headers = corsHeaders(requestOrigin, config);
+  const headers = corsHeaders(requestOrigin, config, options);
   if (!headers["Access-Control-Allow-Origin"]) {
     // Origin not allowed — return 403 with no CORS headers
     return new Response(null, { status: 403 });

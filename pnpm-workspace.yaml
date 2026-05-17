@@ -2,10 +2,21 @@ packages:
   - apps/*
   - packages/*
 
+overrides:
+  "@sveltejs/kit>cookie": ^0.7.2
+
 minimumReleaseAge: 1440
 minimumReleaseAgeStrict: true
 minimumReleaseAgeExclude:
   - "@types/node"
+  - "@typescript/native-preview"
+  - "@typescript/native-preview-darwin-x64"
+  - "@typescript/native-preview-darwin-arm64"
+  - "@typescript/native-preview-linux-x64"
+  - "@typescript/native-preview-linux-arm"
+  - "@typescript/native-preview-linux-arm64"
+  - "@typescript/native-preview-win32-x64"
+  - "@typescript/native-preview-win32-arm64"
 trustPolicy: no-downgrade
 blockExoticSubdeps: true
 preferFrozenLockfile: true

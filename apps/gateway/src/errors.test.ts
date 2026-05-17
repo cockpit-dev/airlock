@@ -128,7 +128,7 @@ describe("toErrorResponse", () => {
     });
   });
 
-  it("includes error headers in response", async () => {
+  it("includes error headers in response", () => {
     const error = new GatewayError("Limited", {
       code: "limited",
       category: "rate_limit",

@@ -35,15 +35,12 @@ import {
   acquireQuotaResources,
   assertGatewayKeyTokenUsageAvailable,
   cancelStreamResources,
-  didUseFallback,
   emitSuccessTelemetry,
   handleQuotaError,
   quotaRateLimitHeaders,
   reconcileTokenQuota,
   releaseConcurrencyLease,
-  releaseStreamResources,
-  routingSignals,
-  type QuotaResources
+  releaseStreamResources
 } from "../quota-pipeline.js";
 import {
   executeRoutedRequest,
@@ -208,11 +205,6 @@ export async function handleChatCompletions(
     quota,
     routingStrategy: route.targetSelection?.strategy
   };
-
-  const fullRoutingSignals = () => ({
-    routingStrategy: route.targetSelection?.strategy,
-    ...routingSignals(quota)
-  });
 
   const fetcher = context.get("fetcher");
   const now = context.get("now");

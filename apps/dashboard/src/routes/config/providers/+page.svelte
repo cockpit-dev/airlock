@@ -44,6 +44,31 @@
   };
 
   const allProtocols = ["openai_chat", "openai_responses", "anthropic_messages"];
+  const providerFieldIds: Record<string, Record<string, string>> = {
+    openai: {
+      apiKey: "provider-openai-api-key",
+      baseUrl: "provider-openai-base-url",
+      defaultModel: "provider-openai-default-model",
+      protocols: "provider-openai-protocols",
+      headers: "provider-openai-headers",
+      query: "provider-openai-query"
+    },
+    anthropic: {
+      apiKey: "provider-anthropic-api-key",
+      baseUrl: "provider-anthropic-base-url",
+      defaultMaxTokens: "provider-anthropic-default-max-tokens",
+      protocols: "provider-anthropic-protocols",
+      headers: "provider-anthropic-headers",
+      query: "provider-anthropic-query"
+    },
+    gemini: {
+      apiKey: "provider-gemini-api-key",
+      baseUrl: "provider-gemini-base-url",
+      protocols: "provider-gemini-protocols",
+      headers: "provider-gemini-headers",
+      query: "provider-gemini-query"
+    }
+  };
 
   async function loadConfig() {
     const creds = getStoredCredentials();
@@ -160,8 +185,9 @@
     <!-- OpenAI (always shown) -->
     {#snippet providerCard(name: string, config: ProviderConfig)}
       <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-        <div
-          class="flex items-center justify-between px-5 py-3 bg-gray-850 cursor-pointer"
+        <button
+          type="button"
+          class="flex w-full items-center justify-between px-5 py-3 bg-gray-850 text-left cursor-pointer"
           onclick={() => (editProvider = editProvider === name ? null : name)}
         >
           <div class="flex items-center gap-3">
@@ -182,13 +208,19 @@
           <span class="text-gray-500 text-sm"
             >{editProvider === name ? "&#9650;" : "&#9660;"}</span
           >
-        </div>
+        </button>
 
         {#if editProvider === name}
           <div class="p-5 space-y-4 border-t border-gray-800">
             <div>
-              <label class="block text-sm text-gray-400 mb-1">API Key</label>
+              <label
+                class="block text-sm text-gray-400 mb-1"
+                for={providerFieldIds[name]?.apiKey}
+              >
+                API Key
+              </label>
               <input
+                id={providerFieldIds[name]?.apiKey}
                 type="password"
                 class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
                 placeholder="sk-..."
@@ -197,8 +229,14 @@
             </div>
 
             <div>
-              <label class="block text-sm text-gray-400 mb-1">Base URL</label>
+              <label
+                class="block text-sm text-gray-400 mb-1"
+                for={providerFieldIds[name]?.baseUrl}
+              >
+                Base URL
+              </label>
               <input
+                id={providerFieldIds[name]?.baseUrl}
                 type="url"
                 class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
                 bind:value={config.baseUrl}
@@ -207,10 +245,14 @@
 
             {#if name === "openai"}
               <div>
-                <label class="block text-sm text-gray-400 mb-1"
-                  >Default Model</label
+                <label
+                  class="block text-sm text-gray-400 mb-1"
+                  for={providerFieldIds[name]?.defaultModel}
                 >
+                  Default Model
+                </label>
                 <input
+                  id={providerFieldIds[name]?.defaultModel}
                   type="text"
                   class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
                   placeholder="gpt-4.1-mini"
@@ -221,10 +263,14 @@
 
             {#if name === "anthropic"}
               <div>
-                <label class="block text-sm text-gray-400 mb-1"
-                  >Default Max Tokens</label
+                <label
+                  class="block text-sm text-gray-400 mb-1"
+                  for={providerFieldIds[name]?.defaultMaxTokens}
                 >
+                  Default Max Tokens
+                </label>
                 <input
+                  id={providerFieldIds[name]?.defaultMaxTokens}
                   type="number"
                   class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
                   placeholder="4096"
@@ -235,12 +281,20 @@
 
             <!-- Protocols -->
             <div>
-              <label class="block text-sm text-gray-400 mb-2"
-                >Supported Protocols</label
+              <span
+                class="block text-sm text-gray-400 mb-2"
+                id={providerFieldIds[name]?.protocols}
               >
-              <div class="flex flex-wrap gap-2">
+                Supported Protocols
+              </span>
+              <div
+                class="flex flex-wrap gap-2"
+                role="group"
+                aria-labelledby={providerFieldIds[name]?.protocols}
+              >
                 {#each allProtocols as protocol}
                   <button
+                    type="button"
                     class="px-3 py-1.5 rounded text-xs font-medium border transition-colors {(config.protocols ?? []).includes(protocol)
                       ? 'bg-blue-900/50 border-blue-700 text-blue-300'
                       : 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300'}"
@@ -258,10 +312,14 @@
 
             <!-- Extended Headers -->
             <div>
-              <label class="block text-sm text-gray-400 mb-1"
-                >Extended Headers (JSON)</label
+              <label
+                class="block text-sm text-gray-400 mb-1"
+                for={providerFieldIds[name]?.headers}
               >
+                Extended Headers (JSON)
+              </label>
               <textarea
+                id={providerFieldIds[name]?.headers}
                 class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
                 rows="2"
                 placeholder={'{"X-Custom-Header": "value"}'}
@@ -279,10 +337,14 @@
 
             <!-- Extended Query Params -->
             <div>
-              <label class="block text-sm text-gray-400 mb-1"
-                >Extended Query Params (JSON)</label
+              <label
+                class="block text-sm text-gray-400 mb-1"
+                for={providerFieldIds[name]?.query}
               >
+                Extended Query Params (JSON)
+              </label>
               <textarea
+                id={providerFieldIds[name]?.query}
                 class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
                 rows="2"
                 placeholder={'{"key": "value"}'}
@@ -300,6 +362,7 @@
 
             <div class="flex justify-end pt-2">
               <button
+                type="button"
                 class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium disabled:opacity-50"
                 onclick={() => saveProvider(name)}
                 disabled={saving}
@@ -327,6 +390,7 @@
       <div class="flex gap-3 pt-4">
         {#if !showAnthropic}
           <button
+            type="button"
             class="px-4 py-2 border border-gray-700 rounded text-sm text-gray-400 hover:text-white hover:border-gray-600 transition-colors"
             onclick={() => addProvider("anthropic")}
           >
@@ -335,6 +399,7 @@
         {/if}
         {#if !showGemini}
           <button
+            type="button"
             class="px-4 py-2 border border-gray-700 rounded text-sm text-gray-400 hover:text-white hover:border-gray-600 transition-colors"
             onclick={() => addProvider("gemini")}
           >

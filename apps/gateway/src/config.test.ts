@@ -480,7 +480,7 @@ describe("resolveGatewayConfigWithOverlay", () => {
       globalVersion: 0
     });
     const config = await resolveGatewayConfigWithOverlay(
-      createBindings({ AIRLOCK_CONFIG_STORE: namespace as never })
+      createBindings({ AIRLOCK_CONFIG_STORE: namespace })
     );
     expect(config.openAI.apiKey).toBe("openai-secret");
   });
@@ -503,7 +503,7 @@ describe("resolveGatewayConfigWithOverlay", () => {
       globalVersion: 1
     });
     const config = await resolveGatewayConfigWithOverlay(
-      createBindings({ AIRLOCK_CONFIG_STORE: namespace as never })
+      createBindings({ AIRLOCK_CONFIG_STORE: namespace })
     );
     expect(config.openAI.apiKey).toBe("do-openai-key");
     expect(config.openAI.baseUrl).toBe("https://custom.openai.com/v1");
@@ -530,7 +530,7 @@ describe("resolveGatewayConfigWithOverlay", () => {
     });
     const config = await resolveGatewayConfigWithOverlay(
       createBindings({
-        AIRLOCK_CONFIG_STORE: namespace as never,
+        AIRLOCK_CONFIG_STORE: namespace,
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=gpt-4.1-mini,claude=anthropic:claude-sonnet-4-20250514"
       })
@@ -550,7 +550,7 @@ describe("resolveGatewayConfigWithOverlay", () => {
     await expect(
       resolveGatewayConfigWithOverlay(
         createBindings({
-          AIRLOCK_CONFIG_STORE: namespace as never,
+          AIRLOCK_CONFIG_STORE: namespace,
           AIRLOCK_MODEL_ALIASES:
             "gpt-4.1-mini=gpt-4.1-mini,claude=anthropic:claude-sonnet-4-20250514"
         })
@@ -574,7 +574,7 @@ describe("resolveGatewayConfigWithOverlay", () => {
       globalVersion: 1
     });
     const config = await resolveGatewayConfigWithOverlay(
-      createBindings({ AIRLOCK_CONFIG_STORE: namespace as never })
+      createBindings({ AIRLOCK_CONFIG_STORE: namespace })
     );
     expect(config.providerTimeoutMs).toBe(60_000);
     expect(config.providerMaxRetries).toBe(3);

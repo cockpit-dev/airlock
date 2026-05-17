@@ -23,14 +23,9 @@ test.describe("Unauthenticated access", () => {
 });
 
 test.describe("Navigation bar", () => {
-  test("shows all nav links on login page", async ({ page }) => {
+  test("keeps unauthenticated users on the token login screen", async ({ page }) => {
     await page.goto("/login");
-    const nav = page.locator("nav");
-    await expect(nav.getByText("Dashboard")).toBeVisible();
-    await expect(nav.getByText("Keys")).toBeVisible();
-    await expect(nav.getByText("Routes")).toBeVisible();
-    await expect(nav.getByText("Config")).toBeVisible();
-    await expect(nav.getByText("Providers")).toBeVisible();
-    await expect(nav.getByText("Routes")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /airlock dashboard/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /dashboard/i })).toHaveCount(0);
   });
 });

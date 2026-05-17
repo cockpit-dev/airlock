@@ -45,6 +45,16 @@
   let formRequiredKeyTier = $state("");
   let formRequiredKeyTags = $state("");
 
+  const fieldIds = {
+    externalModel: "route-external-model",
+    targetStrategy: "route-target-strategy",
+    targetProvider: "route-target-provider",
+    targetModel: "route-target-model",
+    requiredKeyTier: "route-required-key-tier",
+    requiredKeyTags: "route-required-key-tags",
+    fallbackTargets: "route-fallback-targets"
+  };
+
   function resetForm() {
     formExternalModel = "";
     formTargetProvider = "openai";
@@ -228,6 +238,7 @@
         >&larr; Back to Config</a
       >
       <button
+        type="button"
         class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
         onclick={startCreate}
       >
@@ -297,12 +308,14 @@
               </div>
               <div class="flex items-center gap-2">
                 <button
+                  type="button"
                   class="px-2 py-1 text-xs text-gray-400 hover:text-white border border-gray-700 rounded"
                   onclick={() => startEdit(index)}
                 >
                   Edit
                 </button>
                 <button
+                  type="button"
                   class="px-2 py-1 text-xs text-red-400 hover:text-red-300 border border-red-900 rounded"
                   onclick={() => deleteRoute(index)}
                 >
@@ -329,8 +342,9 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
-        <label class="block text-sm text-gray-400 mb-1">External Model</label>
+        <label class="block text-sm text-gray-400 mb-1" for={fieldIds.externalModel}>External Model</label>
         <input
+          id={fieldIds.externalModel}
           type="text"
           class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
           placeholder="gpt-4.1-mini"
@@ -339,8 +353,9 @@
       </div>
 
       <div>
-        <label class="block text-sm text-gray-400 mb-1">Target Strategy</label>
+        <label class="block text-sm text-gray-400 mb-1" for={fieldIds.targetStrategy}>Target Strategy</label>
         <select
+          id={fieldIds.targetStrategy}
           class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
           bind:value={formStrategy}
         >
@@ -354,8 +369,9 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
-        <label class="block text-sm text-gray-400 mb-1">Target Provider</label>
+        <label class="block text-sm text-gray-400 mb-1" for={fieldIds.targetProvider}>Target Provider</label>
         <select
+          id={fieldIds.targetProvider}
           class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
           bind:value={formTargetProvider}
         >
@@ -366,8 +382,9 @@
       </div>
 
       <div>
-        <label class="block text-sm text-gray-400 mb-1">Target Model</label>
+        <label class="block text-sm text-gray-400 mb-1" for={fieldIds.targetModel}>Target Model</label>
         <input
+          id={fieldIds.targetModel}
           type="text"
           class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
           placeholder="gpt-4.1-mini"
@@ -379,14 +396,16 @@
     <!-- Fallbacks -->
     <div>
       <div class="flex items-center justify-between mb-2">
-        <label class="text-sm text-gray-400">Fallback Targets</label>
+        <span class="text-sm text-gray-400" id={fieldIds.fallbackTargets}>Fallback Targets</span>
         <button
+          type="button"
           class="px-2 py-1 text-xs text-blue-400 hover:text-blue-300 border border-blue-900 rounded"
           onclick={addFallback}
         >
           + Add Fallback
         </button>
       </div>
+      <div aria-labelledby={fieldIds.fallbackTargets}>
       {#each formFallbacks as fb, i}
         <div class="flex items-center gap-2 mb-2">
           <select
@@ -412,6 +431,7 @@
               )}
           />
           <button
+            type="button"
             class="px-2 py-1 text-xs text-red-400 hover:text-red-300"
             onclick={() => removeFallback(i)}
           >
@@ -419,13 +439,15 @@
           </button>
         </div>
       {/each}
+      </div>
     </div>
 
     <!-- Key Access Policy -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
-        <label class="block text-sm text-gray-400 mb-1">Required Key Tier</label>
+        <label class="block text-sm text-gray-400 mb-1" for={fieldIds.requiredKeyTier}>Required Key Tier</label>
         <input
+          id={fieldIds.requiredKeyTier}
           type="text"
           class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
           placeholder="(optional)"
@@ -434,8 +456,9 @@
       </div>
 
       <div>
-        <label class="block text-sm text-gray-400 mb-1">Required Key Tags</label>
+        <label class="block text-sm text-gray-400 mb-1" for={fieldIds.requiredKeyTags}>Required Key Tags</label>
         <input
+          id={fieldIds.requiredKeyTags}
           type="text"
           class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
           placeholder="tag1, tag2 (comma separated)"
@@ -446,12 +469,14 @@
 
     <div class="flex justify-end gap-2 pt-2">
       <button
+        type="button"
         class="px-4 py-2 text-gray-400 hover:text-white text-sm rounded border border-gray-700"
         onclick={cancelEdit}
       >
         Cancel
       </button>
       <button
+        type="button"
         class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium disabled:opacity-50"
         onclick={onSave}
         disabled={saving}

@@ -122,7 +122,7 @@ export class GatewayConfigStoreDurableObject {
       }
 
       if (request.method === "DELETE") {
-        return this.handleDeleteSection(sectionName, request);
+        return this.handleDeleteSection(sectionName);
       }
     }
 
@@ -208,8 +208,7 @@ export class GatewayConfigStoreDurableObject {
   }
 
   private async handleDeleteSection(
-    name: ConfigSectionName,
-    request: Request
+    name: ConfigSectionName
   ): Promise<Response> {
     const existingSection = await this.state.storage.get<StoredConfigSection>(
       `section:${name}`

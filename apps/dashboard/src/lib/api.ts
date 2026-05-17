@@ -1,14 +1,16 @@
 export class AirlockClient {
   private baseUrl: string;
   private token: string;
+  private fetchFn: typeof fetch;
 
-  constructor(baseUrl: string, token: string) {
+  constructor(baseUrl: string, token: string, fetchFn: typeof fetch = fetch) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.token = token;
+    this.fetchFn = fetchFn;
   }
 
   private async request<T>(path: string, options?: RequestInit): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const response = await this.fetchFn(`${this.baseUrl}${path}`, {
       ...options,
       headers: {
         Authorization: `Bearer ${this.token}`,
@@ -74,39 +76,55 @@ export class AirlockClient {
   }
 
   rotateKey(keyId: string, payload?: unknown) {
-    return this.request<unknown>(`/_airlock/keys/${keyId}/rotate`, {
-      method: "POST",
-      ...(payload ? { body: JSON.stringify(payload) } : {})
-    });
+    return this.request<unknown>(
+      `/_airlock/keys/${encodeURIComponent(keyId)}/rotate`,
+      {
+        method: "POST",
+        ...(payload ? { body: JSON.stringify(payload) } : {})
+      }
+    );
   }
 
   archiveKey(keyId: string, payload?: unknown) {
-    return this.request<unknown>(`/_airlock/keys/${keyId}/archive`, {
-      method: "POST",
-      ...(payload ? { body: JSON.stringify(payload) } : {})
-    });
+    return this.request<unknown>(
+      `/_airlock/keys/${encodeURIComponent(keyId)}/archive`,
+      {
+        method: "POST",
+        ...(payload ? { body: JSON.stringify(payload) } : {})
+      }
+    );
   }
 
   restoreKey(keyId: string, payload?: unknown) {
-    return this.request<unknown>(`/_airlock/keys/${keyId}/restore`, {
-      method: "POST",
-      ...(payload ? { body: JSON.stringify(payload) } : {})
-    });
+    return this.request<unknown>(
+      `/_airlock/keys/${encodeURIComponent(keyId)}/restore`,
+      {
+        method: "POST",
+        ...(payload ? { body: JSON.stringify(payload) } : {})
+      }
+    );
   }
 
   revokeKey(keyId: string, payload?: unknown) {
-    return this.request<unknown>(`/_airlock/keys/${keyId}/revocation`, {
-      method: "POST",
-      ...(payload ? { body: JSON.stringify(payload) } : {})
-    });
+    return this.request<unknown>(
+      `/_airlock/keys/${encodeURIComponent(keyId)}/revocation`,
+      {
+        method: "POST",
+        ...(payload ? { body: JSON.stringify(payload) } : {})
+      }
+    );
   }
 
   getKeyStatus(keyId: string) {
-    return this.request<unknown>(`/_airlock/keys/${keyId}/status`);
+    return this.request<unknown>(
+      `/_airlock/keys/${encodeURIComponent(keyId)}/status`
+    );
   }
 
   getKeyEvents(keyId: string) {
-    return this.request<unknown>(`/_airlock/keys/${keyId}/events`);
+    return this.request<unknown>(
+      `/_airlock/keys/${encodeURIComponent(keyId)}/events`
+    );
   }
 
   // Config Store Management

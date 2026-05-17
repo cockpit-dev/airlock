@@ -26,7 +26,6 @@ import type { GatewayBindings } from "./env.js";
 import { gatewayEnvSchema } from "./env.js";
 import {
   fetchConfigStoreSnapshot,
-  type DashboardConfigOverlay,
   type DashboardProviderEntry,
   type DashboardProvidersConfig,
   type StoredConfigSnapshot
@@ -282,59 +281,76 @@ function parseRequestSigningSecrets(
  * If these values haven't changed, the parsed config is identical.
  */
 export function computeConfigFingerprint(bindings: GatewayBindings): string {
+  const stringValue = (value: string | number | boolean | undefined): string => {
+    return value === undefined ? "" : String(value);
+  };
+
+  const presenceFlag = (value: unknown): string => {
+    return value === undefined ? "0" : "1";
+  };
+
   return [
-    bindings.AIRLOCK_MODE,
-    bindings.AIRLOCK_GATEWAY_API_KEYS,
-    bindings.AIRLOCK_MODEL_ALIASES,
-    bindings.AIRLOCK_MODEL_FALLBACKS,
-    bindings.AIRLOCK_MODEL_TARGET_SELECTION,
-    bindings.AIRLOCK_MODEL_KEY_POLICY,
-    bindings.AIRLOCK_MODEL_SHAPING,
-    bindings.AIRLOCK_MODEL_GROUPS,
-    bindings.AIRLOCK_REQUEST_SIGNING_SECRETS,
-    bindings.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS,
-    bindings.AIRLOCK_INTERNAL_ADMIN_TOKEN,
-    bindings.AIRLOCK_INTERNAL_ADMIN_ACTOR_HEADER,
-    bindings.AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED,
-    bindings.AIRLOCK_CORS_ORIGINS,
-    bindings.AIRLOCK_PROVIDER_TIMEOUT_MS,
-    bindings.AIRLOCK_PROVIDER_MAX_RETRIES,
-    bindings.AIRLOCK_PROVIDER_RETRY_BACKOFF_MS,
-    bindings.AIRLOCK_PROVIDER_STREAM_IDLE_TIMEOUT_MS,
-    bindings.AIRLOCK_MAX_REQUEST_BODY_BYTES,
-    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD,
-    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS,
-    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT,
-    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_WINDOW_MS,
-    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_THRESHOLD,
-    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_MIN_ATTEMPTS_IN_WINDOW,
-    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_SUCCESSES,
-    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_SUCCESS_RATE,
-    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_WINDOW,
-    bindings.AIRLOCK_ROUTING_LATENCY_FRESHNESS_MS,
-    bindings.AIRLOCK_ROUTING_COST_FRESHNESS_MS,
-    bindings.AIRLOCK_ROUTING_FAILURE_FRESHNESS_MS,
-    bindings.AIRLOCK_ROUTING_RECOVERY_WINDOW_MS,
-    bindings.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED,
-    bindings.OPENAI_API_KEY,
-    bindings.OPENAI_BASE_URL,
-    bindings.OPENAI_DEFAULT_MODEL,
-    bindings.ANTHROPIC_API_KEY,
-    bindings.ANTHROPIC_BASE_URL,
-    bindings.ANTHROPIC_DEFAULT_MAX_TOKENS,
-    bindings.GEMINI_API_KEY,
-    bindings.GEMINI_BASE_URL,
-    bindings.AIRLOCK_GATEWAY_KEY_QUOTA !== undefined ? "1" : "0",
-    bindings.AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA !== undefined ? "1" : "0",
-    bindings.AIRLOCK_GATEWAY_KEY_CONCURRENCY !== undefined ? "1" : "0",
-    bindings.AIRLOCK_GATEWAY_KEY_REGISTRY !== undefined ? "1" : "0",
-    bindings.AIRLOCK_GATEWAY_KEY_REVOCATION !== undefined ? "1" : "0",
-    bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER !== undefined ? "1" : "0",
-    bindings.AIRLOCK_IP_RATE_LIMIT !== undefined ? "1" : "0",
-    bindings.AIRLOCK_IP_RATE_LIMIT_POLICY ?? "",
-    bindings.AIRLOCK_TELEMETRY ?? "",
-    bindings.AIRLOCK_REQUEST_LOGGING ?? "",
-    bindings.AIRLOCK_CONFIG_STORE !== undefined ? "1" : "0"
+    stringValue(bindings.AIRLOCK_MODE),
+    stringValue(bindings.AIRLOCK_GATEWAY_API_KEYS),
+    stringValue(bindings.AIRLOCK_MODEL_ALIASES),
+    stringValue(bindings.AIRLOCK_MODEL_FALLBACKS),
+    stringValue(bindings.AIRLOCK_MODEL_TARGET_SELECTION),
+    stringValue(bindings.AIRLOCK_MODEL_KEY_POLICY),
+    stringValue(bindings.AIRLOCK_MODEL_SHAPING),
+    stringValue(bindings.AIRLOCK_MODEL_GROUPS),
+    stringValue(bindings.AIRLOCK_REQUEST_SIGNING_SECRETS),
+    stringValue(bindings.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS),
+    stringValue(bindings.AIRLOCK_INTERNAL_ADMIN_TOKEN),
+    stringValue(bindings.AIRLOCK_INTERNAL_ADMIN_ACTOR_HEADER),
+    stringValue(bindings.AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED),
+    stringValue(bindings.AIRLOCK_CORS_ORIGINS),
+    stringValue(bindings.AIRLOCK_PROVIDER_TIMEOUT_MS),
+    stringValue(bindings.AIRLOCK_PROVIDER_MAX_RETRIES),
+    stringValue(bindings.AIRLOCK_PROVIDER_RETRY_BACKOFF_MS),
+    stringValue(bindings.AIRLOCK_PROVIDER_STREAM_IDLE_TIMEOUT_MS),
+    stringValue(bindings.AIRLOCK_MAX_REQUEST_BODY_BYTES),
+    stringValue(bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD),
+    stringValue(bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS),
+    stringValue(bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT),
+    stringValue(bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_WINDOW_MS),
+    stringValue(bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_ERROR_RATE_THRESHOLD),
+    stringValue(
+      bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_MIN_ATTEMPTS_IN_WINDOW
+    ),
+    stringValue(
+      bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_SUCCESSES
+    ),
+    stringValue(
+      bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_SUCCESS_RATE
+    ),
+    stringValue(
+      bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER_HALF_OPEN_PROMOTION_WINDOW
+    ),
+    stringValue(bindings.AIRLOCK_ROUTING_LATENCY_FRESHNESS_MS),
+    stringValue(bindings.AIRLOCK_ROUTING_COST_FRESHNESS_MS),
+    stringValue(bindings.AIRLOCK_ROUTING_FAILURE_FRESHNESS_MS),
+    stringValue(bindings.AIRLOCK_ROUTING_RECOVERY_WINDOW_MS),
+    stringValue(bindings.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED),
+    stringValue(bindings.OPENAI_API_KEY),
+    stringValue(bindings.OPENAI_BASE_URL),
+    stringValue(bindings.OPENAI_DEFAULT_MODEL),
+    stringValue(bindings.ANTHROPIC_API_KEY),
+    stringValue(bindings.ANTHROPIC_BASE_URL),
+    stringValue(bindings.ANTHROPIC_DEFAULT_MAX_TOKENS),
+    stringValue(bindings.GEMINI_API_KEY),
+    stringValue(bindings.GEMINI_BASE_URL),
+    presenceFlag(bindings.AIRLOCK_GATEWAY_KEY_QUOTA),
+    presenceFlag(bindings.AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA),
+    presenceFlag(bindings.AIRLOCK_GATEWAY_KEY_CONCURRENCY),
+    presenceFlag(bindings.AIRLOCK_GATEWAY_KEY_REGISTRY),
+    presenceFlag(bindings.AIRLOCK_GATEWAY_KEY_REVOCATION),
+    presenceFlag(bindings.AIRLOCK_PROVIDER_CIRCUIT_BREAKER),
+    presenceFlag(bindings.AIRLOCK_IP_RATE_LIMIT),
+    stringValue(bindings.AIRLOCK_IP_RATE_LIMIT_POLICY),
+    presenceFlag(bindings.AIRLOCK_TELEMETRY),
+    stringValue(bindings.AIRLOCK_REQUEST_LOGGING),
+    presenceFlag(bindings.AIRLOCK_CONFIG_STORE),
+    stringValue(bindings.AIRLOCK_GOOGLE_SUPER_ADMIN_EMAIL)
   ].join("\0");
 }
 
@@ -744,8 +760,7 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function validateProviderEntry(
-  data: unknown,
-  providerName: string
+  data: unknown
 ): DashboardProviderEntry | undefined {
   if (typeof data !== "object" || data === null) return undefined;
   const entry = data as Record<string, unknown>;
@@ -769,9 +784,9 @@ function validateProvidersOverlay(
 ): Partial<DashboardProvidersConfig> | undefined {
   if (typeof data !== "object" || data === null) return undefined;
   const raw = data as Record<string, unknown>;
-  const openai = validateProviderEntry(raw.openai, "openai");
-  const anthropic = validateProviderEntry(raw.anthropic, "anthropic");
-  const gemini = validateProviderEntry(raw.gemini, "gemini");
+  const openai = validateProviderEntry(raw.openai);
+  const anthropic = validateProviderEntry(raw.anthropic);
+  const gemini = validateProviderEntry(raw.gemini);
   if (!openai && !anthropic && !gemini) return undefined;
   return {
     ...(openai ? { openai } : {}),

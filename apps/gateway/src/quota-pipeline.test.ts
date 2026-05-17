@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   didUseFallback,
-  routingSignals,
-  quotaRateLimitHeaders
+  routingSignals
 } from "./quota-pipeline.js";
 import type { QuotaResources } from "./quota-pipeline.js";
 

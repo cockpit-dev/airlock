@@ -24,10 +24,18 @@ export function clearCredentials(): void {
   localStorage.removeItem(STORAGE_KEY_TOKEN);
 }
 
-export function createClient(): AirlockClient | null {
+export function createClient(
+  url?: string,
+  token?: string,
+  fetchFn?: typeof fetch
+): AirlockClient | null {
+  if (url && token) {
+    return new AirlockClient(url, token, fetchFn);
+  }
+
   const creds = getStoredCredentials();
   if (!creds) return null;
-  return new AirlockClient(creds.url, creds.token);
+  return new AirlockClient(creds.url, creds.token, fetchFn);
 }
 
 export async function verifyCredentials(

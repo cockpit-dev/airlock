@@ -40,6 +40,10 @@
     renderStaticCharts();
   }
 
+  function toPlainArray<T>(values: T[]): T[] {
+    return Array.from(values);
+  }
+
   function renderStaticCharts() {
     if (!ChartModule) return;
     const { Chart } = ChartModule;
@@ -130,11 +134,11 @@
     new Chart(trendChartEl, {
       type: "line",
       data: {
-        labels: trendLabels,
+        labels: toPlainArray(trendLabels),
         datasets: [
           {
             label: "Requests",
-            data: trendRequests,
+            data: toPlainArray(trendRequests),
             borderColor: "#3b82f6",
             backgroundColor: "rgba(59,130,246,0.1)",
             fill: true,
@@ -143,7 +147,7 @@
           },
           {
             label: "Errors",
-            data: trendErrors,
+            data: toPlainArray(trendErrors),
             borderColor: "#ef4444",
             backgroundColor: "rgba(239,68,68,0.1)",
             fill: true,
@@ -169,11 +173,11 @@
     new Chart(errorRateChartEl, {
       type: "bar",
       data: {
-        labels: trendLabels,
+        labels: toPlainArray(trendLabels),
         datasets: [{
           label: "Error Rate (%)",
-          data: trendErrorRates,
-          backgroundColor: trendErrorRates.map((r) => (r > 5 ? "rgba(239,68,68,0.7)" : r > 1 ? "rgba(234,179,8,0.7)" : "rgba(34,197,94,0.7)")),
+          data: toPlainArray(trendErrorRates),
+          backgroundColor: toPlainArray(trendErrorRates).map((r) => (r > 5 ? "rgba(239,68,68,0.7)" : r > 1 ? "rgba(234,179,8,0.7)" : "rgba(34,197,94,0.7)")),
           borderRadius: 2
         }]
       },

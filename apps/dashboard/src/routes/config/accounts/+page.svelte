@@ -28,6 +28,10 @@
   let formEnabled = $state(true);
 
   const roleOptions = ["super_admin", "admin", "operator", "viewer"];
+  const fieldIds = {
+    email: "account-email",
+    role: "account-role"
+  };
 
   function resetForm() {
     formEmail = "";
@@ -185,6 +189,7 @@
         >&larr; Back to Config</a
       >
       <button
+        type="button"
         class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
         onclick={startCreate}
       >
@@ -223,8 +228,9 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm text-gray-400 mb-1">Email</label>
+            <label class="block text-sm text-gray-400 mb-1" for={fieldIds.email}>Email</label>
             <input
+              id={fieldIds.email}
               type="email"
               class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
               placeholder="user@example.com"
@@ -234,8 +240,9 @@
           </div>
 
           <div>
-            <label class="block text-sm text-gray-400 mb-1">Role</label>
+            <label class="block text-sm text-gray-400 mb-1" for={fieldIds.role}>Role</label>
             <select
+              id={fieldIds.role}
               class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
               bind:value={formRole}
             >
@@ -260,12 +267,14 @@
 
         <div class="flex justify-end gap-2 pt-2">
           <button
+            type="button"
             class="px-4 py-2 text-gray-400 hover:text-white text-sm rounded border border-gray-700"
             onclick={cancelEdit}
           >
             Cancel
           </button>
           <button
+            type="button"
             class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium disabled:opacity-50"
             onclick={editAccountEmail ? applyEdit : applyCreate}
             disabled={saving}
@@ -302,6 +311,7 @@
               </td>
               <td class="px-4 py-3">
                 <button
+                  type="button"
                   class="px-2 py-0.5 rounded text-xs {account.enabled
                     ? 'bg-green-900/50 text-green-300 hover:bg-green-900'
                     : 'bg-gray-800 text-gray-500 hover:bg-gray-700'}"
@@ -313,12 +323,14 @@
               <td class="px-4 py-3 text-right">
                 <div class="flex justify-end gap-2">
                   <button
+                    type="button"
                     class="px-2 py-1 text-xs text-gray-400 hover:text-white border border-gray-700 rounded"
                     onclick={() => startEdit(account.email)}
                   >
                     Edit
                   </button>
                   <button
+                    type="button"
                     class="px-2 py-1 text-xs text-red-400 hover:text-red-300 border border-red-900 rounded"
                     onclick={() => deleteAccount(account.email)}
                   >

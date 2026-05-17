@@ -192,8 +192,8 @@ describe("parseAnthropicRequestSchema", () => {
         throw new Error("not a zod error");
       }
     };
-    expect(() =>
-      parseAnthropicRequestSchema(badSchema as any, {}, REQ_ID)
-    ).toThrow("not a zod error");
+    expect(() => parseAnthropicRequestSchema(badSchema, {}, REQ_ID)).toThrow(
+      "not a zod error"
+    );
   });
 });

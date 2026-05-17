@@ -37278,6 +37278,47 @@ describe("GET /_airlock/routing/health", () => {
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
     });
+
+    it("returns admin CORS headers on /_airlock/* when AIRLOCK_CORS_ORIGINS is set", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const response = await app.request(
+        "http://localhost/_airlock/status",
+        {
+          headers: {
+            origin: "https://example.com",
+            authorization: "Bearer admin-secret"
+          }
+        },
+        {
+          ...createBindings(),
+          AIRLOCK_CORS_ORIGINS: "*",
+          AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret"
+        }
+      );
+
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+      expect(response.headers.get("Access-Control-Allow-Methods")).toBe(
+        "GET, POST, PUT, DELETE, OPTIONS"
+      );
+    });
+
+    it("handles admin preflight OPTIONS when AIRLOCK_CORS_ORIGINS is set", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const response = await app.request(
+        "http://localhost/_airlock/config/manage/routes",
+        {
+          method: "OPTIONS",
+          headers: { origin: "https://example.com" }
+        },
+        { ...createBindings(), AIRLOCK_CORS_ORIGINS: "*" }
+      );
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+      expect(response.headers.get("Access-Control-Allow-Methods")).toBe(
+        "GET, POST, PUT, DELETE, OPTIONS"
+      );
+    });
   });
 
   describe("405 Method Not Allowed", () => {
