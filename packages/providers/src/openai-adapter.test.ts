@@ -3639,17 +3639,16 @@ describe("OpenAIProviderAdapter", () => {
       fetcher
     });
 
-    const streamIterator = adapter
-      .stream(
-        {
-          ...createCanonicalRequest(),
-          stream: true
-        },
-        {
-          requestId: "req_stream_implicit_usage"
-        }
-      )
-      [Symbol.asyncIterator]();
+    const providerStream = adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true
+      },
+      {
+        requestId: "req_stream_implicit_usage"
+      }
+    );
+    const streamIterator = providerStream[Symbol.asyncIterator]();
 
     while (true) {
       const nextChunk = await streamIterator.next();

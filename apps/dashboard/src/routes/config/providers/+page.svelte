@@ -1,7 +1,12 @@
 <script lang="ts">
   import Nav from "$components/Nav.svelte";
   import { createClient, getStoredCredentials } from "$lib/auth.js";
+
+  type ProviderType = "openai" | "anthropic" | "gemini";
+
   type ProviderConfig = {
+    id: string;
+    type: ProviderType;
     apiKey: string;
     baseUrl: string;
     defaultModel?: string;
@@ -12,71 +17,53 @@
     extendedBodyInjections?: Record<string, unknown>;
   };
 
-  type ProvidersConfig = {
-    openai: ProviderConfig;
-    anthropic?: ProviderConfig;
-    gemini?: ProviderConfig;
+  type ProvidersConfig = ProviderConfig[];
+
+  const providerTypes: ProviderType[] = ["openai", "anthropic", "gemini"];
+  const providerTypeLabels: Record<ProviderType, string> = {
+    openai: "OpenAI-compatible",
+    anthropic: "Anthropic-compatible",
+    gemini: "Gemini-compatible"
   };
+  const providerDefaultUrls: Record<ProviderType, string> = {
+    openai: "https://api.openai.com/v1",
+    anthropic: "https://api.anthropic.com",
+    gemini: "https://generativelanguage.googleapis.com/v1beta"
+  };
+  const allProtocols = [
+    "openai_chat",
+    "openai_responses",
+    "anthropic_messages"
+  ];
 
   let loading = $state(true);
   let saving = $state(false);
   let error = $state("");
   let success = $state("");
   let editProvider = $state<string | null>(null);
+  let providers = $state<ProvidersConfig>([]);
 
-  let providers = $state<ProvidersConfig>({
-    openai: {
+  let newProviderKey = $state("");
+  let newProviderType = $state<ProviderType>("openai");
+
+  function providerFieldId(providerKey: string, field: string) {
+    return `provider-${providerKey.replace(/[^a-zA-Z0-9_-]/g, "-")}-${field}`;
+  }
+
+  function createProviderConfig(
+    id: string,
+    type: ProviderType
+  ): ProviderConfig {
+    return {
+      id,
+      type,
       apiKey: "",
-      baseUrl: "https://api.openai.com/v1",
-      defaultModel: "gpt-4.1-mini"
-    }
-  });
-
-  let showAnthropic = $state(false);
-  let showGemini = $state(false);
-
-  const providerLabels: Record<string, string> = {
-    openai: "OpenAI",
-    anthropic: "Anthropic",
-    gemini: "Google Gemini"
-  };
-
-  const providerDefaultUrls: Record<string, string> = {
-    openai: "https://api.openai.com/v1",
-    anthropic: "https://api.anthropic.com",
-    gemini: "https://generativelanguage.googleapis.com/v1beta"
-  };
-
-  const allProtocols = [
-    "openai_chat",
-    "openai_responses",
-    "anthropic_messages"
-  ];
-  const providerFieldIds: Record<string, Record<string, string>> = {
-    openai: {
-      apiKey: "provider-openai-api-key",
-      baseUrl: "provider-openai-base-url",
-      defaultModel: "provider-openai-default-model",
-      protocols: "provider-openai-protocols",
-      headers: "provider-openai-headers",
-      query: "provider-openai-query"
-    },
-    anthropic: {
-      apiKey: "provider-anthropic-api-key",
-      baseUrl: "provider-anthropic-base-url",
-      defaultMaxTokens: "provider-anthropic-default-max-tokens",
-      protocols: "provider-anthropic-protocols",
-      headers: "provider-anthropic-headers",
-      query: "provider-anthropic-query"
-    },
-    gemini: {
-      apiKey: "provider-gemini-api-key",
-      baseUrl: "provider-gemini-base-url",
-      protocols: "provider-gemini-protocols",
-      headers: "provider-gemini-headers",
-      query: "provider-gemini-query"
-    }
-  };
+      baseUrl: providerDefaultUrls[type],
+      ...(type === "openai" ? { defaultModel: "gpt-4.1-mini" } : {}),
+      ...(type === "anthropic" ? { defaultMaxTokens: 4096 } : {}),
+      protocols: type === "anthropic" ? ["anthropic_messages"] : ["openai_chat"]
+    };
+  }
 
   async function loadConfig() {
     const creds = getStoredCredentials();
@@ -85,27 +72,17 @@
     try {
       const snapshot = await client.getConfigStoreSnapshot();
       const section = snapshot.sections["providers"];
-      if (section?.data && typeof section.data === "object") {
-        const data = section.data as ProvidersConfig;
-        if (data.openai)
-          providers.openai = { ...providers.openai, ...data.openai };
-        if (data.anthropic) {
-          showAnthropic = true;
-          providers.anthropic = { ...data.anthropic };
-        }
-        if (data.gemini) {
-          showGemini = true;
-          providers.gemini = { ...data.gemini };
-        }
+      if (section?.data && Array.isArray(section.data)) {
+        providers = section.data as ProvidersConfig;
       }
     } catch {
-      // Config store may not be initialized yet — show defaults
+      // Config store may not be initialized yet; start with an empty catalog.
     } finally {
       loading = false;
     }
   }
 
-  async function saveProvider(name: string) {
+  async function saveProviders(message = "Provider catalog saved") {
     const creds = getStoredCredentials();
     if (!creds) return;
     const client = createClient(creds.url, creds.token);
@@ -114,13 +91,23 @@
     success = "";
 
     try {
-      const config = providers[name as keyof ProvidersConfig];
-      if (!config) throw new Error("Provider not found");
-      if (!config.apiKey.trim()) throw new Error("API key is required");
-      if (!config.baseUrl.trim()) throw new Error("Base URL is required");
+      const providerIds = new Set<string>();
+      for (const config of providers) {
+        if (!config.id.trim()) throw new Error("Provider id is required");
+        if (providerIds.has(config.id.trim())) {
+          throw new Error(`Provider id is duplicated: ${config.id.trim()}`);
+        }
+        providerIds.add(config.id.trim());
+        if (!config.apiKey.trim()) {
+          throw new Error(`API key is required for ${config.id}`);
+        }
+        if (!config.baseUrl.trim()) {
+          throw new Error(`Base URL is required for ${config.id}`);
+        }
+      }
 
       await client.putConfigStoreSection("providers", providers);
-      success = `${providerLabels[name] ?? name} configuration saved`;
+      success = message;
       editProvider = null;
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to save";
@@ -129,38 +116,78 @@
     }
   }
 
-  function addProvider(name: "anthropic" | "gemini") {
-    if (name === "anthropic") {
-      showAnthropic = true;
-      if (!providers.anthropic) {
-        providers.anthropic = {
-          apiKey: "",
-          baseUrl: providerDefaultUrls.anthropic,
-          defaultMaxTokens: 4096,
-          protocols: ["anthropic_messages"]
-        };
-      }
+  function addProvider() {
+    const providerKey = newProviderKey.trim();
+    if (!providerKey) {
+      error = "Provider key is required";
+      return;
     }
-    if (name === "gemini") {
-      showGemini = true;
-      if (!providers.gemini) {
-        providers.gemini = {
-          apiKey: "",
-          baseUrl: providerDefaultUrls.gemini,
-          protocols: ["openai_chat"]
-        };
-      }
+    if (providers.some((provider) => provider.id === providerKey)) {
+      error = "Provider key already exists";
+      return;
     }
+
+    providers = [
+      ...providers,
+      createProviderConfig(providerKey, newProviderType)
+    ];
+    editProvider = providerKey;
+    newProviderKey = "";
+    error = "";
   }
 
-  function toggleProtocol(provider: keyof ProvidersConfig, protocol: string) {
-    if (!providers[provider]) return;
-    const current = providers[provider]!.protocols ?? [];
-    if (current.includes(protocol)) {
-      providers[provider]!.protocols = current.filter((p) => p !== protocol);
-    } else {
-      providers[provider]!.protocols = [...current, protocol];
+  function deleteProvider(providerKey: string) {
+    if (
+      !confirm(`Delete provider ${providerKey}? Routes using it will fail.`)
+    ) {
+      return;
     }
+    providers = providers.filter((provider) => provider.id !== providerKey);
+    saveProviders("Provider deleted");
+  }
+
+  function updateProviderType(providerKey: string, type: ProviderType) {
+    const current = providers.find((provider) => provider.id === providerKey);
+    if (!current) return;
+    providers = providers.map((provider) =>
+      provider.id === providerKey
+        ? {
+            ...createProviderConfig(providerKey, type),
+            apiKey: current.apiKey,
+            baseUrl: current.baseUrl || providerDefaultUrls[type]
+          }
+        : provider
+    );
+  }
+
+  function toggleProtocol(providerKey: string, protocol: string) {
+    const currentProvider = providers.find(
+      (provider) => provider.id === providerKey
+    );
+    if (!currentProvider) return;
+    const current = currentProvider.protocols ?? [];
+    const protocols = current.includes(protocol)
+      ? current.filter((p) => p !== protocol)
+      : [...current, protocol];
+    providers = providers.map((provider) =>
+      provider.id === providerKey ? { ...currentProvider, protocols } : provider
+    );
+  }
+
+  function updateProviderField(
+    providerKey: string,
+    field: keyof ProviderConfig,
+    value: unknown
+  ) {
+    const currentProvider = providers.find(
+      (provider) => provider.id === providerKey
+    );
+    if (!currentProvider) return;
+    providers = providers.map((provider) =>
+      provider.id === providerKey
+        ? { ...currentProvider, [field]: value }
+        : provider
+    );
   }
 
   loadConfig();
@@ -170,7 +197,7 @@
 
 <main class="max-w-5xl mx-auto px-6 py-8">
   <div class="flex items-center justify-between mb-6">
-    <h2 class="text-xl font-bold text-gray-100">Provider Configuration</h2>
+    <h2 class="text-xl font-bold text-gray-100">Provider Instances</h2>
     <a href="/config" class="text-sm text-blue-400 hover:text-blue-300"
       >&larr; Back to Config</a
     >
@@ -195,233 +222,231 @@
   {#if loading}
     <div class="text-gray-400 text-center py-12">Loading configuration...</div>
   {:else}
-    <!-- OpenAI (always shown) -->
-    {#snippet providerCard(name: string, config: ProviderConfig)}
-      <div
-        class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
-      >
+    <div class="bg-gray-900 border border-gray-800 rounded-lg p-4 mb-5">
+      <div class="grid grid-cols-1 md:grid-cols-[1fr_220px_auto] gap-3">
+        <input
+          type="text"
+          class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+          placeholder="provider key, e.g. openai-prod"
+          bind:value={newProviderKey}
+        />
+        <select
+          class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+          bind:value={newProviderType}
+        >
+          {#each providerTypes as type}
+            <option value={type}>{providerTypeLabels[type]}</option>
+          {/each}
+        </select>
         <button
           type="button"
-          class="flex w-full items-center justify-between px-5 py-3 bg-gray-850 text-left cursor-pointer"
-          onclick={() => (editProvider = editProvider === name ? null : name)}
+          class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
+          onclick={addProvider}
         >
-          <div class="flex items-center gap-3">
-            <span class="font-semibold text-white"
-              >{providerLabels[name] ?? name}</span
-            >
-            {#if config.apiKey}
-              <span
-                class="px-2 py-0.5 rounded text-xs bg-green-900/50 text-green-400"
-                >Configured</span
-              >
-            {:else}
-              <span
-                class="px-2 py-0.5 rounded text-xs bg-gray-800 text-gray-500"
-                >Not configured</span
-              >
-            {/if}
-          </div>
-          <span class="text-gray-500 text-sm"
-            >{editProvider === name ? "&#9650;" : "&#9660;"}</span
-          >
+          Add Provider
         </button>
-
-        {#if editProvider === name}
-          <div class="p-5 space-y-4 border-t border-gray-800">
-            <div>
-              <label
-                class="block text-sm text-gray-400 mb-1"
-                for={providerFieldIds[name]?.apiKey}
-              >
-                API Key
-              </label>
-              <input
-                id={providerFieldIds[name]?.apiKey}
-                type="password"
-                class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-                placeholder="sk-..."
-                bind:value={config.apiKey}
-              />
-            </div>
-
-            <div>
-              <label
-                class="block text-sm text-gray-400 mb-1"
-                for={providerFieldIds[name]?.baseUrl}
-              >
-                Base URL
-              </label>
-              <input
-                id={providerFieldIds[name]?.baseUrl}
-                type="url"
-                class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
-                bind:value={config.baseUrl}
-              />
-            </div>
-
-            {#if name === "openai"}
-              <div>
-                <label
-                  class="block text-sm text-gray-400 mb-1"
-                  for={providerFieldIds[name]?.defaultModel}
-                >
-                  Default Model
-                </label>
-                <input
-                  id={providerFieldIds[name]?.defaultModel}
-                  type="text"
-                  class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
-                  placeholder="gpt-4.1-mini"
-                  bind:value={config.defaultModel}
-                />
-              </div>
-            {/if}
-
-            {#if name === "anthropic"}
-              <div>
-                <label
-                  class="block text-sm text-gray-400 mb-1"
-                  for={providerFieldIds[name]?.defaultMaxTokens}
-                >
-                  Default Max Tokens
-                </label>
-                <input
-                  id={providerFieldIds[name]?.defaultMaxTokens}
-                  type="number"
-                  class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-                  placeholder="4096"
-                  bind:value={config.defaultMaxTokens}
-                />
-              </div>
-            {/if}
-
-            <!-- Protocols -->
-            <div>
-              <span
-                class="block text-sm text-gray-400 mb-2"
-                id={providerFieldIds[name]?.protocols}
-              >
-                Supported Protocols
-              </span>
-              <div
-                class="flex flex-wrap gap-2"
-                role="group"
-                aria-labelledby={providerFieldIds[name]?.protocols}
-              >
-                {#each allProtocols as protocol}
-                  <button
-                    type="button"
-                    class="px-3 py-1.5 rounded text-xs font-medium border transition-colors {(
-                      config.protocols ?? []
-                    ).includes(protocol)
-                      ? 'bg-blue-900/50 border-blue-700 text-blue-300'
-                      : 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300'}"
-                    onclick={() =>
-                      toggleProtocol(name as keyof ProvidersConfig, protocol)}
-                  >
-                    {protocol}
-                  </button>
-                {/each}
-              </div>
-            </div>
-
-            <!-- Extended Headers -->
-            <div>
-              <label
-                class="block text-sm text-gray-400 mb-1"
-                for={providerFieldIds[name]?.headers}
-              >
-                Extended Headers (JSON)
-              </label>
-              <textarea
-                id={providerFieldIds[name]?.headers}
-                class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
-                rows="2"
-                placeholder={'{"X-Custom-Header": "value"}'}
-                oninput={(e) => {
-                  try {
-                    config.extendedHeaders = JSON.parse(
-                      (e.target as HTMLTextAreaElement).value
-                    );
-                  } catch {
-                    /* keep previous value */
-                  }
-                }}
-              ></textarea>
-            </div>
-
-            <!-- Extended Query Params -->
-            <div>
-              <label
-                class="block text-sm text-gray-400 mb-1"
-                for={providerFieldIds[name]?.query}
-              >
-                Extended Query Params (JSON)
-              </label>
-              <textarea
-                id={providerFieldIds[name]?.query}
-                class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
-                rows="2"
-                placeholder={'{"key": "value"}'}
-                oninput={(e) => {
-                  try {
-                    config.extendedQueryParams = JSON.parse(
-                      (e.target as HTMLTextAreaElement).value
-                    );
-                  } catch {
-                    /* keep previous value */
-                  }
-                }}
-              ></textarea>
-            </div>
-
-            <div class="flex justify-end pt-2">
-              <button
-                type="button"
-                class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium disabled:opacity-50"
-                onclick={() => saveProvider(name)}
-                disabled={saving}
-              >
-                {saving ? "Saving..." : "Save Configuration"}
-              </button>
-            </div>
-          </div>
-        {/if}
       </div>
-    {/snippet}
+    </div>
 
     <div class="space-y-4">
-      {@render providerCard("openai", providers.openai)}
-
-      {#if showAnthropic && providers.anthropic}
-        {@render providerCard("anthropic", providers.anthropic)}
-      {/if}
-
-      {#if showGemini && providers.gemini}
-        {@render providerCard("gemini", providers.gemini)}
-      {/if}
-
-      <!-- Add Provider Buttons -->
-      <div class="flex gap-3 pt-4">
-        {#if !showAnthropic}
+      {#each providers as config (config.id)}
+        {@const providerKey = config.id}
+        <div
+          class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
+        >
           <button
             type="button"
-            class="px-4 py-2 border border-gray-700 rounded text-sm text-gray-400 hover:text-white hover:border-gray-600 transition-colors"
-            onclick={() => addProvider("anthropic")}
+            class="flex w-full items-center justify-between px-5 py-3 bg-gray-850 text-left cursor-pointer"
+            onclick={() =>
+              (editProvider =
+                editProvider === providerKey ? null : providerKey)}
           >
-            + Add Anthropic
+            <div class="flex items-center gap-3">
+              <span class="font-mono font-semibold text-white"
+                >{providerKey}</span
+              >
+              <span
+                class="px-2 py-0.5 rounded text-xs bg-blue-900/50 text-blue-300"
+                >{config.type}</span
+              >
+              {#if config.apiKey && config.baseUrl}
+                <span
+                  class="px-2 py-0.5 rounded text-xs bg-green-900/50 text-green-400"
+                  >Configured</span
+                >
+              {:else}
+                <span
+                  class="px-2 py-0.5 rounded text-xs bg-gray-800 text-gray-500"
+                  >Incomplete</span
+                >
+              {/if}
+            </div>
+            <span class="text-gray-500 text-sm"
+              >{editProvider === providerKey ? "&#9650;" : "&#9660;"}</span
+            >
           </button>
-        {/if}
-        {#if !showGemini}
-          <button
-            type="button"
-            class="px-4 py-2 border border-gray-700 rounded text-sm text-gray-400 hover:text-white hover:border-gray-600 transition-colors"
-            onclick={() => addProvider("gemini")}
-          >
-            + Add Gemini
-          </button>
-        {/if}
-      </div>
+
+          {#if editProvider === providerKey}
+            <div class="p-5 space-y-4 border-t border-gray-800">
+              <div>
+                <label
+                  class="block text-sm text-gray-400 mb-1"
+                  for={providerFieldId(providerKey, "type")}>Adapter Type</label
+                >
+                <select
+                  id={providerFieldId(providerKey, "type")}
+                  class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                  value={config.type}
+                  onchange={(e) =>
+                    updateProviderType(
+                      providerKey,
+                      (e.target as HTMLSelectElement).value as ProviderType
+                    )}
+                >
+                  {#each providerTypes as type}
+                    <option value={type}>{providerTypeLabels[type]}</option>
+                  {/each}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  class="block text-sm text-gray-400 mb-1"
+                  for={providerFieldId(providerKey, "apiKey")}>API Key</label
+                >
+                <input
+                  id={providerFieldId(providerKey, "apiKey")}
+                  type="password"
+                  class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                  placeholder="secret key"
+                  value={config.apiKey}
+                  oninput={(e) =>
+                    updateProviderField(
+                      providerKey,
+                      "apiKey",
+                      (e.target as HTMLInputElement).value
+                    )}
+                />
+              </div>
+
+              <div>
+                <label
+                  class="block text-sm text-gray-400 mb-1"
+                  for={providerFieldId(providerKey, "baseUrl")}>Base URL</label
+                >
+                <input
+                  id={providerFieldId(providerKey, "baseUrl")}
+                  type="url"
+                  class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+                  value={config.baseUrl}
+                  oninput={(e) =>
+                    updateProviderField(
+                      providerKey,
+                      "baseUrl",
+                      (e.target as HTMLInputElement).value
+                    )}
+                />
+              </div>
+
+              {#if config.type === "openai"}
+                <div>
+                  <label
+                    class="block text-sm text-gray-400 mb-1"
+                    for={providerFieldId(providerKey, "defaultModel")}
+                    >Default Model</label
+                  >
+                  <input
+                    id={providerFieldId(providerKey, "defaultModel")}
+                    type="text"
+                    class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
+                    placeholder="gpt-4.1-mini"
+                    value={config.defaultModel ?? ""}
+                    oninput={(e) =>
+                      updateProviderField(
+                        providerKey,
+                        "defaultModel",
+                        (e.target as HTMLInputElement).value
+                      )}
+                  />
+                </div>
+              {/if}
+
+              {#if config.type === "anthropic"}
+                <div>
+                  <label
+                    class="block text-sm text-gray-400 mb-1"
+                    for={providerFieldId(providerKey, "defaultMaxTokens")}
+                    >Default Max Tokens</label
+                  >
+                  <input
+                    id={providerFieldId(providerKey, "defaultMaxTokens")}
+                    type="number"
+                    class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                    value={config.defaultMaxTokens ?? 4096}
+                    oninput={(e) =>
+                      updateProviderField(
+                        providerKey,
+                        "defaultMaxTokens",
+                        Number((e.target as HTMLInputElement).value)
+                      )}
+                  />
+                </div>
+              {/if}
+
+              <div>
+                <span
+                  class="block text-sm text-gray-400 mb-2"
+                  id={providerFieldId(providerKey, "protocols")}
+                  >Supported Protocols</span
+                >
+                <div
+                  class="flex flex-wrap gap-2"
+                  role="group"
+                  aria-labelledby={providerFieldId(providerKey, "protocols")}
+                >
+                  {#each allProtocols as protocol}
+                    <button
+                      type="button"
+                      class="px-3 py-1.5 rounded text-xs font-medium border transition-colors {(
+                        config.protocols ?? []
+                      ).includes(protocol)
+                        ? 'bg-blue-900/50 border-blue-700 text-blue-300'
+                        : 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300'}"
+                      onclick={() => toggleProtocol(providerKey, protocol)}
+                    >
+                      {protocol}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+
+              <div class="flex justify-between pt-2">
+                <button
+                  type="button"
+                  class="px-4 py-2 text-red-400 hover:text-red-300 text-sm rounded border border-red-900"
+                  onclick={() => deleteProvider(providerKey)}
+                >
+                  Delete
+                </button>
+                <button
+                  type="button"
+                  class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium disabled:opacity-50"
+                  onclick={() => saveProviders(`${providerKey} saved`)}
+                  disabled={saving}
+                >
+                  {saving ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          {/if}
+        </div>
+      {/each}
+
+      {#if providers.length === 0}
+        <div class="text-center py-12 text-gray-500">
+          No provider instances configured.
+        </div>
+      {/if}
     </div>
   {/if}
 </main>

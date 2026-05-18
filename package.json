@@ -5,11 +5,11 @@
   "packageManager": "pnpm@11.1.2",
   "scripts": {
     "audit": "pnpm audit --prod --registry=https://registry.npmjs.org",
-    "build": "pnpm -r --if-present build",
+    "build": "pnpm -r --filter '@airlock/*' --if-present build",
     "e2e": "pnpm --filter @airlock/dashboard exec playwright test",
-    "lint": "pnpm -r --if-present lint",
-    "test": "pnpm -r --if-present test",
-    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "pnpm -r --filter '@airlock/*' --if-present lint",
+    "test": "pnpm -r --filter '@airlock/*' --if-present test",
+    "typecheck": "pnpm -r --filter '@airlock/*' --if-present typecheck",
     "format": "node scripts/prettier-check-tracked.mjs"
   },
   "devDependencies": {

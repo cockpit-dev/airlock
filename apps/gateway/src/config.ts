@@ -19,7 +19,7 @@ import {
   parseRouteTargetSelection,
   type ModelRouteDirectory
 } from "@airlock/routing";
-import { type ProviderId, GatewayError } from "@airlock/shared";
+import { type ProviderId, GatewayError, isProviderId } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
 
@@ -32,6 +32,7 @@ import {
   type DashboardRouteConfig,
   type StoredConfigSnapshot
 } from "./gateway-config-store.js";
+import { isGatewayKeyRegistryEnabled } from "./gateway-key-registry-transport.js";
 
 export type ModelGroupMap = Record<string, string[]>;
 
@@ -65,27 +66,21 @@ export interface GatewayConfig {
   ipRateLimitPolicy?: IpRateLimitPolicy;
   modelGroups: ModelGroupMap;
   modelAliases: ModelRouteDirectory;
-  anthropic?: {
-    apiKey: string;
-    baseUrl: string;
-    defaultMaxTokens: number;
-  };
-  gemini?: {
-    apiKey: string;
-    baseUrl: string;
-  };
-  openAI?: {
-    apiKey: string;
-    baseUrl: string;
-    defaultModel: string;
-  };
+  providers: GatewayProviderEntry[];
 }
 
-type GatewayProviderConfig = NonNullable<GatewayConfig["openAI"]>;
+export interface GatewayProviderEntry {
+  id: string;
+  type: ProviderId;
+  apiKey: string;
+  baseUrl: string;
+  defaultModel?: string;
+  defaultMaxTokens?: number;
+}
 
 interface ParsedBusinessConfigInput {
+  providersValue: string | undefined;
   gatewayApiKeysValue: string | undefined;
-  fallbackModel: string | undefined;
   modelAliasesValue: string | undefined;
   modelFallbacksValue: string | undefined;
   modelTargetSelectionValue: string | undefined;
@@ -304,9 +299,7 @@ function createMissingBusinessConfigError(
   message: string,
   code:
     | "config_missing_gateway_api_keys"
-    | "config_missing_openai"
-    | "config_missing_anthropic"
-    | "config_missing_gemini"
+    | "config_missing_provider"
     | "config_missing_internal_admin_auth"
 ): GatewayError {
   return new GatewayError(message, {
@@ -317,11 +310,154 @@ function createMissingBusinessConfigError(
   });
 }
 
+function parseProviderCatalog(
+  value: string | undefined
+): GatewayProviderEntry[] {
+  if (!value) {
+    return [];
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new GatewayError("Provider catalog config must be valid JSON", {
+      code: "config_invalid_providers",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false
+    });
+  }
+
+  return normalizeProviderCatalog(parsed);
+}
+
+function normalizeProviderCatalog(data: unknown): GatewayProviderEntry[] {
+  if (!Array.isArray(data)) {
+    throw new GatewayError("Provider catalog config must be a JSON array", {
+      code: "config_invalid_providers",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false
+    });
+  }
+
+  const providers: GatewayProviderEntry[] = [];
+  const providerIds = new Set<string>();
+
+  for (const [index, entryValue] of data.entries()) {
+    if (
+      typeof entryValue !== "object" ||
+      entryValue === null ||
+      Array.isArray(entryValue)
+    ) {
+      throw new GatewayError(`Provider at index ${index} must be an object`, {
+        code: "config_invalid_providers",
+        category: "configuration",
+        httpStatus: 500,
+        retryable: false
+      });
+    }
+
+    const entry = entryValue as Record<string, unknown>;
+    const id = typeof entry.id === "string" ? entry.id.trim() : "";
+
+    if (id.length === 0) {
+      throw new GatewayError("Provider instance keys must be non-empty", {
+        code: "config_invalid_providers",
+        category: "configuration",
+        httpStatus: 500,
+        retryable: false
+      });
+    }
+
+    if (providerIds.has(id)) {
+      throw new GatewayError(`Provider instance ids must be unique: ${id}`, {
+        code: "config_invalid_providers",
+        category: "configuration",
+        httpStatus: 500,
+        retryable: false
+      });
+    }
+    providerIds.add(id);
+
+    const type = typeof entry.type === "string" ? entry.type.trim() : "";
+
+    if (!isProviderId(type)) {
+      throw new GatewayError(
+        `Provider instance ${id} must include a supported type`,
+        {
+          code: "config_invalid_providers",
+          category: "configuration",
+          httpStatus: 500,
+          retryable: false
+        }
+      );
+    }
+
+    if (!isNonEmptyString(entry.apiKey) || !isNonEmptyString(entry.baseUrl)) {
+      throw new GatewayError(
+        `Provider instance ${id} must include apiKey and baseUrl`,
+        {
+          code: "config_invalid_providers",
+          category: "configuration",
+          httpStatus: 500,
+          retryable: false
+        }
+      );
+    }
+
+    providers.push({
+      id,
+      type,
+      apiKey: entry.apiKey,
+      baseUrl: entry.baseUrl,
+      ...(isNonEmptyString(entry.defaultModel)
+        ? { defaultModel: entry.defaultModel }
+        : {}),
+      ...(typeof entry.defaultMaxTokens === "number" &&
+      Number.isFinite(entry.defaultMaxTokens) &&
+      entry.defaultMaxTokens > 0
+        ? { defaultMaxTokens: entry.defaultMaxTokens }
+        : {})
+    });
+  }
+
+  return providers;
+}
+
+export function getProviderById(
+  config: Pick<GatewayConfig, "providers">,
+  providerId: string
+): GatewayProviderEntry | undefined {
+  return config.providers.find((provider) => provider.id === providerId);
+}
+
+function validateProviderConfiguration(config: GatewayConfig): void {
+  for (const route of config.modelAliases) {
+    const routeTargets = [route.target, ...(route.fallbacks ?? [])];
+
+    for (const target of routeTargets) {
+      if (!getProviderById(config, target.provider)) {
+        throw createMissingBusinessConfigError(
+          `Provider instance is required for route target: ${target.provider}`,
+          "config_missing_provider"
+        );
+      }
+    }
+  }
+}
+
 function parseBusinessConfig(
   input: ParsedBusinessConfigInput
 ): Pick<
   GatewayConfig,
-  "gatewayApiKeys" | "modelAliases" | "modelGroups" | "requestSigningSecrets"
+  | "gatewayApiKeys"
+  | "modelAliases"
+  | "modelGroups"
+  | "requestSigningSecrets"
+  | "providers"
 > {
   const gatewayApiKeys = input.gatewayApiKeysValue
     ? parseGatewayApiKeys(input.gatewayApiKeysValue)
@@ -329,13 +465,8 @@ function parseBusinessConfig(
   const requestSigningSecrets = parseRequestSigningSecrets(
     input.requestSigningSecretsValue
   );
-  const baseRoutes =
-    input.modelAliasesValue || input.fallbackModel
-      ? parseModelAliases(
-          input.modelAliasesValue,
-          input.fallbackModel ?? "openai/gpt-4.1-mini"
-        )
-      : [];
+  const providers = parseProviderCatalog(input.providersValue);
+  const baseRoutes = parseModelAliases(input.modelAliasesValue);
   const modelAliases = attachRouteTargetSelection(
     attachRouteFallbacks(
       attachRouteRequestShaping(
@@ -350,66 +481,15 @@ function parseBusinessConfig(
     parseRouteTargetSelection(input.modelTargetSelectionValue)
   );
   const modelGroups = parseModelGroups(input.modelGroupsValue);
-
   validateModelGroups(modelGroups, modelAliases, gatewayApiKeys);
 
   return {
     gatewayApiKeys,
     modelAliases,
     modelGroups,
-    requestSigningSecrets
+    requestSigningSecrets,
+    providers
   };
-}
-
-function usesProvider(
-  modelAliases: readonly {
-    target: { provider: string };
-    fallbacks?: Array<{ provider: string }>;
-  }[],
-  provider: ProviderId
-): boolean {
-  return modelAliases.some((route) => {
-    if (route.target.provider === provider) {
-      return true;
-    }
-
-    return (route.fallbacks ?? []).some((fallback) => {
-      return fallback.provider === provider;
-    });
-  });
-}
-
-function validateProviderConfiguration(config: GatewayConfig): void {
-  if (usesProvider(config.modelAliases, "openai")) {
-    if (
-      !config.openAI?.apiKey ||
-      !config.openAI.baseUrl ||
-      !config.openAI.defaultModel
-    ) {
-      throw createMissingBusinessConfigError(
-        "OpenAI configuration is required (set via environment variables or dashboard config)",
-        "config_missing_openai"
-      );
-    }
-  }
-
-  if (usesProvider(config.modelAliases, "anthropic")) {
-    if (!config.anthropic?.apiKey || !config.anthropic.baseUrl) {
-      throw createMissingBusinessConfigError(
-        "Anthropic configuration is required (set via environment variables or dashboard config)",
-        "config_missing_anthropic"
-      );
-    }
-  }
-
-  if (usesProvider(config.modelAliases, "gemini")) {
-    if (!config.gemini?.apiKey || !config.gemini.baseUrl) {
-      throw createMissingBusinessConfigError(
-        "Gemini configuration is required (set via environment variables or dashboard config)",
-        "config_missing_gemini"
-      );
-    }
-  }
 }
 
 function hasGatewayCallerAuthentication(config: GatewayConfig): boolean {
@@ -488,6 +568,7 @@ export function computeConfigFingerprint(bindings: GatewayBindings): string {
 
   return [
     stringValue(bindings.AIRLOCK_MODE),
+    stringValue(bindings.AIRLOCK_PROVIDERS),
     stringValue(bindings.AIRLOCK_GATEWAY_API_KEYS),
     stringValue(bindings.AIRLOCK_MODEL_ALIASES),
     stringValue(bindings.AIRLOCK_MODEL_FALLBACKS),
@@ -527,15 +608,6 @@ export function computeConfigFingerprint(bindings: GatewayBindings): string {
     stringValue(bindings.AIRLOCK_ROUTING_COST_FRESHNESS_MS),
     stringValue(bindings.AIRLOCK_ROUTING_FAILURE_FRESHNESS_MS),
     stringValue(bindings.AIRLOCK_ROUTING_RECOVERY_WINDOW_MS),
-    stringValue(bindings.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED),
-    stringValue(bindings.OPENAI_API_KEY),
-    stringValue(bindings.OPENAI_BASE_URL),
-    stringValue(bindings.OPENAI_DEFAULT_MODEL),
-    stringValue(bindings.ANTHROPIC_API_KEY),
-    stringValue(bindings.ANTHROPIC_BASE_URL),
-    stringValue(bindings.ANTHROPIC_DEFAULT_MAX_TOKENS),
-    stringValue(bindings.GEMINI_API_KEY),
-    stringValue(bindings.GEMINI_BASE_URL),
     presenceFlag(bindings.AIRLOCK_GATEWAY_KEY_QUOTA),
     presenceFlag(bindings.AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA),
     presenceFlag(bindings.AIRLOCK_GATEWAY_KEY_CONCURRENCY),
@@ -605,8 +677,8 @@ function parseGatewayConfigUncached(
     env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS
   );
   const businessConfig = parseBusinessConfig({
+    providersValue: env.AIRLOCK_PROVIDERS,
     gatewayApiKeysValue: env.AIRLOCK_GATEWAY_API_KEYS,
-    fallbackModel: env.OPENAI_DEFAULT_MODEL,
     modelAliasesValue: env.AIRLOCK_MODEL_ALIASES,
     modelFallbacksValue: env.AIRLOCK_MODEL_FALLBACKS,
     modelTargetSelectionValue: env.AIRLOCK_MODEL_TARGET_SELECTION,
@@ -622,10 +694,9 @@ function parseGatewayConfigUncached(
     gatewayKeyConcurrency: env.AIRLOCK_GATEWAY_KEY_CONCURRENCY !== undefined
   });
 
-  if (
-    env.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED &&
-    !env.AIRLOCK_GATEWAY_KEY_REGISTRY
-  ) {
+  const gatewayKeyRegistryEnabled = isGatewayKeyRegistryEnabled(env);
+
+  if (gatewayKeyRegistryEnabled && !env.AIRLOCK_GATEWAY_KEY_REGISTRY) {
     throw new GatewayError("Gateway key registry binding is required", {
       code: "config_missing_gateway_key_registry",
       category: "configuration",
@@ -758,7 +829,7 @@ function parseGatewayConfigUncached(
     routingCostFreshnessMs: env.AIRLOCK_ROUTING_COST_FRESHNESS_MS,
     routingFailureFreshnessMs: env.AIRLOCK_ROUTING_FAILURE_FRESHNESS_MS,
     routingRecoveryWindowMs: env.AIRLOCK_ROUTING_RECOVERY_WINDOW_MS,
-    gatewayKeyRegistryEnabled: env.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED,
+    gatewayKeyRegistryEnabled,
     ...(env.AIRLOCK_INTERNAL_ADMIN_TOKEN
       ? { internalAdminToken: env.AIRLOCK_INTERNAL_ADMIN_TOKEN }
       : {}),
@@ -770,32 +841,7 @@ function parseGatewayConfigUncached(
     ...(ipRateLimitPolicy ? { ipRateLimitPolicy } : {}),
     modelGroups: businessConfig.modelGroups,
     modelAliases: businessConfig.modelAliases,
-    ...(env.ANTHROPIC_API_KEY && env.ANTHROPIC_BASE_URL
-      ? {
-          anthropic: {
-            apiKey: env.ANTHROPIC_API_KEY,
-            baseUrl: env.ANTHROPIC_BASE_URL,
-            defaultMaxTokens: env.ANTHROPIC_DEFAULT_MAX_TOKENS ?? 4096
-          }
-        }
-      : {}),
-    ...(env.GEMINI_API_KEY && env.GEMINI_BASE_URL
-      ? {
-          gemini: {
-            apiKey: env.GEMINI_API_KEY,
-            baseUrl: env.GEMINI_BASE_URL
-          }
-        }
-      : {}),
-    ...(env.OPENAI_API_KEY && env.OPENAI_BASE_URL && env.OPENAI_DEFAULT_MODEL
-      ? {
-          openAI: {
-            apiKey: env.OPENAI_API_KEY,
-            baseUrl: env.OPENAI_BASE_URL,
-            defaultModel: env.OPENAI_DEFAULT_MODEL
-          }
-        }
-      : {})
+    providers: businessConfig.providers
   };
 
   if (!allowMissingBusinessConfig) {
@@ -941,15 +987,40 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
-function validateProviderEntry(
-  data: unknown
-): DashboardProviderEntry | undefined {
-  if (typeof data !== "object" || data === null) return undefined;
+function createInvalidProvidersOverlayError(message: string): GatewayError {
+  return new GatewayError(message, {
+    code: "config_invalid_providers",
+    category: "configuration",
+    httpStatus: 500,
+    retryable: false
+  });
+}
+
+function validateProviderEntry(data: unknown): DashboardProviderEntry {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    throw createInvalidProvidersOverlayError(
+      "Provider entries must be objects"
+    );
+  }
   const entry = data as Record<string, unknown>;
-  if (!isNonEmptyString(entry.apiKey) || !isNonEmptyString(entry.baseUrl)) {
-    return undefined;
+  if (!isNonEmptyString(entry.id)) {
+    throw createInvalidProvidersOverlayError(
+      "Provider entries must include a non-empty id"
+    );
+  }
+  if (
+    !isNonEmptyString(entry.type) ||
+    !isProviderId(entry.type.trim()) ||
+    !isNonEmptyString(entry.apiKey) ||
+    !isNonEmptyString(entry.baseUrl)
+  ) {
+    throw createInvalidProvidersOverlayError(
+      `Provider instance ${entry.id.trim()} must include supported type, apiKey, and baseUrl`
+    );
   }
   return {
+    id: entry.id.trim(),
+    type: entry.type.trim() as ProviderId,
     apiKey: entry.apiKey,
     baseUrl: entry.baseUrl,
     ...(isNonEmptyString(entry.defaultModel)
@@ -963,62 +1034,36 @@ function validateProviderEntry(
 
 function validateProvidersOverlay(
   data: unknown
-): Partial<DashboardProvidersConfig> | undefined {
-  if (typeof data !== "object" || data === null) return undefined;
-  const raw = data as Record<string, unknown>;
-  const openai = validateProviderEntry(raw.openai);
-  const anthropic = validateProviderEntry(raw.anthropic);
-  const gemini = validateProviderEntry(raw.gemini);
-  if (!openai && !anthropic && !gemini) return undefined;
-  return {
-    ...(openai ? { openai } : {}),
-    ...(anthropic ? { anthropic } : {}),
-    ...(gemini ? { gemini } : {})
-  };
+): DashboardProvidersConfig | undefined {
+  if (!Array.isArray(data)) {
+    throw createInvalidProvidersOverlayError(
+      "Provider catalog config must be a JSON array"
+    );
+  }
+  const providers: DashboardProvidersConfig = [];
+  const providerIds = new Set<string>();
+
+  for (const entry of data) {
+    const validated = validateProviderEntry(entry);
+    if (providerIds.has(validated.id)) {
+      throw createInvalidProvidersOverlayError(
+        `Provider instance ids must be unique: ${validated.id}`
+      );
+    }
+    providerIds.add(validated.id);
+    providers.push(validated);
+  }
+
+  return providers.length > 0 ? providers : undefined;
 }
 
 function mergeProvidersConfig(
   config: GatewayConfig,
-  providers: Partial<DashboardProvidersConfig>
+  providers: DashboardProvidersConfig
 ): GatewayConfig {
-  const nextOpenAI: GatewayProviderConfig | undefined = providers.openai
-    ? {
-        apiKey: providers.openai.apiKey,
-        baseUrl: providers.openai.baseUrl,
-        defaultModel:
-          providers.openai.defaultModel ??
-          config.openAI?.defaultModel ??
-          "openai/gpt-4.1-mini"
-      }
-    : config.openAI;
-
   return {
     ...config,
-    ...(nextOpenAI ? { openAI: nextOpenAI } : {}),
-    ...(providers.anthropic
-      ? {
-          anthropic: {
-            apiKey: providers.anthropic.apiKey,
-            baseUrl: providers.anthropic.baseUrl,
-            defaultMaxTokens:
-              providers.anthropic.defaultMaxTokens ??
-              config.anthropic?.defaultMaxTokens ??
-              4096
-          }
-        }
-      : config.anthropic
-        ? { anthropic: config.anthropic }
-        : {}),
-    ...(providers.gemini
-      ? {
-          gemini: {
-            apiKey: providers.gemini.apiKey,
-            baseUrl: providers.gemini.baseUrl
-          }
-        }
-      : config.gemini
-        ? { gemini: config.gemini }
-        : {})
+    providers
   };
 }
 
@@ -1377,10 +1422,7 @@ function mergeRoutesConfig(
     }
   }
 
-  let modelAliases = parseModelAliases(
-    aliases.join(","),
-    config.openAI?.defaultModel ?? "openai/gpt-4.1-mini"
-  );
+  let modelAliases = parseModelAliases(aliases.join(","));
   modelAliases = attachRouteFallbacks(
     modelAliases,
     parseRouteFallbacks(

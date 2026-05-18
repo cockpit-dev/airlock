@@ -38,6 +38,7 @@ import {
   type ProviderTarget
 } from "@airlock/routing";
 import { ErrorCodes, GatewayError } from "@airlock/shared";
+import type { ProviderId } from "@airlock/shared";
 
 import { assertGatewayKeyAllowsProvider } from "./auth.js";
 import {
@@ -47,6 +48,7 @@ import {
   type ProviderCircuitBreakerPolicy
 } from "./circuit-breaker.js";
 import type { GatewayConfig } from "./config.js";
+import { getProviderById } from "./config.js";
 
 export type RoutingMetadataAccumulator = {
   primaryTargetOpen?: boolean;
@@ -60,7 +62,7 @@ const DEFAULT_PROVIDER_CIRCUIT_BREAKER_THRESHOLD = 3;
 const DEFAULT_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS = 30_000;
 
 type ProviderCapabilityDescriptorResolver = (
-  provider: ProviderTarget["provider"]
+  provider: ProviderId
 ) => ProviderCapabilityDescriptor;
 
 const DEFAULT_LATENCY_FRESHNESS_MS = 30_000;
@@ -327,7 +329,8 @@ function createProviderAdapter(
   getProviderDescriptor: ProviderCapabilityDescriptorResolver,
   fetcher?: typeof fetch
 ): ProviderAdapter {
-  const descriptor = getProviderDescriptor(target.provider);
+  const providerConfig = resolveProviderConfig(target.provider, config);
+  const descriptor = getProviderDescriptor(providerConfig.type);
   assertProviderSupportsCanonicalRequest(descriptor, request, requestId);
   const routeShaping = resolveRouteRequestShapingForTarget(
     route.shaping,
@@ -335,7 +338,6 @@ function createProviderAdapter(
     serializeProviderTarget(target)
   );
 
-  const providerConfig = resolveProviderConfig(target.provider, config);
   const options: ProviderAdapterConstructionOptions = {
     apiKey: providerConfig.apiKey,
     baseUrl: providerConfig.baseUrl,
@@ -348,52 +350,38 @@ function createProviderAdapter(
     ...(fetcher ? { fetcher } : {})
   };
 
-  return createProviderAdapterFromRegistry(target.provider, options);
+  return createProviderAdapterFromRegistry(providerConfig.type, options);
 }
 
 interface ResolvedProviderConfig {
+  type: ProviderId;
   apiKey: string;
   baseUrl: string;
   defaultMaxTokens?: number;
 }
 
 function resolveProviderConfig(
-  provider: string,
+  providerKey: string,
   config: GatewayConfig
 ): ResolvedProviderConfig {
-  switch (provider) {
-    case "anthropic":
-      return {
-        apiKey: config.anthropic?.apiKey ?? "",
-        baseUrl: config.anthropic?.baseUrl ?? "",
-        defaultMaxTokens: config.anthropic?.defaultMaxTokens ?? 256
-      };
-    case "gemini":
-      return {
-        apiKey: config.gemini?.apiKey ?? "",
-        baseUrl: config.gemini?.baseUrl ?? ""
-      };
-    case "openai":
-      if (!config.openAI) {
-        throw new GatewayError("OpenAI configuration is unavailable", {
-          code: "config_missing_openai",
-          category: "configuration",
-          httpStatus: 500,
-          retryable: false
-        });
-      }
-      return {
-        apiKey: config.openAI.apiKey,
-        baseUrl: config.openAI.baseUrl
-      };
-    default:
-      throw new GatewayError(`Unknown provider: ${provider}`, {
-        code: "provider_not_supported",
-        category: "configuration",
-        httpStatus: 500,
-        retryable: false
-      });
+  const provider = getProviderById(config, providerKey);
+  if (!provider) {
+    throw new GatewayError(`Unknown provider instance: ${providerKey}`, {
+      code: "config_missing_provider",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false
+    });
   }
+
+  return {
+    type: provider.type,
+    apiKey: provider.apiKey,
+    baseUrl: provider.baseUrl,
+    ...(provider.defaultMaxTokens !== undefined
+      ? { defaultMaxTokens: provider.defaultMaxTokens }
+      : {})
+  };
 }
 
 function createAttemptRequest(
@@ -620,6 +608,7 @@ function selectEligibleTargets(
   request: CanonicalRequest,
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string,
+  config: GatewayConfig,
   getProviderDescriptor: ProviderCapabilityDescriptorResolver,
   circuitBreakerPolicy: ProviderCircuitBreakerPolicy,
   now: () => number,
@@ -657,7 +646,8 @@ function selectEligibleTargets(
       }
 
       try {
-        const descriptor = getProviderDescriptor(target.provider);
+        const providerConfig = resolveProviderConfig(target.provider, config);
+        const descriptor = getProviderDescriptor(providerConfig.type);
         assertProviderSupportsCanonicalRequest(
           descriptor,
           buildAttemptRequest(request, target),
@@ -779,6 +769,7 @@ export async function executeRoutedRequest(
     request,
     gatewayApiKey,
     requestId,
+    config,
     getProviderDescriptor,
     circuitBreakerPolicy,
     now,
@@ -966,6 +957,7 @@ export async function* executeRoutedStreamRequest(
       request,
       gatewayApiKey,
       requestId,
+      config,
       getProviderDescriptor,
       circuitBreakerPolicy,
       now,
@@ -974,7 +966,8 @@ export async function* executeRoutedStreamRequest(
       routingMetadataRef
     )
   ).filter((target) => {
-    return getProviderDescriptor(target.provider).supportsStreaming;
+    const providerConfig = resolveProviderConfig(target.provider, config);
+    return getProviderDescriptor(providerConfig.type).supportsStreaming;
   });
   if (targets.length === 0) {
     throw createUnsupportedCapabilityError(

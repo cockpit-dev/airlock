@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 
 import {
+  getProviderById,
   resetConfigCache,
   resetDashboardOverlayCache,
   resolveGatewayConfig,
@@ -28,12 +29,18 @@ function createBindings(
     AIRLOCK_ROUTING_COST_FRESHNESS_MS: 30_000,
     AIRLOCK_ROUTING_FAILURE_FRESHNESS_MS: 30_000,
     AIRLOCK_ROUTING_RECOVERY_WINDOW_MS: 30_000,
-    AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: false,
     AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED: false,
     AIRLOCK_REQUEST_LOGGING: false,
-    OPENAI_API_KEY: "openai-secret",
-    OPENAI_BASE_URL: "https://api.openai.com/v1",
-    OPENAI_DEFAULT_MODEL: "gpt-4.1-mini",
+    AIRLOCK_PROVIDERS: JSON.stringify([
+      {
+        id: "openai",
+        type: "openai",
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    ]),
+    AIRLOCK_MODEL_ALIASES: "gpt-4.1-mini=openai:gpt-4.1-mini",
     ...overrides
   };
 }
@@ -48,15 +55,17 @@ describe("resolveGatewayConfig", () => {
     it("resolves minimal config with required fields only", () => {
       const config = resolveGatewayConfig(createBindings());
       expect(config.mode).toBe("free");
-      expect(config.openAI?.apiKey).toBe("openai-secret");
-      expect(config.openAI?.baseUrl).toBe("https://api.openai.com/v1");
-      expect(config.openAI?.defaultModel).toBe("gpt-4.1-mini");
+      expect(getProviderById(config, "openai")).toEqual({
+        id: "openai",
+        type: "openai",
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      });
       expect(config.providerTimeoutMs).toBe(30_000);
       expect(config.modelGroups).toEqual({});
       expect(config.gatewayApiKeys).toHaveLength(1);
       expect(config.requestSigningSecrets ?? {}).toEqual({});
-      expect(config.anthropic).toBeUndefined();
-      expect(config.gemini).toBeUndefined();
       expect(config.ipRateLimitPolicy).toBeUndefined();
     });
 
@@ -104,7 +113,8 @@ describe("resolveGatewayConfig", () => {
             fast: ["gpt-4.1-mini"],
             smart: ["gpt-4.1"]
           }),
-          AIRLOCK_MODEL_ALIASES: "gpt-4.1-mini=gpt-4.1-mini,gpt-4.1=gpt-4.1"
+          AIRLOCK_MODEL_ALIASES:
+            "gpt-4.1-mini=openai:gpt-4.1-mini,gpt-4.1=openai:gpt-4.1"
         })
       );
       expect(config.modelGroups).toEqual({
@@ -181,7 +191,7 @@ describe("resolveGatewayConfig", () => {
             AIRLOCK_MODEL_GROUPS: JSON.stringify({
               fast: ["nonexistent-model"]
             }),
-            AIRLOCK_MODEL_ALIASES: "gpt-4.1-mini=gpt-4.1-mini"
+            AIRLOCK_MODEL_ALIASES: "gpt-4.1-mini=openai:gpt-4.1-mini"
           })
         )
       ).toThrow("Model group references an unknown external model");
@@ -203,7 +213,7 @@ describe("resolveGatewayConfig", () => {
             AIRLOCK_MODEL_GROUPS: JSON.stringify({
               fast: ["gpt-4.1-mini"]
             }),
-            AIRLOCK_MODEL_ALIASES: "gpt-4.1-mini=gpt-4.1-mini"
+            AIRLOCK_MODEL_ALIASES: "gpt-4.1-mini=openai:gpt-4.1-mini"
           })
         )
       ).toThrow("Gateway API key policy references an unknown model group");
@@ -354,82 +364,157 @@ describe("resolveGatewayConfig", () => {
   });
 
   describe("provider configuration", () => {
-    it("resolves anthropic config when anthropic routes exist", () => {
+    it("resolves multiple provider instances from the provider catalog", () => {
       const config = resolveGatewayConfig(
         createBindings({
           AIRLOCK_MODEL_ALIASES:
-            "gpt-4.1-mini=gpt-4.1-mini,claude-4=anthropic:claude-sonnet-4-20250514",
-          ANTHROPIC_API_KEY: "anthropic-secret",
-          ANTHROPIC_BASE_URL: "https://api.anthropic.com",
-          ANTHROPIC_DEFAULT_MAX_TOKENS: 4096
+            "gpt-4.1-mini=openai:gpt-4.1-mini,claude-4=anthropic:claude-sonnet-4-20250514,gemini-2.5-flash=gemini:gemini-2.5-flash",
+          AIRLOCK_PROVIDERS: JSON.stringify([
+            {
+              id: "openai",
+              type: "openai",
+              apiKey: "openai-secret",
+              baseUrl: "https://api.openai.com/v1",
+              defaultModel: "gpt-4.1-mini"
+            },
+            {
+              id: "anthropic",
+              type: "anthropic",
+              apiKey: "anthropic-secret",
+              baseUrl: "https://api.anthropic.com",
+              defaultMaxTokens: 4096
+            },
+            {
+              id: "gemini",
+              type: "gemini",
+              apiKey: "gemini-secret",
+              baseUrl: "https://generativelanguage.googleapis.com"
+            }
+          ])
         })
       );
-      expect(config.anthropic).toEqual({
+      expect(getProviderById(config, "anthropic")).toEqual({
+        id: "anthropic",
+        type: "anthropic",
         apiKey: "anthropic-secret",
         baseUrl: "https://api.anthropic.com",
         defaultMaxTokens: 4096
       });
-    });
-
-    it("rejects anthropic routes without anthropic config", () => {
-      expect(() =>
-        resolveGatewayConfig(
-          createBindings({
-            AIRLOCK_MODEL_ALIASES:
-              "gpt-4.1-mini=gpt-4.1-mini,claude-4=anthropic:claude-sonnet-4-20250514"
-          })
-        )
-      ).toThrow("Anthropic configuration is required");
-    });
-
-    it("resolves gemini config when gemini routes exist", () => {
-      const config = resolveGatewayConfig(
-        createBindings({
-          AIRLOCK_MODEL_ALIASES:
-            "gpt-4.1-mini=gpt-4.1-mini,gemini-2.5-flash=gemini:gemini-2.5-flash",
-          GEMINI_API_KEY: "gemini-secret",
-          GEMINI_BASE_URL: "https://generativelanguage.googleapis.com"
-        })
-      );
-      expect(config.gemini).toEqual({
+      expect(getProviderById(config, "gemini")).toEqual({
+        id: "gemini",
+        type: "gemini",
         apiKey: "gemini-secret",
         baseUrl: "https://generativelanguage.googleapis.com"
       });
     });
 
-    it("rejects gemini routes without gemini config", () => {
+    it("rejects routes whose provider instance is not configured", () => {
       expect(() =>
         resolveGatewayConfig(
           createBindings({
             AIRLOCK_MODEL_ALIASES:
-              "gpt-4.1-mini=gpt-4.1-mini,gemini-2.5-flash=gemini:gemini-2.5-flash"
+              "gpt-4.1-mini=openai:gpt-4.1-mini,claude-4=anthropic:claude-sonnet-4-20250514"
           })
         )
-      ).toThrow("Gemini configuration is required");
+      ).toThrow("Provider instance is required for route target: anthropic");
     });
 
-    it("omits anthropic config when no anthropic routes exist", () => {
-      const config = resolveGatewayConfig(createBindings());
-      expect(config.anthropic).toBeUndefined();
+    it("rejects invalid provider catalog JSON", () => {
+      expect(() =>
+        resolveGatewayConfig(
+          createBindings({
+            AIRLOCK_PROVIDERS: "{not-json"
+          })
+        )
+      ).toThrow("Provider catalog config must be valid JSON");
     });
 
-    it("omits gemini config when no gemini routes exist", () => {
-      const config = resolveGatewayConfig(createBindings());
-      expect(config.gemini).toBeUndefined();
+    it("rejects provider instances without a supported adapter type", () => {
+      expect(() =>
+        resolveGatewayConfig(
+          createBindings({
+            AIRLOCK_PROVIDERS: JSON.stringify([
+              {
+                id: "openai",
+                type: "azure",
+                apiKey: "secret",
+                baseUrl: "https://example.com"
+              }
+            ])
+          })
+        )
+      ).toThrow("must include a supported type");
+    });
+
+    it("rejects provider instances without apiKey or baseUrl", () => {
+      expect(() =>
+        resolveGatewayConfig(
+          createBindings({
+            AIRLOCK_PROVIDERS: JSON.stringify([
+              {
+                id: "openai",
+                type: "openai",
+                apiKey: "",
+                baseUrl: "https://api.openai.com/v1"
+              }
+            ])
+          })
+        )
+      ).toThrow("must include apiKey and baseUrl");
+    });
+
+    it("allows provider instances with arbitrary keys", () => {
+      const config = resolveGatewayConfig(
+        createBindings({
+          AIRLOCK_MODEL_ALIASES:
+            "prod-chat=openai-prod:gpt-4.1-mini,backup-chat=openai-backup:gpt-4.1-mini",
+          AIRLOCK_PROVIDERS: JSON.stringify([
+            {
+              id: "openai-prod",
+              type: "openai",
+              apiKey: "prod-secret",
+              baseUrl: "https://api.openai.com/v1"
+            },
+            {
+              id: "openai-backup",
+              type: "openai",
+              apiKey: "backup-secret",
+              baseUrl: "https://backup.example.com/v1"
+            }
+          ])
+        })
+      );
+      expect(config.providers.map((provider) => provider.id)).toEqual([
+        "openai-prod",
+        "openai-backup"
+      ]);
+    });
+
+    it("rejects duplicate provider instance ids even when adapter types match", () => {
+      expect(() =>
+        resolveGatewayConfig(
+          createBindings({
+            AIRLOCK_PROVIDERS: JSON.stringify([
+              {
+                id: "openai-prod",
+                type: "openai",
+                apiKey: "prod-secret",
+                baseUrl: "https://api.openai.com/v1"
+              },
+              {
+                id: "openai-prod",
+                type: "openai",
+                apiKey: "backup-secret",
+                baseUrl: "https://backup.example.com/v1"
+              }
+            ])
+          })
+        )
+      ).toThrow("Provider instance ids must be unique: openai-prod");
     });
   });
 
   describe("binding validation", () => {
-    it("rejects registry enabled without registry binding", () => {
-      expect(() =>
-        resolveGatewayConfig(
-          createBindings({
-            AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: true
-          })
-        )
-      ).toThrow("Gateway key registry binding is required");
-    });
-
     it("rejects internal admin token without revocation binding", () => {
       expect(() =>
         resolveGatewayConfig(
@@ -469,9 +554,7 @@ function createConfigStoreNamespace(snapshot: Record<string, unknown>) {
 describe("resolveGatewayConfigWithOverlay", () => {
   it("returns base config when no DO binding", async () => {
     const config = await resolveGatewayConfigWithOverlay(createBindings());
-    expect(config.openAI?.apiKey).toBe("openai-secret");
-    expect(config.anthropic).toBeUndefined();
-    expect(config.gemini).toBeUndefined();
+    expect(getProviderById(config, "openai")?.apiKey).toBe("openai-secret");
   });
 
   it("returns base config when DO snapshot has empty sections", async () => {
@@ -482,19 +565,22 @@ describe("resolveGatewayConfigWithOverlay", () => {
     const config = await resolveGatewayConfigWithOverlay(
       createBindings({ AIRLOCK_CONFIG_STORE: namespace })
     );
-    expect(config.openAI?.apiKey).toBe("openai-secret");
+    expect(getProviderById(config, "openai")?.apiKey).toBe("openai-secret");
   });
 
   it("merges provider config from DO overlay", async () => {
     const namespace = createConfigStoreNamespace({
       sections: {
         providers: {
-          data: {
-            openai: {
+          data: [
+            {
+              id: "openai",
+              type: "openai",
               apiKey: "do-openai-key",
-              baseUrl: "https://custom.openai.com/v1"
+              baseUrl: "https://custom.openai.com/v1",
+              defaultModel: "gpt-4.1-mini"
             }
-          },
+          ],
           updatedAt: Date.now(),
           updatedBy: "admin",
           version: 1
@@ -505,22 +591,28 @@ describe("resolveGatewayConfigWithOverlay", () => {
     const config = await resolveGatewayConfigWithOverlay(
       createBindings({ AIRLOCK_CONFIG_STORE: namespace })
     );
-    expect(config.openAI?.apiKey).toBe("do-openai-key");
-    expect(config.openAI?.baseUrl).toBe("https://custom.openai.com/v1");
-    expect(config.openAI?.defaultModel).toBe("gpt-4.1-mini");
+    expect(getProviderById(config, "openai")?.apiKey).toBe("do-openai-key");
+    expect(getProviderById(config, "openai")?.baseUrl).toBe(
+      "https://custom.openai.com/v1"
+    );
+    expect(getProviderById(config, "openai")?.defaultModel).toBe(
+      "gpt-4.1-mini"
+    );
   });
 
-  it("resolves anthropic config from DO when env vars missing", async () => {
+  it("resolves provider config from DO overlay when env catalog is absent", async () => {
     const namespace = createConfigStoreNamespace({
       sections: {
         providers: {
-          data: {
-            anthropic: {
+          data: [
+            {
+              id: "anthropic",
+              type: "anthropic",
               apiKey: "do-anthropic-key",
               baseUrl: "https://api.anthropic.com",
               defaultMaxTokens: 8192
             }
-          },
+          ],
           updatedAt: Date.now(),
           updatedBy: "admin",
           version: 1
@@ -531,11 +623,13 @@ describe("resolveGatewayConfigWithOverlay", () => {
     const config = await resolveGatewayConfigWithOverlay(
       createBindings({
         AIRLOCK_CONFIG_STORE: namespace,
-        AIRLOCK_MODEL_ALIASES:
-          "gpt-4.1-mini=gpt-4.1-mini,claude=anthropic:claude-sonnet-4-20250514"
+        AIRLOCK_PROVIDERS: undefined,
+        AIRLOCK_MODEL_ALIASES: "claude=anthropic:claude-sonnet-4-20250514"
       })
     );
-    expect(config.anthropic).toEqual({
+    expect(getProviderById(config, "anthropic")).toEqual({
+      id: "anthropic",
+      type: "anthropic",
       apiKey: "do-anthropic-key",
       baseUrl: "https://api.anthropic.com",
       defaultMaxTokens: 8192
@@ -551,11 +645,13 @@ describe("resolveGatewayConfigWithOverlay", () => {
       resolveGatewayConfigWithOverlay(
         createBindings({
           AIRLOCK_CONFIG_STORE: namespace,
-          AIRLOCK_MODEL_ALIASES:
-            "gpt-4.1-mini=gpt-4.1-mini,claude=anthropic:claude-sonnet-4-20250514"
+          AIRLOCK_PROVIDERS: undefined,
+          AIRLOCK_MODEL_ALIASES: "claude=anthropic:claude-sonnet-4-20250514"
         })
       )
-    ).rejects.toThrow("Anthropic configuration is required");
+    ).rejects.toThrow(
+      "Provider instance is required for route target: anthropic"
+    );
   });
 
   it("merges limits config from DO overlay", async () => {
@@ -584,13 +680,15 @@ describe("resolveGatewayConfigWithOverlay", () => {
     const namespace = createConfigStoreNamespace({
       sections: {
         providers: {
-          data: {
-            openai: {
+          data: [
+            {
+              id: "openai",
+              type: "openai",
               apiKey: "do-openai-key",
               baseUrl: "https://api.openai.com/v1",
               defaultModel: "gpt-4.1-mini"
             }
-          },
+          ],
           updatedAt: Date.now(),
           updatedBy: "admin",
           version: 1
@@ -634,15 +732,12 @@ describe("resolveGatewayConfigWithOverlay", () => {
       createBindings({
         AIRLOCK_CONFIG_STORE: namespace,
         AIRLOCK_GATEWAY_API_KEYS: undefined,
-        OPENAI_API_KEY: undefined,
-        OPENAI_BASE_URL: undefined,
-        OPENAI_DEFAULT_MODEL: undefined,
-        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: true,
+        AIRLOCK_PROVIDERS: undefined,
         AIRLOCK_GATEWAY_KEY_REGISTRY: registryNamespace
       })
     );
 
-    expect(config.openAI?.apiKey).toBe("do-openai-key");
+    expect(getProviderById(config, "openai")?.apiKey).toBe("do-openai-key");
     expect(config.gatewayApiKeys).toHaveLength(0);
     expect(config.modelAliases).toHaveLength(1);
     expect(config.modelAliases[0]?.externalModel).toBe("openai/gpt-4.1-mini");
@@ -653,13 +748,15 @@ describe("resolveGatewayConfigWithOverlay", () => {
     const namespace = createConfigStoreNamespace({
       sections: {
         providers: {
-          data: {
-            openai: {
+          data: [
+            {
+              id: "openai",
+              type: "openai",
               apiKey: "do-openai-key",
               baseUrl: "https://api.openai.com/v1",
               defaultModel: "gpt-4.1-mini"
             }
-          },
+          ],
           updatedAt: Date.now(),
           updatedBy: "admin",
           version: 1
@@ -693,10 +790,7 @@ describe("resolveGatewayConfigWithOverlay", () => {
       createBindings({
         AIRLOCK_CONFIG_STORE: namespace,
         AIRLOCK_GATEWAY_API_KEYS: undefined,
-        OPENAI_API_KEY: undefined,
-        OPENAI_BASE_URL: undefined,
-        OPENAI_DEFAULT_MODEL: undefined,
-        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: true,
+        AIRLOCK_PROVIDERS: undefined,
         AIRLOCK_GATEWAY_KEY_REGISTRY: registryNamespace
       })
     );
@@ -704,7 +798,64 @@ describe("resolveGatewayConfigWithOverlay", () => {
     expect(config.gatewayApiKeys).toEqual([]);
     expect(config.gatewayKeyRegistryEnabled).toBe(true);
     expect(config.modelAliases).toHaveLength(1);
-    expect(config.openAI?.apiKey).toBe("do-openai-key");
+    expect(getProviderById(config, "openai")?.apiKey).toBe("do-openai-key");
+  });
+
+  it("auto-enables registry-only caller auth when the registry binding exists", async () => {
+    const namespace = createConfigStoreNamespace({
+      sections: {
+        providers: {
+          data: [
+            {
+              id: "openai",
+              type: "openai",
+              apiKey: "do-openai-key",
+              baseUrl: "https://api.openai.com/v1",
+              defaultModel: "gpt-4.1-mini"
+            }
+          ],
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        },
+        routes: {
+          data: [
+            {
+              externalModel: "openai/gpt-4.1-mini",
+              target: {
+                provider: "openai",
+                providerModel: "gpt-4.1-mini"
+              }
+            }
+          ],
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        }
+      },
+      globalVersion: 2
+    });
+
+    const registryNamespace = {
+      idFromName: (name: string) => name,
+      get: (_id: unknown) => ({
+        fetch: () => Promise.resolve(new Response())
+      })
+    };
+
+    const config = await resolveGatewayConfigWithOverlay(
+      createBindings({
+        AIRLOCK_CONFIG_STORE: namespace,
+        AIRLOCK_GATEWAY_API_KEYS: undefined,
+        AIRLOCK_PROVIDERS: undefined,
+        AIRLOCK_GATEWAY_KEY_REGISTRY: registryNamespace
+      })
+    );
+
+    expect(config.gatewayApiKeys).toEqual([]);
+    expect(config.gatewayKeyRegistryEnabled).toBe(true);
+    expect(config.modelAliases).toHaveLength(1);
+    expect(getProviderById(config, "openai")?.apiKey).toBe("do-openai-key");
   });
 
   it("merges route config from DO overlay", async () => {
@@ -734,13 +885,22 @@ describe("resolveGatewayConfigWithOverlay", () => {
           version: 1
         },
         providers: {
-          data: {
-            anthropic: {
+          data: [
+            {
+              id: "anthropic",
+              type: "anthropic",
               apiKey: "do-anthropic-key",
               baseUrl: "https://api.anthropic.com",
               defaultMaxTokens: 4096
+            },
+            {
+              id: "openai",
+              type: "openai",
+              apiKey: "do-openai-key",
+              baseUrl: "https://api.openai.com/v1",
+              defaultModel: "gpt-4.1-mini"
             }
-          },
+          ],
           updatedAt: Date.now(),
           updatedBy: "admin",
           version: 1

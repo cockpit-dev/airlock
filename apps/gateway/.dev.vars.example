@@ -1,39 +1,36 @@
-# Airlock Gateway — Local Development Variables
+# Airlock Gateway - Local Development Variables
 # Copy this file to .dev.vars and fill in the values.
 # .dev.vars is gitignored and never committed.
 
-# === Baseline Bootstrap ===
+# === Minimal Bootstrap ===
 
-# Gateway operating mode: "free" (Cloudflare free-tier) or "scale"
+# Gateway operating mode: "free" (Cloudflare free-tier) or "scale".
+# Optional; defaults to free if omitted.
 AIRLOCK_MODE=free
 
-# API keys for caller authentication (comma-separated, each ≥8 chars).
-# Optional if you enable the dynamic key registry and manage caller auth from the dashboard.
-AIRLOCK_GATEWAY_API_KEYS=dev-key-change-me-please
+# Static admin token for /_airlock/* endpoints.
+# This is the only variable required for local bootstrap when the wrangler
+# Durable Object bindings are available. After login, configure providers,
+# routes, caller keys, CORS, logging, limits, and policies in the dashboard.
+AIRLOCK_INTERNAL_ADMIN_TOKEN=dev-admin-token
 
-# OpenAI provider bootstrap. Optional if providers and routes are supplied from the dashboard overlay.
-OPENAI_API_KEY=sk-...
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_DEFAULT_MODEL=gpt-4.1-mini
+# Dynamic gateway key registry is enabled automatically when the
+# AIRLOCK_GATEWAY_KEY_REGISTRY Durable Object binding exists.
 
-# === Optional Providers ===
+# === Optional Env-Only Fallback ===
 
-# Anthropic (required if any route targets anthropic)
-# ANTHROPIC_API_KEY=sk-ant-...
-# ANTHROPIC_BASE_URL=https://api.anthropic.com
-# ANTHROPIC_DEFAULT_MAX_TOKENS=4096
-
-# Gemini (required if any route targets gemini)
-# GEMINI_API_KEY=...
-# GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+# Use these only if you intentionally want to run without dashboard-managed
+# business config.
+# AIRLOCK_GATEWAY_API_KEYS=dev-key-change-me-please
+# AIRLOCK_PROVIDERS=[{"id":"openai-prod","type":"openai","apiKey":"sk-...","baseUrl":"https://api.openai.com/v1","defaultModel":"gpt-4.1-mini"},{"id":"openai-compatible-a","type":"openai","apiKey":"...","baseUrl":"https://third-party.example/v1"},{"id":"anthropic-prod","type":"anthropic","apiKey":"sk-ant-...","baseUrl":"https://api.anthropic.com","defaultMaxTokens":4096},{"id":"gemini-prod","type":"gemini","apiKey":"...","baseUrl":"https://generativelanguage.googleapis.com/v1beta"}]
 
 # === Model Routing ===
 
-# Model aliases (JSON array)
-# AIRLOCK_MODEL_ALIASES=[{"external":"gpt-4","target":{"provider":"openai","model":"gpt-4.1-mini"}}]
+# Model aliases. Provider segment is provider instance id, not adapter type.
+# AIRLOCK_MODEL_ALIASES=gpt-4=openai-prod:gpt-4.1-mini,claude=anthropic-prod:claude-sonnet-4-5
 
-# Model fallbacks (JSON array)
-# AIRLOCK_MODEL_FALLBACKS=[{"external":"gpt-4","targets":[{"provider":"openai","model":"gpt-4.1-mini"},{"provider":"anthropic","model":"claude-sonnet-4-5"}]}]
+# Model fallbacks (JSON object)
+# AIRLOCK_MODEL_FALLBACKS={"gpt-4":["openai-compatible-a:gpt-4.1-mini","anthropic-prod:claude-sonnet-4-5"]}
 
 # Model groups for key policy access control (JSON object)
 # AIRLOCK_MODEL_GROUPS={"premium":["gpt-4.1-mini","claude-sonnet-4-5"]}
@@ -79,11 +76,7 @@ OPENAI_DEFAULT_MODEL=gpt-4.1-mini
 # Allowed CORS origins for /v1/* (comma-separated, or "*" for wildcard)
 # AIRLOCK_CORS_ORIGINS=*
 
-# === Admin ===
-
-# Static admin token for /_airlock/* endpoints.
-# At least one admin auth mechanism is required for gateway administration.
-# AIRLOCK_INTERNAL_ADMIN_TOKEN=dev-admin-token
+# === Structured Admin Auth ===
 
 # Structured admin credentials JSON (scoped hashed tokens). Alternative to AIRLOCK_INTERNAL_ADMIN_TOKEN.
 # AIRLOCK_INTERNAL_ADMIN_CREDENTIALS=[{"id":"admin","label":"Admin","token":"dev-admin-token","scopes":["config.read","config.write","keys.read","keys.write","routing.read","routing.write","status.read","metrics.read"]}]
@@ -92,14 +85,6 @@ OPENAI_DEFAULT_MODEL=gpt-4.1-mini
 
 # Enable structured request logging (default: false)
 # AIRLOCK_REQUEST_LOGGING=true
-
-# === Gateway Key Registry ===
-
-# Enable dynamic key registry (default: false)
-# AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED=false
-
-# If admin auth is configured, keep the AIRLOCK_GATEWAY_KEY_REVOCATION Durable Object binding enabled in wrangler.jsonc.
-# If the dynamic key registry is enabled, keep the AIRLOCK_GATEWAY_KEY_REGISTRY Durable Object binding enabled in wrangler.jsonc.
 
 # === IP Rate Limiting ===
 

@@ -14,6 +14,7 @@ import {
   executeRoutedRequest,
   executeRoutedStreamRequest
 } from "./provider-execution.js";
+import type { GatewayConfig } from "./config.js";
 import {
   createPersistentCircuitBreakerBackend,
   resetProviderCircuitBreakerState
@@ -44,6 +45,83 @@ function computeEffectiveTestCooldownMs(
 ): number {
   const halfOpenFailures = Math.max(0, halfOpenRetryableFailureCount ?? 0);
   return cooldownMs * Math.min(4, 2 ** halfOpenFailures);
+}
+
+type TestProviderConfig = Omit<
+  GatewayConfig["providers"][number],
+  "id" | "type"
+> & {
+  apiKey: string;
+  baseUrl: string;
+};
+type TestGatewayConfigInput = Omit<GatewayConfig, "providers"> & {
+  providers?: GatewayConfig["providers"];
+  openAI?: TestProviderConfig;
+  openai?: TestProviderConfig;
+  anthropic?: TestProviderConfig;
+  gemini?: TestProviderConfig;
+};
+
+function normalizeTestGatewayConfig(
+  config: TestGatewayConfigInput
+): GatewayConfig {
+  const { openAI, openai, anthropic, gemini, providers, ...baseConfig } =
+    config;
+  const normalizedProviders = providers ? [...providers] : [];
+
+  if (openAI || openai) {
+    const openaiConfig = openAI ?? openai;
+    if (!openaiConfig) {
+      throw new Error("OpenAI provider config is required");
+    }
+    normalizedProviders.push({
+      id: "openai",
+      type: "openai",
+      apiKey: openaiConfig.apiKey,
+      baseUrl: openaiConfig.baseUrl,
+      ...(openaiConfig.defaultModel !== undefined
+        ? { defaultModel: openaiConfig.defaultModel }
+        : {}),
+      ...(openaiConfig.defaultMaxTokens !== undefined
+        ? { defaultMaxTokens: openaiConfig.defaultMaxTokens }
+        : {})
+    });
+  }
+
+  if (anthropic) {
+    normalizedProviders.push({
+      id: "anthropic",
+      type: "anthropic",
+      apiKey: anthropic.apiKey,
+      baseUrl: anthropic.baseUrl,
+      ...(anthropic.defaultModel !== undefined
+        ? { defaultModel: anthropic.defaultModel }
+        : {}),
+      ...(anthropic.defaultMaxTokens !== undefined
+        ? { defaultMaxTokens: anthropic.defaultMaxTokens }
+        : {})
+    });
+  }
+
+  if (gemini) {
+    normalizedProviders.push({
+      id: "gemini",
+      type: "gemini",
+      apiKey: gemini.apiKey,
+      baseUrl: gemini.baseUrl,
+      ...(gemini.defaultModel !== undefined
+        ? { defaultModel: gemini.defaultModel }
+        : {}),
+      ...(gemini.defaultMaxTokens !== undefined
+        ? { defaultMaxTokens: gemini.defaultMaxTokens }
+        : {})
+    });
+  }
+
+  return {
+    ...baseConfig,
+    providers: normalizedProviders
+  };
 }
 
 function createPersistentBreakerNamespace() {
@@ -760,7 +838,7 @@ describe("executeRoutedRequest", () => {
       );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -784,7 +862,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_123",
       gatewayApiKey: {
         id: "key_any",
@@ -848,7 +926,7 @@ describe("executeRoutedRequest", () => {
 
     await expect(
       executeRoutedRequest(route, request, {
-        config: {
+        config: normalizeTestGatewayConfig({
           mode: "free",
           providerTimeoutMs: 1000,
           providerMaxRetries: 0,
@@ -872,7 +950,7 @@ describe("executeRoutedRequest", () => {
           routingCostFreshnessMs: 30_000,
           routingFailureFreshnessMs: 30_000,
           routingRecoveryWindowMs: 30_000
-        },
+        }),
         requestId: "req_123",
         gatewayApiKey: allowedOpenAIOnlyKey,
         fetcher
@@ -953,7 +1031,7 @@ describe("executeRoutedRequest", () => {
           }
         )
       );
-    const baseConfig = {
+    const baseConfig = normalizeTestGatewayConfig({
       mode: "free" as const,
       providerTimeoutMs: 1000,
       providerMaxRetries: 0,
@@ -979,7 +1057,7 @@ describe("executeRoutedRequest", () => {
         baseUrl: "https://api.openai.com/v1",
         defaultModel: "gpt-4.1-mini"
       }
-    };
+    });
 
     const firstResponse = await executeRoutedRequest(route, request, {
       config: baseConfig,
@@ -1132,7 +1210,7 @@ describe("executeRoutedRequest", () => {
           }
         )
       );
-    const baseConfig = {
+    const baseConfig = normalizeTestGatewayConfig({
       mode: "free" as const,
       providerTimeoutMs: 1000,
       providerMaxRetries: 0,
@@ -1158,7 +1236,7 @@ describe("executeRoutedRequest", () => {
         baseUrl: "https://api.openai.com/v1",
         defaultModel: "gpt-4.1-mini"
       }
-    };
+    });
 
     await executeRoutedRequest(route, request, {
       config: baseConfig,
@@ -1263,7 +1341,7 @@ describe("executeRoutedRequest", () => {
         }
       );
     });
-    const baseConfig = {
+    const baseConfig = normalizeTestGatewayConfig({
       mode: "free" as const,
       providerTimeoutMs: 1000,
       providerMaxRetries: 0,
@@ -1289,7 +1367,7 @@ describe("executeRoutedRequest", () => {
         baseUrl: "https://api.openai.com/v1",
         defaultModel: "gpt-4.1-mini"
       }
-    };
+    });
 
     await executeRoutedRequest(route, request, {
       config: baseConfig,
@@ -1410,7 +1488,7 @@ describe("executeRoutedRequest", () => {
         }
       );
     });
-    const baseConfig = {
+    const baseConfig = normalizeTestGatewayConfig({
       mode: "free" as const,
       providerTimeoutMs: 1000,
       providerMaxRetries: 0,
@@ -1436,7 +1514,7 @@ describe("executeRoutedRequest", () => {
         baseUrl: "https://api.openai.com/v1",
         defaultModel: "gpt-4.1-mini"
       }
-    };
+    });
 
     await executeRoutedRequest(route, request, {
       config: baseConfig,
@@ -1600,7 +1678,7 @@ describe("executeRoutedRequest", () => {
         }
       );
     });
-    const config = {
+    const config = normalizeTestGatewayConfig({
       mode: "free" as const,
       providerTimeoutMs: 1000,
       providerMaxRetries: 0,
@@ -1626,7 +1704,7 @@ describe("executeRoutedRequest", () => {
         baseUrl: "https://api.openai.com/v1",
         defaultModel: "gpt-4.1-mini"
       }
-    };
+    });
 
     await executeRoutedRequest(route, request, {
       config,
@@ -1797,7 +1875,7 @@ describe("executeRoutedRequest", () => {
         }
       );
     });
-    const config = {
+    const config = normalizeTestGatewayConfig({
       mode: "free" as const,
       providerTimeoutMs: 1000,
       providerMaxRetries: 0,
@@ -1823,7 +1901,7 @@ describe("executeRoutedRequest", () => {
         baseUrl: "https://api.openai.com/v1",
         defaultModel: "gpt-4.1-mini"
       }
-    };
+    });
 
     await executeRoutedRequest(route, bufferedRequest, {
       config,
@@ -1960,7 +2038,7 @@ describe("executeRoutedRequest", () => {
           }
         )
       );
-    const config = {
+    const config = normalizeTestGatewayConfig({
       mode: "free" as const,
       providerTimeoutMs: 1000,
       providerMaxRetries: 0,
@@ -1986,7 +2064,7 @@ describe("executeRoutedRequest", () => {
         baseUrl: "https://api.openai.com/v1",
         defaultModel: "gpt-4.1-mini"
       }
-    };
+    });
 
     const events: CanonicalStreamEvent[] = [];
 
@@ -2104,7 +2182,7 @@ describe("executeRoutedRequest", () => {
           }
         )
       );
-    const config = {
+    const config = normalizeTestGatewayConfig({
       mode: "free" as const,
       providerTimeoutMs: 1000,
       providerMaxRetries: 1,
@@ -2130,7 +2208,7 @@ describe("executeRoutedRequest", () => {
         baseUrl: "https://api.openai.com/v1",
         defaultModel: "gpt-4.1-mini"
       }
-    };
+    });
 
     const events: CanonicalStreamEvent[] = [];
 
@@ -2212,7 +2290,7 @@ describe("executeRoutedRequest", () => {
         }
       )
     );
-    const config = {
+    const config = normalizeTestGatewayConfig({
       mode: "free" as const,
       providerTimeoutMs: 1000,
       providerMaxRetries: 0,
@@ -2233,7 +2311,7 @@ describe("executeRoutedRequest", () => {
         baseUrl: "https://api.openai.com/v1",
         defaultModel: "gpt-4.1-mini"
       }
-    };
+    });
 
     await expect(
       executeRoutedRequest(route, request, {
@@ -2313,7 +2391,7 @@ describe("executeRoutedRequest", () => {
     const backend = createPersistentCircuitBreakerBackend(
       createPersistentBreakerNamespace()
     );
-    const config = {
+    const config = normalizeTestGatewayConfig({
       mode: "free" as const,
       providerTimeoutMs: 1000,
       providerMaxRetries: 0,
@@ -2334,7 +2412,7 @@ describe("executeRoutedRequest", () => {
         baseUrl: "https://api.openai.com/v1",
         defaultModel: "gpt-4.1-mini"
       }
-    };
+    });
 
     await expect(
       executeRoutedRequest(route, request, {
@@ -2470,7 +2548,7 @@ describe("executeRoutedRequest", () => {
           }
         )
       );
-    const config = {
+    const config = normalizeTestGatewayConfig({
       mode: "free" as const,
       providerTimeoutMs: 1000,
       providerMaxRetries: 0,
@@ -2497,7 +2575,7 @@ describe("executeRoutedRequest", () => {
         baseUrl: "https://api.openai.com/v1",
         defaultModel: "gpt-4.1-mini"
       }
-    };
+    });
 
     const firstResponse = await executeRoutedRequest(route, request, {
       config,
@@ -2594,7 +2672,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -2618,7 +2696,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_123",
       gatewayApiKey: allowedOpenAIOnlyKey,
       fetcher
@@ -2687,7 +2765,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -2710,7 +2788,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_123",
       gatewayApiKey: {
         id: "key_any",
@@ -2816,7 +2894,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -2840,7 +2918,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_weighted",
       gatewayApiKey: {
         id: "key_any",
@@ -3016,7 +3094,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -3043,7 +3121,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_priority_smoothed_latency",
       gatewayApiKey: {
         id: "key_any",
@@ -3162,7 +3240,7 @@ describe("executeRoutedRequest", () => {
       )
     );
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -3189,7 +3267,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_priority_recovery",
       gatewayApiKey: {
         id: "key_any",
@@ -3312,7 +3390,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -3339,7 +3417,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_priority_recovery_window_aged_out",
       gatewayApiKey: {
         id: "key_any",
@@ -3440,7 +3518,7 @@ describe("executeRoutedRequest", () => {
       );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -3468,7 +3546,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_weighted_failover",
       gatewayApiKey: {
         id: "key_any",
@@ -3545,7 +3623,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -3569,7 +3647,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_lowest_cost",
       gatewayApiKey: {
         id: "key_any",
@@ -3668,7 +3746,7 @@ describe("executeRoutedRequest", () => {
       );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -3696,7 +3774,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_lowest_cost_failover",
       gatewayApiKey: {
         id: "key_any",
@@ -3801,7 +3879,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -3828,7 +3906,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_priority_slo",
       gatewayApiKey: {
         id: "key_any",
@@ -3929,7 +4007,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -3956,7 +4034,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_priority_cost",
       gatewayApiKey: {
         id: "key_any",
@@ -4059,7 +4137,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -4086,7 +4164,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_dynamic_lowest_cost",
       gatewayApiKey: {
         id: "key_any",
@@ -4193,7 +4271,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -4220,7 +4298,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_dynamic_priority_cost",
       gatewayApiKey: {
         id: "key_any",
@@ -4300,7 +4378,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -4327,7 +4405,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_priority_route_order_tie",
       gatewayApiKey: {
         id: "key_any",
@@ -4405,7 +4483,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -4432,7 +4510,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_lowest_cost_route_order_tie",
       gatewayApiKey: {
         id: "key_any",
@@ -4541,7 +4619,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -4568,7 +4646,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_priority_stale_failure_count",
       gatewayApiKey: {
         id: "key_any",
@@ -4670,7 +4748,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -4697,7 +4775,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_stale_dynamic_lowest_cost",
       gatewayApiKey: {
         id: "key_any",
@@ -4799,7 +4877,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -4826,7 +4904,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_stale_dynamic_priority_cost",
       gatewayApiKey: {
         id: "key_any",
@@ -4937,7 +5015,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -4964,7 +5042,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_stale_usage_free_refresh",
       gatewayApiKey: {
         id: "key_any",
@@ -5068,7 +5146,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -5095,7 +5173,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_priority_closer_slo",
       gatewayApiKey: {
         id: "key_any",
@@ -5166,7 +5244,7 @@ describe("executeRoutedRequest", () => {
     const events: CanonicalStreamEvent[] = [];
 
     for await (const event of executeRoutedStreamRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -5188,7 +5266,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_stream_observed_cost",
       gatewayApiKey: {
         id: "key_any",
@@ -5301,7 +5379,7 @@ describe("executeRoutedRequest", () => {
     );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -5328,7 +5406,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_priority_freshness",
       gatewayApiKey: {
         id: "key_any",
@@ -5411,7 +5489,7 @@ describe("executeRoutedRequest", () => {
     const events: Array<unknown> = [];
 
     for await (const event of executeRoutedStreamRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 3,
@@ -5435,7 +5513,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_stream_123",
       gatewayApiKey: {
         id: "key_any",
@@ -5531,7 +5609,7 @@ describe("executeRoutedRequest", () => {
     const events: Array<unknown> = [];
 
     for await (const event of executeRoutedStreamRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 3,
@@ -5554,7 +5632,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_stream_gemini_123",
       gatewayApiKey: {
         id: "key_any",
@@ -5668,7 +5746,7 @@ describe("executeRoutedRequest", () => {
       .mockReturnValueOnce(900);
     try {
       for await (const event of executeRoutedStreamRequest(route, request, {
-        config: {
+        config: normalizeTestGatewayConfig({
           mode: "free",
           providerTimeoutMs: 1000,
           providerMaxRetries: 0,
@@ -5692,7 +5770,7 @@ describe("executeRoutedRequest", () => {
           routingCostFreshnessMs: 30_000,
           routingFailureFreshnessMs: 30_000,
           routingRecoveryWindowMs: 30_000
-        },
+        }),
         requestId: "req_stream_timeout_budget",
         gatewayApiKey: {
           id: "key_any",
@@ -5781,7 +5859,7 @@ describe("executeRoutedRequest", () => {
       );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 1,
@@ -5800,7 +5878,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_retry_same_target",
       gatewayApiKey: allowedOpenAIOnlyKey,
       fetcher
@@ -5866,7 +5944,7 @@ describe("executeRoutedRequest", () => {
 
     await expect(
       executeRoutedRequest(route, request, {
-        config: {
+        config: normalizeTestGatewayConfig({
           mode: "free",
           providerTimeoutMs: 1000,
           providerMaxRetries: 2,
@@ -5885,7 +5963,7 @@ describe("executeRoutedRequest", () => {
           routingCostFreshnessMs: 30_000,
           routingFailureFreshnessMs: 30_000,
           routingRecoveryWindowMs: 30_000
-        },
+        }),
         requestId: "req_no_retry_bad_request",
         gatewayApiKey: allowedOpenAIOnlyKey,
         fetcher
@@ -5984,7 +6062,7 @@ describe("executeRoutedRequest", () => {
       );
 
     const response = await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 1,
@@ -6003,7 +6081,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_retry_then_fallback",
       gatewayApiKey: allowedOpenAIOnlyKey,
       fetcher
@@ -6075,7 +6153,7 @@ describe("executeRoutedRequest", () => {
       .mockReturnValueOnce(980);
 
     const execution = executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 1,
@@ -6094,7 +6172,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_retry_budget_exhausted",
       gatewayApiKey: allowedOpenAIOnlyKey,
       fetcher,
@@ -6170,7 +6248,7 @@ describe("executeRoutedRequest", () => {
       .mockReturnValueOnce(850);
 
     const execution = executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -6189,7 +6267,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_123",
       gatewayApiKey: allowedOpenAIOnlyKey,
       fetcher,
@@ -6256,7 +6334,7 @@ describe("executeRoutedRequest", () => {
 
     await expect(
       executeRoutedRequest(route, request, {
-        config: {
+        config: normalizeTestGatewayConfig({
           mode: "free",
           providerTimeoutMs: 1000,
           providerMaxRetries: 0,
@@ -6275,7 +6353,7 @@ describe("executeRoutedRequest", () => {
           routingCostFreshnessMs: 30_000,
           routingFailureFreshnessMs: 30_000,
           routingRecoveryWindowMs: 30_000
-        },
+        }),
         requestId: "req_123",
         gatewayApiKey: allowedOpenAIOnlyKey,
         fetcher,
@@ -6345,7 +6423,7 @@ describe("executeRoutedRequest", () => {
     } = {};
 
     await executeRoutedRequest(route, request, {
-      config: {
+      config: normalizeTestGatewayConfig({
         mode: "free",
         providerTimeoutMs: 1000,
         providerMaxRetries: 0,
@@ -6369,7 +6447,7 @@ describe("executeRoutedRequest", () => {
           baseUrl: "https://api.openai.com/v1",
           defaultModel: "gpt-4.1-mini"
         }
-      },
+      }),
       requestId: "req_metadata",
       gatewayApiKey: {
         id: "key_any",
@@ -6446,7 +6524,7 @@ describe("executeRoutedRequest", () => {
         )
       );
 
-    const baseConfig = {
+    const baseConfig = normalizeTestGatewayConfig({
       mode: "free" as const,
       providerTimeoutMs: 1000,
       providerMaxRetries: 0,
@@ -6472,7 +6550,7 @@ describe("executeRoutedRequest", () => {
         baseUrl: "https://api.openai.com/v1",
         defaultModel: "gpt-4.1-mini"
       }
-    };
+    });
 
     await executeRoutedRequest(route, request, {
       config: baseConfig,

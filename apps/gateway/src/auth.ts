@@ -8,7 +8,6 @@ import {
   authorizeGatewayKeyAccess,
   type GatewayApiKeyRecord
 } from "@airlock/governance";
-import { type ProviderId } from "@airlock/shared";
 import type { ModelRoute } from "@airlock/routing";
 
 import type { GatewayConfig } from "./config.js";
@@ -102,7 +101,7 @@ export function assertGatewayKeyAllowsRoute(
 
 export function assertGatewayKeyAllowsProvider(
   gatewayApiKey: GatewayApiKeyRecord,
-  provider: ProviderId,
+  provider: string,
   requestId: string
 ) {
   return assertGatewayKeyAllowsProviderAccess(

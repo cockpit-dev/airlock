@@ -1,5 +1,4 @@
 import { GatewayError } from "@airlock/shared";
-import type { ProviderId } from "@airlock/shared";
 import type {
   RouteRequestShapingMap,
   RouteRequestShapingProfile
@@ -7,7 +6,7 @@ import type {
 import { isTargetScopedRouteShapingProfile } from "@airlock/request-shaping";
 
 export interface ProviderTarget {
-  provider: ProviderId;
+  provider: string;
   providerModel: string;
 }
 
@@ -125,38 +124,35 @@ function createInvalidRouteKeyAccessPolicyError(message: string): GatewayError {
   });
 }
 
-function parseProviderId(
-  value: string,
-  createError: (message: string) => GatewayError = createInvalidModelAliasError
-): ProviderId {
-  if (value === "openai" || value === "anthropic" || value === "gemini") {
-    return value;
-  }
-
-  throw createError("Provider targets must use a supported provider id");
-}
-
 function parseProviderTarget(
   value: string,
-  defaultProvider: ProviderId,
   createError: (message: string) => GatewayError
 ): ProviderTarget {
   const normalizedTarget = value.trim();
   const providerSeparatorIndex = normalizedTarget.indexOf(":");
-  const hasExplicitProvider = providerSeparatorIndex >= 0;
-  const provider = hasExplicitProvider
-    ? parseProviderId(
-        normalizedTarget.slice(0, providerSeparatorIndex).trim(),
-        createError
-      )
-    : defaultProvider;
-  const providerModel = hasExplicitProvider
-    ? normalizedTarget.slice(providerSeparatorIndex + 1).trim()
-    : normalizedTarget;
+  if (
+    providerSeparatorIndex <= 0 ||
+    providerSeparatorIndex === normalizedTarget.length - 1
+  ) {
+    throw createError(
+      "Provider target entries must use the format provider_key:provider_model"
+    );
+  }
+
+  const provider = normalizedTarget.slice(0, providerSeparatorIndex).trim();
+  const providerModel = normalizedTarget
+    .slice(providerSeparatorIndex + 1)
+    .trim();
 
   if (providerModel.length === 0) {
     throw createError(
       "Provider target entries must include a non-empty provider model"
+    );
+  }
+
+  if (provider.length === 0) {
+    throw createError(
+      "Provider target entries must include a non-empty provider key"
     );
   }
 
@@ -170,13 +166,7 @@ function parseExplicitProviderTarget(
   value: string,
   createError: (message: string) => GatewayError
 ): ProviderTarget {
-  if (!value.includes(":")) {
-    throw createError(
-      "Target selection weights must use explicit provider target keys"
-    );
-  }
-
-  return parseProviderTarget(value, "openai", createError);
+  return parseProviderTarget(value, createError);
 }
 
 function parsePositiveTargetNumberMap(
@@ -335,19 +325,10 @@ function parseRequestClassAffinity(
 }
 
 export function parseModelAliases(
-  value: string | undefined,
-  fallbackModel: string
+  value: string | undefined
 ): ModelRouteDirectory {
   if (!value) {
-    return [
-      {
-        externalModel: fallbackModel,
-        target: {
-          provider: "openai",
-          providerModel: fallbackModel
-        }
-      }
-    ];
+    return [];
   }
 
   const routes = value.split(",").map((entry) => {
@@ -371,7 +352,6 @@ export function parseModelAliases(
 
     const parsedTarget = parseProviderTarget(
       normalizedProviderTarget,
-      "openai",
       createInvalidModelAliasError
     );
 
@@ -869,7 +849,6 @@ export function attachRouteFallbacks(
     const normalizedFallbacks = configuredFallbacks.map((target) => {
       const parsedTarget = parseProviderTarget(
         target,
-        route.target.provider,
         createInvalidRouteFallbackError
       );
 
@@ -1009,7 +988,7 @@ export function attachRouteKeyAccessPolicy(
 
 function parseProviderRouteAddress(
   address: string
-): { provider: ProviderId; model: string } | null {
+): { provider: string; model: string } | null {
   const separatorIndex = address.indexOf("/");
   if (separatorIndex <= 0 || separatorIndex === address.length - 1) {
     return null;
@@ -1017,14 +996,6 @@ function parseProviderRouteAddress(
 
   const providerPart = address.slice(0, separatorIndex);
   const modelPart = address.slice(separatorIndex + 1);
-
-  if (
-    providerPart !== "openai" &&
-    providerPart !== "anthropic" &&
-    providerPart !== "gemini"
-  ) {
-    return null;
-  }
 
   return { provider: providerPart, model: modelPart };
 }

@@ -641,22 +641,25 @@ describe("parseGatewayApiKeys", () => {
     ).toThrow(GatewayError);
   });
 
-  it("rejects invalid allowed provider policy values", () => {
-    expect(() =>
-      parseGatewayApiKeys(
-        JSON.stringify([
-          {
-            id: "key_1",
-            label: "Gateway Key 1",
-            value: "gateway-secret",
-            status: "active",
-            policy: {
-              allowedProviders: ["openai", "invalid-provider"]
-            }
+  it("allows arbitrary non-empty provider instance ids in provider policy", () => {
+    const keys = parseGatewayApiKeys(
+      JSON.stringify([
+        {
+          id: "key_1",
+          label: "Gateway Key 1",
+          value: "gateway-secret",
+          status: "active",
+          policy: {
+            allowedProviders: ["openai-prod", "openai-compatible-a"]
           }
-        ])
-      )
-    ).toThrow(GatewayError);
+        }
+      ])
+    );
+
+    expect(keys[0]?.policy?.allowedProviders).toEqual([
+      "openai-prod",
+      "openai-compatible-a"
+    ]);
   });
 
   it("rejects duplicate allowed provider policy values", () => {

@@ -83,10 +83,10 @@ describe("AirlockClient", () => {
     });
 
     it("getConfig sends GET to /_airlock/config", async () => {
-      mockFetch(jsonRes({ providers: {} }));
+      mockFetch(jsonRes({ providers: [] }));
       const c = new AirlockClient("http://host", "tok");
       const res = await c.getConfig();
-      expect(res).toEqual({ providers: {} });
+      expect(res).toEqual({ providers: [] });
     });
 
     it("getRoutingHealth sends GET to /_airlock/routing/health", async () => {

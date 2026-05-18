@@ -47,6 +47,9 @@ export const gatewayEnvSchema = z.object({
   /** HMAC-SHA256 request signing secrets. JSON object mapping key IDs to hex-encoded secret values. Optional. */
   AIRLOCK_REQUEST_SIGNING_SECRETS: z.string().min(1).optional(),
 
+  /** Env-only provider instance catalog. JSON array; each entry includes id, type, apiKey, and baseUrl. Optional because dashboard overlay is the recommended source. */
+  AIRLOCK_PROVIDERS: z.string().min(1).optional(),
+
   /** Timeout in milliseconds for upstream provider requests (buffered and streaming). Default: 30000. */
   AIRLOCK_PROVIDER_TIMEOUT_MS: z.coerce
     .number()
@@ -163,30 +166,6 @@ export const gatewayEnvSchema = z.object({
     .positive()
     .default(30_000),
 
-  /** Anthropic API key. Required if any route targets the "anthropic" provider. */
-  ANTHROPIC_API_KEY: z.string().min(1).optional(),
-
-  /** Anthropic API base URL. Required if any route targets the "anthropic" provider. */
-  ANTHROPIC_BASE_URL: z.url().optional(),
-
-  /** Default max_tokens for Anthropic requests. Required if any route targets the "anthropic" provider. */
-  ANTHROPIC_DEFAULT_MAX_TOKENS: z.coerce.number().int().positive().optional(),
-
-  /** Google Gemini API key. Required if any route targets the "gemini" provider. */
-  GEMINI_API_KEY: z.string().min(1).optional(),
-
-  /** Google Gemini API base URL. Required if any route targets the "gemini" provider. */
-  GEMINI_BASE_URL: z.url().optional(),
-
-  /** OpenAI API key. Required only when active routes target OpenAI and the value is not supplied via dashboard overlay. */
-  OPENAI_API_KEY: z.string().min(1).optional(),
-
-  /** OpenAI API base URL. Required only when active routes target OpenAI and the value is not supplied via dashboard overlay. */
-  OPENAI_BASE_URL: z.url().optional(),
-
-  /** OpenAI default model for routing fallback. Required only when active routes target OpenAI and the value is not supplied via dashboard overlay. */
-  OPENAI_DEFAULT_MODEL: z.string().min(1).optional(),
-
   /** Cloudflare Queue binding for telemetry event emission. Optional; telemetry disabled if not set. */
   AIRLOCK_TELEMETRY: z
     .custom<{
@@ -240,9 +219,6 @@ export const gatewayEnvSchema = z.object({
 
   /** Enable structured request logging to console. Default: false. */
   AIRLOCK_REQUEST_LOGGING: z.coerce.boolean().default(false),
-
-  /** Enable dynamic gateway key registry (Durable Object-backed key lifecycle management). Default: false. */
-  AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: z.coerce.boolean().default(false),
 
   /** Static admin token for /_airlock/* endpoints. At least one admin auth mechanism is required for admin access. Optional. */
   AIRLOCK_INTERNAL_ADMIN_TOKEN: z.string().min(1).optional(),

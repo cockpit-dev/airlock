@@ -34,6 +34,7 @@ export interface RouteStatusEntry {
 
 export interface ProviderStatusEntry {
   id: string;
+  type?: string;
   configured: boolean;
   routeCount: number;
 }
@@ -156,26 +157,22 @@ function buildProviderStatusEntries(
     providerIds.add(route.primaryTarget.provider);
   }
 
-  const configuredProviders = new Set<string>();
-  if (config.openAI) {
-    configuredProviders.add("openai");
-  }
-  if (config.anthropic) {
-    configuredProviders.add("anthropic");
-  }
-  if (config.gemini) {
-    configuredProviders.add("gemini");
-  }
-
-  const allProviders = new Set([...providerIds, ...configuredProviders]);
+  const configuredProviders = new Map(
+    config.providers.map((provider) => [provider.id, provider])
+  );
+  const allProviders = new Set([...providerIds, ...configuredProviders.keys()]);
 
   return Array.from(allProviders)
     .sort()
-    .map((id) => ({
-      id,
-      configured: configuredProviders.has(id),
-      routeCount: routes.filter((r) => r.primaryTarget.provider === id).length
-    }));
+    .map((id) => {
+      const provider = configuredProviders.get(id);
+      return {
+        id,
+        ...(provider ? { type: provider.type } : {}),
+        configured: provider !== undefined,
+        routeCount: routes.filter((r) => r.primaryTarget.provider === id).length
+      };
+    });
 }
 
 function buildKeyCounts(config: GatewayConfig): {

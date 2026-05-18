@@ -6,10 +6,7 @@ import { dispatchGovernanceTransport } from "./governance-transport-core.js";
 export const REGISTRY_OBJECT_NAME = "gateway-key-registry";
 
 export function isGatewayKeyRegistryEnabled(env: GatewayBindings): boolean {
-  return (
-    env.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED === true ||
-    (env.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED as unknown) === "true"
-  );
+  return env.AIRLOCK_GATEWAY_KEY_REGISTRY !== undefined;
 }
 
 export function createGatewayKeyRegistryUnavailableError(

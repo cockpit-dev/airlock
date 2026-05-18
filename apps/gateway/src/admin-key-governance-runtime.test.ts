@@ -114,11 +114,16 @@ function createEnv(): GatewayBindings {
     AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: 3,
     AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: 30000,
     AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: false,
-    AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: false,
     AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED: false,
-    OPENAI_API_KEY: "openai-secret",
-    OPENAI_BASE_URL: "https://api.openai.com/v1",
-    OPENAI_DEFAULT_MODEL: "gpt-4.1-mini",
+    AIRLOCK_PROVIDERS: JSON.stringify([
+      {
+        id: "openai",
+        type: "openai",
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    ]),
     AIRLOCK_ROUTING_LATENCY_FRESHNESS_MS: 30_000,
     AIRLOCK_ROUTING_COST_FRESHNESS_MS: 30_000,
     AIRLOCK_ROUTING_FAILURE_FRESHNESS_MS: 30_000,

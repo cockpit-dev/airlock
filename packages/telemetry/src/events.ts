@@ -1,4 +1,4 @@
-import { runtimeModeSchema, providerIds } from "@airlock/shared";
+import { runtimeModeSchema } from "@airlock/shared";
 import { z } from "zod";
 
 export const tokenUsageSchema = z.object({
@@ -18,7 +18,7 @@ const gatewayRequestTelemetryBaseSchema = z.object({
   statusCode: z.number().int().min(100).max(599),
   gatewayKeyId: z.string().min(1).optional(),
   externalModel: z.string().min(1).optional(),
-  provider: z.enum(providerIds).optional(),
+  provider: z.string().min(1).optional(),
   providerModel: z.string().min(1).optional(),
   fallbackUsed: z.boolean().optional(),
   usage: tokenUsageSchema.optional(),

@@ -23,11 +23,11 @@
     <div class="mb-8">
       <h3 class="text-lg font-semibold text-gray-200 mb-3">Providers</h3>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {#each Object.entries(data.config.providers) as [name, provider]}
+        {#each data.config.providers as provider}
           <div class="bg-gray-900 border border-gray-800 rounded-lg p-5">
             <div class="flex items-center justify-between mb-3">
               <p class="font-semibold text-white">
-                {providerLabels[name] ?? name}
+                {provider.id}
               </p>
               {#if provider.configured}
                 <span
@@ -42,6 +42,12 @@
               {/if}
             </div>
             <div class="space-y-2 text-sm">
+              <div class="flex justify-between">
+                <span class="text-gray-400">Adapter</span>
+                <span class="text-gray-300"
+                  >{providerLabels[provider.type] ?? provider.type}</span
+                >
+              </div>
               <div class="flex justify-between">
                 <span class="text-gray-400">Base URL</span>
                 <span class="text-gray-300 font-mono text-xs"

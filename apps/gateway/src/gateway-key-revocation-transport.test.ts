@@ -16,9 +16,15 @@ function createEnv(overrides: Partial<GatewayBindings> = {}): GatewayBindings {
     AIRLOCK_TELEMETRY_SUCCESS_SAMPLE_RATE_FREE: 0.1,
     AIRLOCK_TELEMETRY_SUCCESS_SAMPLE_RATE_SCALE: 1,
     AIRLOCK_GATEWAY_API_KEYS: "[]",
-    OPENAI_API_KEY: "test",
-    OPENAI_BASE_URL: "https://api.openai.com/v1",
-    OPENAI_DEFAULT_MODEL: "gpt-4.1-mini",
+    AIRLOCK_PROVIDERS: JSON.stringify([
+      {
+        id: "openai",
+        type: "openai",
+        apiKey: "test",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini"
+      }
+    ]),
     AIRLOCK_PROVIDER_TIMEOUT_MS: 30_000,
     AIRLOCK_PROVIDER_MAX_RETRIES: 0,
     AIRLOCK_PROVIDER_RETRY_BACKOFF_MS: 0,

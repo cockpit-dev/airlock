@@ -109,24 +109,23 @@ cp apps/gateway/.dev.vars.example apps/gateway/.dev.vars
 ```
 
 2. 编辑 `apps/gateway/.dev.vars`。
-   纯环境变量模式下的最小启动配置：
+   Dashboard 管理业务配置时的最小启动配置：
+
+```bash
+AIRLOCK_INTERNAL_ADMIN_TOKEN=dev-admin-token
+```
+
+只要保留 `apps/gateway/wrangler.jsonc` 中的 Durable Object 绑定，这就足够启动
+Gateway、从 Dashboard 连接，然后在 UI 里配置 providers、routes、caller keys、
+CORS、logging、limits 和 policies。
+
+如果明确不使用 Dashboard 管理业务配置，仍可使用纯环境变量 fallback：
 
 ```bash
 AIRLOCK_GATEWAY_API_KEYS=your-secret-key-here
-OPENAI_API_KEY=sk-...
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_DEFAULT_MODEL=gpt-4.1-mini
-AIRLOCK_INTERNAL_ADMIN_TOKEN=dev-admin-token
+AIRLOCK_PROVIDERS='[{"id":"openai-prod","type":"openai","apiKey":"sk-...","baseUrl":"https://api.openai.com/v1","defaultModel":"gpt-4.1-mini"}]'
+AIRLOCK_MODEL_ALIASES='gpt-4.1-mini=openai-prod:gpt-4.1-mini'
 ```
-
-使用 Dashboard 管理业务配置的最小 bootstrap 配置：
-
-```bash
-AIRLOCK_INTERNAL_ADMIN_TOKEN=dev-admin-token
-AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED=true
-```
-
-两种模式都需要保留 `apps/gateway/wrangler.jsonc` 中的 Durable Object 绑定。
 
 3. 启动网关开发服务器：
 
@@ -157,11 +156,13 @@ pnpm build         # 构建所有包和应用
 
 ## 配置
 
-Airlock 现支持两层配置：
+Airlock 现支持两层配置。默认生产路径是最小 bootstrap + Dashboard 管理业务配置：
 
 - bootstrap 环境变量：运行时绑定、管理认证和安全回退值
 - `AIRLOCK_CONFIG_STORE` 提供的 Dashboard overlay：providers、routes、
   key_policies、shaping、signing、model_groups、limits、features
+- 当 `AIRLOCK_GATEWAY_KEY_REGISTRY` Durable Object 绑定存在时，动态 key registry
+  自动启用
 
 未配置 `AIRLOCK_CONFIG_STORE` 时，系统以纯环境变量模式运行。完整配置参考见
 `apps/gateway/.dev.vars.example`。
@@ -174,27 +175,25 @@ Airlock 现支持两层配置：
 
 ### 纯环境变量模式下的业务必需变量
 
-| 变量                       | 说明                                    |
-| -------------------------- | --------------------------------------- |
-| `AIRLOCK_GATEWAY_API_KEYS` | 调用方认证密钥，除非改用仅注册表模式    |
-| `OPENAI_API_KEY`           | 当活跃路由指向 OpenAI 时所需的 API 密钥 |
-| `OPENAI_BASE_URL`          | 当活跃路由指向 OpenAI 时所需的基础 URL  |
-| `OPENAI_DEFAULT_MODEL`     | 当 OpenAI 参与路由时所需的回退默认模型  |
+| 变量                       | 说明                                                         |
+| -------------------------- | ------------------------------------------------------------ |
+| `AIRLOCK_GATEWAY_API_KEYS` | 调用方认证密钥，除非使用 registry 托管 key                   |
+| `AIRLOCK_PROVIDERS`        | Provider 实例 JSON 数组（`id`、`type`、`apiKey`、`baseUrl`） |
+| `AIRLOCK_MODEL_ALIASES`    | 指向 provider 实例 id 的环境变量侧模型路由                   |
 
 ### 关键可选变量
 
-| 变量                                   | 说明                                         | 默认值  |
-| -------------------------------------- | -------------------------------------------- | ------- |
-| `AIRLOCK_MODE`                         | 运行模式：`free` 或 `scale`                  | `free`  |
-| `AIRLOCK_MODEL_ALIASES`                | 环境变量侧模型路由（JSON）                   | —       |
-| `AIRLOCK_MODEL_FALLBACKS`              | 环境变量侧故障回退目标（JSON）               | —       |
-| `AIRLOCK_PROVIDER_TIMEOUT_MS`          | 上游请求超时（毫秒）                         | `30000` |
-| `AIRLOCK_PROVIDER_MAX_RETRIES`         | 最大跨 Provider 重试次数                     | `0`     |
-| `AIRLOCK_CORS_ORIGINS`                 | 环境变量回退 CORS 源                         | —       |
-| `AIRLOCK_REQUEST_LOGGING`              | 环境变量回退结构化请求日志                   | `false` |
-| `AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED` | 启用动态密钥注册表                           | `false` |
-| `AIRLOCK_CONFIG_STORE`                 | 启用 Dashboard overlay 配置                  | —       |
-| `AIRLOCK_GOOGLE_SUPER_ADMIN_EMAIL`     | 将匹配的 Google OAuth 用户映射为 super admin | —       |
+| 变量                               | 说明                                         | 默认值  |
+| ---------------------------------- | -------------------------------------------- | ------- |
+| `AIRLOCK_MODE`                     | 运行模式：`free` 或 `scale`                  | `free`  |
+| `AIRLOCK_MODEL_ALIASES`            | 环境变量侧模型路由（JSON）                   | —       |
+| `AIRLOCK_MODEL_FALLBACKS`          | 环境变量侧故障回退目标（JSON）               | —       |
+| `AIRLOCK_PROVIDER_TIMEOUT_MS`      | 上游请求超时（毫秒）                         | `30000` |
+| `AIRLOCK_PROVIDER_MAX_RETRIES`     | 最大跨 Provider 重试次数                     | `0`     |
+| `AIRLOCK_CORS_ORIGINS`             | 环境变量回退 CORS 源                         | —       |
+| `AIRLOCK_REQUEST_LOGGING`          | 环境变量回退结构化请求日志                   | `false` |
+| `AIRLOCK_CONFIG_STORE`             | Dashboard overlay 配置存储绑定               | —       |
+| `AIRLOCK_GOOGLE_SUPER_ADMIN_EMAIL` | 将匹配的 Google OAuth 用户映射为 super admin | —       |
 
 ---
 

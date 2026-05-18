@@ -1,4 +1,4 @@
-import { GatewayError, type ProviderId } from "@airlock/shared";
+import { GatewayError } from "@airlock/shared";
 
 import {
   assertGatewayApiKeyIsActive,
@@ -140,7 +140,7 @@ export function assertGatewayKeyAllowsRouteAccess(
 
 export function assertGatewayKeyAllowsProviderAccess(
   gatewayApiKey: GatewayApiKeyRecord,
-  provider: ProviderId,
+  provider: string,
   requestId: string
 ) {
   const allowedProviders = gatewayApiKey.policy?.allowedProviders;

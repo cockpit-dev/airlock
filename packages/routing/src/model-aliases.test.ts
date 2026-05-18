@@ -20,64 +20,54 @@ describe("parseModelAliases", () => {
   it("parses a comma-separated alias map into structured routes", () => {
     expect(
       parseModelAliases(
-        "gpt-4.1-mini=gpt-4.1-mini,claude-sonnet-4-5=gpt-4.1-mini",
-        "gpt-4.1-mini"
+        "gpt-4.1-mini=openai-prod:gpt-4.1-mini,claude-sonnet-4-5=openai-backup:gpt-4.1-mini"
       )
     ).toEqual([
       {
         externalModel: "gpt-4.1-mini",
         target: {
-          provider: "openai",
+          provider: "openai-prod",
           providerModel: "gpt-4.1-mini"
         }
       },
       {
         externalModel: "claude-sonnet-4-5",
         target: {
-          provider: "openai",
+          provider: "openai-backup",
           providerModel: "gpt-4.1-mini"
         }
       }
     ]);
   });
 
-  it("falls back to the default model when aliases are absent", () => {
-    expect(parseModelAliases(undefined, "gpt-4.1-mini")).toEqual([
-      {
-        externalModel: "gpt-4.1-mini",
-        target: {
-          provider: "openai",
-          providerModel: "gpt-4.1-mini"
-        }
-      }
-    ]);
+  it("returns no routes when aliases are absent", () => {
+    expect(parseModelAliases(undefined)).toEqual([]);
   });
 
-  it("parses explicit provider-aware route syntax", () => {
+  it("parses explicit provider-instance route syntax", () => {
     expect(
       parseModelAliases(
-        "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash",
-        "gpt-4.1-mini"
+        "gpt-4.1-mini=openai-prod:gpt-4.1-mini,claude-sonnet-4-5=anthropic-team-a:claude-sonnet-4-5,gemini-2.5-flash=gemini-free:gemini-2.5-flash"
       )
     ).toEqual([
       {
         externalModel: "gpt-4.1-mini",
         target: {
-          provider: "openai",
+          provider: "openai-prod",
           providerModel: "gpt-4.1-mini"
         }
       },
       {
         externalModel: "claude-sonnet-4-5",
         target: {
-          provider: "anthropic",
+          provider: "anthropic-team-a",
           providerModel: "claude-sonnet-4-5"
         }
       },
       {
         externalModel: "gemini-2.5-flash",
         target: {
-          provider: "gemini",
+          provider: "gemini-free",
           providerModel: "gemini-2.5-flash"
         }
       }
@@ -85,23 +75,18 @@ describe("parseModelAliases", () => {
   });
 
   it("rejects aliases with empty model parts", () => {
-    expect(() => parseModelAliases("gpt-4.1-mini=", "gpt-4.1-mini")).toThrow(
+    expect(() => parseModelAliases("gpt-4.1-mini=")).toThrow(GatewayError);
+  });
+
+  it("rejects target entries without a provider instance key", () => {
+    expect(() => parseModelAliases("gpt-4.1-mini=gpt-4.1-mini")).toThrow(
       GatewayError
     );
   });
 
-  it("rejects unsupported provider ids", () => {
-    expect(() =>
-      parseModelAliases("gpt-4.1-mini=vertex:gemini-2.5-pro", "gpt-4.1-mini")
-    ).toThrow(GatewayError);
-  });
-
   it("rejects duplicate external model aliases", () => {
     expect(() =>
-      parseModelAliases(
-        "gpt-4.1-mini=gpt-4.1-mini,gpt-4.1-mini=other-model",
-        "gpt-4.1-mini"
-      )
+      parseModelAliases("gpt-4.1-mini=gpt-4.1-mini,gpt-4.1-mini=other-model")
     ).toThrow(GatewayError);
   });
 });
@@ -205,15 +190,18 @@ describe("resolveModelRoute", () => {
     expect(route.target.provider).toBe("anthropic");
   });
 
-  it("rejects provider/model with unsupported provider", () => {
-    expect(() =>
-      resolveModelRoute("vertex/gemini-2.5-pro", [
-        {
-          externalModel: "gpt-4.1-mini",
-          target: { provider: "openai" as const, providerModel: "gpt-4.1-mini" }
-        }
-      ])
-    ).toThrow(GatewayError);
+  it("treats provider/model provider segment as a provider instance id", () => {
+    const route = resolveModelRoute("vertex/gemini-2.5-pro", [
+      {
+        externalModel: "gpt-4.1-mini",
+        target: { provider: "openai", providerModel: "gpt-4.1-mini" }
+      }
+    ]);
+
+    expect(route.target).toEqual({
+      provider: "vertex",
+      providerModel: "gemini-2.5-pro"
+    });
   });
 
   it("includes requestId in model_not_found error", () => {
@@ -287,8 +275,7 @@ describe("attachRouteRequestShaping", () => {
     expect(
       attachRouteRequestShaping(
         parseModelAliases(
-          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5",
-          "gpt-4.1-mini"
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5"
         ),
         {
           "gpt-4.1-mini": {
@@ -324,7 +311,7 @@ describe("attachRouteRequestShaping", () => {
   it("rejects shaping keys that do not match configured routes", () => {
     expect(() =>
       attachRouteRequestShaping(
-        parseModelAliases("gpt-4.1-mini=gpt-4.1-mini", "gpt-4.1-mini"),
+        parseModelAliases("gpt-4.1-mini=gpt-4.1-mini"),
         {
           unknown: {
             headers: {
@@ -340,10 +327,7 @@ describe("attachRouteRequestShaping", () => {
     expect(
       attachRouteRequestShaping(
         attachRouteFallbacks(
-          parseModelAliases(
-            "assistant-default=openai:gpt-4.1-mini",
-            "gpt-4.1-mini"
-          ),
+          parseModelAliases("assistant-default=openai:gpt-4.1-mini"),
           {
             "assistant-default": ["anthropic:claude-haiku-4-5"]
           }
@@ -612,8 +596,7 @@ describe("attachRouteFallbacks", () => {
     expect(
       attachRouteFallbacks(
         parseModelAliases(
-          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5",
-          "gpt-4.1-mini"
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5"
         ),
         {
           "gpt-4.1-mini": ["openai:gpt-4.1-nano"]
@@ -645,19 +628,16 @@ describe("attachRouteFallbacks", () => {
 
   it("rejects fallback keys that do not match configured routes", () => {
     expect(() =>
-      attachRouteFallbacks(
-        parseModelAliases("gpt-4.1-mini=gpt-4.1-mini", "gpt-4.1-mini"),
-        {
-          unknown: ["openai:gpt-4.1-nano"]
-        }
-      )
+      attachRouteFallbacks(parseModelAliases("gpt-4.1-mini=gpt-4.1-mini"), {
+        unknown: ["openai:gpt-4.1-nano"]
+      })
     ).toThrow(GatewayError);
   });
 
   it("allows cross-provider fallback targets for unshaped routes", () => {
     expect(
       attachRouteFallbacks(
-        parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini", "gpt-4.1-mini"),
+        parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini"),
         {
           "gpt-4.1-mini": ["anthropic:claude-haiku-4-5"]
         }
@@ -683,7 +663,7 @@ describe("attachRouteFallbacks", () => {
     expect(
       attachRouteFallbacks(
         attachRouteRequestShaping(
-          parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini", "gpt-4.1-mini"),
+          parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini"),
           {
             "gpt-4.1-mini": {
               headers: {
@@ -721,7 +701,7 @@ describe("attachRouteFallbacks", () => {
   it("rejects duplicate fallback targets", () => {
     expect(() =>
       attachRouteFallbacks(
-        parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini", "gpt-4.1-mini"),
+        parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini"),
         {
           "gpt-4.1-mini": ["openai:gpt-4.1-nano", "openai:gpt-4.1-nano"]
         }
@@ -733,10 +713,7 @@ describe("attachRouteFallbacks", () => {
     expect(
       attachRouteFallbacks(
         attachRouteRequestShaping(
-          parseModelAliases(
-            "assistant-default=openai:gpt-4.1-mini",
-            "gpt-4.1-mini"
-          ),
+          parseModelAliases("assistant-default=openai:gpt-4.1-mini"),
           {
             "assistant-default": {
               targets: {
@@ -796,8 +773,7 @@ describe("attachRouteTargetSelection", () => {
       attachRouteTargetSelection(
         attachRouteFallbacks(
           parseModelAliases(
-            "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
-            "gpt-4.1-mini"
+            "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5"
           ),
           {
             "assistant-default": ["anthropic:claude-haiku-4-5"]
@@ -847,7 +823,7 @@ describe("attachRouteTargetSelection", () => {
   it("rejects target selection keys that do not match configured routes", () => {
     expect(() =>
       attachRouteTargetSelection(
-        parseModelAliases("gpt-4.1-mini=gpt-4.1-mini", "gpt-4.1-mini"),
+        parseModelAliases("gpt-4.1-mini=gpt-4.1-mini"),
         {
           unknown: {
             strategy: "weighted",
@@ -863,7 +839,7 @@ describe("attachRouteTargetSelection", () => {
   it("rejects weighted targets that do not exist in the route chain", () => {
     expect(() =>
       attachRouteTargetSelection(
-        parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini", "gpt-4.1-mini"),
+        parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini"),
         {
           "gpt-4.1-mini": {
             strategy: "weighted",
@@ -881,8 +857,7 @@ describe("attachRouteTargetSelection", () => {
       attachRouteTargetSelection(
         attachRouteFallbacks(
           parseModelAliases(
-            "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
-            "gpt-4.1-mini"
+            "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5"
           ),
           {
             "assistant-default": ["anthropic:claude-haiku-4-5"]
@@ -932,7 +907,7 @@ describe("attachRouteTargetSelection", () => {
   it("rejects lowest-cost targets that do not exist in the route chain", () => {
     expect(() =>
       attachRouteTargetSelection(
-        parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini", "gpt-4.1-mini"),
+        parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini"),
         {
           "gpt-4.1-mini": {
             strategy: "lowest_cost",
@@ -950,8 +925,7 @@ describe("attachRouteTargetSelection", () => {
       attachRouteTargetSelection(
         attachRouteFallbacks(
           parseModelAliases(
-            "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
-            "gpt-4.1-mini"
+            "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5"
           ),
           {
             "assistant-default": ["anthropic:claude-haiku-4-5"]
@@ -1009,7 +983,7 @@ describe("attachRouteTargetSelection", () => {
   it("rejects priority targets that do not exist in the route chain", () => {
     expect(() =>
       attachRouteTargetSelection(
-        parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini", "gpt-4.1-mini"),
+        parseModelAliases("gpt-4.1-mini=openai:gpt-4.1-mini"),
         {
           "gpt-4.1-mini": {
             strategy: "priority",
@@ -1028,8 +1002,7 @@ describe("attachRouteKeyAccessPolicy", () => {
     expect(
       attachRouteKeyAccessPolicy(
         parseModelAliases(
-          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
-          "gpt-4.1-mini"
+          "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5"
         ),
         {
           "assistant-default": {
@@ -1061,7 +1034,7 @@ describe("attachRouteKeyAccessPolicy", () => {
   it("rejects route key access policy keys that do not match configured routes", () => {
     expect(() =>
       attachRouteKeyAccessPolicy(
-        parseModelAliases("gpt-4.1-mini=gpt-4.1-mini", "gpt-4.1-mini"),
+        parseModelAliases("gpt-4.1-mini=gpt-4.1-mini"),
         {
           unknown: {
             requiredKeyTier: "prod"

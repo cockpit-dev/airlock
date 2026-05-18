@@ -20,15 +20,15 @@ type GatewayApp = Hono<{
 }>;
 
 interface ProviderConfigEntry {
+  id: string;
+  type: string;
   baseUrl: string;
   configured: true;
+  defaultModel?: string;
+  defaultMaxTokens?: number;
 }
 
-interface ProviderAvailability {
-  openai?: ProviderConfigEntry & { defaultModel: string };
-  anthropic?: ProviderConfigEntry & { defaultMaxTokens: number };
-  gemini?: ProviderConfigEntry;
-}
+type ProviderAvailability = ProviderConfigEntry[];
 
 interface RouteConfigEntry {
   externalModel: string;
@@ -73,34 +73,16 @@ export interface AdminConfigResponse {
 export function buildAdminConfigResponse(
   config: GatewayConfig
 ): AdminConfigResponse {
-  const providers = {
-    ...(config.openAI
-      ? {
-          openai: {
-            baseUrl: config.openAI.baseUrl,
-            defaultModel: config.openAI.defaultModel,
-            configured: true
-          }
-        }
-      : {}),
-    ...(config.anthropic
-      ? {
-          anthropic: {
-            baseUrl: config.anthropic.baseUrl,
-            defaultMaxTokens: config.anthropic.defaultMaxTokens,
-            configured: true
-          }
-        }
-      : {}),
-    ...(config.gemini
-      ? {
-          gemini: {
-            baseUrl: config.gemini.baseUrl,
-            configured: true
-          }
-        }
+  const providers = config.providers.map((provider) => ({
+    id: provider.id,
+    type: provider.type,
+    baseUrl: provider.baseUrl,
+    configured: true as const,
+    ...(provider.defaultModel ? { defaultModel: provider.defaultModel } : {}),
+    ...(provider.defaultMaxTokens !== undefined
+      ? { defaultMaxTokens: provider.defaultMaxTokens }
       : {})
-  } satisfies ProviderAvailability;
+  })) satisfies ProviderAvailability;
 
   const routes: RouteConfigEntry[] = config.modelAliases.map((route) => ({
     externalModel: route.externalModel,

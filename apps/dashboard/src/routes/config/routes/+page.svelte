@@ -17,6 +17,7 @@
   };
 
   type RoutesConfig = RouteConfig[];
+  type ProvidersConfig = Array<{ id: string; type: string }>;
 
   let loading = $state(true);
   let saving = $state(false);
@@ -26,8 +27,8 @@
   let showCreateForm = $state(false);
 
   let routes = $state<RoutesConfig>([]);
+  let providerKeys = $state<string[]>([]);
 
-  const providerOptions = ["openai", "anthropic", "gemini"];
   const strategyOptions = [
     "weighted",
     "lowest_cost",
@@ -38,7 +39,7 @@
 
   // Create/edit form state
   let formExternalModel = $state("");
-  let formTargetProvider = $state("openai");
+  let formTargetProvider = $state("");
   let formTargetModel = $state("");
   let formFallbacks = $state<ProviderTarget[]>([]);
   let formStrategy = $state("");
@@ -57,7 +58,7 @@
 
   function resetForm() {
     formExternalModel = "";
-    formTargetProvider = "openai";
+    formTargetProvider = providerKeys[0] ?? "";
     formTargetModel = "";
     formFallbacks = [];
     formStrategy = "";
@@ -86,6 +87,15 @@
       const section = snapshot.sections["routes"];
       if (section?.data && Array.isArray(section.data)) {
         routes = section.data as RoutesConfig;
+      }
+      const providersSection = snapshot.sections["providers"];
+      if (providersSection?.data && Array.isArray(providersSection.data)) {
+        providerKeys = (providersSection.data as ProvidersConfig).map(
+          (provider) => provider.id
+        );
+        if (!formTargetProvider && providerKeys[0]) {
+          formTargetProvider = providerKeys[0];
+        }
       }
     } catch {
       // Config store may not be initialized yet
@@ -135,8 +145,13 @@
   }
 
   function applyCreate() {
-    if (!formExternalModel.trim() || !formTargetModel.trim()) {
-      error = "External model and target model are required";
+    if (
+      !formExternalModel.trim() ||
+      !formTargetProvider.trim() ||
+      !formTargetModel.trim()
+    ) {
+      error =
+        "External model, provider instance, and target model are required";
       return;
     }
     error = "";
@@ -170,8 +185,13 @@
 
   function applyEdit() {
     if (editRouteIndex === null) return;
-    if (!formExternalModel.trim() || !formTargetModel.trim()) {
-      error = "External model and target model are required";
+    if (
+      !formExternalModel.trim() ||
+      !formTargetProvider.trim() ||
+      !formTargetModel.trim()
+    ) {
+      error =
+        "External model, provider instance, and target model are required";
       return;
     }
     error = "";
@@ -212,7 +232,7 @@
   function addFallback() {
     formFallbacks = [
       ...formFallbacks,
-      { provider: "openai", providerModel: "" }
+      { provider: providerKeys[0] ?? "", providerModel: "" }
     ];
   }
 
@@ -270,6 +290,18 @@
 
   {#if loading}
     <div class="text-gray-400 text-center py-12">Loading configuration...</div>
+  {:else if providerKeys.length === 0}
+    <div class="rounded-lg border border-amber-800 bg-amber-950/30 p-5">
+      <p class="text-sm text-amber-100/80">
+        Configure at least one provider instance before creating routes.
+      </p>
+      <a
+        href="/config/providers"
+        class="mt-3 inline-flex rounded border border-amber-700 px-3 py-1.5 text-sm text-amber-100 hover:bg-amber-900/40"
+      >
+        Add Provider
+      </a>
+    </div>
   {:else}
     <!-- Create Form -->
     {#if showCreateForm}
@@ -393,7 +425,7 @@
           class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
           bind:value={formTargetProvider}
         >
-          {#each providerOptions as provider}
+          {#each providerKeys as provider}
             <option value={provider}>{provider}</option>
           {/each}
         </select>
@@ -441,7 +473,7 @@
                   (e.target as HTMLSelectElement).value
                 )}
             >
-              {#each providerOptions as provider}
+              {#each providerKeys as provider}
                 <option value={provider}>{provider}</option>
               {/each}
             </select>

@@ -146,13 +146,29 @@ function createBindings() {
   return {
     AIRLOCK_MODE: "free",
     AIRLOCK_GATEWAY_API_KEYS: "gateway-secret",
-    ANTHROPIC_API_KEY: "anthropic-secret",
-    ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
-    ANTHROPIC_DEFAULT_MAX_TOKENS: "256",
     AIRLOCK_PROVIDER_TIMEOUT_MS: "1000",
-    OPENAI_API_KEY: "openai-secret",
-    OPENAI_BASE_URL: "https://api.openai.com/v1",
-    OPENAI_DEFAULT_MODEL: "gpt-4.1-mini",
+    AIRLOCK_PROVIDERS: JSON.stringify([
+      {
+        type: "openai",
+        apiKey: "openai-secret",
+        baseUrl: "https://api.openai.com/v1",
+        defaultModel: "gpt-4.1-mini",
+        id: "openai"
+      },
+      {
+        type: "anthropic",
+        apiKey: "anthropic-secret",
+        baseUrl: "https://api.anthropic.com/v1",
+        defaultMaxTokens: 256,
+        id: "anthropic"
+      },
+      {
+        type: "gemini",
+        apiKey: "gemini-secret",
+        baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+        id: "gemini"
+      }
+    ]),
     AIRLOCK_MODEL_ALIASES:
       "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5"
   };
@@ -1973,9 +1989,15 @@ describe("gateway app", () => {
     const response = await app.request("http://localhost/readyz", undefined, {
       AIRLOCK_MODE: "free",
       AIRLOCK_GATEWAY_API_KEYS: "gateway-secret",
-      OPENAI_API_KEY: "openai-secret",
-      OPENAI_BASE_URL: "https://api.openai.com/v1",
-      OPENAI_DEFAULT_MODEL: ""
+      AIRLOCK_MODEL_ALIASES: "gpt-4.1-mini=openai:gpt-4.1-mini",
+      AIRLOCK_PROVIDERS: JSON.stringify([
+        {
+          type: "openai",
+          apiKey: "",
+          baseUrl: "https://api.openai.com/v1",
+          id: "openai"
+        }
+      ])
     });
 
     expect(response.status).toBe(503);
@@ -1991,9 +2013,15 @@ describe("gateway app", () => {
     const response = await app.request("http://localhost/readyz", undefined, {
       AIRLOCK_MODE: "free",
       AIRLOCK_GATEWAY_API_KEYS: "gateway-secret, gateway-secret ",
-      OPENAI_API_KEY: "openai-secret",
-      OPENAI_BASE_URL: "https://api.openai.com/v1",
-      OPENAI_DEFAULT_MODEL: "gpt-4.1-mini"
+      AIRLOCK_MODEL_ALIASES: "gpt-4.1-mini=openai:gpt-4.1-mini",
+      AIRLOCK_PROVIDERS: JSON.stringify([
+        {
+          type: "openai",
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          id: "openai"
+        }
+      ])
     });
 
     expect(response.status).toBe(503);
@@ -2076,7 +2104,7 @@ describe("gateway app", () => {
     });
   });
 
-  it("returns not ready from /readyz when structured gateway key allowed-provider policy is invalid", async () => {
+  it("returns not ready from /readyz when structured gateway key allowed-provider policy is empty", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
     const response = await app.request("http://localhost/readyz", undefined, {
@@ -2088,7 +2116,7 @@ describe("gateway app", () => {
           value: "gateway-secret",
           status: "active",
           policy: {
-            allowedProviders: ["openai", "invalid-provider"]
+            allowedProviders: ["openai", ""]
           }
         }
       ])
@@ -2337,10 +2365,15 @@ describe("gateway app", () => {
       AIRLOCK_MODE: "free",
       AIRLOCK_GATEWAY_API_KEYS: "gateway-secret",
       AIRLOCK_MODEL_ALIASES:
-        "gpt-4.1-mini=gpt-4.1-mini,gpt-4.1-mini=other-model",
-      OPENAI_API_KEY: "openai-secret",
-      OPENAI_BASE_URL: "https://api.openai.com/v1",
-      OPENAI_DEFAULT_MODEL: "gpt-4.1-mini"
+        "gpt-4.1-mini=openai:gpt-4.1-mini,gpt-4.1-mini=openai:other-model",
+      AIRLOCK_PROVIDERS: JSON.stringify([
+        {
+          type: "openai",
+          apiKey: "openai-secret",
+          baseUrl: "https://api.openai.com/v1",
+          id: "openai"
+        }
+      ])
     });
 
     expect(response.status).toBe(503);
@@ -2356,9 +2389,6 @@ describe("gateway app", () => {
     const response = await app.request("http://localhost/readyz", undefined, {
       AIRLOCK_MODE: "free",
       AIRLOCK_GATEWAY_API_KEYS: "gateway-secret",
-      OPENAI_API_KEY: "openai-secret",
-      OPENAI_BASE_URL: "https://api.openai.com/v1",
-      OPENAI_DEFAULT_MODEL: "gpt-4.1-mini",
       AIRLOCK_MODEL_ALIASES:
         "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5"
     });
@@ -2471,9 +2501,6 @@ describe("gateway app", () => {
     const response = await app.request("http://localhost/readyz", undefined, {
       AIRLOCK_MODE: "free",
       AIRLOCK_GATEWAY_API_KEYS: "gateway-secret",
-      OPENAI_API_KEY: "openai-secret",
-      OPENAI_BASE_URL: "https://api.openai.com/v1",
-      OPENAI_DEFAULT_MODEL: "gpt-4.1-mini",
       AIRLOCK_MODEL_ALIASES:
         "gpt-4.1-mini=openai:gpt-4.1-mini,gemini-2.5-flash=gemini:gemini-2.5-flash"
     });
@@ -5260,8 +5287,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -5385,8 +5410,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -5478,8 +5501,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -5554,8 +5575,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -5640,8 +5659,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -6508,8 +6525,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -6581,8 +6596,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -6682,8 +6695,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -6792,8 +6803,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -7571,8 +7580,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -7642,8 +7649,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -7713,8 +7718,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -8548,7 +8551,6 @@ describe("gateway app", () => {
           scopes: ["keys.read"]
         }
       ]),
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -8602,7 +8604,6 @@ describe("gateway app", () => {
           scopes: ["keys.read"]
         }
       ]),
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -8646,7 +8647,6 @@ describe("gateway app", () => {
           scopes: ["keys.write"]
         }
       ]),
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -8696,7 +8696,6 @@ describe("gateway app", () => {
         ...createBindings(),
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
         AIRLOCK_INTERNAL_ADMIN_CREDENTIALS: "[]",
-        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
         AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       }
@@ -8740,7 +8739,6 @@ describe("gateway app", () => {
             scopes: ["keys.write"]
           }
         ]),
-        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
         AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       }
@@ -8940,7 +8938,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -9092,7 +9089,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -9197,7 +9193,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -9354,7 +9349,6 @@ describe("gateway app", () => {
       const bindings = {
         ...createBindings(),
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
         AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       };
@@ -9500,7 +9494,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -9572,7 +9565,6 @@ describe("gateway app", () => {
       const bindings = {
         ...createBindings(),
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
         AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       };
@@ -9756,7 +9748,6 @@ describe("gateway app", () => {
       const bindings = {
         ...createBindings(),
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
         AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       };
@@ -9881,7 +9872,6 @@ describe("gateway app", () => {
       const bindings = {
         ...createBindings(),
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
         AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       };
@@ -9959,7 +9949,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -10011,7 +10000,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -10239,7 +10227,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -10421,7 +10408,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -10468,7 +10454,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -10657,7 +10642,6 @@ describe("gateway app", () => {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
       AIRLOCK_INTERNAL_ADMIN_ACTOR_HEADER: "cf-access-authenticated-user-email",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -10759,7 +10743,6 @@ describe("gateway app", () => {
         }
       ]),
       AIRLOCK_INTERNAL_ADMIN_ACTOR_HEADER: "cf-access-authenticated-user-email",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -10833,7 +10816,6 @@ describe("gateway app", () => {
         }
       ]),
       AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED: "true",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -10866,7 +10848,6 @@ describe("gateway app", () => {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
       AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED: "true",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -10903,7 +10884,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -10969,7 +10949,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -11317,19 +11296,17 @@ describe("gateway app", () => {
     });
   });
 
-  it("returns not ready from /readyz when gateway key registry mode is enabled without a registry binding", async () => {
+  it("returns ready from /readyz when registry flag is absent and no registry binding exists", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
     const response = await app.request("http://localhost/readyz", undefined, {
-      ...createBindings(),
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true"
+      ...createBindings()
     });
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
     await expect(readJson(response)).resolves.toMatchObject({
-      ok: false,
-      ready: false,
-      code: "not_ready"
+      ok: true,
+      ready: true
     });
   });
 
@@ -11344,7 +11321,6 @@ describe("gateway app", () => {
       {
         ...createBindings(),
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
         AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       }
@@ -11363,7 +11339,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -11460,7 +11435,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -11521,7 +11495,6 @@ describe("gateway app", () => {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
       AIRLOCK_INTERNAL_ADMIN_ACTOR_REQUIRED: "true",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -11563,7 +11536,6 @@ describe("gateway app", () => {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
       AIRLOCK_INTERNAL_ADMIN_ACTOR_HEADER: "cf-access-authenticated-user-email",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -11687,7 +11659,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -11818,7 +11789,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -11991,7 +11961,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -12053,7 +12022,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -12082,7 +12050,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -12150,7 +12117,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -12360,7 +12326,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -12401,7 +12366,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -12453,7 +12417,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -12581,7 +12544,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -12698,7 +12660,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -12872,7 +12833,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -12979,7 +12939,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -13146,7 +13105,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -13219,7 +13177,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -13323,7 +13280,6 @@ describe("gateway app", () => {
       const bindings = {
         ...createBindings(),
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
         AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       };
@@ -13568,7 +13524,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -13790,7 +13745,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -13900,7 +13854,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -14037,7 +13990,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -14324,7 +14276,6 @@ describe("gateway app", () => {
       const bindings = {
         ...createBindings(),
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
         AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       };
@@ -14547,7 +14498,6 @@ describe("gateway app", () => {
       const bindings = {
         ...createBindings(),
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
         AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       };
@@ -14713,7 +14663,6 @@ describe("gateway app", () => {
       const bindings = {
         ...createBindings(),
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
         AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       };
@@ -14883,7 +14832,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -14964,7 +14912,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -15094,7 +15041,6 @@ describe("gateway app", () => {
       const bindings = {
         ...createBindings(),
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
         AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       };
@@ -15413,7 +15359,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -15568,7 +15513,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
     };
@@ -15634,7 +15578,6 @@ describe("gateway app", () => {
     const bindings = {
       ...createBindings(),
       AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
-      AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
       AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
       AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
       AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
@@ -17399,8 +17342,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -17593,8 +17534,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -17673,8 +17612,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -17702,8 +17639,6 @@ describe("gateway app", () => {
       },
       createEnv: () => ({
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       })
@@ -17724,8 +17659,6 @@ describe("gateway app", () => {
       },
       createEnv: () => ({
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       })
@@ -17738,8 +17671,6 @@ describe("gateway app", () => {
       },
       createEnv: () => ({
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       })
@@ -17768,8 +17699,6 @@ describe("gateway app", () => {
       },
       createEnv: () => ({
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       })
@@ -17782,8 +17711,6 @@ describe("gateway app", () => {
       },
       createEnv: () => ({
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       })
@@ -17961,8 +17888,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -18003,8 +17928,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -20037,8 +19960,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -20206,8 +20127,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_REQUEST_SIGNING_SECRETS: JSON.stringify({
           "openai-signing-secret": "signing-secret",
           "anthropic-signing-secret": "signing-secret"
@@ -20335,8 +20254,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_MODEL_ALIASES: "assistant-default=openai:gpt-4.1-mini",
         AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
           "assistant-default": ["anthropic:claude-haiku-4-5"]
@@ -20435,8 +20352,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_REQUEST_SIGNING_SECRETS: JSON.stringify({
           "shared-signing-secret": "signing-secret",
           "anthropic-signing-secret": "signing-secret"
@@ -20557,8 +20472,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_MODEL_ALIASES: "assistant-default=openai:gpt-4.1-mini",
         AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
           "assistant-default": ["anthropic:claude-haiku-4-5"]
@@ -20635,8 +20548,6 @@ describe("gateway app", () => {
 
     const bindings = {
       ...createBindings(),
-      ANTHROPIC_API_KEY: "anthropic-secret",
-      ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
@@ -20751,8 +20662,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
@@ -20854,8 +20763,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
@@ -20946,8 +20853,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
@@ -21070,8 +20975,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
@@ -21190,8 +21093,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
@@ -21273,8 +21174,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_MODEL_ALIASES:
           "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
         AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
@@ -21350,8 +21249,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_MODEL_ALIASES:
           "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5",
         AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
@@ -21443,8 +21340,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
@@ -21564,8 +21459,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
@@ -21709,8 +21602,6 @@ describe("gateway app", () => {
     });
     const bindings = {
       ...createBindings(),
-      ANTHROPIC_API_KEY: "anthropic-secret",
-      ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
@@ -21876,8 +21767,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
@@ -21967,8 +21856,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        ANTHROPIC_API_KEY: "anthropic-secret",
-        ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
         AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
@@ -22524,8 +22411,6 @@ describe("gateway app", () => {
 
     const bindings = {
       ...createBindings(),
-      ANTHROPIC_API_KEY: "anthropic-secret",
-      ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
@@ -23203,8 +23088,6 @@ describe("gateway app", () => {
 
     const bindings = {
       ...createBindings(),
-      OPENAI_API_KEY: "openai-secret",
-      OPENAI_BASE_URL: "https://api.openai.com/v1",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
@@ -24694,8 +24577,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash",
         AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
@@ -24809,8 +24690,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "assistant-default=openai:gpt-4.1-mini,claude-haiku-4-5=anthropic:claude-haiku-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash",
         AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
@@ -24904,8 +24783,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "assistant-default=anthropic:claude-sonnet-4-5,claude-haiku-4-5=anthropic:claude-haiku-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash",
         AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
@@ -25029,8 +24906,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "assistant-default=anthropic:claude-sonnet-4-5,claude-haiku-4-5=anthropic:claude-haiku-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash",
         AIRLOCK_MODEL_FALLBACKS: JSON.stringify({
@@ -25149,8 +25024,6 @@ describe("gateway app", () => {
     const app = createApp({ fetcher });
     const bindings = {
       ...createBindings(),
-      ANTHROPIC_API_KEY: "anthropic-secret",
-      ANTHROPIC_BASE_URL: "https://api.anthropic.com/v1",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_PERSISTENT: "true",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_THRESHOLD: "3",
       AIRLOCK_PROVIDER_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
@@ -25268,8 +25141,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -25349,8 +25220,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_REQUEST_SIGNING_SECRETS: JSON.stringify({
           "gemini-signing-secret": "signing-secret"
         }),
@@ -27515,8 +27384,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -27585,8 +27452,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -27614,8 +27479,6 @@ describe("gateway app", () => {
       },
       createEnv: () => ({
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       })
@@ -27636,8 +27499,6 @@ describe("gateway app", () => {
       },
       createEnv: () => ({
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       })
@@ -27650,8 +27511,6 @@ describe("gateway app", () => {
       },
       createEnv: () => ({
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       })
@@ -27664,8 +27523,6 @@ describe("gateway app", () => {
       },
       createEnv: () => ({
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       })
@@ -27823,8 +27680,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -27860,8 +27715,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -27905,8 +27758,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -27942,8 +27793,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -28012,8 +27861,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -28077,8 +27924,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -28352,8 +28197,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -28424,8 +28267,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -28496,8 +28337,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -28568,8 +28407,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -28636,8 +28473,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -28771,8 +28606,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -28820,8 +28653,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -28916,8 +28747,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -29047,8 +28876,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -29182,8 +29009,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -29326,8 +29151,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -29432,8 +29255,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -29485,8 +29306,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -29550,8 +29369,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -29620,8 +29437,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -29677,8 +29492,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -29738,8 +29551,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -29872,8 +29683,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -29919,8 +29728,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -30108,8 +29915,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -30221,8 +30026,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -30312,8 +30115,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -30385,8 +30186,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -30466,8 +30265,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -31083,8 +30880,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -31156,8 +30951,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -31250,8 +31043,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -31359,8 +31150,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -32446,8 +32235,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -32516,8 +32303,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -32587,8 +32372,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -33140,8 +32923,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -33867,8 +33648,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -33952,8 +33731,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -34071,8 +33848,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -34862,8 +34637,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -34985,8 +34758,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -35079,8 +34850,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -35159,8 +34928,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -35245,8 +35012,6 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        GEMINI_API_KEY: "gemini-secret",
-        GEMINI_BASE_URL: "https://generativelanguage.googleapis.com/v1beta",
         AIRLOCK_MODEL_ALIASES:
           "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
       }
@@ -37512,9 +37277,6 @@ describe("GET /_airlock/status", () => {
       {
         ...createBindings(),
         AIRLOCK_GATEWAY_API_KEYS: undefined,
-        OPENAI_API_KEY: undefined,
-        OPENAI_BASE_URL: undefined,
-        OPENAI_DEFAULT_MODEL: undefined,
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
         AIRLOCK_CONFIG_STORE: configStoreNamespace
@@ -37678,9 +37440,9 @@ describe("GET /_airlock/config", () => {
     expect(body).toHaveProperty("features");
     expect(body).toHaveProperty("limits");
 
-    const providers = body.providers as Record<string, unknown>;
-    expect(providers).toHaveProperty("openai");
-    const openai = providers.openai as Record<string, unknown>;
+    const providers = body.providers as Array<Record<string, unknown>>;
+    const openai = providers.find((provider) => provider.id === "openai");
+    expect(openai).toBeDefined();
     expect(openai).toHaveProperty("baseUrl");
     expect(openai).toHaveProperty("defaultModel");
     expect(openai).toHaveProperty("configured", true);
@@ -37731,9 +37493,15 @@ describe("enhanced /readyz", () => {
     const response = await app.request("http://localhost/readyz", undefined, {
       AIRLOCK_MODE: "free",
       AIRLOCK_GATEWAY_API_KEYS: "gateway-secret",
-      OPENAI_API_KEY: "openai-secret",
-      OPENAI_BASE_URL: "https://api.openai.com/v1",
-      OPENAI_DEFAULT_MODEL: ""
+      AIRLOCK_MODEL_ALIASES: "gpt-4.1-mini=openai:gpt-4.1-mini",
+      AIRLOCK_PROVIDERS: JSON.stringify([
+        {
+          type: "openai",
+          apiKey: "",
+          baseUrl: "https://api.openai.com/v1",
+          id: "openai"
+        }
+      ])
     });
 
     expect(response.status).toBe(503);

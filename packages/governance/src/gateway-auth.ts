@@ -1,4 +1,4 @@
-import { GatewayError, isProviderId, type ProviderId } from "@airlock/shared";
+import { GatewayError } from "@airlock/shared";
 
 export type GatewayApiKeyStatus = "active" | "revoked";
 export type GatewayApiKeyLifecycleStatus =
@@ -26,7 +26,7 @@ export interface GatewayApiKeyPolicy {
   tier?: string;
   tags?: string[];
   allowedExternalModels?: string[];
-  allowedProviders?: ProviderId[];
+  allowedProviders?: string[];
   allowedModelGroups?: string[];
   requestQuota?: GatewayApiKeyRequestQuotaPolicy;
   tokenQuota?: GatewayApiKeyTokenQuotaPolicy;
@@ -438,9 +438,9 @@ function parseGatewayApiKeyPolicy(
       const normalizedProvider =
         typeof provider === "string" ? provider.trim() : undefined;
 
-      if (!normalizedProvider || !isProviderId(normalizedProvider)) {
+      if (!normalizedProvider) {
         throw createInvalidGatewayKeyConfigError(
-          "Gateway API key policy allowedProviders must contain supported provider ids"
+          "Gateway API key policy allowedProviders must contain non-empty provider keys"
         );
       }
 

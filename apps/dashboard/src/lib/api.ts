@@ -189,7 +189,12 @@ export interface GatewayStatusResponse {
     requiredKeyTier?: string;
     requiredKeyTags?: string[];
   }>;
-  providers: Array<{ id: string; configured: boolean; routeCount: number }>;
+  providers: Array<{
+    id: string;
+    type?: string;
+    configured: boolean;
+    routeCount: number;
+  }>;
   keys: { total: number; configured: number; registryOwned: number };
   circuitBreaker: {
     totalTargets: number;
@@ -224,11 +229,14 @@ export interface MetricsSnapshot {
 }
 
 export interface AdminConfigResponse {
-  providers: {
-    openai?: { baseUrl: string; defaultModel: string; configured: true };
-    anthropic?: { baseUrl: string; defaultMaxTokens: number; configured: true };
-    gemini?: { baseUrl: string; configured: true };
-  };
+  providers: Array<{
+    id: string;
+    type: string;
+    baseUrl: string;
+    configured: true;
+    defaultModel?: string;
+    defaultMaxTokens?: number;
+  }>;
   routes: Array<{
     externalModel: string;
     target: { provider: string; providerModel: string };

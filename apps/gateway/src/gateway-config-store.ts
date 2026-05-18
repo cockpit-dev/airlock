@@ -1,5 +1,6 @@
 import type { DurableObjectStateLike } from "./durable-object-state.js";
 import type { GatewayBindings } from "./env.js";
+import type { ProviderId } from "@airlock/shared";
 
 export interface StoredConfigSection {
   data: unknown;
@@ -34,6 +35,8 @@ function isValidSection(name: string): name is ConfigSectionName {
 }
 
 export interface DashboardProviderEntry {
+  id: string;
+  type: ProviderId;
   apiKey: string;
   baseUrl: string;
   defaultModel?: string;
@@ -44,11 +47,7 @@ export interface DashboardProviderEntry {
   extendedBodyInjections?: Record<string, unknown>;
 }
 
-export interface DashboardProvidersConfig {
-  openai: DashboardProviderEntry;
-  anthropic?: DashboardProviderEntry;
-  gemini?: DashboardProviderEntry;
-}
+export type DashboardProvidersConfig = DashboardProviderEntry[];
 
 export interface DashboardRouteTarget {
   provider: string;
