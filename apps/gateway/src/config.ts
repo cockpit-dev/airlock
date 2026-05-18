@@ -19,15 +19,17 @@ import {
   parseRouteTargetSelection,
   type ModelRouteDirectory
 } from "@airlock/routing";
-import { GatewayError } from "@airlock/shared";
+import { type ProviderId, GatewayError } from "@airlock/shared";
 
 import type { GatewayBindings } from "./env.js";
 
 import { gatewayEnvSchema } from "./env.js";
 import {
   fetchConfigStoreSnapshot,
+  type DashboardLimitsConfig,
   type DashboardProviderEntry,
   type DashboardProvidersConfig,
+  type DashboardRouteConfig,
   type StoredConfigSnapshot
 } from "./gateway-config-store.js";
 
@@ -35,6 +37,8 @@ export type ModelGroupMap = Record<string, string[]>;
 
 export interface GatewayConfig {
   mode: "free" | "scale";
+  corsOrigins?: string;
+  requestLogging?: boolean;
   providerTimeoutMs: number;
   providerMaxRetries: number;
   providerRetryBackoffMs: number;
@@ -54,6 +58,7 @@ export interface GatewayConfig {
   routingFailureFreshnessMs: number;
   routingRecoveryWindowMs: number;
   gatewayKeyRegistryEnabled?: boolean;
+  internalAdminToken?: string;
   internalAdminCredentials?: InternalAdminCredential[];
   gatewayApiKeys: GatewayApiKeyRecord[];
   requestSigningSecrets?: Record<string, string>;
@@ -69,11 +74,30 @@ export interface GatewayConfig {
     apiKey: string;
     baseUrl: string;
   };
-  openAI: {
+  openAI?: {
     apiKey: string;
     baseUrl: string;
     defaultModel: string;
   };
+}
+
+type GatewayProviderConfig = NonNullable<GatewayConfig["openAI"]>;
+
+interface ParsedBusinessConfigInput {
+  gatewayApiKeysValue: string | undefined;
+  fallbackModel: string | undefined;
+  modelAliasesValue: string | undefined;
+  modelFallbacksValue: string | undefined;
+  modelTargetSelectionValue: string | undefined;
+  modelKeyPolicyValue: string | undefined;
+  modelShapingValue: string | undefined;
+  requestSigningSecretsValue: string | undefined;
+  modelGroupsValue: string | undefined;
+}
+
+export interface GatewayAdminAuthConfig {
+  internalAdminToken?: string;
+  internalAdminCredentials: InternalAdminCredential[];
 }
 
 function parseModelGroups(value: string | undefined): ModelGroupMap {
@@ -276,6 +300,177 @@ function parseRequestSigningSecrets(
   return secrets;
 }
 
+function createMissingBusinessConfigError(
+  message: string,
+  code:
+    | "config_missing_gateway_api_keys"
+    | "config_missing_openai"
+    | "config_missing_anthropic"
+    | "config_missing_gemini"
+    | "config_missing_internal_admin_auth"
+): GatewayError {
+  return new GatewayError(message, {
+    code,
+    category: "configuration",
+    httpStatus: 500,
+    retryable: false
+  });
+}
+
+function parseBusinessConfig(
+  input: ParsedBusinessConfigInput
+): Pick<
+  GatewayConfig,
+  "gatewayApiKeys" | "modelAliases" | "modelGroups" | "requestSigningSecrets"
+> {
+  const gatewayApiKeys = input.gatewayApiKeysValue
+    ? parseGatewayApiKeys(input.gatewayApiKeysValue)
+    : [];
+  const requestSigningSecrets = parseRequestSigningSecrets(
+    input.requestSigningSecretsValue
+  );
+  const baseRoutes =
+    input.modelAliasesValue || input.fallbackModel
+      ? parseModelAliases(
+          input.modelAliasesValue,
+          input.fallbackModel ?? "openai/gpt-4.1-mini"
+        )
+      : [];
+  const modelAliases = attachRouteTargetSelection(
+    attachRouteFallbacks(
+      attachRouteRequestShaping(
+        attachRouteKeyAccessPolicy(
+          baseRoutes,
+          parseRouteKeyAccessPolicy(input.modelKeyPolicyValue)
+        ),
+        parseRouteRequestShaping(input.modelShapingValue)
+      ),
+      parseRouteFallbacks(input.modelFallbacksValue)
+    ),
+    parseRouteTargetSelection(input.modelTargetSelectionValue)
+  );
+  const modelGroups = parseModelGroups(input.modelGroupsValue);
+
+  validateModelGroups(modelGroups, modelAliases, gatewayApiKeys);
+
+  return {
+    gatewayApiKeys,
+    modelAliases,
+    modelGroups,
+    requestSigningSecrets
+  };
+}
+
+function usesProvider(
+  modelAliases: readonly {
+    target: { provider: string };
+    fallbacks?: Array<{ provider: string }>;
+  }[],
+  provider: ProviderId
+): boolean {
+  return modelAliases.some((route) => {
+    if (route.target.provider === provider) {
+      return true;
+    }
+
+    return (route.fallbacks ?? []).some((fallback) => {
+      return fallback.provider === provider;
+    });
+  });
+}
+
+function validateProviderConfiguration(config: GatewayConfig): void {
+  if (usesProvider(config.modelAliases, "openai")) {
+    if (
+      !config.openAI?.apiKey ||
+      !config.openAI.baseUrl ||
+      !config.openAI.defaultModel
+    ) {
+      throw createMissingBusinessConfigError(
+        "OpenAI configuration is required (set via environment variables or dashboard config)",
+        "config_missing_openai"
+      );
+    }
+  }
+
+  if (usesProvider(config.modelAliases, "anthropic")) {
+    if (!config.anthropic?.apiKey || !config.anthropic.baseUrl) {
+      throw createMissingBusinessConfigError(
+        "Anthropic configuration is required (set via environment variables or dashboard config)",
+        "config_missing_anthropic"
+      );
+    }
+  }
+
+  if (usesProvider(config.modelAliases, "gemini")) {
+    if (!config.gemini?.apiKey || !config.gemini.baseUrl) {
+      throw createMissingBusinessConfigError(
+        "Gemini configuration is required (set via environment variables or dashboard config)",
+        "config_missing_gemini"
+      );
+    }
+  }
+}
+
+function hasGatewayCallerAuthentication(config: GatewayConfig): boolean {
+  return (
+    config.gatewayApiKeys.length > 0 ||
+    config.gatewayKeyRegistryEnabled === true
+  );
+}
+
+function validateBusinessConfiguration(config: GatewayConfig): void {
+  if (!hasGatewayCallerAuthentication(config)) {
+    throw createMissingBusinessConfigError(
+      "Gateway caller authentication is required (configure gateway API keys or enable the dynamic key registry)",
+      "config_missing_gateway_api_keys"
+    );
+  }
+
+  validateProviderConfiguration(config);
+}
+
+function validateAdminBootstrapConfiguration(config: {
+  internalAdminToken?: string;
+  internalAdminCredentials?: readonly InternalAdminCredential[];
+}): void {
+  if (
+    !config.internalAdminToken &&
+    config.internalAdminCredentials?.length === 0
+  ) {
+    throw createMissingBusinessConfigError(
+      "Internal admin authentication is required (set via environment variables or dashboard config)",
+      "config_missing_internal_admin_auth"
+    );
+  }
+}
+
+function assertAdminAuthRuntimeDependencies(
+  internalAdminToken: string | undefined,
+  internalAdminCredentials: readonly InternalAdminCredential[],
+  revocationBinding: GatewayBindings["AIRLOCK_GATEWAY_KEY_REVOCATION"]
+): void {
+  if (
+    (internalAdminToken || internalAdminCredentials.length > 0) &&
+    !revocationBinding
+  ) {
+    throw new GatewayError("Gateway key revocation binding is required", {
+      code: "config_missing_gateway_key_revocation",
+      category: "configuration",
+      httpStatus: 500,
+      retryable: false
+    });
+  }
+}
+
+function toJsonString(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return JSON.stringify(value);
+}
+
 /**
  * Compute a fingerprint from the config-relevant env strings.
  * If these values haven't changed, the parsed config is identical.
@@ -374,38 +569,54 @@ export function resolveGatewayConfig(bindings: GatewayBindings): GatewayConfig {
   return config;
 }
 
-function parseGatewayConfigUncached(
-  bindings: GatewayBindings,
-  options?: { allowMissingProviderEnvVars?: boolean }
-): GatewayConfig {
-  const allowMissing = options?.allowMissingProviderEnvVars ?? false;
+export function resolveGatewayAdminAuthConfig(
+  bindings: GatewayBindings
+): GatewayAdminAuthConfig {
   const env = gatewayEnvSchema.parse(bindings);
-  const gatewayApiKeys = parseGatewayApiKeys(env.AIRLOCK_GATEWAY_API_KEYS);
-  const requestSigningSecrets = parseRequestSigningSecrets(
-    env.AIRLOCK_REQUEST_SIGNING_SECRETS
-  );
   const internalAdminCredentials = parseInternalAdminCredentials(
     env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS
   );
-  const modelAliases = attachRouteTargetSelection(
-    attachRouteFallbacks(
-      attachRouteRequestShaping(
-        attachRouteKeyAccessPolicy(
-          parseModelAliases(
-            env.AIRLOCK_MODEL_ALIASES,
-            env.OPENAI_DEFAULT_MODEL
-          ),
-          parseRouteKeyAccessPolicy(env.AIRLOCK_MODEL_KEY_POLICY)
-        ),
-        parseRouteRequestShaping(env.AIRLOCK_MODEL_SHAPING)
-      ),
-      parseRouteFallbacks(env.AIRLOCK_MODEL_FALLBACKS)
-    ),
-    parseRouteTargetSelection(env.AIRLOCK_MODEL_TARGET_SELECTION)
+
+  assertAdminAuthRuntimeDependencies(
+    env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+    internalAdminCredentials,
+    env.AIRLOCK_GATEWAY_KEY_REVOCATION
   );
-  const modelGroups = parseModelGroups(env.AIRLOCK_MODEL_GROUPS);
-  validateModelGroups(modelGroups, modelAliases, gatewayApiKeys);
-  assertGatewayApiKeysRuntimeDependencies(gatewayApiKeys, {
+
+  const config: GatewayAdminAuthConfig = {
+    ...(env.AIRLOCK_INTERNAL_ADMIN_TOKEN
+      ? { internalAdminToken: env.AIRLOCK_INTERNAL_ADMIN_TOKEN }
+      : {}),
+    internalAdminCredentials
+  };
+
+  validateAdminBootstrapConfiguration(config);
+  return config;
+}
+
+function parseGatewayConfigUncached(
+  bindings: GatewayBindings,
+  options?: { allowMissingBusinessConfig?: boolean }
+): GatewayConfig {
+  const allowMissingBusinessConfig =
+    options?.allowMissingBusinessConfig ?? false;
+  const env = gatewayEnvSchema.parse(bindings);
+  const internalAdminCredentials = parseInternalAdminCredentials(
+    env.AIRLOCK_INTERNAL_ADMIN_CREDENTIALS
+  );
+  const businessConfig = parseBusinessConfig({
+    gatewayApiKeysValue: env.AIRLOCK_GATEWAY_API_KEYS,
+    fallbackModel: env.OPENAI_DEFAULT_MODEL,
+    modelAliasesValue: env.AIRLOCK_MODEL_ALIASES,
+    modelFallbacksValue: env.AIRLOCK_MODEL_FALLBACKS,
+    modelTargetSelectionValue: env.AIRLOCK_MODEL_TARGET_SELECTION,
+    modelKeyPolicyValue: env.AIRLOCK_MODEL_KEY_POLICY,
+    modelShapingValue: env.AIRLOCK_MODEL_SHAPING,
+    requestSigningSecretsValue: env.AIRLOCK_REQUEST_SIGNING_SECRETS,
+    modelGroupsValue: env.AIRLOCK_MODEL_GROUPS
+  });
+
+  assertGatewayApiKeysRuntimeDependencies(businessConfig.gatewayApiKeys, {
     gatewayKeyQuota: env.AIRLOCK_GATEWAY_KEY_QUOTA !== undefined,
     gatewayKeyTokenQuota: env.AIRLOCK_GATEWAY_KEY_TOKEN_QUOTA !== undefined,
     gatewayKeyConcurrency: env.AIRLOCK_GATEWAY_KEY_CONCURRENCY !== undefined
@@ -423,16 +634,12 @@ function parseGatewayConfigUncached(
     });
   }
 
-  if (
-    (env.AIRLOCK_INTERNAL_ADMIN_TOKEN || internalAdminCredentials.length > 0) &&
-    !env.AIRLOCK_GATEWAY_KEY_REVOCATION
-  ) {
-    throw new GatewayError("Gateway key revocation binding is required", {
-      code: "config_missing_gateway_key_revocation",
-      category: "configuration",
-      httpStatus: 500,
-      retryable: false
-    });
+  if (env.AIRLOCK_INTERNAL_ADMIN_TOKEN || internalAdminCredentials.length > 0) {
+    assertAdminAuthRuntimeDependencies(
+      env.AIRLOCK_INTERNAL_ADMIN_TOKEN,
+      internalAdminCredentials,
+      env.AIRLOCK_GATEWAY_KEY_REVOCATION
+    );
   }
 
   if (
@@ -490,43 +697,12 @@ function parseGatewayConfigUncached(
     );
   }
 
-  const usedProviders = new Set(
-    modelAliases.flatMap((route) => {
-      return [route.target, ...(route.fallbacks ?? [])].map((target) => {
-        return target.provider;
-      });
-    })
-  );
-  const usesAnthropic = usedProviders.has("anthropic");
-  const usesGemini = usedProviders.has("gemini");
-
-  if (!allowMissing) {
-    if (
-      usesAnthropic &&
-      (!env.ANTHROPIC_API_KEY ||
-        !env.ANTHROPIC_BASE_URL ||
-        !env.ANTHROPIC_DEFAULT_MAX_TOKENS)
-    ) {
-      throw new GatewayError("Anthropic configuration is required", {
-        code: "config_missing_anthropic",
-        category: "configuration",
-        httpStatus: 500,
-        retryable: false
-      });
-    }
-
-    if (usesGemini && (!env.GEMINI_API_KEY || !env.GEMINI_BASE_URL)) {
-      throw new GatewayError("Gemini configuration is required", {
-        code: "config_missing_gemini",
-        category: "configuration",
-        httpStatus: 500,
-        retryable: false
-      });
-    }
-  }
-
-  return {
+  const config: GatewayConfig = {
     mode: env.AIRLOCK_MODE,
+    ...(env.AIRLOCK_CORS_ORIGINS
+      ? { corsOrigins: env.AIRLOCK_CORS_ORIGINS }
+      : {}),
+    ...(env.AIRLOCK_REQUEST_LOGGING ? { requestLogging: true } : {}),
     providerTimeoutMs: env.AIRLOCK_PROVIDER_TIMEOUT_MS,
     providerMaxRetries: env.AIRLOCK_PROVIDER_MAX_RETRIES,
     providerRetryBackoffMs: env.AIRLOCK_PROVIDER_RETRY_BACKOFF_MS,
@@ -583,35 +759,50 @@ function parseGatewayConfigUncached(
     routingFailureFreshnessMs: env.AIRLOCK_ROUTING_FAILURE_FRESHNESS_MS,
     routingRecoveryWindowMs: env.AIRLOCK_ROUTING_RECOVERY_WINDOW_MS,
     gatewayKeyRegistryEnabled: env.AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED,
+    ...(env.AIRLOCK_INTERNAL_ADMIN_TOKEN
+      ? { internalAdminToken: env.AIRLOCK_INTERNAL_ADMIN_TOKEN }
+      : {}),
     internalAdminCredentials,
-    gatewayApiKeys,
-    requestSigningSecrets,
+    gatewayApiKeys: businessConfig.gatewayApiKeys,
+    ...(Object.keys(businessConfig.requestSigningSecrets ?? {}).length > 0
+      ? { requestSigningSecrets: businessConfig.requestSigningSecrets }
+      : {}),
     ...(ipRateLimitPolicy ? { ipRateLimitPolicy } : {}),
-    modelGroups,
-    modelAliases,
-    ...(usesAnthropic
+    modelGroups: businessConfig.modelGroups,
+    modelAliases: businessConfig.modelAliases,
+    ...(env.ANTHROPIC_API_KEY && env.ANTHROPIC_BASE_URL
       ? {
           anthropic: {
-            apiKey: env.ANTHROPIC_API_KEY ?? "",
-            baseUrl: env.ANTHROPIC_BASE_URL ?? "",
+            apiKey: env.ANTHROPIC_API_KEY,
+            baseUrl: env.ANTHROPIC_BASE_URL,
             defaultMaxTokens: env.ANTHROPIC_DEFAULT_MAX_TOKENS ?? 4096
           }
         }
       : {}),
-    ...(usesGemini
+    ...(env.GEMINI_API_KEY && env.GEMINI_BASE_URL
       ? {
           gemini: {
-            apiKey: env.GEMINI_API_KEY ?? "",
-            baseUrl: env.GEMINI_BASE_URL ?? ""
+            apiKey: env.GEMINI_API_KEY,
+            baseUrl: env.GEMINI_BASE_URL
           }
         }
       : {}),
-    openAI: {
-      apiKey: env.OPENAI_API_KEY,
-      baseUrl: env.OPENAI_BASE_URL,
-      defaultModel: env.OPENAI_DEFAULT_MODEL
-    }
+    ...(env.OPENAI_API_KEY && env.OPENAI_BASE_URL && env.OPENAI_DEFAULT_MODEL
+      ? {
+          openAI: {
+            apiKey: env.OPENAI_API_KEY,
+            baseUrl: env.OPENAI_BASE_URL,
+            defaultModel: env.OPENAI_DEFAULT_MODEL
+          }
+        }
+      : {})
   };
+
+  if (!allowMissingBusinessConfig) {
+    validateBusinessConfiguration(config);
+  }
+
+  return config;
 }
 
 /**
@@ -619,69 +810,31 @@ function parseGatewayConfigUncached(
  * Falls back to strict env-var-only config when DO is unavailable.
  */
 export async function resolveGatewayConfigWithOverlay(
-  bindings: GatewayBindings
+  bindings: GatewayBindings,
+  options?: { allowIncompleteBusinessConfig?: boolean }
 ): Promise<GatewayConfig> {
+  const allowIncompleteBusinessConfig =
+    options?.allowIncompleteBusinessConfig ?? false;
   let base: GatewayConfig;
 
   try {
     base = resolveGatewayConfig(bindings);
   } catch (e) {
-    if (
-      !bindings.AIRLOCK_CONFIG_STORE ||
-      !(e instanceof GatewayError) ||
-      (e.code !== "config_missing_anthropic" &&
-        e.code !== "config_missing_gemini")
-    ) {
+    if (!bindings.AIRLOCK_CONFIG_STORE || !(e instanceof GatewayError)) {
       throw e;
     }
     base = parseGatewayConfigUncached(bindings, {
-      allowMissingProviderEnvVars: true
+      allowMissingBusinessConfig: true
     });
   }
 
   const overlay = await resolveDashboardOverlay(bindings);
   const merged = mergeConfigWithOverlay(base, overlay);
 
-  validateMergedProviderConfig(merged);
+  if (!allowIncompleteBusinessConfig) {
+    validateBusinessConfiguration(merged);
+  }
   return merged;
-}
-
-function validateMergedProviderConfig(config: GatewayConfig): void {
-  const usedProviders = new Set(
-    config.modelAliases.flatMap((route) => {
-      return [route.target, ...(route.fallbacks ?? [])].map((target) => {
-        return target.provider;
-      });
-    })
-  );
-
-  if (usedProviders.has("anthropic")) {
-    if (!config.anthropic?.apiKey || !config.anthropic?.baseUrl) {
-      throw new GatewayError(
-        "Anthropic configuration is required (set via environment variables or dashboard config)",
-        {
-          code: "config_missing_anthropic",
-          category: "configuration",
-          httpStatus: 500,
-          retryable: false
-        }
-      );
-    }
-  }
-
-  if (usedProviders.has("gemini")) {
-    if (!config.gemini?.apiKey || !config.gemini?.baseUrl) {
-      throw new GatewayError(
-        "Gemini configuration is required (set via environment variables or dashboard config)",
-        {
-          code: "config_missing_gemini",
-          category: "configuration",
-          httpStatus: 500,
-          retryable: false
-        }
-      );
-    }
-  }
 }
 
 const DASHBOARD_OVERLAY_TTL_MS = 5_000;
@@ -740,26 +893,48 @@ export function mergeConfigWithOverlay(
     }
   }
 
+  const featureSection = overlay.sections["features"];
+  if (featureSection) {
+    config = mergeFeaturesConfig(
+      config,
+      featureSection.data as Record<string, unknown>
+    );
+  }
+
   const limitsSection = overlay.sections["limits"];
   if (limitsSection) {
     config = mergeLimitsConfig(
       config,
-      limitsSection.data as DashboardLimitsOverlay
+      limitsSection.data as DashboardLimitsConfig
     );
   }
 
-  return config;
-}
+  const routesSection = overlay.sections["routes"];
+  if (routesSection) {
+    config = mergeRoutesConfig(config, routesSection.data);
+  }
 
-interface DashboardLimitsOverlay {
-  providerTimeoutMs?: number;
-  maxRequestBodyBytes?: number;
-  providerStreamIdleTimeoutMs?: number;
-  providerMaxRetries?: number;
-  providerRetryBackoffMs?: number;
-  providerCircuitBreakerThreshold?: number;
-  providerCircuitBreakerCooldownMs?: number;
-  providerCircuitBreakerPersistent?: boolean;
+  const keyPoliciesSection = overlay.sections["key_policies"];
+  if (keyPoliciesSection) {
+    config = mergeKeyPoliciesConfig(config, keyPoliciesSection.data);
+  }
+
+  const shapingSection = overlay.sections["shaping"];
+  if (shapingSection) {
+    config = mergeShapingConfig(config, shapingSection.data);
+  }
+
+  const signingSection = overlay.sections["signing"];
+  if (signingSection) {
+    config = mergeSigningConfig(config, signingSection.data);
+  }
+
+  const modelGroupsSection = overlay.sections["model_groups"];
+  if (modelGroupsSection) {
+    config = mergeModelGroupsConfig(config, modelGroupsSection.data);
+  }
+
+  return config;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -806,20 +981,20 @@ function mergeProvidersConfig(
   config: GatewayConfig,
   providers: Partial<DashboardProvidersConfig>
 ): GatewayConfig {
+  const nextOpenAI: GatewayProviderConfig | undefined = providers.openai
+    ? {
+        apiKey: providers.openai.apiKey,
+        baseUrl: providers.openai.baseUrl,
+        defaultModel:
+          providers.openai.defaultModel ??
+          config.openAI?.defaultModel ??
+          "openai/gpt-4.1-mini"
+      }
+    : config.openAI;
+
   return {
     ...config,
-    openAI: {
-      ...config.openAI,
-      ...(providers.openai
-        ? {
-            apiKey: providers.openai.apiKey,
-            baseUrl: providers.openai.baseUrl,
-            ...(providers.openai.defaultModel
-              ? { defaultModel: providers.openai.defaultModel }
-              : {})
-          }
-        : {})
-    },
+    ...(nextOpenAI ? { openAI: nextOpenAI } : {}),
     ...(providers.anthropic
       ? {
           anthropic: {
@@ -849,7 +1024,7 @@ function mergeProvidersConfig(
 
 function mergeLimitsConfig(
   config: GatewayConfig,
-  limits: DashboardLimitsOverlay
+  limits: DashboardLimitsConfig
 ): GatewayConfig {
   return {
     ...config,
@@ -880,11 +1055,417 @@ function mergeLimitsConfig(
             limits.providerCircuitBreakerCooldownMs
         }
       : {}),
+    ...(limits.providerCircuitBreakerErrorRateWindowMs !== undefined
+      ? {
+          providerCircuitBreakerErrorRateWindowMs:
+            limits.providerCircuitBreakerErrorRateWindowMs
+        }
+      : {}),
+    ...(limits.providerCircuitBreakerErrorRateThreshold !== undefined
+      ? {
+          providerCircuitBreakerErrorRateThreshold:
+            limits.providerCircuitBreakerErrorRateThreshold
+        }
+      : {}),
+    ...(limits.providerCircuitBreakerMinAttemptsInWindow !== undefined
+      ? {
+          providerCircuitBreakerMinAttemptsInWindow:
+            limits.providerCircuitBreakerMinAttemptsInWindow
+        }
+      : {}),
+    ...(limits.providerCircuitBreakerHalfOpenPromotionSuccesses !== undefined
+      ? {
+          providerCircuitBreakerHalfOpenPromotionSuccesses:
+            limits.providerCircuitBreakerHalfOpenPromotionSuccesses
+        }
+      : {}),
+    ...(limits.providerCircuitBreakerHalfOpenPromotionSuccessRate !== undefined
+      ? {
+          providerCircuitBreakerHalfOpenPromotionSuccessRate:
+            limits.providerCircuitBreakerHalfOpenPromotionSuccessRate
+        }
+      : {}),
+    ...(limits.providerCircuitBreakerHalfOpenPromotionWindow !== undefined
+      ? {
+          providerCircuitBreakerHalfOpenPromotionWindow:
+            limits.providerCircuitBreakerHalfOpenPromotionWindow
+        }
+      : {}),
     ...(limits.providerCircuitBreakerPersistent !== undefined
       ? {
           providerCircuitBreakerPersistent:
             limits.providerCircuitBreakerPersistent
         }
+      : {}),
+    ...(limits.routingLatencyFreshnessMs !== undefined
+      ? { routingLatencyFreshnessMs: limits.routingLatencyFreshnessMs }
+      : {}),
+    ...(limits.routingCostFreshnessMs !== undefined
+      ? { routingCostFreshnessMs: limits.routingCostFreshnessMs }
+      : {}),
+    ...(limits.routingFailureFreshnessMs !== undefined
+      ? { routingFailureFreshnessMs: limits.routingFailureFreshnessMs }
+      : {}),
+    ...(limits.routingRecoveryWindowMs !== undefined
+      ? { routingRecoveryWindowMs: limits.routingRecoveryWindowMs }
+      : {}),
+    ...(limits.ipRateLimitPolicy !== undefined
+      ? {
+          ipRateLimitPolicy: parseIpRateLimitPolicy(
+            normalizeDashboardIpRateLimitPolicy(limits.ipRateLimitPolicy)
+          )
+        }
       : {})
+  };
+}
+
+function mergeFeaturesConfig(
+  config: GatewayConfig,
+  features: Record<string, unknown>
+): GatewayConfig {
+  return {
+    ...config,
+    ...(typeof features.requestLogging === "boolean"
+      ? { requestLogging: features.requestLogging }
+      : {}),
+    ...(typeof features.corsOrigins === "string"
+      ? { corsOrigins: features.corsOrigins }
+      : {})
+  };
+}
+
+function parseDashboardRouteSelectionInput(
+  route: DashboardRouteConfig
+): Record<string, unknown> | undefined {
+  if (
+    route.targetSelection &&
+    typeof route.targetSelection === "object" &&
+    !Array.isArray(route.targetSelection)
+  ) {
+    return route.targetSelection;
+  }
+
+  if (!route.strategy) {
+    return undefined;
+  }
+
+  return {
+    strategy: route.strategy
+  };
+}
+
+function parseDashboardRouteShapingInput(
+  route: DashboardRouteConfig
+): Record<string, unknown> | undefined {
+  if (!route.shaping) {
+    return undefined;
+  }
+
+  if (route.shaping.targets) {
+    return route.shaping;
+  }
+
+  return {
+    ...(route.shaping.headers ? { headers: route.shaping.headers } : {}),
+    ...(route.shaping.query ? { query: route.shaping.query } : {}),
+    ...(route.shaping.jsonBody ? { jsonBody: route.shaping.jsonBody } : {}),
+    ...(route.shaping.signing ? { signing: route.shaping.signing } : {})
+  };
+}
+
+function createInvalidDashboardRouteError(message: string): GatewayError {
+  return new GatewayError(message, {
+    code: "config_invalid_model_aliases",
+    category: "configuration",
+    httpStatus: 500,
+    retryable: false
+  });
+}
+
+function parseDashboardRouteTarget(
+  value: unknown,
+  fieldName: string
+): { provider: string; providerModel: string } {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw createInvalidDashboardRouteError(
+      `Dashboard route ${fieldName} must be an object`
+    );
+  }
+
+  const record = value as Record<string, unknown>;
+
+  if (!isNonEmptyString(record.provider)) {
+    throw createInvalidDashboardRouteError(
+      `Dashboard route ${fieldName}.provider must be a non-empty string`
+    );
+  }
+
+  if (!isNonEmptyString(record.providerModel)) {
+    throw createInvalidDashboardRouteError(
+      `Dashboard route ${fieldName}.providerModel must be a non-empty string`
+    );
+  }
+
+  return {
+    provider: record.provider.trim(),
+    providerModel: record.providerModel.trim()
+  };
+}
+
+function parseDashboardRouteTags(value: unknown): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value)) {
+    throw createInvalidDashboardRouteError(
+      "Dashboard route requiredKeyTags must be an array"
+    );
+  }
+
+  const tags = value.map((tag) => {
+    if (!isNonEmptyString(tag)) {
+      throw createInvalidDashboardRouteError(
+        "Dashboard route requiredKeyTags entries must be non-empty strings"
+      );
+    }
+
+    return tag.trim();
+  });
+
+  return tags.length > 0 ? tags : undefined;
+}
+
+function parseDashboardRoutes(data: unknown): DashboardRouteConfig[] {
+  if (!Array.isArray(data)) {
+    throw createInvalidDashboardRouteError(
+      "Dashboard routes config must be an array"
+    );
+  }
+
+  return data.map((route, index) => {
+    if (typeof route !== "object" || route === null || Array.isArray(route)) {
+      throw createInvalidDashboardRouteError(
+        `Dashboard route at index ${index} must be an object`
+      );
+    }
+
+    const record = route as Record<string, unknown>;
+
+    if (!isNonEmptyString(record.externalModel)) {
+      throw createInvalidDashboardRouteError(
+        `Dashboard route at index ${index} must include a non-empty externalModel`
+      );
+    }
+
+    const target = parseDashboardRouteTarget(record.target, "target");
+    const fallbacks = Array.isArray(record.fallbacks)
+      ? record.fallbacks.map((fallback) => {
+          return parseDashboardRouteTarget(fallback, "fallback");
+        })
+      : undefined;
+    const requiredKeyTags = parseDashboardRouteTags(record.requiredKeyTags);
+
+    const shaping =
+      record.shaping &&
+      typeof record.shaping === "object" &&
+      !Array.isArray(record.shaping)
+        ? (record.shaping as DashboardRouteConfig["shaping"])
+        : undefined;
+
+    return {
+      externalModel: record.externalModel.trim(),
+      target,
+      ...(fallbacks && fallbacks.length > 0 ? { fallbacks } : {}),
+      ...(isNonEmptyString(record.strategy)
+        ? { strategy: record.strategy.trim() }
+        : {}),
+      ...(record.targetSelection &&
+      typeof record.targetSelection === "object" &&
+      !Array.isArray(record.targetSelection)
+        ? { targetSelection: record.targetSelection as Record<string, unknown> }
+        : {}),
+      ...(isNonEmptyString(record.requiredKeyTier)
+        ? { requiredKeyTier: record.requiredKeyTier.trim() }
+        : {}),
+      ...(requiredKeyTags ? { requiredKeyTags } : {}),
+      ...(shaping ? { shaping } : {})
+    };
+  });
+}
+
+function normalizeDashboardIpRateLimitPolicy(
+  value: DashboardLimitsConfig["ipRateLimitPolicy"]
+): unknown {
+  if (!value) {
+    return undefined;
+  }
+
+  if (
+    "limit" in value &&
+    typeof value.limit === "number" &&
+    "windowSeconds" in value &&
+    typeof value.windowSeconds === "number"
+  ) {
+    return {
+      limit: value.limit,
+      windowSeconds: value.windowSeconds
+    };
+  }
+
+  if (
+    "requestsPerMinute" in value &&
+    typeof value.requestsPerMinute === "number"
+  ) {
+    return {
+      limit: value.requestsPerMinute,
+      windowSeconds: 60
+    };
+  }
+
+  return value;
+}
+
+function mergeRoutesConfig(
+  config: GatewayConfig,
+  data: unknown
+): GatewayConfig {
+  const routes = parseDashboardRoutes(data);
+
+  if (routes.length === 0) {
+    validateModelGroups(config.modelGroups, [], config.gatewayApiKeys);
+    return {
+      ...config,
+      modelAliases: []
+    };
+  }
+
+  const aliases = routes.map((route) => {
+    return `${route.externalModel}=${route.target.provider}:${route.target.providerModel}`;
+  });
+  const fallbackMap: Record<string, string[]> = {};
+  const selectionMap: Record<string, Record<string, unknown>> = {};
+  const keyPolicyMap: Record<string, Record<string, unknown>> = {};
+  const shapingMap: Record<string, Record<string, unknown>> = {};
+
+  for (const route of routes) {
+    if (route.fallbacks?.length) {
+      fallbackMap[route.externalModel] = route.fallbacks.map((fallback) => {
+        return `${fallback.provider}:${fallback.providerModel}`;
+      });
+    }
+
+    const selection = parseDashboardRouteSelectionInput(route);
+    if (selection) {
+      selectionMap[route.externalModel] = selection;
+    }
+
+    if (route.requiredKeyTier || route.requiredKeyTags?.length) {
+      keyPolicyMap[route.externalModel] = {
+        ...(route.requiredKeyTier
+          ? { requiredKeyTier: route.requiredKeyTier }
+          : {}),
+        ...(route.requiredKeyTags?.length
+          ? { requiredKeyTags: route.requiredKeyTags }
+          : {})
+      };
+    }
+
+    const shaping = parseDashboardRouteShapingInput(route);
+    if (shaping) {
+      shapingMap[route.externalModel] = shaping;
+    }
+  }
+
+  let modelAliases = parseModelAliases(
+    aliases.join(","),
+    config.openAI?.defaultModel ?? "openai/gpt-4.1-mini"
+  );
+  modelAliases = attachRouteFallbacks(
+    modelAliases,
+    parseRouteFallbacks(
+      Object.keys(fallbackMap).length > 0
+        ? JSON.stringify(fallbackMap)
+        : undefined
+    )
+  );
+  modelAliases = attachRouteTargetSelection(
+    modelAliases,
+    parseRouteTargetSelection(
+      Object.keys(selectionMap).length > 0
+        ? JSON.stringify(selectionMap)
+        : undefined
+    )
+  );
+  modelAliases = attachRouteKeyAccessPolicy(
+    modelAliases,
+    parseRouteKeyAccessPolicy(
+      Object.keys(keyPolicyMap).length > 0
+        ? JSON.stringify(keyPolicyMap)
+        : undefined
+    )
+  );
+  modelAliases = attachRouteRequestShaping(
+    modelAliases,
+    parseRouteRequestShaping(
+      Object.keys(shapingMap).length > 0
+        ? JSON.stringify(shapingMap)
+        : undefined
+    )
+  );
+  validateModelGroups(config.modelGroups, modelAliases, config.gatewayApiKeys);
+
+  return {
+    ...config,
+    modelAliases
+  };
+}
+
+function mergeModelGroupsConfig(
+  config: GatewayConfig,
+  data: unknown
+): GatewayConfig {
+  const parsed = parseModelGroups(toJsonString(data));
+  validateModelGroups(parsed, config.modelAliases, config.gatewayApiKeys);
+
+  return {
+    ...config,
+    modelGroups: parsed
+  };
+}
+
+function mergeKeyPoliciesConfig(
+  config: GatewayConfig,
+  data: unknown
+): GatewayConfig {
+  const routeKeyPolicies = parseRouteKeyAccessPolicy(toJsonString(data));
+
+  return {
+    ...config,
+    modelAliases: attachRouteKeyAccessPolicy(
+      config.modelAliases,
+      routeKeyPolicies
+    )
+  };
+}
+
+function mergeShapingConfig(
+  config: GatewayConfig,
+  data: unknown
+): GatewayConfig {
+  const shaping = parseRouteRequestShaping(toJsonString(data));
+  return {
+    ...config,
+    modelAliases: attachRouteRequestShaping(config.modelAliases, shaping)
+  };
+}
+
+function mergeSigningConfig(
+  config: GatewayConfig,
+  data: unknown
+): GatewayConfig {
+  return {
+    ...config,
+    requestSigningSecrets: parseRequestSigningSecrets(toJsonString(data))
   };
 }

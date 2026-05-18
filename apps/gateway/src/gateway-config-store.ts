@@ -21,7 +21,8 @@ export const CONFIG_SECTION_NAMES = [
   "features",
   "key_policies",
   "shaping",
-  "signing"
+  "signing",
+  "accounts"
 ] as const;
 
 export type ConfigSectionName = (typeof CONFIG_SECTION_NAMES)[number];
@@ -59,10 +60,29 @@ export interface DashboardRouteConfig {
   target: DashboardRouteTarget;
   fallbacks?: DashboardRouteTarget[];
   strategy?: string;
+  targetSelection?: Record<string, unknown>;
+  requiredKeyTier?: string;
+  requiredKeyTags?: string[];
   shaping?: {
     headers?: Record<string, string>;
-    queryParams?: Record<string, string>;
-    bodyInjections?: Record<string, unknown>;
+    query?: Record<string, string>;
+    jsonBody?: Record<string, unknown>;
+    signing?: Record<string, unknown>;
+    defaults?: {
+      headers?: Record<string, string>;
+      query?: Record<string, string>;
+      jsonBody?: Record<string, unknown>;
+      signing?: Record<string, unknown>;
+    };
+    targets?: Record<
+      string,
+      {
+        headers?: Record<string, string>;
+        query?: Record<string, string>;
+        jsonBody?: Record<string, unknown>;
+        signing?: Record<string, unknown>;
+      }
+    >;
   };
 }
 
@@ -74,7 +94,21 @@ export interface DashboardLimitsConfig {
   providerRetryBackoffMs?: number;
   providerCircuitBreakerThreshold?: number;
   providerCircuitBreakerCooldownMs?: number;
+  providerCircuitBreakerErrorRateWindowMs?: number;
+  providerCircuitBreakerErrorRateThreshold?: number;
+  providerCircuitBreakerMinAttemptsInWindow?: number;
+  providerCircuitBreakerHalfOpenPromotionSuccesses?: number;
+  providerCircuitBreakerHalfOpenPromotionSuccessRate?: number;
+  providerCircuitBreakerHalfOpenPromotionWindow?: number;
   providerCircuitBreakerPersistent?: boolean;
+  routingLatencyFreshnessMs?: number;
+  routingCostFreshnessMs?: number;
+  routingFailureFreshnessMs?: number;
+  routingRecoveryWindowMs?: number;
+  ipRateLimitPolicy?: {
+    requestsPerMinute: number;
+    burstAllowance?: number;
+  };
 }
 
 export interface DashboardConfigOverlay {

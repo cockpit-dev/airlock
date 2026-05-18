@@ -21,8 +21,8 @@ export const gatewayEnvSchema = z.object({
   /** Gateway API keys for caller authentication. Accepts two formats:
    *  - Plaintext comma-separated: "key1,key2" (each key must be ≥8 chars)
    *  - Structured JSON array: [{"id":"...","label":"...","value":"...","status":"active",...}]
-   * Required. */
-  AIRLOCK_GATEWAY_API_KEYS: z.string().min(1),
+   * Optional when the dynamic key registry is enabled or equivalent caller auth config is supplied via dashboard overlay. */
+  AIRLOCK_GATEWAY_API_KEYS: z.string().min(1).optional(),
 
   /** Model groups for key policy access control. JSON object mapping group names to arrays of external model names.
    * Example: {"premium":["gpt-4.1-mini","claude-sonnet-4-5"]}. Optional. */
@@ -178,14 +178,14 @@ export const gatewayEnvSchema = z.object({
   /** Google Gemini API base URL. Required if any route targets the "gemini" provider. */
   GEMINI_BASE_URL: z.url().optional(),
 
-  /** OpenAI API key. Always required. */
-  OPENAI_API_KEY: z.string().min(1),
+  /** OpenAI API key. Required only when active routes target OpenAI and the value is not supplied via dashboard overlay. */
+  OPENAI_API_KEY: z.string().min(1).optional(),
 
-  /** OpenAI API base URL. Always required. */
-  OPENAI_BASE_URL: z.url(),
+  /** OpenAI API base URL. Required only when active routes target OpenAI and the value is not supplied via dashboard overlay. */
+  OPENAI_BASE_URL: z.url().optional(),
 
-  /** OpenAI default model for routing fallback. Always required. */
-  OPENAI_DEFAULT_MODEL: z.string().min(1),
+  /** OpenAI default model for routing fallback. Required only when active routes target OpenAI and the value is not supplied via dashboard overlay. */
+  OPENAI_DEFAULT_MODEL: z.string().min(1).optional(),
 
   /** Cloudflare Queue binding for telemetry event emission. Optional; telemetry disabled if not set. */
   AIRLOCK_TELEMETRY: z
@@ -299,7 +299,7 @@ export const gatewayEnvSchema = z.object({
   /** IP rate limit policy configuration (JSON). Defines per-IP request limits and windows. Optional. */
   AIRLOCK_IP_RATE_LIMIT_POLICY: z.string().min(1).optional(),
 
-  /** Durable Object binding for dashboard-driven config storage. Optional; config managed via env vars if absent. */
+  /** Durable Object binding for dashboard-driven config storage. Optional; env-only operation is used if absent. */
   AIRLOCK_CONFIG_STORE: z
     .custom<{
       idFromName(name: string): unknown;

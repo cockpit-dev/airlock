@@ -2,15 +2,16 @@
 # Copy this file to .dev.vars and fill in the values.
 # .dev.vars is gitignored and never committed.
 
-# === Required ===
+# === Baseline Bootstrap ===
 
 # Gateway operating mode: "free" (Cloudflare free-tier) or "scale"
 AIRLOCK_MODE=free
 
-# API keys for caller authentication (comma-separated, each ≥8 chars)
+# API keys for caller authentication (comma-separated, each ≥8 chars).
+# Optional if you enable the dynamic key registry and manage caller auth from the dashboard.
 AIRLOCK_GATEWAY_API_KEYS=dev-key-change-me-please
 
-# OpenAI provider (always required)
+# OpenAI provider bootstrap. Optional if providers and routes are supplied from the dashboard overlay.
 OPENAI_API_KEY=sk-...
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_DEFAULT_MODEL=gpt-4.1-mini
@@ -80,8 +81,12 @@ OPENAI_DEFAULT_MODEL=gpt-4.1-mini
 
 # === Admin ===
 
-# Static admin token for /_airlock/* endpoints
+# Static admin token for /_airlock/* endpoints.
+# At least one admin auth mechanism is required for gateway administration.
 # AIRLOCK_INTERNAL_ADMIN_TOKEN=dev-admin-token
+
+# Structured admin credentials JSON (scoped hashed tokens). Alternative to AIRLOCK_INTERNAL_ADMIN_TOKEN.
+# AIRLOCK_INTERNAL_ADMIN_CREDENTIALS=[{"id":"admin","label":"Admin","token":"dev-admin-token","scopes":["config.read","config.write","keys.read","keys.write","routing.read","routing.write","status.read","metrics.read"]}]
 
 # === Observability ===
 
@@ -92,6 +97,9 @@ OPENAI_DEFAULT_MODEL=gpt-4.1-mini
 
 # Enable dynamic key registry (default: false)
 # AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED=false
+
+# If admin auth is configured, keep the AIRLOCK_GATEWAY_KEY_REVOCATION Durable Object binding enabled in wrangler.jsonc.
+# If the dynamic key registry is enabled, keep the AIRLOCK_GATEWAY_KEY_REGISTRY Durable Object binding enabled in wrangler.jsonc.
 
 # === IP Rate Limiting ===
 

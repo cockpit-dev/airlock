@@ -167,6 +167,20 @@ interface DurableObjectNamespaceLike {
   idFromName(name: string): { name: string };
 }
 
+function createConfigStoreNamespace(snapshot: Record<string, unknown>) {
+  return {
+    idFromName: () => "global",
+    get: () => ({
+      fetch: () =>
+        Promise.resolve(
+          new Response(JSON.stringify(snapshot), {
+            headers: { "Content-Type": "application/json" }
+          })
+        )
+    })
+  };
+}
+
 function createTokenQuotaNamespace() {
   const state = new Map<
     string,
@@ -11331,7 +11345,8 @@ describe("gateway app", () => {
         ...createBindings(),
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
         AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: "true",
-        AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace()
+        AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       }
     );
 
@@ -15535,7 +15550,8 @@ describe("gateway app", () => {
       },
       {
         ...createBindings(),
-        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret"
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       }
     );
 
@@ -37184,6 +37200,41 @@ describe("GET /_airlock/routing/health", () => {
       expect(response.headers.get("Access-Control-Max-Age")).toBe("86400");
     });
 
+    it("handles preflight OPTIONS from runtime feature overlay origins", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const configStoreNamespace = createConfigStoreNamespace({
+        sections: {
+          features: {
+            data: {
+              corsOrigins: "https://overlay.example.com"
+            },
+            updatedAt: Date.now(),
+            updatedBy: "admin",
+            version: 1
+          }
+        },
+        globalVersion: 1
+      });
+
+      const response = await app.request(
+        "http://localhost/v1/chat/completions",
+        {
+          method: "OPTIONS",
+          headers: { origin: "https://overlay.example.com" }
+        },
+        {
+          ...createBindings(),
+          AIRLOCK_CORS_ORIGINS: undefined,
+          AIRLOCK_CONFIG_STORE: configStoreNamespace
+        }
+      );
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        "https://overlay.example.com"
+      );
+    });
+
     it("handles preflight OPTIONS with specific allowed origin", async () => {
       const app = createApp({ fetcher: vi.fn() });
       const response = await app.request(
@@ -37444,6 +37495,33 @@ describe("GET /_airlock/status", () => {
     const config = body.config as Record<string, unknown>;
     expect(config).toHaveProperty("providerTimeoutMs");
     expect(config).toHaveProperty("routingLatencyFreshnessMs");
+  });
+
+  it("returns gateway status from bootstrap admin auth even when business config is incomplete", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const configStoreNamespace = createConfigStoreNamespace({
+      sections: {},
+      globalVersion: 0
+    });
+
+    const response = await app.request(
+      "http://localhost/_airlock/status",
+      {
+        headers: { authorization: "Bearer admin-secret" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: undefined,
+        OPENAI_API_KEY: undefined,
+        OPENAI_BASE_URL: undefined,
+        OPENAI_DEFAULT_MODEL: undefined,
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+        AIRLOCK_CONFIG_STORE: configStoreNamespace
+      }
+    );
+
+    expect(response.status).toBe(200);
   });
 
   it("returns 403 for credential without keys.read scope", async () => {

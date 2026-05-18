@@ -11,12 +11,13 @@ export const load: LayoutLoad = async ({ data, url }) => {
     session: import("@auth/sveltekit").Session | null;
     googleOAuthEnabled?: boolean;
   };
+  const hasOAuthSession = Boolean(layoutData.session?.user);
 
-  if (!creds && !isLoginPage) {
+  if (!creds && !hasOAuthSession && !isLoginPage) {
     redirect(302, "/login");
   }
 
-  if (creds && isLoginPage) {
+  if ((creds || hasOAuthSession) && isLoginPage) {
     redirect(302, "/");
   }
 

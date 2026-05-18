@@ -1,5 +1,6 @@
 <script lang="ts">
   import Nav from "$components/Nav.svelte";
+  import { page } from "$app/state";
   import type {
     GatewayStatusResponse,
     MetricsSnapshot,
@@ -15,6 +16,8 @@
       routingHealth: RoutingHealthResponse | null;
     };
   }>();
+  const hasRemoteGatewayCredentials = $derived(Boolean(getStoredCredentials()));
+  const oauthEmail = $derived(page.data.session?.user?.email ?? null);
 
   let statusChartEl: HTMLCanvasElement | undefined = $state();
   let routeChartEl: HTMLCanvasElement | undefined = $state();
@@ -348,6 +351,33 @@
 <Nav />
 
 <main class="max-w-7xl mx-auto px-6 py-8">
+  {#if !hasRemoteGatewayCredentials}
+    <div class="mb-6 rounded-xl border border-amber-800/70 bg-amber-950/40 p-4">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h2 class="text-sm font-semibold tracking-wide text-amber-200">
+            Gateway Connection Required
+          </h2>
+          <p class="mt-1 text-sm leading-6 text-amber-100/80">
+            {#if oauthEmail}
+              Signed in as {oauthEmail}, but this dashboard is not yet connected
+              to a gateway admin endpoint.
+            {:else}
+              This dashboard is not yet connected to a gateway admin endpoint.
+            {/if}
+            Use the login page to provide the gateway URL and an admin credential.
+          </p>
+        </div>
+        <a
+          href="/login"
+          class="shrink-0 rounded-md border border-amber-700 px-3 py-1.5 text-sm text-amber-100 hover:bg-amber-900/40"
+        >
+          Connect Gateway
+        </a>
+      </div>
+    </div>
+  {/if}
+
   <div class="flex items-center justify-between mb-6">
     <h2 class="text-xl font-bold text-gray-100">Dashboard</h2>
     {#if data.status}

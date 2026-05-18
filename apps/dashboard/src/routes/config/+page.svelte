@@ -1,8 +1,10 @@
 <script lang="ts">
   import Nav from "$components/Nav.svelte";
   import type { AdminConfigResponse } from "$lib/api.js";
+  import { getStoredCredentials } from "$lib/auth.js";
 
   let { data } = $props<{ data: { config: AdminConfigResponse | null } }>();
+  const hasRemoteGatewayCredentials = $derived(Boolean(getStoredCredentials()));
 
   const providerLabels: Record<string, string> = {
     openai: "OpenAI",
@@ -227,9 +229,24 @@
         {/each}
       </div>
     </div>
+  {:else if !hasRemoteGatewayCredentials}
+    <div class="rounded-xl border border-amber-800/70 bg-amber-950/40 p-5">
+      <p class="text-sm leading-6 text-amber-100/80">
+        Connect this dashboard to a gateway admin endpoint before viewing active
+        runtime configuration.
+      </p>
+      <a
+        href="/login"
+        class="mt-3 inline-flex rounded-md border border-amber-700 px-3 py-1.5 text-sm text-amber-100 hover:bg-amber-900/40"
+      >
+        Connect Gateway
+      </a>
+    </div>
   {:else}
-    <div class="bg-gray-900 border border-gray-800 rounded-lg p-8 text-center">
-      <p class="text-gray-400">Failed to load configuration.</p>
+    <div class="rounded-xl border border-red-900/70 bg-red-950/30 p-5">
+      <p class="text-sm leading-6 text-red-200/80">
+        Failed to load active gateway configuration.
+      </p>
     </div>
   {/if}
 </main>

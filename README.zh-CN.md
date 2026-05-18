@@ -102,25 +102,36 @@ pnpm install
 
 ### 本地开发
 
-1. 复制环境变量示例文件并填入 provider 密钥：
+1. 复制网关环境变量示例文件：
 
 ```bash
 cp apps/gateway/.dev.vars.example apps/gateway/.dev.vars
 ```
 
-2. 编辑 `apps/gateway/.dev.vars`，至少设置以下变量：
+2. 编辑 `apps/gateway/.dev.vars`。
+   纯环境变量模式下的最小启动配置：
 
-```
+```bash
 AIRLOCK_GATEWAY_API_KEYS=your-secret-key-here
 OPENAI_API_KEY=sk-...
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_DEFAULT_MODEL=gpt-4.1-mini
+AIRLOCK_INTERNAL_ADMIN_TOKEN=dev-admin-token
 ```
+
+使用 Dashboard 管理业务配置的最小 bootstrap 配置：
+
+```bash
+AIRLOCK_INTERNAL_ADMIN_TOKEN=dev-admin-token
+AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED=true
+```
+
+两种模式都需要保留 `apps/gateway/wrangler.jsonc` 中的 Durable Object 绑定。
 
 3. 启动网关开发服务器：
 
 ```bash
-pnpm --filter airlock-gateway dev
+pnpm --filter @airlock/gateway dev
 ```
 
 4. 在另一个终端启动控制台：
@@ -146,31 +157,44 @@ pnpm build         # 构建所有包和应用
 
 ## 配置
 
-所有配置通过 Cloudflare Workers 环境变量驱动。完整配置参考见
-`apps/gateway/.dev.vars.example`，包含每个变量的说明和默认值。
+Airlock 现支持两层配置：
 
-### 必需变量
+- bootstrap 环境变量：运行时绑定、管理认证和安全回退值
+- `AIRLOCK_CONFIG_STORE` 提供的 Dashboard overlay：providers、routes、
+  key_policies、shaping、signing、model_groups、limits、features
 
-| 变量                       | 说明                                   |
-| -------------------------- | -------------------------------------- |
-| `AIRLOCK_GATEWAY_API_KEYS` | 调用方认证密钥（逗号分隔或 JSON 数组） |
-| `OPENAI_API_KEY`           | OpenAI Provider API 密钥               |
-| `OPENAI_BASE_URL`          | OpenAI API 基础 URL                    |
-| `OPENAI_DEFAULT_MODEL`     | 路由回退使用的默认模型                 |
+未配置 `AIRLOCK_CONFIG_STORE` 时，系统以纯环境变量模式运行。完整配置参考见
+`apps/gateway/.dev.vars.example`。
+
+### Bootstrap 必需变量
+
+| 变量                                                                   | 说明                    |
+| ---------------------------------------------------------------------- | ----------------------- |
+| `AIRLOCK_INTERNAL_ADMIN_TOKEN` 或 `AIRLOCK_INTERNAL_ADMIN_CREDENTIALS` | 管理 API bootstrap 认证 |
+
+### 纯环境变量模式下的业务必需变量
+
+| 变量                       | 说明                                    |
+| -------------------------- | --------------------------------------- |
+| `AIRLOCK_GATEWAY_API_KEYS` | 调用方认证密钥，除非改用仅注册表模式    |
+| `OPENAI_API_KEY`           | 当活跃路由指向 OpenAI 时所需的 API 密钥 |
+| `OPENAI_BASE_URL`          | 当活跃路由指向 OpenAI 时所需的基础 URL  |
+| `OPENAI_DEFAULT_MODEL`     | 当 OpenAI 参与路由时所需的回退默认模型  |
 
 ### 关键可选变量
 
-| 变量                                   | 说明                        | 默认值  |
-| -------------------------------------- | --------------------------- | ------- |
-| `AIRLOCK_MODE`                         | 运行模式：`free` 或 `scale` | `free`  |
-| `AIRLOCK_MODEL_ALIASES`                | 模型路由配置（JSON）        | —       |
-| `AIRLOCK_MODEL_FALLBACKS`              | 故障回退目标（JSON）        | —       |
-| `AIRLOCK_PROVIDER_TIMEOUT_MS`          | 上游请求超时（毫秒）        | `30000` |
-| `AIRLOCK_PROVIDER_MAX_RETRIES`         | 最大跨 Provider 重试次数    | `0`     |
-| `AIRLOCK_CORS_ORIGINS`                 | 允许的 CORS 源              | —       |
-| `AIRLOCK_REQUEST_LOGGING`              | 启用结构化请求日志          | `false` |
-| `AIRLOCK_INTERNAL_ADMIN_TOKEN`         | 管理 API 认证令牌           | —       |
-| `AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED` | 启用动态密钥注册表          | `false` |
+| 变量                                   | 说明                                         | 默认值  |
+| -------------------------------------- | -------------------------------------------- | ------- |
+| `AIRLOCK_MODE`                         | 运行模式：`free` 或 `scale`                  | `free`  |
+| `AIRLOCK_MODEL_ALIASES`                | 环境变量侧模型路由（JSON）                   | —       |
+| `AIRLOCK_MODEL_FALLBACKS`              | 环境变量侧故障回退目标（JSON）               | —       |
+| `AIRLOCK_PROVIDER_TIMEOUT_MS`          | 上游请求超时（毫秒）                         | `30000` |
+| `AIRLOCK_PROVIDER_MAX_RETRIES`         | 最大跨 Provider 重试次数                     | `0`     |
+| `AIRLOCK_CORS_ORIGINS`                 | 环境变量回退 CORS 源                         | —       |
+| `AIRLOCK_REQUEST_LOGGING`              | 环境变量回退结构化请求日志                   | `false` |
+| `AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED` | 启用动态密钥注册表                           | `false` |
+| `AIRLOCK_CONFIG_STORE`                 | 启用 Dashboard overlay 配置                  | —       |
+| `AIRLOCK_GOOGLE_SUPER_ADMIN_EMAIL`     | 将匹配的 Google OAuth 用户映射为 super admin | —       |
 
 ---
 

@@ -225,7 +225,7 @@ export interface MetricsSnapshot {
 
 export interface AdminConfigResponse {
   providers: {
-    openai: { baseUrl: string; defaultModel: string; configured: true };
+    openai?: { baseUrl: string; defaultModel: string; configured: true };
     anthropic?: { baseUrl: string; defaultMaxTokens: number; configured: true };
     gemini?: { baseUrl: string; configured: true };
   };

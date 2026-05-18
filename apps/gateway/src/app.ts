@@ -17,6 +17,7 @@ import type { GatewayBindings } from "./env.js";
 import { createRequestId, resolveRequestId } from "./request-id.js";
 import { logRequest } from "./request-logger.js";
 import { getMetricsCollector } from "./metrics.js";
+import { resolveDashboardOverlay } from "./config.js";
 import { registerAdminConfigRoutes } from "./routes/admin-config.js";
 import { registerAdminConfigManageRoutes } from "./routes/admin-config-manage.js";
 import { registerAdminKeyGovernanceRoutes } from "./routes/admin-key-governance.js";
@@ -52,6 +53,33 @@ type AppVariables = {
 
 function getRequestStartTime(): number {
   return globalThis.performance?.now() ?? Date.now();
+}
+
+async function resolveRuntimeFeatureConfig(
+  env: GatewayBindings
+): Promise<{ corsOrigins?: string; requestLogging: boolean }> {
+  const overlay = await resolveDashboardOverlay(env);
+  const features = overlay?.sections["features"]?.data;
+  const featureRecord =
+    typeof features === "object" &&
+    features !== null &&
+    !Array.isArray(features)
+      ? (features as Record<string, unknown>)
+      : undefined;
+
+  const corsOrigins =
+    typeof featureRecord?.corsOrigins === "string"
+      ? featureRecord.corsOrigins
+      : env.AIRLOCK_CORS_ORIGINS;
+  const requestLogging =
+    typeof featureRecord?.requestLogging === "boolean"
+      ? featureRecord.requestLogging
+      : env.AIRLOCK_REQUEST_LOGGING === true;
+
+  return {
+    ...(corsOrigins ? { corsOrigins } : {}),
+    requestLogging
+  };
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -96,18 +124,24 @@ export function createApp(options: CreateAppOptions = {}) {
           stream: false,
           statusCode: 500
         });
-        if (context.env.AIRLOCK_REQUEST_LOGGING) {
-          console.error(
-            JSON.stringify({
-              level: "error",
-              msg: "Unhandled error in request",
-              requestId,
-              path: pathname,
-              error: error instanceof Error ? error.message : String(error),
-              stack: error instanceof Error ? error.stack : undefined
-            })
-          );
-        }
+        void resolveRuntimeFeatureConfig(context.env).then(
+          (runtimeFeatures) => {
+            if (!runtimeFeatures.requestLogging) {
+              return;
+            }
+
+            console.error(
+              JSON.stringify({
+                level: "error",
+                msg: "Unhandled error in request",
+                requestId,
+                path: pathname,
+                error: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined
+              })
+            );
+          }
+        );
       }
     }
 
@@ -126,6 +160,7 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   app.use("*", async (context, next) => {
+    const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
     context.set(
       "requestId",
       resolveRequestId(context.req.header("x-request-id"))
@@ -156,7 +191,7 @@ export function createApp(options: CreateAppOptions = {}) {
       durationMs
     });
 
-    if (context.env.AIRLOCK_REQUEST_LOGGING) {
+    if (runtimeFeatures.requestLogging) {
       logRequest({
         msg: "gateway_request",
         requestId: context.get("requestId"),
@@ -169,8 +204,9 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   // CORS preflight for /v1/* public API endpoints
-  app.options("/v1/*", (context) => {
-    const config = parseCorsOrigins(context.env.AIRLOCK_CORS_ORIGINS);
+  app.options("/v1/*", async (context) => {
+    const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
+    const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
     if (!config.allowedOrigins) {
       return new Response(null, { status: 405 });
     }
@@ -179,8 +215,9 @@ export function createApp(options: CreateAppOptions = {}) {
 
   // CORS headers on all /v1/* responses
   app.use("/v1/*", async (context, next) => {
+    const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
     await next();
-    const config = parseCorsOrigins(context.env.AIRLOCK_CORS_ORIGINS);
+    const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
     if (config.allowedOrigins) {
       const headers = corsHeaders(context.req.header("Origin"), config);
       for (const [key, value] of Object.entries(headers)) {
@@ -190,8 +227,9 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   // CORS preflight for browser-based admin dashboard requests
-  app.options("/_airlock/*", (context) => {
-    const config = parseCorsOrigins(context.env.AIRLOCK_CORS_ORIGINS);
+  app.options("/_airlock/*", async (context) => {
+    const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
+    const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
     if (!config.allowedOrigins) {
       return new Response(null, { status: 405 });
     }
@@ -201,8 +239,9 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   app.use("/_airlock/*", async (context, next) => {
+    const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
     await next();
-    const config = parseCorsOrigins(context.env.AIRLOCK_CORS_ORIGINS);
+    const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
     if (config.allowedOrigins) {
       const headers = corsHeaders(context.req.header("Origin"), config, {
         allowAdminMethods: true

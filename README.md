@@ -109,25 +109,36 @@ pnpm install
 
 ### Local Development
 
-1. Copy the example environment file and fill in your provider keys:
+1. Copy the gateway environment file:
 
 ```bash
 cp apps/gateway/.dev.vars.example apps/gateway/.dev.vars
 ```
 
-2. Edit `apps/gateway/.dev.vars` — at minimum set:
+2. Edit `apps/gateway/.dev.vars`.
+   Minimal env-only startup:
 
-```
+```bash
 AIRLOCK_GATEWAY_API_KEYS=your-secret-key-here
 OPENAI_API_KEY=sk-...
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_DEFAULT_MODEL=gpt-4.1-mini
+AIRLOCK_INTERNAL_ADMIN_TOKEN=dev-admin-token
 ```
+
+Bootstrap-minimal startup with dashboard-managed business config:
+
+```bash
+AIRLOCK_INTERNAL_ADMIN_TOKEN=dev-admin-token
+AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED=true
+```
+
+In both modes, keep the Durable Object bindings from `apps/gateway/wrangler.jsonc` available.
 
 3. Start the gateway dev server:
 
 ```bash
-pnpm --filter airlock-gateway dev
+pnpm --filter @airlock/gateway dev
 ```
 
 4. In a separate terminal, start the dashboard:
@@ -153,32 +164,45 @@ pnpm build         # Build all packages and apps
 
 ## Configuration
 
-All configuration is environment-driven via Cloudflare Workers environment
-variables. See `apps/gateway/.dev.vars.example` for the full reference with
-descriptions and defaults.
+Airlock supports two configuration layers:
 
-### Required
+- Bootstrap env config for runtime bindings, admin auth, and safe fallbacks
+- Dashboard overlay config from `AIRLOCK_CONFIG_STORE` for providers, routes,
+  key policies, shaping, signing, model groups, limits, and feature flags
 
-| Variable                   | Description                                              |
-| -------------------------- | -------------------------------------------------------- |
-| `AIRLOCK_GATEWAY_API_KEYS` | API keys for caller auth (comma-separated or JSON array) |
-| `OPENAI_API_KEY`           | OpenAI provider API key                                  |
-| `OPENAI_BASE_URL`          | OpenAI API base URL                                      |
-| `OPENAI_DEFAULT_MODEL`     | Default model for routing fallback                       |
+If `AIRLOCK_CONFIG_STORE` is absent, Airlock runs in env-only mode. See
+`apps/gateway/.dev.vars.example` for the full reference with descriptions and
+defaults.
+
+### Bootstrap Required
+
+| Variable                                                               | Description              |
+| ---------------------------------------------------------------------- | ------------------------ |
+| `AIRLOCK_INTERNAL_ADMIN_TOKEN` or `AIRLOCK_INTERNAL_ADMIN_CREDENTIALS` | Admin API bootstrap auth |
+
+### Business Config Required In Env-Only Mode
+
+| Variable                   | Description                                                |
+| -------------------------- | ---------------------------------------------------------- |
+| `AIRLOCK_GATEWAY_API_KEYS` | API keys for caller auth unless registry-only mode is used |
+| `OPENAI_API_KEY`           | OpenAI provider API key when active routes target OpenAI   |
+| `OPENAI_BASE_URL`          | OpenAI API base URL when active routes target OpenAI       |
+| `OPENAI_DEFAULT_MODEL`     | Default model for routing fallback when OpenAI is active   |
 
 ### Key Optional Variables
 
-| Variable                               | Description                       | Default |
-| -------------------------------------- | --------------------------------- | ------- |
-| `AIRLOCK_MODE`                         | Operating mode: `free` or `scale` | `free`  |
-| `AIRLOCK_MODEL_ALIASES`                | Model routing (JSON)              | —       |
-| `AIRLOCK_MODEL_FALLBACKS`              | Fallback targets (JSON)           | —       |
-| `AIRLOCK_PROVIDER_TIMEOUT_MS`          | Upstream request timeout          | `30000` |
-| `AIRLOCK_PROVIDER_MAX_RETRIES`         | Max cross-provider retries        | `0`     |
-| `AIRLOCK_CORS_ORIGINS`                 | Allowed CORS origins              | —       |
-| `AIRLOCK_REQUEST_LOGGING`              | Enable structured logging         | `false` |
-| `AIRLOCK_INTERNAL_ADMIN_TOKEN`         | Admin API token                   | —       |
-| `AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED` | Enable dynamic key registry       | `false` |
+| Variable                               | Description                                   | Default |
+| -------------------------------------- | --------------------------------------------- | ------- |
+| `AIRLOCK_MODE`                         | Operating mode: `free` or `scale`             | `free`  |
+| `AIRLOCK_MODEL_ALIASES`                | Env-side model routing (JSON)                 | —       |
+| `AIRLOCK_MODEL_FALLBACKS`              | Env-side fallback targets (JSON)              | —       |
+| `AIRLOCK_PROVIDER_TIMEOUT_MS`          | Upstream request timeout                      | `30000` |
+| `AIRLOCK_PROVIDER_MAX_RETRIES`         | Max cross-provider retries                    | `0`     |
+| `AIRLOCK_CORS_ORIGINS`                 | Env fallback CORS origins                     | —       |
+| `AIRLOCK_REQUEST_LOGGING`              | Env fallback structured logging               | `false` |
+| `AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED` | Enable dynamic key registry                   | `false` |
+| `AIRLOCK_CONFIG_STORE`                 | Enable dashboard overlay config               | —       |
+| `AIRLOCK_GOOGLE_SUPER_ADMIN_EMAIL`     | Map matching Google OAuth user to super admin | —       |
 
 ---
 

@@ -234,12 +234,16 @@ describe("AirlockClient", () => {
       it("putConfigStoreSection sends PUT with data", async () => {
         mockFetch(jsonRes({ written: true }));
         const c = new AirlockClient("http://host", "tok");
-        await c.putConfigStoreSection("accounts", [{ email: "a@b.c" }]);
+        await c.putConfigStoreSection("accounts", {
+          accounts: [{ email: "a@b.c" }]
+        });
         expect(globalThis.fetch).toHaveBeenCalledWith(
           "http://host/_airlock/config/manage/accounts",
           expect.objectContaining({
             method: "PUT",
-            body: JSON.stringify([{ email: "a@b.c" }])
+            body: JSON.stringify({
+              accounts: [{ email: "a@b.c" }]
+            })
           })
         );
       });

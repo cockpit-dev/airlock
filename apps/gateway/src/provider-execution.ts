@@ -374,6 +374,14 @@ function resolveProviderConfig(
         baseUrl: config.gemini?.baseUrl ?? ""
       };
     case "openai":
+      if (!config.openAI) {
+        throw new GatewayError("OpenAI configuration is unavailable", {
+          code: "config_missing_openai",
+          category: "configuration",
+          httpStatus: 500,
+          retryable: false
+        });
+      }
       return {
         apiKey: config.openAI.apiKey,
         baseUrl: config.openAI.baseUrl

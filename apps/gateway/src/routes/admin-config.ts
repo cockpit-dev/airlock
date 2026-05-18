@@ -25,7 +25,7 @@ interface ProviderConfigEntry {
 }
 
 interface ProviderAvailability {
-  openai: ProviderConfigEntry & { defaultModel: string };
+  openai?: ProviderConfigEntry & { defaultModel: string };
   anthropic?: ProviderConfigEntry & { defaultMaxTokens: number };
   gemini?: ProviderConfigEntry;
 }
@@ -73,12 +73,16 @@ export interface AdminConfigResponse {
 export function buildAdminConfigResponse(
   config: GatewayConfig
 ): AdminConfigResponse {
-  const providers: ProviderAvailability = {
-    openai: {
-      baseUrl: config.openAI.baseUrl,
-      defaultModel: config.openAI.defaultModel,
-      configured: true
-    },
+  const providers = {
+    ...(config.openAI
+      ? {
+          openai: {
+            baseUrl: config.openAI.baseUrl,
+            defaultModel: config.openAI.defaultModel,
+            configured: true
+          }
+        }
+      : {}),
     ...(config.anthropic
       ? {
           anthropic: {
@@ -96,7 +100,7 @@ export function buildAdminConfigResponse(
           }
         }
       : {})
-  };
+  } satisfies ProviderAvailability;
 
   const routes: RouteConfigEntry[] = config.modelAliases.map((route) => ({
     externalModel: route.externalModel,
@@ -143,8 +147,8 @@ export function buildAdminConfigResponse(
     registry: config.gatewayKeyRegistryEnabled === true,
     ipRateLimit: config.ipRateLimitPolicy !== undefined,
     telemetry: false,
-    cors: false,
-    requestLogging: false
+    cors: config.corsOrigins !== undefined,
+    requestLogging: config.requestLogging === true
   };
 
   const limits: ConfigLimits = {
@@ -172,12 +176,11 @@ export function buildAdminConfigResponse(
 export function registerAdminConfigRoutes(app: GatewayApp): void {
   app.get("/_airlock/config", async (context) => {
     await requireAdminScope(context, "config.read");
-    const config = await resolveGatewayConfigWithOverlay(context.env);
+    const config = await resolveGatewayConfigWithOverlay(context.env, {
+      allowIncompleteBusinessConfig: true
+    });
     const response = buildAdminConfigResponse(config);
     response.features.telemetry = context.env.AIRLOCK_TELEMETRY !== undefined;
-    response.features.cors = context.env.AIRLOCK_CORS_ORIGINS !== undefined;
-    response.features.requestLogging =
-      context.env.AIRLOCK_REQUEST_LOGGING === true;
     return context.json(response);
   });
 }

@@ -48,13 +48,13 @@ describe("resolveGatewayConfig", () => {
     it("resolves minimal config with required fields only", () => {
       const config = resolveGatewayConfig(createBindings());
       expect(config.mode).toBe("free");
-      expect(config.openAI.apiKey).toBe("openai-secret");
-      expect(config.openAI.baseUrl).toBe("https://api.openai.com/v1");
-      expect(config.openAI.defaultModel).toBe("gpt-4.1-mini");
+      expect(config.openAI?.apiKey).toBe("openai-secret");
+      expect(config.openAI?.baseUrl).toBe("https://api.openai.com/v1");
+      expect(config.openAI?.defaultModel).toBe("gpt-4.1-mini");
       expect(config.providerTimeoutMs).toBe(30_000);
       expect(config.modelGroups).toEqual({});
       expect(config.gatewayApiKeys).toHaveLength(1);
-      expect(config.requestSigningSecrets).toEqual({});
+      expect(config.requestSigningSecrets ?? {}).toEqual({});
       expect(config.anthropic).toBeUndefined();
       expect(config.gemini).toBeUndefined();
       expect(config.ipRateLimitPolicy).toBeUndefined();
@@ -226,7 +226,7 @@ describe("resolveGatewayConfig", () => {
 
     it("returns empty object when no secrets configured", () => {
       const config = resolveGatewayConfig(createBindings());
-      expect(config.requestSigningSecrets).toEqual({});
+      expect(config.requestSigningSecrets).toBeUndefined();
     });
 
     it("rejects malformed JSON", () => {
@@ -469,7 +469,7 @@ function createConfigStoreNamespace(snapshot: Record<string, unknown>) {
 describe("resolveGatewayConfigWithOverlay", () => {
   it("returns base config when no DO binding", async () => {
     const config = await resolveGatewayConfigWithOverlay(createBindings());
-    expect(config.openAI.apiKey).toBe("openai-secret");
+    expect(config.openAI?.apiKey).toBe("openai-secret");
     expect(config.anthropic).toBeUndefined();
     expect(config.gemini).toBeUndefined();
   });
@@ -482,7 +482,7 @@ describe("resolveGatewayConfigWithOverlay", () => {
     const config = await resolveGatewayConfigWithOverlay(
       createBindings({ AIRLOCK_CONFIG_STORE: namespace })
     );
-    expect(config.openAI.apiKey).toBe("openai-secret");
+    expect(config.openAI?.apiKey).toBe("openai-secret");
   });
 
   it("merges provider config from DO overlay", async () => {
@@ -505,9 +505,9 @@ describe("resolveGatewayConfigWithOverlay", () => {
     const config = await resolveGatewayConfigWithOverlay(
       createBindings({ AIRLOCK_CONFIG_STORE: namespace })
     );
-    expect(config.openAI.apiKey).toBe("do-openai-key");
-    expect(config.openAI.baseUrl).toBe("https://custom.openai.com/v1");
-    expect(config.openAI.defaultModel).toBe("gpt-4.1-mini");
+    expect(config.openAI?.apiKey).toBe("do-openai-key");
+    expect(config.openAI?.baseUrl).toBe("https://custom.openai.com/v1");
+    expect(config.openAI?.defaultModel).toBe("gpt-4.1-mini");
   });
 
   it("resolves anthropic config from DO when env vars missing", async () => {
@@ -578,5 +578,290 @@ describe("resolveGatewayConfigWithOverlay", () => {
     );
     expect(config.providerTimeoutMs).toBe(60_000);
     expect(config.providerMaxRetries).toBe(3);
+  });
+
+  it("supports bootstrap-minimal startup when dashboard overlay provides business config", async () => {
+    const namespace = createConfigStoreNamespace({
+      sections: {
+        providers: {
+          data: {
+            openai: {
+              apiKey: "do-openai-key",
+              baseUrl: "https://api.openai.com/v1",
+              defaultModel: "gpt-4.1-mini"
+            }
+          },
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        },
+        routes: {
+          data: [
+            {
+              externalModel: "openai/gpt-4.1-mini",
+              target: {
+                provider: "openai",
+                providerModel: "gpt-4.1-mini"
+              }
+            }
+          ],
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        },
+        key_policies: {
+          data: {
+            "openai/gpt-4.1-mini": {
+              requiredKeyTier: "default"
+            }
+          },
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        }
+      },
+      globalVersion: 3
+    });
+
+    const registryNamespace = {
+      idFromName: (name: string) => name,
+      get: (_id: unknown) => ({
+        fetch: () => Promise.resolve(new Response())
+      })
+    };
+
+    const config = await resolveGatewayConfigWithOverlay(
+      createBindings({
+        AIRLOCK_CONFIG_STORE: namespace,
+        AIRLOCK_GATEWAY_API_KEYS: undefined,
+        OPENAI_API_KEY: undefined,
+        OPENAI_BASE_URL: undefined,
+        OPENAI_DEFAULT_MODEL: undefined,
+        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: true,
+        AIRLOCK_GATEWAY_KEY_REGISTRY: registryNamespace
+      })
+    );
+
+    expect(config.openAI?.apiKey).toBe("do-openai-key");
+    expect(config.gatewayApiKeys).toHaveLength(0);
+    expect(config.modelAliases).toHaveLength(1);
+    expect(config.modelAliases[0]?.externalModel).toBe("openai/gpt-4.1-mini");
+    expect(config.modelAliases[0]?.requiredKeyTier).toBe("default");
+  });
+
+  it("supports bootstrap-minimal startup with registry-only caller auth", async () => {
+    const namespace = createConfigStoreNamespace({
+      sections: {
+        providers: {
+          data: {
+            openai: {
+              apiKey: "do-openai-key",
+              baseUrl: "https://api.openai.com/v1",
+              defaultModel: "gpt-4.1-mini"
+            }
+          },
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        },
+        routes: {
+          data: [
+            {
+              externalModel: "openai/gpt-4.1-mini",
+              target: {
+                provider: "openai",
+                providerModel: "gpt-4.1-mini"
+              }
+            }
+          ],
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        }
+      },
+      globalVersion: 2
+    });
+
+    const registryNamespace = {
+      idFromName: (name: string) => name,
+      get: (_id: unknown) => ({
+        fetch: () => Promise.resolve(new Response())
+      })
+    };
+
+    const config = await resolveGatewayConfigWithOverlay(
+      createBindings({
+        AIRLOCK_CONFIG_STORE: namespace,
+        AIRLOCK_GATEWAY_API_KEYS: undefined,
+        OPENAI_API_KEY: undefined,
+        OPENAI_BASE_URL: undefined,
+        OPENAI_DEFAULT_MODEL: undefined,
+        AIRLOCK_GATEWAY_KEY_REGISTRY_ENABLED: true,
+        AIRLOCK_GATEWAY_KEY_REGISTRY: registryNamespace
+      })
+    );
+
+    expect(config.gatewayApiKeys).toEqual([]);
+    expect(config.gatewayKeyRegistryEnabled).toBe(true);
+    expect(config.modelAliases).toHaveLength(1);
+    expect(config.openAI?.apiKey).toBe("do-openai-key");
+  });
+
+  it("merges route config from DO overlay", async () => {
+    const namespace = createConfigStoreNamespace({
+      sections: {
+        routes: {
+          data: [
+            {
+              externalModel: "anthropic/claude-sonnet-4-5",
+              target: {
+                provider: "anthropic",
+                providerModel: "claude-sonnet-4-5"
+              },
+              fallbacks: [
+                {
+                  provider: "openai",
+                  providerModel: "gpt-4.1-mini"
+                }
+              ],
+              requiredKeyTier: "premium",
+              requiredKeyTags: ["internal"],
+              strategy: "health_priority"
+            }
+          ],
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        },
+        providers: {
+          data: {
+            anthropic: {
+              apiKey: "do-anthropic-key",
+              baseUrl: "https://api.anthropic.com",
+              defaultMaxTokens: 4096
+            }
+          },
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        }
+      },
+      globalVersion: 2
+    });
+
+    const config = await resolveGatewayConfigWithOverlay(
+      createBindings({
+        AIRLOCK_CONFIG_STORE: namespace,
+        AIRLOCK_MODEL_ALIASES: undefined
+      })
+    );
+
+    expect(config.modelAliases).toHaveLength(1);
+    expect(config.modelAliases[0]?.externalModel).toBe(
+      "anthropic/claude-sonnet-4-5"
+    );
+    expect(config.modelAliases[0]?.fallbacks).toEqual([
+      { provider: "openai", providerModel: "gpt-4.1-mini" }
+    ]);
+    expect(config.modelAliases[0]?.requiredKeyTier).toBe("premium");
+    expect(config.modelAliases[0]?.requiredKeyTags).toEqual(["internal"]);
+    expect(config.modelAliases[0]?.targetSelection?.strategy).toBe(
+      "health_priority"
+    );
+  });
+
+  it("applies key policy overlays onto routes without replacing gateway keys", async () => {
+    const namespace = createConfigStoreNamespace({
+      sections: {
+        key_policies: {
+          data: {
+            "openai/gpt-4.1-mini": {
+              requiredKeyTier: "premium",
+              requiredKeyTags: ["internal"]
+            }
+          },
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        }
+      },
+      globalVersion: 1
+    });
+
+    const config = await resolveGatewayConfigWithOverlay(
+      createBindings({
+        AIRLOCK_CONFIG_STORE: namespace,
+        AIRLOCK_MODEL_ALIASES: "openai/gpt-4.1-mini=openai:gpt-4.1-mini"
+      })
+    );
+
+    expect(config.gatewayApiKeys).toHaveLength(1);
+    expect(config.modelAliases[0]?.requiredKeyTier).toBe("premium");
+    expect(config.modelAliases[0]?.requiredKeyTags).toEqual(["internal"]);
+  });
+
+  it("merges feature config from DO overlay", async () => {
+    const namespace = createConfigStoreNamespace({
+      sections: {
+        features: {
+          data: {
+            requestLogging: true,
+            corsOrigins: "https://admin.example.com"
+          },
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        }
+      },
+      globalVersion: 1
+    });
+
+    const config = await resolveGatewayConfigWithOverlay(
+      createBindings({
+        AIRLOCK_CONFIG_STORE: namespace,
+        AIRLOCK_CORS_ORIGINS: undefined,
+        AIRLOCK_REQUEST_LOGGING: false
+      })
+    );
+
+    expect(config.requestLogging).toBe(true);
+    expect(config.corsOrigins).toBe("https://admin.example.com");
+  });
+
+  it("accepts dashboard IP rate limit format in limits overlay", async () => {
+    const namespace = createConfigStoreNamespace({
+      sections: {
+        limits: {
+          data: {
+            ipRateLimitPolicy: {
+              requestsPerMinute: 120
+            }
+          },
+          updatedAt: Date.now(),
+          updatedBy: "admin",
+          version: 1
+        }
+      },
+      globalVersion: 1
+    });
+
+    const rateLimitNamespace = {
+      idFromName: (name: string) => name,
+      get: (_id: unknown) => ({
+        fetch: () => Promise.resolve(new Response())
+      })
+    };
+
+    const config = await resolveGatewayConfigWithOverlay(
+      createBindings({
+        AIRLOCK_CONFIG_STORE: namespace,
+        AIRLOCK_IP_RATE_LIMIT: rateLimitNamespace
+      })
+    );
+
+    expect(config.ipRateLimitPolicy).toEqual({
+      limit: 120,
+      windowSeconds: 60
+    });
   });
 });

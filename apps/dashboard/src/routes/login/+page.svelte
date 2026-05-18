@@ -72,6 +72,14 @@
     {/if}
 
     <!-- Token Auth -->
+    <div class="mb-4 rounded-md border border-gray-800 bg-gray-950/60 p-3">
+      <p class="text-xs leading-5 text-gray-400">
+        Google OAuth unlocks the dashboard session. Gateway management still
+        requires connecting a gateway URL and an admin credential, because the
+        admin API is enforced by the gateway itself.
+      </p>
+    </div>
+
     <form onsubmit={handleSubmit} class="space-y-4">
       <div>
         <label for="url" class="block text-sm font-medium text-gray-300 mb-1"

@@ -35,7 +35,9 @@ export function registerAdminRoutingHealthRoutes(
   app.get("/_airlock/routing/health", async (context) => {
     await requireAdminScope(context, "routing.read");
 
-    const config = await resolveGatewayConfigWithOverlay(context.env);
+    const config = await resolveGatewayConfigWithOverlay(context.env, {
+      allowIncompleteBusinessConfig: true
+    });
     const now = getNow ? getNow()() : Date.now();
     return context.json(buildRoutingHealthResponse(config, now));
   });
