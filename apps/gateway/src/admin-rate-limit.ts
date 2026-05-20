@@ -55,11 +55,20 @@ export function resetAdminRateLimiter(): void {
 export function extractIp(request: {
   header(name: string): string | undefined;
 }): string {
-  const forwarded = request.header("cf-connecting-ip");
-  if (forwarded) return forwarded;
+  // cf-connecting-ip is set by the Cloudflare edge and cannot be spoofed.
+  const cfIp = request.header("cf-connecting-ip");
+  if (cfIp && cfIp.trim().length > 0) return cfIp.trim();
 
+  // Fallback for local development only. On Cloudflare Workers the
+  // cf-connecting-ip header is always present, so this branch is
+  // unreachable in production. x-forwarded-for is client-settable and
+  // must not be trusted in a non-Cloudflare deployment without a trusted
+  // proxy in front.
   const xForwarded = request.header("x-forwarded-for");
-  if (xForwarded) return xForwarded.split(",")[0]!.trim();
+  if (xForwarded) {
+    const first = xForwarded.split(",")[0]?.trim();
+    if (first && first.length > 0) return first;
+  }
 
   return "unknown";
 }

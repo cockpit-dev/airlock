@@ -88,6 +88,9 @@ export async function handleChatCompletions(
       requestStartedAt: number;
       telemetrySink?: TelemetrySink;
       telemetryErrorEmitted?: boolean;
+      _airlock_metrics_provider?: string;
+      _airlock_metrics_model?: string;
+      _airlock_metrics_stream?: boolean;
     };
   }>
 ): Promise<Response> {
@@ -208,6 +211,10 @@ export async function handleChatCompletions(
 
   const fetcher = context.get("fetcher");
   const now = context.get("now");
+
+  context.set("_airlock_metrics_provider", route.target.provider);
+  context.set("_airlock_metrics_model", route.target.providerModel);
+  context.set("_airlock_metrics_stream", canonicalRequest.stream);
 
   if (canonicalRequest.stream) {
     const streamId = `chatcmpl_${requestId}`;

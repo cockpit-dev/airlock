@@ -1,5 +1,10 @@
 <script lang="ts">
-  import Nav from "$components/Nav.svelte";
+  import { page } from "$app/state";
+  import * as Card from "$lib/components/ui/card";
+  import * as Table from "$lib/components/ui/table";
+  import * as Breadcrumb from "$lib/components/ui/breadcrumb";
+  import { Button } from "$lib/components/ui/button";
+  import { Badge } from "$lib/components/ui/badge";
 
   let { data } = $props<{
     data: {
@@ -36,145 +41,128 @@
     if (!k || !confirm("Archive this key?")) return;
     try {
       const { createClient } = await import("$lib/auth.js");
-      const client = createClient();
-      if (!client) return;
-      await client.archiveKey(k.id as string);
+      const c = createClient();
+      if (!c) return;
+      await c.archiveKey(k.id as string);
       window.location.reload();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to archive key");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed");
     }
   }
-
   async function handleRestore() {
     if (!k) return;
     try {
       const { createClient } = await import("$lib/auth.js");
-      const client = createClient();
-      if (!client) return;
-      await client.restoreKey(k.id as string);
+      const c = createClient();
+      if (!c) return;
+      await c.restoreKey(k.id as string);
       window.location.reload();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to restore key");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed");
     }
   }
-
   async function handleDelete() {
-    if (!k || !confirm("Delete this key? This cannot be undone.")) return;
+    if (!k || !confirm("Delete?")) return;
     try {
       const { createClient } = await import("$lib/auth.js");
-      const client = createClient();
-      if (!client) return;
-      await client.deleteKey(k.id as string);
+      const c = createClient();
+      if (!c) return;
+      await c.deleteKey(k.id as string);
       window.location.href = "/keys";
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete key");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed");
     }
   }
-
   async function handleRevoke() {
-    if (!k || !confirm("Revoke this key?")) return;
+    if (!k || !confirm("Revoke?")) return;
     try {
       const { createClient } = await import("$lib/auth.js");
-      const client = createClient();
-      if (!client) return;
-      await client.revokeKey(k.id as string);
+      const c = createClient();
+      if (!c) return;
+      await c.revokeKey(k.id as string);
       window.location.reload();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to revoke key");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed");
     }
+  }
+  function statusDotColor(l: string): string {
+    if (l === "active") return "bg-success";
+    if (l === "archived") return "bg-muted-foreground";
+    if (l === "revoked") return "bg-destructive";
+    return "bg-warning";
   }
 </script>
 
-<Nav />
+<Breadcrumb.Root>
+  <Breadcrumb.List>
+    <Breadcrumb.Item>
+      <Breadcrumb.Link href="/keys">Keys</Breadcrumb.Link>
+    </Breadcrumb.Item>
+    <Breadcrumb.Separator />
+    <Breadcrumb.Item>
+      <Breadcrumb.Page
+        >{k ? (k.id as string).slice(0, 12) + "..." : page.params.id}</Breadcrumb.Page
+      >
+    </Breadcrumb.Item>
+  </Breadcrumb.List>
+</Breadcrumb.Root>
 
-<main class="max-w-7xl mx-auto px-6 py-8">
-  <div class="flex items-center justify-between mb-6">
-    <h2 class="text-xl font-bold text-gray-100">Key Details</h2>
-    <div class="flex gap-2">
-      {#if k}
-        {@const lifecycle = (k.lifecycleStatus ??
-          k.status ??
-          "active") as string}
-        {#if lifecycle === "active"}
-          <button
-            onclick={handleRevoke}
-            class="text-sm text-gray-400 hover:text-red-300 px-3 py-1.5 border border-gray-700 rounded-md transition-colors"
-            >Revoke</button
-          >
-          <button
-            onclick={handleArchive}
-            class="text-sm text-gray-400 hover:text-yellow-300 px-3 py-1.5 border border-gray-700 rounded-md transition-colors"
-            >Archive</button
-          >
-        {:else if lifecycle === "archived"}
-          <button
-            onclick={handleRestore}
-            class="text-sm text-gray-400 hover:text-green-300 px-3 py-1.5 border border-gray-700 rounded-md transition-colors"
-            >Restore</button
-          >
-        {/if}
-        <button
-          onclick={handleDelete}
-          class="text-sm text-gray-400 hover:text-red-300 px-3 py-1.5 border border-gray-700 rounded-md transition-colors"
-          >Delete</button
-        >
-      {/if}
-    </div>
-  </div>
-
+<div class="flex items-start justify-between gap-3 mb-3 mt-1">
+  <h1 class="text-xl font-semibold tracking-tight">Key Details</h1>
   {#if k}
-    <!-- Key Info -->
-    <div class="bg-gray-900 border border-gray-800 rounded-lg p-6 mb-6">
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="flex gap-1.5">
+      {#if lifecycle === "active"}
+        <Button variant="outline" size="xs" onclick={handleRevoke}>Revoke</Button>
+        <Button variant="outline" size="xs" onclick={handleArchive}>Archive</Button>
+      {:else if lifecycle === "archived"}
+        <Button size="xs" onclick={handleRestore}>Restore</Button>
+      {/if}
+      <Button variant="destructive" size="xs" onclick={handleDelete}>Delete</Button>
+    </div>
+  {/if}
+</div>
+
+{#if k}
+  <Card.Root class="mb-3">
+    <Card.Content>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div>
-          <p class="text-sm text-gray-500 mb-1">ID</p>
-          <p class="text-white font-mono text-sm">{k.id as string}</p>
+          <p class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">ID</p>
+          <p class="font-mono text-xs mt-0.5">{k.id as string}</p>
         </div>
         <div>
-          <p class="text-sm text-gray-500 mb-1">Label</p>
-          <p class="text-white text-sm">{(k.label as string) ?? "-"}</p>
+          <p class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Label</p>
+          <p class="text-xs mt-0.5">{(k.label as string) ?? "-"}</p>
         </div>
         <div>
-          <p class="text-sm text-gray-500 mb-1">Status</p>
-          {#if lifecycle === "active"}
-            <span
-              class="px-2 py-1 rounded text-xs font-medium bg-green-900 text-green-300"
-              >{lifecycle}</span
-            >
-          {:else if lifecycle === "archived"}
-            <span
-              class="px-2 py-1 rounded text-xs font-medium bg-gray-800 text-gray-400"
-              >{lifecycle}</span
-            >
-          {:else if lifecycle === "revoked"}
-            <span
-              class="px-2 py-1 rounded text-xs font-medium bg-red-900 text-red-300"
-              >{lifecycle}</span
-            >
-          {:else}
-            <span
-              class="px-2 py-1 rounded text-xs font-medium bg-yellow-900 text-yellow-300"
-              >{lifecycle}</span
-            >
-          {/if}
+          <p class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Status</p>
+          <div class="flex items-center gap-1.5 mt-0.5">
+            <Badge variant="secondary">
+              <span class="inline-block size-2 rounded-full {statusDotColor(lifecycle)}"></span>
+              {lifecycle}
+            </Badge>
+          </div>
         </div>
         <div>
-          <p class="text-sm text-gray-500 mb-1">Created</p>
-          <p class="text-white text-sm">{(k.createdAt as string) ?? "-"}</p>
+          <p class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Created</p>
+          <p class="text-xs mt-0.5">{(k.createdAt as string) ?? "-"}</p>
         </div>
       </div>
-    </div>
+    </Card.Content>
+  </Card.Root>
 
-    <!-- Quota Status -->
-    {#if status}
-      {@const s = status as Record<string, unknown>}
-      <div class="bg-gray-900 border border-gray-800 rounded-lg p-6 mb-6">
-        <h3 class="text-lg font-semibold text-gray-200 mb-4">Quota Status</h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+  {#if status}
+    {@const s = status as Record<string, unknown>}
+    <Card.Root class="mb-3">
+      <Card.Header>
+        <Card.Title class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Quota Status</Card.Title>
+      </Card.Header>
+      <Card.Content>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
           {#each Object.entries(s) as [name, value]}
-            <div class="bg-gray-800 rounded-lg p-3">
-              <p class="text-xs text-gray-500">{name}</p>
-              <p class="text-white font-medium">
+            <div class="rounded-md bg-muted/30 px-2.5 py-1.5">
+              <p class="text-[10px] text-muted-foreground">{name}</p>
+              <p class="text-xs font-medium">
                 {typeof value === "object"
                   ? JSON.stringify(value)
                   : String(value ?? "-")}
@@ -182,58 +170,56 @@
             </div>
           {/each}
         </div>
-      </div>
-    {/if}
+      </Card.Content>
+    </Card.Root>
+  {/if}
 
-    <!-- Audit Events -->
-    {#if events.length > 0}
-      <div
-        class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
-      >
-        <div class="px-6 py-4 border-b border-gray-800">
-          <h3 class="text-lg font-semibold text-gray-200">Audit Events</h3>
-        </div>
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-gray-800 text-gray-400 text-left">
-              <th class="px-4 py-3">Time</th>
-              <th class="px-4 py-3">Operation</th>
-              <th class="px-4 py-3">Actor</th>
-              <th class="px-4 py-3">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each events as event}
-              {@const e = event as Record<string, unknown>}
-              <tr class="border-b border-gray-800 last:border-0">
-                <td class="px-4 py-3 text-gray-400 text-xs font-mono"
-                  >{(e.timestamp as string) ?? "-"}</td
-                >
-                <td class="px-4 py-3 text-white font-mono text-xs"
-                  >{(e.operation as string) ?? "-"}</td
-                >
-                <td class="px-4 py-3 text-gray-300 text-xs"
-                  >{(e.actor as string) ?? "-"}</td
-                >
-                <td class="px-4 py-3">
+  {#if events.length > 0}
+    <div>
+      <p class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-2">Audit Events</p>
+      <Table.Root>
+        <Table.Header>
+          <Table.Row>
+            <Table.Head>Time</Table.Head>
+            <Table.Head>Operation</Table.Head>
+            <Table.Head>Actor</Table.Head>
+            <Table.Head>Status</Table.Head>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {#each events as event}
+            {@const e = event as Record<string, unknown>}
+            <Table.Row>
+              <Table.Cell class="text-xs text-muted-foreground font-mono"
+                >{(e.timestamp as string) ?? "-"}</Table.Cell
+              >
+              <Table.Cell class="font-mono text-xs"
+                >{(e.operation as string) ?? "-"}</Table.Cell
+              >
+              <Table.Cell class="text-xs"
+                >{(e.actor as string) ?? "-"}</Table.Cell
+              >
+              <Table.Cell>
+                <Badge variant="secondary">
                   <span
-                    class="px-2 py-1 rounded text-xs font-medium {e.status ===
+                    class="inline-block size-2 rounded-full {e.status ===
                     'success'
-                      ? 'bg-green-900 text-green-300'
-                      : 'bg-red-900 text-red-300'}"
-                  >
-                    {(e.status as string) ?? "-"}
-                  </span>
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    {/if}
-  {:else}
-    <div class="bg-gray-900 border border-gray-800 rounded-lg p-8 text-center">
-      <p class="text-gray-400">Failed to load key details.</p>
+                      ? 'bg-success'
+                      : 'bg-destructive'}"
+                  ></span>
+                  {(e.status as string) ?? "-"}
+                </Badge>
+              </Table.Cell>
+            </Table.Row>
+          {/each}
+        </Table.Body>
+      </Table.Root>
     </div>
   {/if}
-</main>
+{:else}
+  <Card.Root class="py-4 text-center">
+    <Card.Content>
+      <p class="text-sm text-muted-foreground">Failed to load key details.</p>
+    </Card.Content>
+  </Card.Root>
+{/if}

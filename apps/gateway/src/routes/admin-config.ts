@@ -26,6 +26,7 @@ interface ProviderConfigEntry {
   configured: true;
   defaultModel?: string;
   defaultMaxTokens?: number;
+  models?: string[];
 }
 
 type ProviderAvailability = ProviderConfigEntry[];
@@ -81,7 +82,8 @@ export function buildAdminConfigResponse(
     ...(provider.defaultModel ? { defaultModel: provider.defaultModel } : {}),
     ...(provider.defaultMaxTokens !== undefined
       ? { defaultMaxTokens: provider.defaultMaxTokens }
-      : {})
+      : {}),
+    ...(provider.models?.length ? { models: provider.models } : {})
   })) satisfies ProviderAvailability;
 
   const routes: RouteConfigEntry[] = config.modelAliases.map((route) => ({

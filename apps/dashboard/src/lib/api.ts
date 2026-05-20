@@ -157,6 +157,7 @@ export class AirlockClient {
       { method: "DELETE" }
     );
   }
+
 }
 
 export class AuthError extends Error {
@@ -221,10 +222,16 @@ export interface MetricsSnapshot {
   errors: number;
   errorRate: number;
   avgDurationMs: number;
+  streamCount: number;
+  streamRatio: number;
   statusCodes: Record<number, number>;
   byRoute: Record<
     string,
     { requests: number; errors: number; avgDurationMs: number }
+  >;
+  byProvider: Record<
+    string,
+    { requests: number; errors: number; avgDurationMs: number; streamCount: number }
   >;
 }
 
@@ -236,6 +243,7 @@ export interface AdminConfigResponse {
     configured: true;
     defaultModel?: string;
     defaultMaxTokens?: number;
+    models?: string[];
   }>;
   routes: Array<{
     externalModel: string;

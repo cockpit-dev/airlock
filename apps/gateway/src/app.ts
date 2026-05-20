@@ -16,7 +16,7 @@ import {
 import type { GatewayBindings } from "./env.js";
 import { createRequestId, resolveRequestId } from "./request-id.js";
 import { logRequest } from "./request-logger.js";
-import { getMetricsCollector } from "./metrics.js";
+import { getMetricsCollector, type MetricsRecord } from "./metrics.js";
 import { resolveDashboardOverlay } from "./config.js";
 import { registerAdminConfigRoutes } from "./routes/admin-config.js";
 import { registerAdminConfigManageRoutes } from "./routes/admin-config-manage.js";
@@ -49,6 +49,9 @@ type AppVariables = {
   requestStartedAt: number;
   telemetrySink?: TelemetrySink;
   telemetryErrorEmitted?: boolean;
+  _airlock_metrics_provider?: string;
+  _airlock_metrics_model?: string;
+  _airlock_metrics_stream?: boolean;
 };
 
 function getRequestStartTime(): number {
@@ -185,11 +188,18 @@ export function createApp(options: CreateAppOptions = {}) {
       getRequestStartTime() - context.get("requestStartedAt")
     );
 
-    getMetricsCollector().record({
+    const metricsRecord: MetricsRecord = {
       routePath: pathname,
       statusCode: context.res.status,
       durationMs
-    });
+    };
+    const mp = context.get("_airlock_metrics_provider") as string | undefined;
+    const mm = context.get("_airlock_metrics_model") as string | undefined;
+    const ms = context.get("_airlock_metrics_stream") as boolean | undefined;
+    if (mp) metricsRecord.providerId = mp;
+    if (mm) metricsRecord.modelId = mm;
+    if (ms !== undefined) metricsRecord.isStream = ms;
+    getMetricsCollector().record(metricsRecord);
 
     if (runtimeFeatures.requestLogging) {
       logRequest({
@@ -207,9 +217,6 @@ export function createApp(options: CreateAppOptions = {}) {
   app.options("/v1/*", async (context) => {
     const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
     const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
-    if (!config.allowedOrigins) {
-      return new Response(null, { status: 405 });
-    }
     return createPreflightResponse(context.req.header("Origin"), config);
   });
 
@@ -218,11 +225,9 @@ export function createApp(options: CreateAppOptions = {}) {
     const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
     await next();
     const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
-    if (config.allowedOrigins) {
-      const headers = corsHeaders(context.req.header("Origin"), config);
-      for (const [key, value] of Object.entries(headers)) {
-        context.header(key, value);
-      }
+    const headers = corsHeaders(context.req.header("Origin"), config);
+    for (const [key, value] of Object.entries(headers)) {
+      context.header(key, value);
     }
   });
 
@@ -230,9 +235,6 @@ export function createApp(options: CreateAppOptions = {}) {
   app.options("/_airlock/*", async (context) => {
     const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
     const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
-    if (!config.allowedOrigins) {
-      return new Response(null, { status: 405 });
-    }
     return createPreflightResponse(context.req.header("Origin"), config, {
       allowAdminMethods: true
     });
@@ -242,13 +244,11 @@ export function createApp(options: CreateAppOptions = {}) {
     const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
     await next();
     const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
-    if (config.allowedOrigins) {
-      const headers = corsHeaders(context.req.header("Origin"), config, {
-        allowAdminMethods: true
-      });
-      for (const [key, value] of Object.entries(headers)) {
-        context.header(key, value);
-      }
+    const headers = corsHeaders(context.req.header("Origin"), config, {
+      allowAdminMethods: true
+    });
+    for (const [key, value] of Object.entries(headers)) {
+      context.header(key, value);
     }
   });
 

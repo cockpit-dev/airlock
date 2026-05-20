@@ -15,7 +15,10 @@ const ALLOWED_HEADERS =
 const MAX_AGE = 86400; // 24 hours — browsers cache preflight results
 
 export interface CorsConfig {
-  /** Comma-separated origin list, or "*" for wildcard. Undefined means CORS is disabled. */
+  /**
+   * Comma-separated origin list, or "*" for wildcard.
+   * When undefined, browser requests (with Origin header) are still allowed via echo-back.
+   */
   allowedOrigins: string | undefined;
 }
 
@@ -34,20 +37,16 @@ function resolveAllowOrigin(
   requestOrigin: string | undefined,
   config: CorsConfig
 ): string | undefined {
-  if (!config.allowedOrigins) {
-    return undefined;
-  }
   if (config.allowedOrigins === "*") {
     return "*";
   }
-  if (!requestOrigin) {
-    return undefined;
+  if (config.allowedOrigins) {
+    if (!requestOrigin) return undefined;
+    const allowed = config.allowedOrigins.split(",").map((s) => s.trim());
+    return allowed.includes(requestOrigin) ? requestOrigin : undefined;
   }
-  const allowed = config.allowedOrigins.split(",").map((s) => s.trim());
-  if (allowed.includes(requestOrigin)) {
-    return requestOrigin;
-  }
-  return undefined;
+  // No explicit config — echo-back browser Origin to allow dashboard usage
+  return requestOrigin ?? undefined;
 }
 
 export function corsHeaders(

@@ -1,11 +1,14 @@
 <script lang="ts">
-  import Nav from "$components/Nav.svelte";
+  import * as Card from "$lib/components/ui/card";
+  import * as Table from "$lib/components/ui/table";
+  import { Badge } from "$lib/components/ui/badge";
+  import { Button } from "$lib/components/ui/button";
+  import { Switch } from "$lib/components/ui/switch";
   import type { AdminConfigResponse } from "$lib/api.js";
   import { getStoredCredentials } from "$lib/auth.js";
 
   let { data } = $props<{ data: { config: AdminConfigResponse | null } }>();
-  const hasRemoteGatewayCredentials = $derived(Boolean(getStoredCredentials()));
-
+  const hasCreds = $derived(Boolean(getStoredCredentials()));
   const providerLabels: Record<string, string> = {
     openai: "OpenAI",
     anthropic: "Anthropic",
@@ -13,246 +16,208 @@
   };
 </script>
 
-<Nav />
+<div class="mb-4">
+  <h1 class="text-xl font-semibold tracking-tight">Configuration</h1>
+  <p class="text-xs text-muted-foreground">Gateway settings and resources</p>
+</div>
 
-<main class="max-w-7xl mx-auto px-6 py-8">
-  <h2 class="text-xl font-bold text-gray-100 mb-6">Configuration</h2>
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+  <a href="/config/providers" class="group">
+    <Card.Root class="hover:bg-muted/50 transition-colors">
+      <Card.Content class="text-center py-3">
+        <p class="text-sm font-medium">Providers</p>
+        <p class="text-[11px] text-muted-foreground">API keys & models</p>
+      </Card.Content>
+    </Card.Root>
+  </a>
+  <a href="/config/routes" class="group">
+    <Card.Root class="hover:bg-muted/50 transition-colors">
+      <Card.Content class="text-center py-3">
+        <p class="text-sm font-medium">Routes</p>
+        <p class="text-[11px] text-muted-foreground">Model routing & fallbacks</p>
+      </Card.Content>
+    </Card.Root>
+  </a>
+  <a href="/config/accounts" class="group">
+    <Card.Root class="hover:bg-muted/50 transition-colors">
+      <Card.Content class="text-center py-3">
+        <p class="text-sm font-medium">Accounts</p>
+        <p class="text-[11px] text-muted-foreground">Users & roles</p>
+      </Card.Content>
+    </Card.Root>
+  </a>
+  <a href="/keys" class="group">
+    <Card.Root class="hover:bg-muted/50 transition-colors">
+      <Card.Content class="text-center py-3">
+        <p class="text-sm font-medium">API Keys</p>
+        <p class="text-[11px] text-muted-foreground">Gateway keys</p>
+      </Card.Content>
+    </Card.Root>
+  </a>
+</div>
 
-  {#if data.config}
-    <!-- Providers -->
-    <div class="mb-8">
-      <h3 class="text-lg font-semibold text-gray-200 mb-3">Providers</h3>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {#each data.config.providers as provider}
-          <div class="bg-gray-900 border border-gray-800 rounded-lg p-5">
-            <div class="flex items-center justify-between mb-3">
-              <p class="font-semibold text-white">
-                {provider.id}
-              </p>
-              {#if provider.configured}
-                <span
-                  class="px-2 py-1 rounded text-xs font-medium bg-green-900 text-green-300"
-                  >Active</span
-                >
-              {:else}
-                <span
-                  class="px-2 py-1 rounded text-xs font-medium bg-gray-800 text-gray-500"
-                  >Not configured</span
-                >
-              {/if}
+{#if data.config}
+  <!-- Providers -->
+  <div class="mb-4">
+    <p class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-2">Providers</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+      {#each data.config.providers as provider}
+        <Card.Root size="sm">
+          <Card.Content>
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <span class="inline-block size-2 rounded-full {provider.configured ? 'bg-success' : 'bg-muted-foreground'}"></span>
+                <p class="text-sm font-medium">{provider.id}</p>
+              </div>
+              <Badge variant={provider.configured ? "default" : "secondary"}>
+                {provider.configured ? "Active" : "Inactive"}
+              </Badge>
             </div>
-            <div class="space-y-2 text-sm">
+            <div class="flex flex-col gap-1 text-xs">
               <div class="flex justify-between">
-                <span class="text-gray-400">Adapter</span>
-                <span class="text-gray-300"
-                  >{providerLabels[provider.type] ?? provider.type}</span
-                >
+                <span class="text-muted-foreground">Adapter</span><span>{providerLabels[provider.type] ?? provider.type}</span>
               </div>
               <div class="flex justify-between">
-                <span class="text-gray-400">Base URL</span>
-                <span class="text-gray-300 font-mono text-xs"
-                  >{provider.baseUrl}</span
-                >
+                <span class="text-muted-foreground">Base URL</span>
+                <span class="font-mono text-[11px] truncate ml-2">{provider.baseUrl}</span>
               </div>
               {#if "defaultModel" in provider}
                 <div class="flex justify-between">
-                  <span class="text-gray-400">Default Model</span>
-                  <span class="text-gray-300 font-mono text-xs"
-                    >{provider.defaultModel}</span
-                  >
+                  <span class="text-muted-foreground">Model</span>
+                  <span class="font-mono text-[11px]">{provider.defaultModel}</span>
                 </div>
               {/if}
               {#if "defaultMaxTokens" in provider}
                 <div class="flex justify-between">
-                  <span class="text-gray-400">Max Tokens</span>
-                  <span class="text-gray-300"
-                    >{provider.defaultMaxTokens.toLocaleString()}</span
-                  >
+                  <span class="text-muted-foreground">Max Tokens</span>
+                  <span>{provider.defaultMaxTokens.toLocaleString()}</span>
                 </div>
               {/if}
             </div>
-          </div>
+          </Card.Content>
+        </Card.Root>
+      {/each}
+    </div>
+  </div>
+
+  <!-- Routes -->
+  <div class="mb-4">
+    <p class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-2">Routes ({data.config.routes.length})</p>
+    <Table.Root>
+      <Table.Header>
+        <Table.Row>
+          <Table.Head>Model</Table.Head>
+          <Table.Head>Target</Table.Head>
+          <Table.Head>Fallbacks</Table.Head>
+          <Table.Head>Strategy</Table.Head>
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
+        {#each data.config.routes as route}
+          <Table.Row>
+            <Table.Cell class="font-mono text-xs font-medium">{route.externalModel}</Table.Cell>
+            <Table.Cell><span class="text-xs">{route.target.provider}</span>
+              <span class="text-muted-foreground">/</span>
+              <span class="font-mono text-[11px]">{route.target.providerModel}</span></Table.Cell>
+            <Table.Cell>{#if route.fallbacks?.length}{#each route.fallbacks as fb}<span class="text-[11px]"><span class="text-muted-foreground">{fb.provider}</span>/<span class="font-mono">{fb.providerModel}</span></span>{/each}{:else}<span class="text-muted-foreground text-xs">-</span>{/if}</Table.Cell>
+            <Table.Cell class="text-xs text-muted-foreground">{route.strategy ?? "default"}</Table.Cell>
+          </Table.Row>
         {/each}
-      </div>
-    </div>
+      </Table.Body>
+    </Table.Root>
+  </div>
 
-    <!-- Routes -->
-    <div class="mb-8">
-      <h3 class="text-lg font-semibold text-gray-200 mb-3">
-        Routes ({data.config.routes.length})
-      </h3>
-      <div
-        class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
-      >
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-gray-800 text-gray-400 text-left">
-              <th class="px-4 py-3">External Model</th>
-              <th class="px-4 py-3">Target</th>
-              <th class="px-4 py-3">Fallbacks</th>
-              <th class="px-4 py-3">Strategy</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each data.config.routes as route}
-              <tr class="border-b border-gray-800 last:border-0">
-                <td class="px-4 py-3 text-white font-medium font-mono"
-                  >{route.externalModel}</td
-                >
-                <td class="px-4 py-3">
-                  <div class="text-gray-300">
-                    <span
-                      class="px-1.5 py-0.5 rounded text-xs bg-blue-900/50 text-blue-300"
-                      >{route.target.provider}</span
-                    >
-                    <span class="text-gray-500 mx-1">/</span>
-                    <span class="font-mono text-xs"
-                      >{route.target.providerModel}</span
-                    >
-                  </div>
-                </td>
-                <td class="px-4 py-3 text-gray-400">
-                  {#if route.fallbacks && route.fallbacks.length > 0}
-                    <div class="space-y-1">
-                      {#each route.fallbacks as fb}
-                        <div class="text-xs">
-                          <span
-                            class="px-1.5 py-0.5 rounded bg-gray-800 text-gray-300"
-                            >{fb.provider}</span
-                          >
-                          <span class="text-gray-500">/</span>
-                          <span class="font-mono">{fb.providerModel}</span>
-                        </div>
-                      {/each}
-                    </div>
-                  {:else}
-                    <span class="text-gray-600">none</span>
-                  {/if}
-                </td>
-                <td class="px-4 py-3">
-                  {#if route.strategy}
-                    <span
-                      class="px-2 py-1 rounded text-xs bg-purple-900/50 text-purple-300"
-                      >{route.strategy}</span
-                    >
-                  {:else}
-                    <span class="text-gray-600">default</span>
-                  {/if}
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Model Groups -->
-    {#if Object.keys(data.config.modelGroups).length > 0}
-      <div class="mb-8">
-        <h3 class="text-lg font-semibold text-gray-200 mb-3">Model Groups</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {#each Object.entries(data.config.modelGroups) as [group, models]}
-            <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
-              <p class="font-medium text-white mb-2">{group}</p>
+  <!-- Model Groups -->
+  {#if Object.keys(data.config.modelGroups).length > 0}
+    <div class="mb-4">
+      <p class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-2">Model Groups</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        {#each Object.entries(data.config.modelGroups) as [group, models]}
+          <Card.Root size="sm">
+            <Card.Content>
+              <p class="text-sm font-medium mb-1.5">{group}</p>
               <div class="flex flex-wrap gap-1">
-                {#each models as model}
-                  <span
-                    class="px-2 py-0.5 rounded text-xs bg-gray-800 text-gray-300 font-mono"
-                    >{model}</span
-                  >
-                {/each}
+                {#each models as model}<Badge variant="outline">{model}</Badge>{/each}
               </div>
-            </div>
-          {/each}
-        </div>
-      </div>
-    {/if}
-
-    <!-- Features -->
-    <div class="mb-8">
-      <h3 class="text-lg font-semibold text-gray-200 mb-3">Features</h3>
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {#each Object.entries(data.config.features) as [feature, value]}
-          {@const enabled = typeof value === "boolean" ? value : value.enabled}
-          <div
-            class="bg-gray-900 border border-gray-800 rounded-lg p-3 flex items-center justify-between"
-          >
-            <span class="text-sm text-gray-300">{feature}</span>
-            <span
-              class="w-3 h-3 rounded-full {enabled
-                ? 'bg-green-500'
-                : 'bg-gray-700'}"
-            ></span>
-          </div>
+            </Card.Content>
+          </Card.Root>
         {/each}
       </div>
     </div>
+  {/if}
 
-    <!-- Keys Summary -->
-    <div class="mb-8">
-      <h3 class="text-lg font-semibold text-gray-200 mb-3">Keys</h3>
-      <div class="grid grid-cols-3 gap-4">
-        <div
-          class="bg-gray-900 border border-gray-800 rounded-lg p-4 text-center"
-        >
-          <p class="text-2xl font-bold text-white">{data.config.keys.total}</p>
-          <p class="text-sm text-gray-400">Total</p>
-        </div>
-        <div
-          class="bg-gray-900 border border-gray-800 rounded-lg p-4 text-center"
-        >
-          <p class="text-2xl font-bold text-white">
-            {data.config.keys.configured}
-          </p>
-          <p class="text-sm text-gray-400">Configured</p>
-        </div>
-        <div
-          class="bg-gray-900 border border-gray-800 rounded-lg p-4 text-center"
-        >
-          <p class="text-2xl font-bold text-white">
-            {data.config.keys.registryOwned}
-          </p>
-          <p class="text-sm text-gray-400">Registry</p>
-        </div>
-      </div>
+  <!-- Features -->
+  <div class="mb-4">
+    <p class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-2">Features</p>
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+      {#each Object.entries(data.config.features) as [feature, value]}
+        {@const enabled = typeof value === "boolean" ? value : value.enabled}
+        <Card.Root size="sm">
+          <Card.Content class="flex items-center justify-between">
+            <span class="text-xs">{feature}</span>
+            <Switch checked={enabled} disabled />
+          </Card.Content>
+        </Card.Root>
+      {/each}
     </div>
+  </div>
 
-    <!-- Limits -->
-    <div>
-      <h3 class="text-lg font-semibold text-gray-200 mb-3">Limits</h3>
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-        {#each Object.entries(data.config.limits) as [name, value]}
-          <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
-            <p class="text-sm text-gray-400">{name}</p>
-            <p class="text-lg font-semibold text-white">
+  <!-- Keys -->
+  <div class="mb-4">
+    <p class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-2">Keys</p>
+    <div class="grid grid-cols-3 gap-2">
+      <Card.Root>
+        <Card.Content class="text-center">
+          <p class="text-2xl font-bold tracking-tight">{data.config.keys.total}</p>
+          <p class="text-[10px] text-muted-foreground">Total</p>
+        </Card.Content>
+      </Card.Root>
+      <Card.Root>
+        <Card.Content class="text-center">
+          <p class="text-2xl font-bold tracking-tight">{data.config.keys.configured}</p>
+          <p class="text-[10px] text-muted-foreground">Configured</p>
+        </Card.Content>
+      </Card.Root>
+      <Card.Root>
+        <Card.Content class="text-center">
+          <p class="text-2xl font-bold tracking-tight">{data.config.keys.registryOwned}</p>
+          <p class="text-[10px] text-muted-foreground">Registry</p>
+        </Card.Content>
+      </Card.Root>
+    </div>
+  </div>
+
+  <!-- Limits -->
+  <div>
+    <p class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-2">Limits</p>
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      {#each Object.entries(data.config.limits) as [name, value]}
+        <Card.Root size="sm">
+          <Card.Content>
+            <p class="text-[10px] text-muted-foreground">{name}</p>
+            <p class="text-xs font-semibold">
               {typeof value === "number" && value >= 1000
                 ? value >= 1_000_000
                   ? (value / 1_000_000).toFixed(1) + "MB"
                   : (value / 1000).toFixed(0) + "ms"
                 : String(value)}
             </p>
-          </div>
-        {/each}
-      </div>
+          </Card.Content>
+        </Card.Root>
+      {/each}
     </div>
-  {:else if !hasRemoteGatewayCredentials}
-    <div class="rounded-xl border border-amber-800/70 bg-amber-950/40 p-5">
-      <p class="text-sm leading-6 text-amber-100/80">
-        Connect this dashboard to a gateway admin endpoint before viewing active
-        runtime configuration.
-      </p>
-      <a
-        href="/login"
-        class="mt-3 inline-flex rounded-md border border-amber-700 px-3 py-1.5 text-sm text-amber-100 hover:bg-amber-900/40"
-      >
-        Connect Gateway
-      </a>
-    </div>
-  {:else}
-    <div class="rounded-xl border border-red-900/70 bg-red-950/30 p-5">
-      <p class="text-sm leading-6 text-red-200/80">
-        Failed to load active gateway configuration.
-      </p>
-    </div>
-  {/if}
-</main>
+  </div>
+{:else if !hasCreds}
+  <Card.Root class="border-warning/30 bg-warning/5">
+    <Card.Content>
+      <p class="text-sm">Connect to a gateway admin endpoint to view configuration.</p>
+      <Button href="/login" size="sm" class="mt-2">Connect Gateway</Button>
+    </Card.Content>
+  </Card.Root>
+{:else}
+  <Card.Root class="border-destructive/30 bg-destructive/5">
+    <Card.Content>
+      <p class="text-sm text-destructive">Failed to load configuration.</p>
+    </Card.Content>
+  </Card.Root>
+{/if}

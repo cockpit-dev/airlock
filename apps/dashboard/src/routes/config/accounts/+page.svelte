@@ -1,361 +1,179 @@
 <script lang="ts">
-  import Nav from "$components/Nav.svelte";
   import { createClient, getStoredCredentials } from "$lib/auth.js";
+  import * as Breadcrumb from "$lib/components/ui/breadcrumb";
+  import * as Card from "$lib/components/ui/card";
+  import * as Table from "$lib/components/ui/table";
+  import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
+  import { Label } from "$lib/components/ui/label";
+  import { Badge } from "$lib/components/ui/badge";
+  import { Switch } from "$lib/components/ui/switch";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Save from "@lucide/svelte/icons/save";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
 
-  type Account = {
-    email: string;
-    role: string;
-    enabled: boolean;
-    createdAt: number;
-  };
+  type Account = { email: string; role: string; enabled: boolean; createdAt: number };
+  type AccountsConfig = { accounts: Account[] };
 
-  type AccountsConfig = {
-    accounts: Account[];
-  };
-
-  let loading = $state(true);
-  let saving = $state(false);
-  let error = $state("");
-  let success = $state("");
-  let editAccountEmail = $state<string | null>(null);
-  let showCreateForm = $state(false);
-
+  let loading = $state(true); let saving = $state(false); let error = $state(""); let success = $state("");
+  let editAccountEmail = $state<string | null>(null); let showCreateForm = $state(false);
   let accounts = $state<Account[]>([]);
-
-  // Create/edit form state
-  let formEmail = $state("");
-  let formRole = $state("viewer");
-  let formEnabled = $state(true);
-
+  let formEmail = $state(""); let formRole = $state("viewer"); let formEnabled = $state(true);
   const roleOptions = ["super_admin", "admin", "operator", "viewer"];
-  const fieldIds = {
-    email: "account-email",
-    role: "account-role"
-  };
-
-  function resetForm() {
-    formEmail = "";
-    formRole = "viewer";
-    formEnabled = true;
-  }
-
-  async function loadConfig() {
-    const creds = getStoredCredentials();
-    if (!creds) return;
-    const client = createClient(creds.url, creds.token);
-    try {
-      const snapshot = await client.getConfigStoreSnapshot();
-      const section = snapshot.sections["accounts"];
-      if (
-        section?.data &&
-        typeof section.data === "object" &&
-        "accounts" in (section.data as Record<string, unknown>)
-      ) {
-        accounts = (section.data as AccountsConfig).accounts;
-      }
-    } catch {
-      // Config store may not be initialized yet
-    } finally {
-      loading = false;
-    }
-  }
-
-  async function saveAccounts() {
-    const creds = getStoredCredentials();
-    if (!creds) return;
-    const client = createClient(creds.url, creds.token);
-    saving = true;
-    error = "";
-    success = "";
-
-    try {
-      await client.putConfigStoreSection("accounts", { accounts });
-      success = "Account configuration saved";
-      editAccountEmail = null;
-      showCreateForm = false;
-    } catch (e) {
-      error = e instanceof Error ? e.message : "Failed to save";
-    } finally {
-      saving = false;
-    }
-  }
-
-  function startCreate() {
-    resetForm();
-    showCreateForm = true;
-    editAccountEmail = null;
-  }
-
-  function startEdit(email: string) {
-    const account = accounts.find((a) => a.email === email);
-    if (!account) return;
-    formEmail = account.email;
-    formRole = account.role;
-    formEnabled = account.enabled;
-    editAccountEmail = email;
-    showCreateForm = false;
-  }
-
-  function cancelEdit() {
-    editAccountEmail = null;
-    showCreateForm = false;
-    resetForm();
-  }
-
-  function applyCreate() {
-    if (!formEmail.trim()) {
-      error = "Email is required";
-      return;
-    }
-    error = "";
-
-    if (accounts.some((a) => a.email === formEmail.trim())) {
-      error = "Account with this email already exists";
-      return;
-    }
-
-    const newAccount: Account = {
-      email: formEmail.trim(),
-      role: formRole,
-      enabled: formEnabled,
-      createdAt: Date.now()
-    };
-
-    accounts = [...accounts, newAccount];
-    showCreateForm = false;
-    resetForm();
-    saveAccounts();
-  }
-
-  function applyEdit() {
-    if (!editAccountEmail) return;
-    if (!formEmail.trim()) {
-      error = "Email is required";
-      return;
-    }
-    error = "";
-
-    accounts = accounts.map((a) =>
-      a.email === editAccountEmail
-        ? {
-            ...a,
-            email: formEmail.trim(),
-            role: formRole,
-            enabled: formEnabled
-          }
-        : a
-    );
-    editAccountEmail = null;
-    resetForm();
-    saveAccounts();
-  }
-
-  function toggleEnabled(email: string) {
-    accounts = accounts.map((a) =>
-      a.email === email ? { ...a, enabled: !a.enabled } : a
-    );
-    saveAccounts();
-  }
-
-  function deleteAccount(email: string) {
-    if (!confirm(`Delete account ${email}? This cannot be undone.`)) return;
-    accounts = accounts.filter((a) => a.email !== email);
-    saveAccounts();
-  }
-
-  function roleBadgeClass(role: string): string {
-    switch (role) {
-      case "super_admin":
-        return "bg-red-900/50 text-red-300 border-red-800";
-      case "admin":
-        return "bg-orange-900/50 text-orange-300 border-orange-800";
-      case "operator":
-        return "bg-blue-900/50 text-blue-300 border-blue-800";
-      default:
-        return "bg-gray-800 text-gray-400 border-gray-700";
-    }
-  }
-
+  function resetForm() { formEmail = ""; formRole = "viewer"; formEnabled = true; }
+  async function loadConfig() { const c = getStoredCredentials(); if (!c) return; const cl = createClient(c.url, c.token); try { const s = await cl.getConfigStoreSnapshot(); const sec = s.sections["accounts"]; if (sec?.data && typeof sec.data === "object" && "accounts" in (sec.data as Record<string, unknown>)) accounts = (sec.data as AccountsConfig).accounts; } catch {} finally { loading = false; } }
+  async function saveAccounts() { const c = getStoredCredentials(); if (!c) return; const cl = createClient(c.url, c.token); saving = true; error = ""; success = ""; try { await cl.putConfigStoreSection("accounts", { accounts }); success = "Saved"; editAccountEmail = null; showCreateForm = false; } catch (e) { error = e instanceof Error ? e.message : "Failed"; } finally { saving = false; } }
+  function startCreate() { resetForm(); showCreateForm = true; editAccountEmail = null; }
+  function startEdit(email: string) { const a = accounts.find(x => x.email === email); if (!a) return; formEmail = a.email; formRole = a.role; formEnabled = a.enabled; editAccountEmail = email; showCreateForm = false; }
+  function cancelEdit() { editAccountEmail = null; showCreateForm = false; resetForm(); }
+  function applyCreate() { if (!formEmail.trim()) { error = "Email required"; return; } if (accounts.some(a => a.email === formEmail.trim())) { error = "Exists"; return; } error = ""; accounts = [...accounts, { email: formEmail.trim(), role: formRole, enabled: formEnabled, createdAt: Date.now() }]; showCreateForm = false; resetForm(); saveAccounts(); }
+  function applyEdit() { if (!editAccountEmail || !formEmail.trim()) { error = "Email required"; return; } error = ""; accounts = accounts.map(a => a.email === editAccountEmail ? { ...a, email: formEmail.trim(), role: formRole, enabled: formEnabled } : a); editAccountEmail = null; resetForm(); saveAccounts(); }
+  function toggleEnabled(email: string) { accounts = accounts.map(a => a.email === email ? { ...a, enabled: !a.enabled } : a); saveAccounts(); }
+  function deleteAccount(email: string) { if (!confirm(`Delete ${email}?`)) return; accounts = accounts.filter(a => a.email !== email); saveAccounts(); }
+  function roleBadgeVariant(role: string): "destructive" | "secondary" | "outline" | "default" { switch (role) { case "super_admin": return "destructive"; case "admin": return "secondary"; case "operator": return "outline"; default: return "default"; } }
   loadConfig();
 </script>
 
-<Nav />
+<svelte:head><title>Accounts - Airlock</title></svelte:head>
 
-<main class="max-w-5xl mx-auto px-6 py-8">
-  <div class="flex items-center justify-between mb-6">
-    <h2 class="text-xl font-bold text-gray-100">Account Management</h2>
-    <div class="flex gap-3">
-      <a href="/config" class="text-sm text-blue-400 hover:text-blue-300"
-        >&larr; Back to Config</a
-      >
-      <button
-        type="button"
-        class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
-        onclick={startCreate}
-      >
-        + Add Account
-      </button>
-    </div>
-  </div>
+<Breadcrumb.Root>
+  <Breadcrumb.List>
+    <Breadcrumb.Item><Breadcrumb.Link href="/config">Config</Breadcrumb.Link></Breadcrumb.Item>
+    <Breadcrumb.Separator />
+    <Breadcrumb.Item><Breadcrumb.Page>Accounts</Breadcrumb.Page></Breadcrumb.Item>
+  </Breadcrumb.List>
+</Breadcrumb.Root>
 
-  {#if error}
-    <div
-      class="bg-red-900/30 border border-red-800 rounded-lg p-3 mb-4 text-red-300 text-sm"
-    >
-      {error}
-    </div>
+<div class="flex items-center justify-between mb-3 mt-1">
+  <h1 class="text-xl font-semibold tracking-tight">Account Management</h1>
+  {#if !loading}
+    <Button size="sm" onclick={startCreate}><Plus data-icon="inline-start" />Add Account</Button>
   {/if}
+</div>
 
-  {#if success}
-    <div
-      class="bg-green-900/30 border border-green-800 rounded-lg p-3 mb-4 text-green-300 text-sm"
-    >
-      {success}
-    </div>
-  {/if}
+{#if error}
+  <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 mb-3 text-xs text-destructive">{error}</div>
+{/if}
+{#if success}
+  <div class="rounded-lg border border-success/30 bg-success/5 p-2.5 mb-3 text-xs text-success">{success}</div>
+{/if}
 
-  {#if loading}
-    <div class="text-gray-400 text-center py-12">Loading accounts...</div>
-  {:else}
-    <!-- Create/Edit Form -->
-    {#if showCreateForm || editAccountEmail}
-      <div
-        class="bg-gray-900 border border-gray-800 rounded-lg p-5 mb-4 space-y-4"
-      >
-        <h3 class="text-lg font-semibold text-white">
-          {editAccountEmail ? "Edit Account" : "Add Account"}
-        </h3>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm text-gray-400 mb-1" for={fieldIds.email}
-              >Email</label
-            >
-            <input
-              id={fieldIds.email}
-              type="email"
-              class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-              placeholder="user@example.com"
-              bind:value={formEmail}
-              disabled={editAccountEmail !== null}
-            />
+{#if loading}
+  <Card.Root class="py-4 text-center">
+    <Card.Content><p class="text-sm text-muted-foreground">Loading...</p></Card.Content>
+  </Card.Root>
+{:else}
+  {#if showCreateForm || editAccountEmail}
+    <Card.Root class="mb-3">
+      <Card.Header>
+        <h3 class="text-sm font-semibold">{editAccountEmail ? "Edit Account" : "Add Account"}</h3>
+      </Card.Header>
+      <Card.Content class="grid gap-2.5">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          <div class="grid gap-1">
+            <Label for="ae">Email</Label>
+            <Input id="ae" type="email" placeholder="user@example.com" bind:value={formEmail} disabled={editAccountEmail !== null} />
           </div>
-
-          <div>
-            <label class="block text-sm text-gray-400 mb-1" for={fieldIds.role}
-              >Role</label
-            >
-            <select
-              id={fieldIds.role}
-              class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-              bind:value={formRole}
-            >
-              {#each roleOptions as role}
-                <option value={role}>{role}</option>
-              {/each}
+          <div class="grid gap-1">
+            <Label for="ar">Role</Label>
+            <select id="ar" bind:value={formRole}
+              class="border-input bg-background flex h-8 w-full rounded-lg border px-2.5 py-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
+              {#each roleOptions as r}<option value={r}>{r}</option>{/each}
             </select>
           </div>
         </div>
-
         <div class="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="account-enabled"
-            bind:checked={formEnabled}
-            class="rounded bg-gray-800 border-gray-700"
-          />
-          <label for="account-enabled" class="text-sm text-gray-400"
-            >Enabled</label
-          >
+          <Switch bind:checked={formEnabled} />
+          <Label class="!gap-0 text-xs">Enabled</Label>
         </div>
-
-        <div class="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            class="px-4 py-2 text-gray-400 hover:text-white text-sm rounded border border-gray-700"
-            onclick={cancelEdit}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium disabled:opacity-50"
-            onclick={editAccountEmail ? applyEdit : applyCreate}
-            disabled={saving}
-          >
-            {saving ? "Saving..." : "Save"}
-          </button>
-        </div>
-      </div>
-    {/if}
-
-    <!-- Accounts List -->
-    <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-gray-800 text-gray-400 text-left">
-            <th class="px-4 py-3">Email</th>
-            <th class="px-4 py-3">Role</th>
-            <th class="px-4 py-3">Status</th>
-            <th class="px-4 py-3 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each accounts as account}
-            <tr class="border-b border-gray-800 last:border-0">
-              <td class="px-4 py-3 text-white font-mono text-xs">
-                {account.email}
-              </td>
-              <td class="px-4 py-3">
-                <span
-                  class="px-2 py-0.5 rounded text-xs border {roleBadgeClass(
-                    account.role
-                  )}"
-                >
-                  {account.role}
-                </span>
-              </td>
-              <td class="px-4 py-3">
-                <button
-                  type="button"
-                  class="px-2 py-0.5 rounded text-xs {account.enabled
-                    ? 'bg-green-900/50 text-green-300 hover:bg-green-900'
-                    : 'bg-gray-800 text-gray-500 hover:bg-gray-700'}"
-                  onclick={() => toggleEnabled(account.email)}
-                >
-                  {account.enabled ? "Active" : "Disabled"}
-                </button>
-              </td>
-              <td class="px-4 py-3 text-right">
-                <div class="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    class="px-2 py-1 text-xs text-gray-400 hover:text-white border border-gray-700 rounded"
-                    onclick={() => startEdit(account.email)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    class="px-2 py-1 text-xs text-red-400 hover:text-red-300 border border-red-900 rounded"
-                    onclick={() => deleteAccount(account.email)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </td>
-            </tr>
-          {/each}
-
-          {#if accounts.length === 0}
-            <tr>
-              <td colspan="4" class="px-4 py-8 text-center text-gray-500">
-                No accounts configured. Click "Add Account" to create one.
-              </td>
-            </tr>
-          {/if}
-        </tbody>
-      </table>
-    </div>
+      </Card.Content>
+      <Card.Footer class="justify-end gap-1.5">
+        <Button variant="outline" size="sm" onclick={cancelEdit}>Cancel</Button>
+        <Button size="sm" onclick={editAccountEmail ? applyEdit : applyCreate} disabled={saving}>
+          <Save data-icon="inline-start" />{saving ? "Saving..." : "Save"}
+        </Button>
+      </Card.Footer>
+    </Card.Root>
   {/if}
-</main>
+
+  <!-- Desktop: Table -->
+  <div class="hidden md:block">
+    <Table.Root>
+      <Table.Header>
+        <Table.Row>
+          <Table.Head>Email</Table.Head>
+          <Table.Head>Role</Table.Head>
+          <Table.Head>Status</Table.Head>
+          <Table.Head class="text-right">Actions</Table.Head>
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
+        {#each accounts as account}
+          <Table.Row>
+            <Table.Cell class="font-mono text-xs">{account.email}</Table.Cell>
+            <Table.Cell>
+              <Badge variant={roleBadgeVariant(account.role)}>{account.role}</Badge>
+            </Table.Cell>
+            <Table.Cell>
+              <button onclick={() => toggleEnabled(account.email)} class="flex items-center gap-1.5 cursor-pointer">
+                <span class="size-2 rounded-full {account.enabled ? 'bg-success' : 'bg-muted-foreground'}"></span>
+                <span class="text-xs">{account.enabled ? "Active" : "Disabled"}</span>
+              </button>
+            </Table.Cell>
+            <Table.Cell>
+              <div class="flex justify-end gap-1">
+                <Button variant="ghost" size="xs" onclick={() => startEdit(account.email)}>
+                  <Pencil data-icon="inline-start" />Edit
+                </Button>
+                <Button variant="destructive" size="xs" onclick={() => deleteAccount(account.email)}>
+                  <Trash2 data-icon="inline-start" />Delete
+                </Button>
+              </div>
+            </Table.Cell>
+          </Table.Row>
+        {/each}
+        {#if accounts.length === 0}
+          <Table.Row>
+            <Table.Cell colspan={4} class="py-4 text-center text-sm text-muted-foreground">
+              No accounts configured.
+            </Table.Cell>
+          </Table.Row>
+        {/if}
+      </Table.Body>
+    </Table.Root>
+  </div>
+
+  <!-- Mobile: Card list -->
+  <div class="md:hidden grid gap-2">
+    {#each accounts as account}
+      <Card.Root size="sm">
+        <Card.Content>
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-mono text-xs">{account.email}</span>
+            <Badge variant={roleBadgeVariant(account.role)}>{account.role}</Badge>
+          </div>
+          <div class="flex items-center justify-between">
+            <button onclick={() => toggleEnabled(account.email)} class="flex items-center gap-1.5 cursor-pointer">
+              <span class="size-2 rounded-full {account.enabled ? 'bg-success' : 'bg-muted-foreground'}"></span>
+              <span class="text-xs">{account.enabled ? "Active" : "Disabled"}</span>
+            </button>
+            <div class="flex gap-1">
+              <Button variant="ghost" size="xs" onclick={() => startEdit(account.email)}>
+                <Pencil data-icon="inline-start" />Edit
+              </Button>
+              <Button variant="destructive" size="xs" onclick={() => deleteAccount(account.email)}>
+                <Trash2 data-icon="inline-start" />Delete
+              </Button>
+            </div>
+          </div>
+        </Card.Content>
+      </Card.Root>
+    {/each}
+    {#if accounts.length === 0}
+      <Card.Root class="py-4 text-center">
+        <Card.Content><p class="text-sm text-muted-foreground">No accounts configured.</p></Card.Content>
+      </Card.Root>
+    {/if}
+  </div>
+{/if}

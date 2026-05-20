@@ -76,6 +76,7 @@ export interface GatewayProviderEntry {
   baseUrl: string;
   defaultModel?: string;
   defaultMaxTokens?: number;
+  models?: string[];
 }
 
 interface ParsedBusinessConfigInput {
@@ -420,6 +421,13 @@ function normalizeProviderCatalog(data: unknown): GatewayProviderEntry[] {
       Number.isFinite(entry.defaultMaxTokens) &&
       entry.defaultMaxTokens > 0
         ? { defaultMaxTokens: entry.defaultMaxTokens }
+        : {}),
+      ...(Array.isArray(entry.models) && entry.models.length > 0
+        ? {
+            models: entry.models.filter(
+              (m: unknown) => typeof m === "string" && (m as string).trim()
+            ) as string[]
+          }
         : {})
     });
   }
@@ -1028,6 +1036,13 @@ function validateProviderEntry(data: unknown): DashboardProviderEntry {
       : {}),
     ...(typeof entry.defaultMaxTokens === "number" && entry.defaultMaxTokens > 0
       ? { defaultMaxTokens: entry.defaultMaxTokens }
+      : {}),
+    ...(Array.isArray(entry.models) && entry.models.length > 0
+      ? {
+          models: entry.models.filter(
+            (m: unknown) => typeof m === "string" && (m as string).trim()
+          ) as string[]
+        }
       : {})
   };
 }

@@ -37050,10 +37050,11 @@ describe("GET /_airlock/routing/health", () => {
         createBindings()
       );
 
-      expect(response.status).toBe(405);
+      expect(response.status).toBe(204);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://example.com");
     });
 
-    it("does not add CORS headers when AIRLOCK_CORS_ORIGINS is not set", async () => {
+    it("echoes back browser origin when AIRLOCK_CORS_ORIGINS is not set", async () => {
       const app = createApp({ fetcher: vi.fn() });
       const response = await app.request(
         "http://localhost/v1/chat/completions",
@@ -37069,7 +37070,7 @@ describe("GET /_airlock/routing/health", () => {
         createBindings()
       );
 
-      expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://example.com");
     });
 
     it("adds CORS headers to /v1/models GET responses", async () => {

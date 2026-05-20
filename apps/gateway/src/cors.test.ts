@@ -37,9 +37,15 @@ describe("parseCorsOrigins", () => {
 });
 
 describe("corsHeaders", () => {
-  it("returns empty object when CORS is disabled", () => {
+  it("echoes back browser origin when CORS is not explicitly configured", () => {
+    const headers = corsHeaders("http://localhost:3000", { allowedOrigins: undefined });
+    expect(headers["Access-Control-Allow-Origin"]).toBe("http://localhost:3000");
+    expect(headers["Access-Control-Allow-Methods"]).toBeDefined();
+  });
+
+  it("returns empty object when no explicit config and no request origin", () => {
     expect(
-      corsHeaders("http://localhost:3000", { allowedOrigins: undefined })
+      corsHeaders(undefined, { allowedOrigins: undefined })
     ).toEqual({});
   });
 

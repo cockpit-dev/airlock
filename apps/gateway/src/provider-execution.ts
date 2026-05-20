@@ -65,6 +65,27 @@ type ProviderCapabilityDescriptorResolver = (
   provider: ProviderId
 ) => ProviderCapabilityDescriptor;
 
+function resolveEffectiveRequestMode(
+  baseRequestMode: "default" | "openai_responses" | undefined,
+  targetProviderType: ProviderId,
+  targetProviderBaseUrl: string,
+  getDescriptor: ProviderCapabilityDescriptorResolver
+): "default" | "openai_responses" {
+  if (!baseRequestMode || baseRequestMode === "default") return "default";
+  try {
+    const descriptor = getDescriptor(targetProviderType);
+    if (!descriptor.supportsOpenAIResponsesEndpoint) return "default";
+    // Only use the native /responses endpoint for the real OpenAI API.
+    // Third-party OpenAI-compatible providers may not support it.
+    const host = (() => {
+      try { return new URL(targetProviderBaseUrl).hostname; } catch { return ""; }
+    })();
+    return host === "api.openai.com" ? "openai_responses" : "default";
+  } catch {
+    return "default";
+  }
+}
+
 const DEFAULT_LATENCY_FRESHNESS_MS = 30_000;
 const DEFAULT_COST_FRESHNESS_MS = 30_000;
 const DEFAULT_FAILURE_FRESHNESS_MS = 30_000;
@@ -815,6 +836,13 @@ export async function executeRoutedRequest(
         );
 
         try {
+          const providerConfig = resolveProviderConfig(target.provider, config);
+          const effectiveRequestMode = resolveEffectiveRequestMode(
+            requestMode,
+            providerConfig.type,
+            providerConfig.baseUrl,
+            getProviderDescriptor
+          );
           const targetRequestShaping = resolvePerRequestShapingForTarget(
             requestShaping,
             route,
@@ -823,7 +851,7 @@ export async function executeRoutedRequest(
           const response = await adapter.complete(currentAttemptRequest, {
             requestId,
             timeoutMs: currentRemainingTimeoutMs,
-            requestMode,
+            requestMode: effectiveRequestMode,
             ...(signal ? { signal } : {}),
             ...(targetRequestShaping
               ? { requestShaping: targetRequestShaping }
@@ -1037,11 +1065,18 @@ export async function* executeRoutedStreamRequest(
             route,
             target
           );
+          const streamProviderConfig = resolveProviderConfig(target.provider, config);
+          const streamEffectiveRequestMode = resolveEffectiveRequestMode(
+            requestMode,
+            streamProviderConfig.type,
+            streamProviderConfig.baseUrl,
+            getProviderDescriptor
+          );
           const streamContext = {
             requestId,
             timeoutMs: deadline - now(),
             streamIdleTimeoutMs: config.providerStreamIdleTimeoutMs,
-            requestMode,
+            requestMode: streamEffectiveRequestMode,
             malformedSseEventCount: 0,
             ...(signal ? { signal } : {}),
             ...(streamTargetShaping

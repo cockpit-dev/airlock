@@ -41,6 +41,7 @@ export interface DashboardProviderEntry {
   baseUrl: string;
   defaultModel?: string;
   defaultMaxTokens?: number;
+  models?: string[];
   protocols?: string[];
   extendedHeaders?: Record<string, string>;
   extendedQueryParams?: Record<string, string>;

@@ -31,11 +31,15 @@ export async function handleModels(
 
   await requireGatewayAuthorization(context, config, requestId);
 
+  const routeModels = listExternalModels(config.modelAliases);
+  const providerModels = config.providers.flatMap((p) =>
+    (p.models ?? []).map((m) => `${p.id}/${m}`)
+  );
+  const allModels = [...new Set([...routeModels, ...providerModels])];
+
   return context.json({
     object: "list",
-    data: listExternalModels(config.modelAliases).map((modelId) =>
-      createModelDescriptor(modelId)
-    )
+    data: allModels.map((modelId) => createModelDescriptor(modelId))
   });
 }
 

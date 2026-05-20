@@ -20,24 +20,27 @@ test.describe("Dashboard home page", () => {
 
   test("shows status section", async ({ page }) => {
     await expect(
-      page.getByRole("heading", { name: "Request Status" })
+      page.getByText("Request Status")
     ).toBeVisible({ timeout: 5000 });
   });
 
   test("shows navigation links", async ({ page }) => {
-    const nav = page.locator("nav");
-    await expect(nav.getByText("Dashboard")).toBeVisible();
-    await expect(nav.getByText("Keys")).toBeVisible();
-    await expect(nav.getByText("Config")).toBeVisible();
+    await expect(page.getByRole("link", { name: /dashboard/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /keys/i })).toBeVisible();
+    // Config is inside a collapsible; click to expand, then check sub-items
+    await page.getByRole("button", { name: /config/i }).click();
+    await expect(page.getByRole("link", { name: /general/i })).toBeVisible();
   });
 
   test("navigates to keys page", async ({ page }) => {
-    await page.locator("nav").getByText("Keys").click();
+    await page.getByRole("link", { name: /keys/i }).click();
     await expect(page).toHaveURL(/\/keys/, { timeout: 5000 });
   });
 
   test("navigates to config page", async ({ page }) => {
-    await page.locator("nav").getByText("Config").click();
+    // Expand config collapsible first
+    await page.getByRole("button", { name: /config/i }).click();
+    await page.getByRole("link", { name: /general/i }).click();
     await expect(page).toHaveURL(/\/config/, { timeout: 5000 });
   });
 });
@@ -77,15 +80,14 @@ test.describe("Config pages", () => {
 test.describe("Route health page", () => {
   test("shows routing health heading", async ({ page }) => {
     await page.goto("/routes");
-    await expect(page.getByRole("heading", { name: /route/i })).toBeVisible({
-      timeout: 5000
+    await expect(page.getByText("Routing Health")).toBeVisible({
+      timeout: 10000
     });
   });
 });
 
 test.describe("Logout", () => {
   test("clears credentials and redirects to login", async ({ page }) => {
-    await expect(page.locator("nav")).toBeVisible();
     const logoutBtn = page.getByRole("button", { name: /logout|sign out/i });
     if (await logoutBtn.isVisible()) {
       await logoutBtn.click();

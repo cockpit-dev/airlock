@@ -70,6 +70,9 @@ export async function handleMessages(
       requestStartedAt: number;
       telemetrySink?: TelemetrySink;
       telemetryErrorEmitted?: boolean;
+      _airlock_metrics_provider?: string;
+      _airlock_metrics_model?: string;
+      _airlock_metrics_stream?: boolean;
     };
   }>
 ): Promise<Response> {
@@ -151,6 +154,7 @@ export async function handleMessages(
   const requestShaping = parseRequestShapingExtension(
     parsed.airlock?.requestShaping
   );
+  const requestMode = "openai_responses" as const;
 
   const quota = await acquireQuotaResources({
     env: context.env,
@@ -181,6 +185,10 @@ export async function handleMessages(
   const fetcher = context.get("fetcher");
   const now = context.get("now");
 
+  context.set("_airlock_metrics_provider", route.target.provider);
+  context.set("_airlock_metrics_model", route.target.providerModel);
+  context.set("_airlock_metrics_stream", canonicalRequest.stream);
+
   if (canonicalRequest.stream) {
     const encoder = new TextEncoder();
     const anthropicStreamEncodingState = {
@@ -198,7 +206,7 @@ export async function handleMessages(
         config,
         gatewayApiKey,
         requestId,
-        requestMode: "openai_responses",
+        requestMode,
         signal: context.req.raw.signal,
         ...(quota.circuitBreakerBackend
           ? { circuitBreakerBackend: quota.circuitBreakerBackend }
@@ -353,7 +361,7 @@ export async function handleMessages(
       config,
       gatewayApiKey,
       requestId,
-      requestMode: "openai_responses",
+      requestMode,
       signal: context.req.raw.signal,
       ...(quota.circuitBreakerBackend
         ? { circuitBreakerBackend: quota.circuitBreakerBackend }

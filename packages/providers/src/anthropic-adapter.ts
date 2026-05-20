@@ -291,7 +291,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     this.#shaping = options.shaping ?? {};
     this.#signing = options.signing;
     this.#signingSecrets = options.signingSecrets ?? {};
-    this.#fetcher = options.fetcher ?? fetch;
+    this.#fetcher = options.fetcher ?? fetch.bind(globalThis);
   }
 
   async complete(

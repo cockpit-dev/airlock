@@ -1,9 +1,19 @@
 <script lang="ts">
-  import Nav from "$components/Nav.svelte";
   import { createClient, getStoredCredentials } from "$lib/auth.js";
+  import * as Breadcrumb from "$lib/components/ui/breadcrumb";
+  import * as Card from "$lib/components/ui/card";
+  import * as Collapsible from "$lib/components/ui/collapsible";
+  import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
+  import { Label } from "$lib/components/ui/label";
+  import { Badge } from "$lib/components/ui/badge";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import Save from "@lucide/svelte/icons/save";
+  import X from "@lucide/svelte/icons/x";
 
   type ProviderType = "openai" | "anthropic" | "gemini";
-
   type ProviderConfig = {
     id: string;
     type: ProviderType;
@@ -11,24 +21,29 @@
     baseUrl: string;
     defaultModel?: string;
     defaultMaxTokens?: number;
+    models?: string[];
     protocols?: string[];
     extendedHeaders?: Record<string, string>;
     extendedQueryParams?: Record<string, string>;
     extendedBodyInjections?: Record<string, unknown>;
   };
-
   type ProvidersConfig = ProviderConfig[];
 
   const providerTypes: ProviderType[] = ["openai", "anthropic", "gemini"];
   const providerTypeLabels: Record<ProviderType, string> = {
-    openai: "OpenAI-compatible",
-    anthropic: "Anthropic-compatible",
-    gemini: "Gemini-compatible"
+    openai: "OpenAI",
+    anthropic: "Anthropic",
+    gemini: "Gemini"
   };
   const providerDefaultUrls: Record<ProviderType, string> = {
     openai: "https://api.openai.com/v1",
     anthropic: "https://api.anthropic.com",
     gemini: "https://generativelanguage.googleapis.com/v1beta"
+  };
+  const providerDefaultModels: Record<ProviderType, string[]> = {
+    openai: ["gpt-4.1-mini", "gpt-4.1", "gpt-4.1-nano", "o3", "o4-mini"],
+    anthropic: ["claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-haiku-4-20250514"],
+    gemini: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"]
   };
   const allProtocols = [
     "openai_chat",
@@ -42,14 +57,12 @@
   let success = $state("");
   let editProvider = $state<string | null>(null);
   let providers = $state<ProvidersConfig>([]);
-
   let newProviderKey = $state("");
   let newProviderType = $state<ProviderType>("openai");
 
-  function providerFieldId(providerKey: string, field: string) {
-    return `provider-${providerKey.replace(/[^a-zA-Z0-9_-]/g, "-")}-${field}`;
+  function providerFieldId(pk: string, f: string) {
+    return `provider-${pk.replace(/[^a-zA-Z0-9_-]/g, "-")}-${f}`;
   }
-
   function createProviderConfig(
     id: string,
     type: ProviderType
@@ -59,394 +72,339 @@
       type,
       apiKey: "",
       baseUrl: providerDefaultUrls[type],
-      ...(type === "openai" ? { defaultModel: "gpt-4.1-mini" } : {}),
+      models: providerDefaultModels[type],
       ...(type === "anthropic" ? { defaultMaxTokens: 4096 } : {}),
       protocols: type === "anthropic" ? ["anthropic_messages"] : ["openai_chat"]
     };
   }
-
   async function loadConfig() {
     const creds = getStoredCredentials();
     if (!creds) return;
     const client = createClient(creds.url, creds.token);
     try {
-      const snapshot = await client.getConfigStoreSnapshot();
-      const section = snapshot.sections["providers"];
-      if (section?.data && Array.isArray(section.data)) {
-        providers = section.data as ProvidersConfig;
-      }
+      const s = await client.getConfigStoreSnapshot();
+      const sec = s.sections["providers"];
+      if (sec?.data && Array.isArray(sec.data))
+        providers = sec.data as ProvidersConfig;
     } catch {
-      // Config store may not be initialized yet; start with an empty catalog.
     } finally {
       loading = false;
     }
   }
-
-  async function saveProviders(message = "Provider catalog saved") {
+  async function saveProviders(message = "Saved") {
     const creds = getStoredCredentials();
     if (!creds) return;
     const client = createClient(creds.url, creds.token);
     saving = true;
     error = "";
     success = "";
-
     try {
-      const providerIds = new Set<string>();
-      for (const config of providers) {
-        if (!config.id.trim()) throw new Error("Provider id is required");
-        if (providerIds.has(config.id.trim())) {
-          throw new Error(`Provider id is duplicated: ${config.id.trim()}`);
-        }
-        providerIds.add(config.id.trim());
-        if (!config.apiKey.trim()) {
-          throw new Error(`API key is required for ${config.id}`);
-        }
-        if (!config.baseUrl.trim()) {
-          throw new Error(`Base URL is required for ${config.id}`);
-        }
+      const ids = new Set<string>();
+      for (const c of providers) {
+        if (!c.id.trim()) throw new Error("ID required");
+        if (ids.has(c.id.trim())) throw new Error(`Duplicate: ${c.id.trim()}`);
+        ids.add(c.id.trim());
+        if (!c.apiKey.trim()) throw new Error(`API key required for ${c.id}`);
+        if (!c.baseUrl.trim()) throw new Error(`Base URL required for ${c.id}`);
       }
-
       await client.putConfigStoreSection("providers", providers);
       success = message;
       editProvider = null;
     } catch (e) {
-      error = e instanceof Error ? e.message : "Failed to save";
+      error = e instanceof Error ? e.message : "Failed";
     } finally {
       saving = false;
     }
   }
-
   function addProvider() {
-    const providerKey = newProviderKey.trim();
-    if (!providerKey) {
-      error = "Provider key is required";
+    const pk = newProviderKey.trim();
+    if (!pk) {
+      error = "Key required";
       return;
     }
-    if (providers.some((provider) => provider.id === providerKey)) {
-      error = "Provider key already exists";
+    if (providers.some((p) => p.id === pk)) {
+      error = "Exists";
       return;
     }
-
-    providers = [
-      ...providers,
-      createProviderConfig(providerKey, newProviderType)
-    ];
-    editProvider = providerKey;
+    providers = [...providers, createProviderConfig(pk, newProviderType)];
+    editProvider = pk;
     newProviderKey = "";
     error = "";
   }
-
-  function deleteProvider(providerKey: string) {
-    if (
-      !confirm(`Delete provider ${providerKey}? Routes using it will fail.`)
-    ) {
-      return;
-    }
-    providers = providers.filter((provider) => provider.id !== providerKey);
-    saveProviders("Provider deleted");
+  function deleteProvider(pk: string) {
+    if (!confirm(`Delete ${pk}?`)) return;
+    providers = providers.filter((p) => p.id !== pk);
+    saveProviders("Deleted");
   }
-
-  function updateProviderType(providerKey: string, type: ProviderType) {
-    const current = providers.find((provider) => provider.id === providerKey);
-    if (!current) return;
-    providers = providers.map((provider) =>
-      provider.id === providerKey
+  function updateProviderType(pk: string, type: ProviderType) {
+    const cur = providers.find((p) => p.id === pk);
+    if (!cur) return;
+    providers = providers.map((p) =>
+      p.id === pk
         ? {
-            ...createProviderConfig(providerKey, type),
-            apiKey: current.apiKey,
-            baseUrl: current.baseUrl || providerDefaultUrls[type]
+            ...createProviderConfig(pk, type),
+            apiKey: cur.apiKey,
+            baseUrl: cur.baseUrl || providerDefaultUrls[type]
           }
-        : provider
+        : p
     );
   }
-
-  function toggleProtocol(providerKey: string, protocol: string) {
-    const currentProvider = providers.find(
-      (provider) => provider.id === providerKey
-    );
-    if (!currentProvider) return;
-    const current = currentProvider.protocols ?? [];
-    const protocols = current.includes(protocol)
-      ? current.filter((p) => p !== protocol)
-      : [...current, protocol];
-    providers = providers.map((provider) =>
-      provider.id === providerKey ? { ...currentProvider, protocols } : provider
+  function toggleProtocol(pk: string, proto: string) {
+    const cp = providers.find((p) => p.id === pk);
+    if (!cp) return;
+    const cur = cp.protocols ?? [];
+    const protos = cur.includes(proto)
+      ? cur.filter((p) => p !== proto)
+      : [...cur, proto];
+    providers = providers.map((p) =>
+      p.id === pk ? { ...cp, protocols: protos } : p
     );
   }
-
-  function updateProviderField(
-    providerKey: string,
+  function updateField(
+    pk: string,
     field: keyof ProviderConfig,
     value: unknown
   ) {
-    const currentProvider = providers.find(
-      (provider) => provider.id === providerKey
-    );
-    if (!currentProvider) return;
-    providers = providers.map((provider) =>
-      provider.id === providerKey
-        ? { ...currentProvider, [field]: value }
-        : provider
+    const cp = providers.find((p) => p.id === pk);
+    if (!cp) return;
+    providers = providers.map((p) =>
+      p.id === pk ? { ...cp, [field]: value } : p
     );
   }
-
+  function addModel(pk: string) {
+    const cp = providers.find((p) => p.id === pk);
+    if (!cp) return;
+    const models = [...(cp.models ?? []), ""];
+    providers = providers.map((p) =>
+      p.id === pk ? { ...cp, models } : p
+    );
+  }
+  function removeModel(pk: string, index: number) {
+    const cp = providers.find((p) => p.id === pk);
+    if (!cp) return;
+    const models = (cp.models ?? []).filter((_, i) => i !== index);
+    providers = providers.map((p) =>
+      p.id === pk ? { ...cp, models } : p
+    );
+  }
+  function updateModel(pk: string, index: number, value: string) {
+    const cp = providers.find((p) => p.id === pk);
+    if (!cp) return;
+    const models = (cp.models ?? []).map((m, i) => i === index ? value : m);
+    providers = providers.map((p) =>
+      p.id === pk ? { ...cp, models } : p
+    );
+  }
   loadConfig();
 </script>
 
-<Nav />
+<svelte:head><title>Providers - Airlock</title></svelte:head>
 
-<main class="max-w-5xl mx-auto px-6 py-8">
-  <div class="flex items-center justify-between mb-6">
-    <h2 class="text-xl font-bold text-gray-100">Provider Instances</h2>
-    <a href="/config" class="text-sm text-blue-400 hover:text-blue-300"
-      >&larr; Back to Config</a
-    >
-  </div>
+<Breadcrumb.Root>
+  <Breadcrumb.List>
+    <Breadcrumb.Item><Breadcrumb.Link href="/config">Config</Breadcrumb.Link></Breadcrumb.Item>
+    <Breadcrumb.Separator />
+    <Breadcrumb.Item><Breadcrumb.Page>Providers</Breadcrumb.Page></Breadcrumb.Item>
+  </Breadcrumb.List>
+</Breadcrumb.Root>
 
-  {#if error}
-    <div
-      class="bg-red-900/30 border border-red-800 rounded-lg p-3 mb-4 text-red-300 text-sm"
-    >
-      {error}
-    </div>
-  {/if}
+<div class="flex items-center justify-between mb-3 mt-1">
+  <h1 class="text-xl font-semibold tracking-tight">Provider Instances</h1>
+</div>
 
-  {#if success}
-    <div
-      class="bg-green-900/30 border border-green-800 rounded-lg p-3 mb-4 text-green-300 text-sm"
-    >
-      {success}
-    </div>
-  {/if}
+{#if error}
+  <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 mb-3 text-xs text-destructive">{error}</div>
+{/if}
+{#if success}
+  <div class="rounded-lg border border-success/30 bg-success/5 p-2.5 mb-3 text-xs text-success">{success}</div>
+{/if}
 
-  {#if loading}
-    <div class="text-gray-400 text-center py-12">Loading configuration...</div>
-  {:else}
-    <div class="bg-gray-900 border border-gray-800 rounded-lg p-4 mb-5">
-      <div class="grid grid-cols-1 md:grid-cols-[1fr_220px_auto] gap-3">
-        <input
-          type="text"
-          class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
-          placeholder="provider key, e.g. openai-prod"
-          bind:value={newProviderKey}
-        />
-        <select
-          class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-          bind:value={newProviderType}
-        >
-          {#each providerTypes as type}
-            <option value={type}>{providerTypeLabels[type]}</option>
-          {/each}
-        </select>
-        <button
-          type="button"
-          class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
-          onclick={addProvider}
-        >
-          Add Provider
-        </button>
-      </div>
-    </div>
-
-    <div class="space-y-4">
-      {#each providers as config (config.id)}
-        {@const providerKey = config.id}
-        <div
-          class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden"
-        >
-          <button
-            type="button"
-            class="flex w-full items-center justify-between px-5 py-3 bg-gray-850 text-left cursor-pointer"
-            onclick={() =>
-              (editProvider =
-                editProvider === providerKey ? null : providerKey)}
+{#if loading}
+  <Card.Root class="py-4 text-center">
+    <Card.Content><p class="text-sm text-muted-foreground">Loading...</p></Card.Content>
+  </Card.Root>
+{:else}
+  <!-- Add Provider Form -->
+  <Card.Root class="mb-3">
+    <Card.Content>
+      <div class="grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-2 items-end">
+        <div class="grid gap-1">
+          <Label for="new-pk">Provider Key</Label>
+          <Input id="new-pk" type="text" placeholder="e.g. openai-prod" bind:value={newProviderKey} />
+        </div>
+        <div class="grid gap-1">
+          <Label for="new-pt">Adapter</Label>
+          <select
+            id="new-pt"
+            bind:value={newProviderType}
+            class="border-input bg-background flex h-8 w-full rounded-lg border px-2.5 py-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           >
-            <div class="flex items-center gap-3">
-              <span class="font-mono font-semibold text-white"
-                >{providerKey}</span
-              >
-              <span
-                class="px-2 py-0.5 rounded text-xs bg-blue-900/50 text-blue-300"
-                >{config.type}</span
-              >
-              {#if config.apiKey && config.baseUrl}
-                <span
-                  class="px-2 py-0.5 rounded text-xs bg-green-900/50 text-green-400"
-                  >Configured</span
-                >
-              {:else}
-                <span
-                  class="px-2 py-0.5 rounded text-xs bg-gray-800 text-gray-500"
-                  >Incomplete</span
-                >
-              {/if}
-            </div>
-            <span class="text-gray-500 text-sm"
-              >{editProvider === providerKey ? "&#9650;" : "&#9660;"}</span
+            {#each providerTypes as t}<option value={t}>{providerTypeLabels[t]}</option>{/each}
+          </select>
+        </div>
+        <Button size="sm" onclick={addProvider}><Plus data-icon="inline-start" />Add</Button>
+      </div>
+    </Card.Content>
+  </Card.Root>
+
+  <!-- Provider List -->
+  <div class="grid gap-2">
+    {#each providers as config (config.id)}
+      {@const pk = config.id}
+      <Collapsible.Root
+        open={editProvider === pk}
+        onOpenChange={(v: boolean) => {
+          editProvider = v ? pk : null;
+        }}
+      >
+        <Card.Root>
+          <Card.Header>
+            <Collapsible.Trigger
+              class="flex w-full items-center justify-between rounded-md -mx-1 -mt-1 px-1 py-1 hover:bg-muted/50 transition-colors"
             >
-          </button>
-
-          {#if editProvider === providerKey}
-            <div class="p-5 space-y-4 border-t border-gray-800">
-              <div>
-                <label
-                  class="block text-sm text-gray-400 mb-1"
-                  for={providerFieldId(providerKey, "type")}>Adapter Type</label
-                >
-                <select
-                  id={providerFieldId(providerKey, "type")}
-                  class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-                  value={config.type}
-                  onchange={(e) =>
-                    updateProviderType(
-                      providerKey,
-                      (e.target as HTMLSelectElement).value as ProviderType
-                    )}
-                >
-                  {#each providerTypes as type}
-                    <option value={type}>{providerTypeLabels[type]}</option>
-                  {/each}
-                </select>
+              <div class="flex items-center gap-2">
+                <span class="size-2 rounded-full {config.apiKey && config.baseUrl ? 'bg-success' : 'bg-muted-foreground'}"></span>
+                <span class="text-sm font-medium">{pk}</span>
+                <Badge variant="secondary">{config.type}</Badge>
+                {#if (config.models ?? []).length > 0}
+                  <Badge variant="outline">{config.models!.length} models</Badge>
+                {/if}
               </div>
-
-              <div>
-                <label
-                  class="block text-sm text-gray-400 mb-1"
-                  for={providerFieldId(providerKey, "apiKey")}>API Key</label
-                >
-                <input
-                  id={providerFieldId(providerKey, "apiKey")}
-                  type="password"
-                  class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-                  placeholder="secret key"
-                  value={config.apiKey}
-                  oninput={(e) =>
-                    updateProviderField(
-                      providerKey,
-                      "apiKey",
-                      (e.target as HTMLInputElement).value
-                    )}
-                />
+              <ChevronDown
+                class="size-3.5 text-muted-foreground transition-transform {editProvider === pk ? 'rotate-180' : ''}"
+              />
+            </Collapsible.Trigger>
+          </Card.Header>
+          <Collapsible.Content>
+            <Card.Content class="grid gap-2.5">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                <div class="grid gap-1">
+                  <Label for={providerFieldId(pk, "type")}>Adapter</Label>
+                  <select
+                    id={providerFieldId(pk, "type")}
+                    value={config.type}
+                    onchange={(e) =>
+                      updateProviderType(
+                        pk,
+                        (e.target as HTMLSelectElement).value as ProviderType
+                      )
+                    }
+                    class="border-input bg-background flex h-8 w-full rounded-lg border px-2.5 py-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    {#each providerTypes as t}<option value={t}>{providerTypeLabels[t]}</option>{/each}
+                  </select>
+                </div>
+                <div class="grid gap-1">
+                  <Label for={providerFieldId(pk, "apiKey")}>API Key</Label>
+                  <Input
+                    id={providerFieldId(pk, "apiKey")}
+                    type="password"
+                    placeholder="secret"
+                    value={config.apiKey}
+                    oninput={(e) =>
+                      updateField(pk, "apiKey", (e.target as HTMLInputElement).value)
+                    }
+                  />
+                </div>
               </div>
-
-              <div>
-                <label
-                  class="block text-sm text-gray-400 mb-1"
-                  for={providerFieldId(providerKey, "baseUrl")}>Base URL</label
-                >
-                <input
-                  id={providerFieldId(providerKey, "baseUrl")}
+              <div class="grid gap-1">
+                <Label for={providerFieldId(pk, "baseUrl")}>Base URL</Label>
+                <Input
+                  id={providerFieldId(pk, "baseUrl")}
                   type="url"
-                  class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
                   value={config.baseUrl}
                   oninput={(e) =>
-                    updateProviderField(
-                      providerKey,
-                      "baseUrl",
-                      (e.target as HTMLInputElement).value
-                    )}
+                    updateField(pk, "baseUrl", (e.target as HTMLInputElement).value)
+                  }
+                  class="font-mono text-xs"
                 />
               </div>
 
-              {#if config.type === "openai"}
-                <div>
-                  <label
-                    class="block text-sm text-gray-400 mb-1"
-                    for={providerFieldId(providerKey, "defaultModel")}
-                    >Default Model</label
-                  >
-                  <input
-                    id={providerFieldId(providerKey, "defaultModel")}
-                    type="text"
-                    class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-blue-500"
-                    placeholder="gpt-4.1-mini"
-                    value={config.defaultModel ?? ""}
-                    oninput={(e) =>
-                      updateProviderField(
-                        providerKey,
-                        "defaultModel",
-                        (e.target as HTMLInputElement).value
-                      )}
-                  />
+              <!-- Models -->
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <Label class="text-xs">Models</Label>
+                  <Button variant="ghost" size="xs" onclick={() => addModel(pk)}>
+                    <Plus data-icon="inline-start" />Add
+                  </Button>
                 </div>
-              {/if}
+                <div class="grid gap-1.5">
+                  {#each config.models ?? [] as model, i}
+                    <div class="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={model}
+                        placeholder="model-name"
+                        oninput={(e) => updateModel(pk, i, (e.target as HTMLInputElement).value)}
+                        class="border-input bg-background flex h-7 flex-1 rounded-lg border px-2 py-1 text-xs font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring/50 placeholder:text-muted-foreground"
+                      />
+                      <Button variant="ghost" size="icon-xs" onclick={() => removeModel(pk, i)}>
+                        <X />
+                      </Button>
+                    </div>
+                  {/each}
+                  {#if (config.models ?? []).length === 0}
+                    <p class="text-xs text-muted-foreground py-1">No models added. Click Add to specify models this provider supports.</p>
+                  {/if}
+                </div>
+              </div>
 
               {#if config.type === "anthropic"}
-                <div>
-                  <label
-                    class="block text-sm text-gray-400 mb-1"
-                    for={providerFieldId(providerKey, "defaultMaxTokens")}
-                    >Default Max Tokens</label
-                  >
-                  <input
-                    id={providerFieldId(providerKey, "defaultMaxTokens")}
+                <div class="grid gap-1">
+                  <Label for={providerFieldId(pk, "defaultMaxTokens")}>Max Tokens</Label>
+                  <Input
+                    id={providerFieldId(pk, "defaultMaxTokens")}
                     type="number"
-                    class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
                     value={config.defaultMaxTokens ?? 4096}
                     oninput={(e) =>
-                      updateProviderField(
-                        providerKey,
-                        "defaultMaxTokens",
-                        Number((e.target as HTMLInputElement).value)
-                      )}
+                      updateField(pk, "defaultMaxTokens", Number((e.target as HTMLInputElement).value))
+                    }
                   />
                 </div>
               {/if}
-
               <div>
-                <span
-                  class="block text-sm text-gray-400 mb-2"
-                  id={providerFieldId(providerKey, "protocols")}
-                  >Supported Protocols</span
-                >
-                <div
-                  class="flex flex-wrap gap-2"
-                  role="group"
-                  aria-labelledby={providerFieldId(providerKey, "protocols")}
-                >
-                  {#each allProtocols as protocol}
+                <Label class="text-xs mb-1.5">Protocols</Label>
+                <div class="flex flex-wrap gap-1.5 mt-0.5">
+                  {#each allProtocols as proto}
                     <button
                       type="button"
-                      class="px-3 py-1.5 rounded text-xs font-medium border transition-colors {(
-                        config.protocols ?? []
-                      ).includes(protocol)
-                        ? 'bg-blue-900/50 border-blue-700 text-blue-300'
-                        : 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300'}"
-                      onclick={() => toggleProtocol(providerKey, protocol)}
+                      onclick={() => toggleProtocol(pk, proto)}
+                      class="cursor-pointer"
                     >
-                      {protocol}
+                      <Badge
+                        variant={(config.protocols ?? []).includes(proto) ? "default" : "outline"}
+                      >
+                        {proto}
+                      </Badge>
                     </button>
                   {/each}
                 </div>
               </div>
-
-              <div class="flex justify-between pt-2">
-                <button
-                  type="button"
-                  class="px-4 py-2 text-red-400 hover:text-red-300 text-sm rounded border border-red-900"
-                  onclick={() => deleteProvider(providerKey)}
-                >
-                  Delete
-                </button>
-                <button
-                  type="button"
-                  class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium disabled:opacity-50"
-                  onclick={() => saveProviders(`${providerKey} saved`)}
-                  disabled={saving}
-                >
-                  {saving ? "Saving..." : "Save"}
-                </button>
-              </div>
-            </div>
-          {/if}
-        </div>
-      {/each}
-
-      {#if providers.length === 0}
-        <div class="text-center py-12 text-gray-500">
-          No provider instances configured.
-        </div>
-      {/if}
-    </div>
-  {/if}
-</main>
+            </Card.Content>
+            <Card.Footer class="justify-between">
+              <Button
+                variant="destructive"
+                size="xs"
+                onclick={() => deleteProvider(pk)}
+              >
+                <Trash2 data-icon="inline-start" />Delete
+              </Button>
+              <Button
+                size="xs"
+                onclick={() => saveProviders(`${pk} saved`)}
+                disabled={saving}
+              >
+                <Save data-icon="inline-start" />{saving ? "Saving..." : "Save"}
+              </Button>
+            </Card.Footer>
+          </Collapsible.Content>
+        </Card.Root>
+      </Collapsible.Root>
+    {/each}
+    {#if providers.length === 0}
+      <Card.Root class="py-4 text-center">
+        <Card.Content><p class="text-sm text-muted-foreground">No providers configured.</p></Card.Content>
+      </Card.Root>
+    {/if}
+  </div>
+{/if}
