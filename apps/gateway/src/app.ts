@@ -23,6 +23,7 @@ import { registerAdminConfigManageRoutes } from "./routes/admin-config-manage.js
 import { registerAdminKeyGovernanceRoutes } from "./routes/admin-key-governance.js";
 import { registerAdminGatewayStatusRoutes } from "./routes/admin-gateway-status.js";
 import { registerAdminMetricsRoutes } from "./routes/admin-metrics.js";
+import { registerAdminProviderModelsRoutes } from "./routes/admin-provider-models.js";
 import { registerAdminRoutingHealthRoutes } from "./routes/admin-routing-health.js";
 import { handleChatCompletions } from "./routes/chat-completions.js";
 import { handleHealth } from "./routes/health.js";
@@ -286,6 +287,7 @@ export function createApp(options: CreateAppOptions = {}) {
   registerAdminConfigRoutes(app);
   registerAdminConfigManageRoutes(app);
   registerAdminMetricsRoutes(app);
+  registerAdminProviderModelsRoutes(app);
   registerAdminRoutingHealthRoutes(
     app,
     options.now ? () => options.now! : undefined

@@ -12,6 +12,7 @@
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import Save from "@lucide/svelte/icons/save";
   import X from "@lucide/svelte/icons/x";
+  import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 
   type ProviderType = "openai" | "anthropic" | "gemini";
   type ProviderConfig = {
@@ -55,6 +56,7 @@
   let saving = $state(false);
   let error = $state("");
   let success = $state("");
+  let fetchingModels = $state<Record<string, boolean>>({});
   let editProvider = $state<string | null>(null);
   let providers = $state<ProvidersConfig>([]);
   let newProviderKey = $state("");
@@ -195,6 +197,33 @@
       p.id === pk ? { ...cp, models } : p
     );
   }
+  async function fetchModels(pk: string) {
+    const cp = providers.find((p) => p.id === pk);
+    if (!cp?.baseUrl || !cp?.apiKey) {
+      error = "Base URL and API key required to fetch models";
+      return;
+    }
+    const creds = getStoredCredentials();
+    if (!creds) return;
+    const client = createClient(creds.url, creds.token);
+    fetchingModels = { ...fetchingModels, [pk]: true };
+    error = "";
+    try {
+      const result = await client.fetchProviderModels(cp.baseUrl, cp.apiKey, cp.type);
+      if (result.models.length > 0) {
+        providers = providers.map((p) =>
+          p.id === pk ? { ...cp, models: result.models } : p
+        );
+        success = `Fetched ${result.models.length} models from ${pk}`;
+      } else {
+        error = "No models found";
+      }
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to fetch models";
+    } finally {
+      fetchingModels = { ...fetchingModels, [pk]: false };
+    }
+  }
   loadConfig();
 </script>
 
@@ -324,9 +353,20 @@
               <div>
                 <div class="flex items-center justify-between mb-1.5">
                   <Label class="text-xs">Models</Label>
-                  <Button variant="ghost" size="xs" onclick={() => addModel(pk)}>
-                    <Plus data-icon="inline-start" />Add
-                  </Button>
+                  <div class="flex gap-1">
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      onclick={() => fetchModels(pk)}
+                      disabled={fetchingModels[pk] || !config.apiKey || !config.baseUrl}
+                    >
+                      <RefreshCw data-icon="inline-start" class={fetchingModels[pk] ? "animate-spin" : ""} />
+                      {fetchingModels[pk] ? "Fetching..." : "Auto Fetch"}
+                    </Button>
+                    <Button variant="ghost" size="xs" onclick={() => addModel(pk)}>
+                      <Plus data-icon="inline-start" />Add
+                    </Button>
+                  </div>
                 </div>
                 <div class="grid gap-1.5">
                   {#each config.models ?? [] as model, i}
