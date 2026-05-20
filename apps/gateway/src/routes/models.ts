@@ -7,11 +7,13 @@ import type { CreateAppOptions } from "../app.js";
 import { resolveGatewayConfigWithOverlay } from "../config.js";
 import type { GatewayBindings } from "../env.js";
 
-function createModelDescriptor(modelId: string) {
+const PROCESS_START_EPOCH = Math.floor(Date.now() / 1000);
+
+function createModelDescriptor(modelId: string, created: number) {
   return {
     id: modelId,
-    object: "model",
-    created: 0,
+    object: "model" as const,
+    created,
     owned_by: "airlock"
   };
 }
@@ -36,10 +38,28 @@ export async function handleModels(
     (p.models ?? []).map((m) => `${p.id}/${m}`)
   );
   const allModels = [...new Set([...routeModels, ...providerModels])];
+  const created = PROCESS_START_EPOCH;
+
+  const data = allModels.map((modelId) => createModelDescriptor(modelId, created));
+
+  // OpenAI-compatible pagination: ?after=<id>&limit=<n>
+  const afterId = context.req.query("after");
+  const limitParam = context.req.query("limit");
+  const limit = limitParam ? Number(limitParam) : allModels.length;
+  let startIndex = 0;
+  if (afterId) {
+    const idx = allModels.indexOf(afterId);
+    if (idx >= 0) {
+      startIndex = idx + 1;
+    }
+  }
+  const sliced = data.slice(startIndex, startIndex + limit);
+  const hasMore = startIndex + limit < data.length;
 
   return context.json({
     object: "list",
-    data: allModels.map((modelId) => createModelDescriptor(modelId))
+    data: sliced,
+    ...(hasMore ? { has_more: true, first_id: sliced[0]?.id, last_id: sliced[sliced.length - 1]?.id } : {})
   });
 }
 
@@ -87,5 +107,5 @@ export async function handleModelById(
 
   resolveModelRoute(modelId, config.modelAliases, requestId);
 
-  return context.json(createModelDescriptor(modelId));
+  return context.json(createModelDescriptor(modelId, PROCESS_START_EPOCH));
 }

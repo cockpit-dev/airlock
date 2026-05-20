@@ -217,8 +217,9 @@ export function createApp(options: CreateAppOptions = {}) {
   app.options("/v1/*", async (context) => {
     const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
     const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
+    const requestHeaders = context.req.header("Access-Control-Request-Headers");
     return createPreflightResponse(context.req.header("Origin"), config, {
-      requestHeaders: context.req.header("Access-Control-Request-Headers")
+      ...(requestHeaders ? { requestHeaders } : {})
     });
   });
 
@@ -237,9 +238,10 @@ export function createApp(options: CreateAppOptions = {}) {
   app.options("/_airlock/*", async (context) => {
     const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
     const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
+    const adminRequestHeaders = context.req.header("Access-Control-Request-Headers");
     return createPreflightResponse(context.req.header("Origin"), config, {
       allowAdminMethods: true,
-      requestHeaders: context.req.header("Access-Control-Request-Headers")
+      ...(adminRequestHeaders ? { requestHeaders: adminRequestHeaders } : {})
     });
   });
 
