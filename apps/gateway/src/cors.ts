@@ -12,6 +12,9 @@ const PUBLIC_ALLOWED_METHODS = "GET, POST, OPTIONS";
 const ADMIN_ALLOWED_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
 const ALLOWED_HEADERS =
   "Content-Type, Authorization, X-Api-Key, X-Request-ID, Accept, Accept-Encoding";
+// Headers commonly sent by OpenAI/Anthropic SDKs from browsers
+const SDK_HEADERS =
+  "X-Stainless-Lang, X-Stainless-Package-Version, X-Stainless-OS, X-Stainless-Arch, X-Stainless-Runtime, X-Stainless-Runtime-Version";
 const MAX_AGE = 86400; // 24 hours — browsers cache preflight results
 
 export interface CorsConfig {
@@ -63,7 +66,7 @@ export function corsHeaders(
     "Access-Control-Allow-Methods": options?.allowAdminMethods
       ? ADMIN_ALLOWED_METHODS
       : PUBLIC_ALLOWED_METHODS,
-    "Access-Control-Allow-Headers": ALLOWED_HEADERS,
+    "Access-Control-Allow-Headers": `${ALLOWED_HEADERS}, ${SDK_HEADERS}`,
     "Access-Control-Max-Age": String(MAX_AGE),
     "Access-Control-Expose-Headers":
       "X-Request-ID, Request-ID, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, Retry-After"

@@ -25,9 +25,9 @@
   let errorMsg = $state("");
   let showSettings = $state(false);
   let initializing = $state(true);
-  let scrollEl: HTMLElement | null = $state(null);
+  let scrollEl: HTMLElement | null = $state.raw(null);
   let abortCtrl: AbortController | null = null;
-  let inputEl: HTMLTextAreaElement | null = $state(null);
+  let inputEl: HTMLTextAreaElement | null = $state.raw(null);
 
   async function loadModels() {
     if (!creds) return;
