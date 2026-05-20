@@ -284,6 +284,9 @@
         open={editProvider === pk}
         onOpenChange={(v: boolean) => {
           editProvider = v ? pk : null;
+          if (v && config.apiKey && config.baseUrl && !fetchingModels[pk]) {
+            fetchModels(pk);
+          }
         }}
       >
         <Card.Root>
