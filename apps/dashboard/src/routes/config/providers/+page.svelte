@@ -333,6 +333,9 @@
                     oninput={(e) =>
                       updateField(pk, "apiKey", (e.target as HTMLInputElement).value)
                     }
+                    onblur={() => {
+                      if (config.apiKey && config.baseUrl && !fetchingModels[pk]) fetchModels(pk);
+                    }}
                   />
                 </div>
               </div>
@@ -345,6 +348,9 @@
                   oninput={(e) =>
                     updateField(pk, "baseUrl", (e.target as HTMLInputElement).value)
                   }
+                  onblur={() => {
+                    if (config.apiKey && config.baseUrl && !fetchingModels[pk]) fetchModels(pk);
+                  }}
                   class="font-mono text-xs"
                 />
               </div>
