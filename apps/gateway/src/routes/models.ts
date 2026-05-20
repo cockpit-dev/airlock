@@ -7,7 +7,14 @@ import type { CreateAppOptions } from "../app.js";
 import { resolveGatewayConfigWithOverlay } from "../config.js";
 import type { GatewayBindings } from "../env.js";
 
-const PROCESS_START_EPOCH = Math.floor(Date.now() / 1000);
+let cachedEpoch: number | undefined;
+
+function getModelCreatedEpoch(): number {
+  if (cachedEpoch === undefined) {
+    cachedEpoch = Math.floor(Date.now() / 1000);
+  }
+  return cachedEpoch;
+}
 
 function createModelDescriptor(modelId: string, created: number) {
   return {
@@ -38,7 +45,7 @@ export async function handleModels(
     (p.models ?? []).map((m) => `${p.id}/${m}`)
   );
   const allModels = [...new Set([...routeModels, ...providerModels])];
-  const created = PROCESS_START_EPOCH;
+  const created = getModelCreatedEpoch();
 
   const data = allModels.map((modelId) => createModelDescriptor(modelId, created));
 
@@ -107,5 +114,5 @@ export async function handleModelById(
 
   resolveModelRoute(modelId, config.modelAliases, requestId);
 
-  return context.json(createModelDescriptor(modelId, PROCESS_START_EPOCH));
+  return context.json(createModelDescriptor(modelId, getModelCreatedEpoch()));
 }
