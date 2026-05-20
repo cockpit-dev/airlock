@@ -117,4 +117,25 @@ describe("createPreflightResponse", () => {
     expect(response.status).toBe(204);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
   });
+
+  it("echoes back request headers in allow-headers", () => {
+    const response = createPreflightResponse("http://localhost:3000", {
+      allowedOrigins: "http://localhost:3000"
+    }, {
+      requestHeaders: "X-Stainless-OS, X-Stainless-Runtime"
+    });
+    const allowHeaders = response.headers.get("Access-Control-Allow-Headers")!;
+    expect(allowHeaders).toContain("Authorization");
+    expect(allowHeaders).toContain("X-Stainless-OS");
+    expect(allowHeaders).toContain("X-Stainless-Runtime");
+  });
+
+  it("uses baseline headers when no request headers provided", () => {
+    const response = createPreflightResponse("http://localhost:3000", {
+      allowedOrigins: "http://localhost:3000"
+    });
+    const allowHeaders = response.headers.get("Access-Control-Allow-Headers")!;
+    expect(allowHeaders).toContain("Authorization");
+    expect(allowHeaders).toContain("X-Request-ID");
+  });
 });

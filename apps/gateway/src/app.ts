@@ -217,7 +217,9 @@ export function createApp(options: CreateAppOptions = {}) {
   app.options("/v1/*", async (context) => {
     const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
     const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
-    return createPreflightResponse(context.req.header("Origin"), config);
+    return createPreflightResponse(context.req.header("Origin"), config, {
+      requestHeaders: context.req.header("Access-Control-Request-Headers")
+    });
   });
 
   // CORS headers on all /v1/* responses
@@ -236,7 +238,8 @@ export function createApp(options: CreateAppOptions = {}) {
     const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
     const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
     return createPreflightResponse(context.req.header("Origin"), config, {
-      allowAdminMethods: true
+      allowAdminMethods: true,
+      requestHeaders: context.req.header("Access-Control-Request-Headers")
     });
   });
 

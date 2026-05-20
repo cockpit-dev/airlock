@@ -12,9 +12,6 @@ const PUBLIC_ALLOWED_METHODS = "GET, POST, OPTIONS";
 const ADMIN_ALLOWED_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
 const ALLOWED_HEADERS =
   "Content-Type, Authorization, X-Api-Key, X-Request-ID, Accept, Accept-Encoding";
-// Headers commonly sent by OpenAI/Anthropic SDKs from browsers
-const SDK_HEADERS =
-  "X-Stainless-Lang, X-Stainless-Package-Version, X-Stainless-OS, X-Stainless-Arch, X-Stainless-Runtime, X-Stainless-Runtime-Version";
 const MAX_AGE = 86400; // 24 hours — browsers cache preflight results
 
 export interface CorsConfig {
@@ -66,7 +63,7 @@ export function corsHeaders(
     "Access-Control-Allow-Methods": options?.allowAdminMethods
       ? ADMIN_ALLOWED_METHODS
       : PUBLIC_ALLOWED_METHODS,
-    "Access-Control-Allow-Headers": `${ALLOWED_HEADERS}, ${SDK_HEADERS}`,
+    "Access-Control-Allow-Headers": ALLOWED_HEADERS,
     "Access-Control-Max-Age": String(MAX_AGE),
     "Access-Control-Expose-Headers":
       "X-Request-ID, Request-ID, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, Retry-After"
@@ -80,15 +77,35 @@ export function isPreflightRequest(request: Request): boolean {
 export function createPreflightResponse(
   requestOrigin: string | undefined,
   config: CorsConfig,
-  options?: { allowAdminMethods?: boolean }
+  options?: {
+    allowAdminMethods?: boolean;
+    requestHeaders?: string;
+  }
 ): Response {
-  const headers = corsHeaders(requestOrigin, config, options);
-  if (!headers["Access-Control-Allow-Origin"]) {
+  const allowOrigin = resolveAllowOrigin(requestOrigin, config);
+  if (!allowOrigin) {
     // Origin not allowed — return 403 with no CORS headers
     return new Response(null, { status: 403 });
   }
+  // Echo back any request headers the browser asked about, merged with
+  // our baseline set. This handles SDK-specific headers (x-stainless-*, etc.)
+  // without needing to enumerate every possible client header.
+  const extra = options?.requestHeaders?.trim();
+  const allowHeaders = extra
+    ? `${ALLOWED_HEADERS}, ${extra}`
+    : ALLOWED_HEADERS;
+
   return new Response(null, {
     status: 204,
-    headers
+    headers: {
+      "Access-Control-Allow-Origin": allowOrigin,
+      "Access-Control-Allow-Methods": options?.allowAdminMethods
+        ? ADMIN_ALLOWED_METHODS
+        : PUBLIC_ALLOWED_METHODS,
+      "Access-Control-Allow-Headers": allowHeaders,
+      "Access-Control-Max-Age": String(MAX_AGE),
+      "Access-Control-Expose-Headers":
+        "X-Request-ID, Request-ID, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, Retry-After"
+    }
   });
 }
