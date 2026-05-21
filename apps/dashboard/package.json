@@ -14,7 +14,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "svelte-kit sync && tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@auth/sveltekit": "^1.11.2",
