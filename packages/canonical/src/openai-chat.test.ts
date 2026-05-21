@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { OpenAIChatCompletionRequest } from "@airlock/protocols";
 import { createOpenAIChatRequestFixture } from "@airlock/testing";
 
 import {
@@ -15,7 +16,9 @@ describe("normalizeOpenAIChatRequest", () => {
   it("normalizes an OpenAI chat request into a canonical request", () => {
     const fixture = createOpenAIChatRequestFixture();
 
-    const canonical = normalizeOpenAIChatRequest(fixture);
+    const canonical = normalizeOpenAIChatRequest(
+      fixture as unknown as OpenAIChatCompletionRequest
+    );
 
     expect(canonical.model).toBe("gpt-4.1-mini");
     expect(canonical.messages).toHaveLength(2);

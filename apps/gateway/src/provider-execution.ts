@@ -66,24 +66,18 @@ type ProviderCapabilityDescriptorResolver = (
 ) => ProviderCapabilityDescriptor;
 
 function resolveEffectiveRequestMode(
-  baseRequestMode: "default" | "openai_responses" | undefined,
+  baseRequestMode: "openai_chat" | "openai_responses" | "anthropic_messages" | undefined,
   targetProviderType: ProviderId,
   targetProviderBaseUrl: string,
   getDescriptor: ProviderCapabilityDescriptorResolver
-): "default" | "openai_responses" {
-  if (!baseRequestMode || baseRequestMode === "default") return "default";
+): "openai_chat" | "openai_responses" | "anthropic_messages" {
+  if (targetProviderType === "anthropic") return "anthropic_messages";
+  if (baseRequestMode === "openai_chat") return "openai_chat";
   try {
     const descriptor = getDescriptor(targetProviderType);
-    if (!descriptor.supportsOpenAIResponsesEndpoint) return "default";
-    // Only use the native /responses endpoint for the real OpenAI API.
-    // Third-party OpenAI-compatible providers may not support it.
-    const host = (() => {
-      try { return new URL(targetProviderBaseUrl).hostname; } catch { return ""; }
-    })();
-    return host === "api.openai.com" ? "openai_responses" : "default";
-  } catch {
-    return "default";
-  }
+    if (descriptor.supportsOpenAIResponsesEndpoint) return "openai_responses";
+  } catch { /* fall through */ }
+  return "openai_chat";
 }
 
 const DEFAULT_LATENCY_FRESHNESS_MS = 30_000;
@@ -750,7 +744,7 @@ export async function executeRoutedRequest(
     config: GatewayConfig;
     gatewayApiKey: GatewayApiKeyRecord;
     requestId: string;
-    requestMode?: "default" | "openai_responses";
+    requestMode?: "openai_chat" | "openai_responses" | "anthropic_messages";
     requestShaping?: RequestShapingProfile;
     fetcher?: typeof fetch;
     now?: () => number;
@@ -759,14 +753,18 @@ export async function executeRoutedRequest(
     circuitBreakerBackend?: ProviderCircuitBreakerBackend;
     routingMetadata?: RoutingMetadataAccumulator;
     signal?: AbortSignal;
+    forwardedHeaders?: Record<string, string>;
+    forwardedQuery?: Record<string, string>;
   }
 ): Promise<CanonicalResponse> {
   const {
     config,
     gatewayApiKey,
     requestId,
-    requestMode = "default",
+    requestMode = "openai_chat",
     requestShaping,
+    forwardedHeaders,
+    forwardedQuery,
     fetcher,
     now = Date.now,
     getProviderDescriptor = getProviderCapabilityDescriptor,
@@ -855,7 +853,9 @@ export async function executeRoutedRequest(
             ...(signal ? { signal } : {}),
             ...(targetRequestShaping
               ? { requestShaping: targetRequestShaping }
-              : {})
+              : {}),
+            ...(forwardedHeaders ? { forwardedHeaders } : {}),
+            ...(forwardedQuery ? { forwardedQuery } : {})
           });
           await circuitBreakerBackend.recordSuccess(
             target,
@@ -944,7 +944,7 @@ export async function* executeRoutedStreamRequest(
     config: GatewayConfig;
     gatewayApiKey: GatewayApiKeyRecord;
     requestId: string;
-    requestMode?: "default" | "openai_responses";
+    requestMode?: "openai_chat" | "openai_responses" | "anthropic_messages";
     requestShaping?: RequestShapingProfile;
     fetcher?: typeof fetch;
     now?: () => number;
@@ -953,13 +953,15 @@ export async function* executeRoutedStreamRequest(
     circuitBreakerBackend?: ProviderCircuitBreakerBackend;
     routingMetadata?: RoutingMetadataAccumulator;
     signal?: AbortSignal;
+    forwardedHeaders?: Record<string, string>;
+    forwardedQuery?: Record<string, string>;
   }
 ): AsyncIterable<CanonicalStreamEvent> {
   const {
     config,
     gatewayApiKey,
     requestId,
-    requestMode = "default",
+    requestMode = "openai_chat",
     requestShaping,
     fetcher,
     now = Date.now,
@@ -967,7 +969,9 @@ export async function* executeRoutedStreamRequest(
     onAttemptTarget,
     circuitBreakerBackend = createInMemoryCircuitBreakerBackend(),
     routingMetadata: routingMetadataRef,
-    signal
+    signal,
+    forwardedHeaders,
+    forwardedQuery
   } = options;
   const circuitBreakerPolicy = getProviderCircuitBreakerPolicy(config);
   const streamWindows: RoutingFreshnessWindows = {
@@ -1081,7 +1085,9 @@ export async function* executeRoutedStreamRequest(
             ...(signal ? { signal } : {}),
             ...(streamTargetShaping
               ? { requestShaping: streamTargetShaping }
-              : {})
+              : {}),
+            ...(forwardedHeaders ? { forwardedHeaders } : {}),
+            ...(forwardedQuery ? { forwardedQuery } : {})
           };
           for await (const event of adapter.stream(
             currentStreamAttemptRequest,

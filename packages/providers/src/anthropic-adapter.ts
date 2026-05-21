@@ -261,7 +261,10 @@ function buildAnthropicRequestBody(
         }
       : {}),
     ...(toolChoice ? { tool_choice: toolChoice } : {}),
-    messages
+    messages,
+    ...(request.passthrough && Object.keys(request.passthrough).length > 0
+      ? { ...request.passthrough }
+      : {})
   };
 }
 
@@ -320,10 +323,11 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                 path: "/messages",
                 method: "POST",
                 headers: {
+                  ...(context.forwardedHeaders ?? {}),
                   "anthropic-version": "2023-06-01",
                   "content-type": "application/json"
                 },
-                query: {},
+                query: { ...(context.forwardedQuery ?? {}) },
                 jsonBody: requestBody
               },
               authStrategy,
@@ -342,10 +346,11 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
               path: "/messages",
               method: "POST",
               headers: {
+                ...(context.forwardedHeaders ?? {}),
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json"
               },
-              query: {},
+              query: { ...(context.forwardedQuery ?? {}) },
               jsonBody: requestBody
             },
             authStrategy,
@@ -507,10 +512,11 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                 path: "/messages",
                 method: "POST",
                 headers: {
+                  ...(context.forwardedHeaders ?? {}),
                   "anthropic-version": "2023-06-01",
                   "content-type": "application/json"
                 },
-                query: {},
+                query: { ...(context.forwardedQuery ?? {}) },
                 jsonBody: requestBody
               },
               authStrategy,
@@ -529,10 +535,11 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
               path: "/messages",
               method: "POST",
               headers: {
+                ...(context.forwardedHeaders ?? {}),
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json"
               },
-              query: {},
+              query: { ...(context.forwardedQuery ?? {}) },
               jsonBody: requestBody
             },
             authStrategy,

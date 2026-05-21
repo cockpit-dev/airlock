@@ -20,10 +20,13 @@ import {
 } from "../auth.js";
 import { resolveGatewayConfigWithOverlay } from "../config.js";
 import type { GatewayBindings } from "../env.js";
-import { parseRequestShapingExtension } from "../request-extensions.js";
+import {
+  extractForwardedHeaders,
+  extractForwardedQuery,
+  parseRequestShapingExtension
+} from "../request-extensions.js";
 import type { CreateAppOptions } from "../app.js";
 import {
-  assertAllowedAnthropicTopLevelFields,
   assertAnthropicForcedToolChoiceMatchesDeclaredTools,
   assertSupportedAnthropicMetadataSemantics,
   assertSupportedAnthropicToolsSemantics,
@@ -44,21 +47,6 @@ import {
   executeRoutedRequest,
   executeRoutedStreamRequest
 } from "../provider-execution.js";
-
-const allowedAnthropicTopLevelFields = [
-  "model",
-  "max_tokens",
-  "stream",
-  "system",
-  "temperature",
-  "top_p",
-  "stop_sequences",
-  "metadata",
-  "tools",
-  "tool_choice",
-  "messages",
-  "airlock"
-] as const;
 
 export async function handleMessages(
   context: Context<{
@@ -126,11 +114,6 @@ export async function handleMessages(
       requestId
     });
   }
-  assertAllowedAnthropicTopLevelFields(
-    json,
-    requestId,
-    allowedAnthropicTopLevelFields
-  );
   assertSupportedAnthropicMetadataSemantics(json, requestId);
   assertSupportedAnthropicToolsSemantics(json, requestId);
   assertAnthropicForcedToolChoiceMatchesDeclaredTools(json, requestId);
@@ -154,7 +137,9 @@ export async function handleMessages(
   const requestShaping = parseRequestShapingExtension(
     parsed.airlock?.requestShaping
   );
-  const requestMode = "openai_responses" as const;
+  const forwardedHeaders = extractForwardedHeaders(context.req.raw.headers);
+  const forwardedQuery = extractForwardedQuery(context.req.url);
+  const requestMode = "anthropic_messages" as const;
 
   const quota = await acquireQuotaResources({
     env: context.env,
@@ -217,7 +202,9 @@ export async function handleMessages(
         routingMetadata: quota.routingMetadata,
         ...(now ? { now } : {}),
         ...(requestShaping ? { requestShaping } : {}),
-        ...(fetcher ? { fetcher } : {})
+        ...(fetcher ? { fetcher } : {}),
+        ...(forwardedHeaders ? { forwardedHeaders } : {}),
+        ...(forwardedQuery ? { forwardedQuery } : {})
       }
     );
     const reassembledStream = createStreamReassemblyIterable(

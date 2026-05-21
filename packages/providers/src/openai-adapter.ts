@@ -443,8 +443,29 @@ function buildOpenAIChatRequestBody(
             include_usage: true
           }
         }
-      : {})
+      : {}),
+    ...mergePassthrough(request.passthrough)
   };
+}
+
+function mergePassthrough(
+  passthrough: Record<string, unknown> | undefined
+): Record<string, unknown> {
+  if (!passthrough || Object.keys(passthrough).length === 0) return {};
+  return { ...passthrough };
+}
+
+function applyForwardedFields<T extends { headers: Record<string, string>; query: Record<string, string> }>(
+  base: T,
+  context: { forwardedHeaders?: Record<string, string>; forwardedQuery?: Record<string, string> }
+): T {
+  const headers = context.forwardedHeaders
+    ? { ...context.forwardedHeaders, ...base.headers }
+    : base.headers;
+  const query = context.forwardedQuery
+    ? { ...base.query, ...context.forwardedQuery }
+    : base.query;
+  return { ...base, headers, query };
 }
 
 function buildOpenAIResponsesInput(request: CanonicalRequest) {
@@ -777,15 +798,18 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       ? await applySigningStrategy(
           applyRequestShaping(
             applyAuthStrategy(
-              {
-                path: "/chat/completions",
-                method: "POST",
-                headers: {
-                  "content-type": "application/json"
+              applyForwardedFields(
+                {
+                  path: "/chat/completions",
+                  method: "POST",
+                  headers: {
+                    "content-type": "application/json"
+                  },
+                  query: {},
+                  jsonBody: buildOpenAIChatRequestBody(request, false)
                 },
-                query: {},
-                jsonBody: buildOpenAIChatRequestBody(request, false)
-              },
+                context
+              ),
               authStrategy,
               {
                 "openai-api-key": this.#apiKey
@@ -798,15 +822,18 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         )
       : applyRequestShaping(
           applyAuthStrategy(
-            {
-              path: "/chat/completions",
-              method: "POST",
-              headers: {
-                "content-type": "application/json"
+            applyForwardedFields(
+              {
+                path: "/chat/completions",
+                method: "POST",
+                headers: {
+                  "content-type": "application/json"
+                },
+                query: {},
+                jsonBody: buildOpenAIChatRequestBody(request, false)
               },
-              query: {},
-              jsonBody: buildOpenAIChatRequestBody(request, false)
-            },
+              context
+            ),
             authStrategy,
             {
               "openai-api-key": this.#apiKey
@@ -861,10 +888,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       let errorMessage = "Upstream provider error";
       let upstreamErrorCode: string | undefined;
       try {
-        const payload = (await response.json()) as {
+        const payload = (await response.json()) as Record<string, unknown> & {
           error?: { message?: string; code?: string; type?: string };
         };
-        errorMessage = payload.error?.message ?? errorMessage;
+        errorMessage =
+          payload.error?.message ??
+          (typeof payload.msg === "string" ? payload.msg : undefined) ??
+          (typeof payload.message === "string" ? payload.message : undefined) ??
+          (typeof payload.detail === "string" ? payload.detail : undefined) ??
+          errorMessage;
         upstreamErrorCode = payload.error?.code ?? payload.error?.type;
       } catch {
         // Non-JSON error body — use generic message
@@ -881,7 +913,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       });
     }
 
-    const payload = (await response.json()) as {
+    const payload = (await response.json()) as Record<string, unknown> & {
       id: string;
       created?: number;
       model: string;
@@ -1007,15 +1039,18 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       ? await applySigningStrategy(
           applyRequestShaping(
             applyAuthStrategy(
-              {
-                path: "/chat/completions",
-                method: "POST",
-                headers: {
-                  "content-type": "application/json"
+              applyForwardedFields(
+                {
+                  path: "/chat/completions",
+                  method: "POST",
+                  headers: {
+                    "content-type": "application/json"
+                  },
+                  query: {},
+                  jsonBody: buildOpenAIChatRequestBody(request, true)
                 },
-                query: {},
-                jsonBody: buildOpenAIChatRequestBody(request, true)
-              },
+                context
+              ),
               authStrategy,
               {
                 "openai-api-key": this.#apiKey
@@ -1028,15 +1063,18 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         )
       : applyRequestShaping(
           applyAuthStrategy(
-            {
-              path: "/chat/completions",
-              method: "POST",
-              headers: {
-                "content-type": "application/json"
+            applyForwardedFields(
+              {
+                path: "/chat/completions",
+                method: "POST",
+                headers: {
+                  "content-type": "application/json"
+                },
+                query: {},
+                jsonBody: buildOpenAIChatRequestBody(request, true)
               },
-              query: {},
-              jsonBody: buildOpenAIChatRequestBody(request, true)
-            },
+              context
+            ),
             authStrategy,
             {
               "openai-api-key": this.#apiKey
@@ -1099,10 +1137,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       let errorMessage = "Upstream provider error";
       let upstreamErrorCode: string | undefined;
       try {
-        const payload = (await response.json()) as {
+        const payload = (await response.json()) as Record<string, unknown> & {
           error?: { message?: string; code?: string; type?: string };
         };
-        errorMessage = payload.error?.message ?? errorMessage;
+        errorMessage =
+          payload.error?.message ??
+          (typeof payload.msg === "string" ? payload.msg : undefined) ??
+          (typeof payload.message === "string" ? payload.message : undefined) ??
+          (typeof payload.detail === "string" ? payload.detail : undefined) ??
+          errorMessage;
         upstreamErrorCode = payload.error?.code ?? payload.error?.type;
       } catch {
         // Non-JSON error body — use generic message
@@ -1434,17 +1477,18 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       ? await applySigningStrategy(
           applyRequestShaping(
             applyAuthStrategy(
-              {
-                path: "/responses",
-                method: "POST",
-                headers: {
-                  "content-type": "application/json"
-                },
-                query: {},
-                jsonBody: {
-                  model: request.model,
-                  stream: false,
-                  input: buildOpenAIResponsesInput(request),
+              applyForwardedFields(
+                {
+                  path: "/responses",
+                  method: "POST",
+                  headers: {
+                    "content-type": "application/json"
+                  },
+                  query: {},
+                  jsonBody: {
+                    model: request.model,
+                    stream: false,
+                    input: buildOpenAIResponsesInput(request),
                   ...(mapCanonicalOpenAIResponsesText(request) ?? {}),
                   ...(request.prompt !== undefined
                     ? {
@@ -1528,9 +1572,12 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                             request.allowParallelToolCalls
                           )
                       }
-                    : {})
+                    : {}),
+                  ...mergePassthrough(request.passthrough)
                 }
               },
+              context
+            ),
               authStrategy,
               {
                 "openai-api-key": this.#apiKey
@@ -1543,17 +1590,18 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         )
       : applyRequestShaping(
           applyAuthStrategy(
-            {
-              path: "/responses",
-              method: "POST",
-              headers: {
-                "content-type": "application/json"
-              },
-              query: {},
-              jsonBody: {
-                model: request.model,
-                stream: false,
-                input: buildOpenAIResponsesInput(request),
+            applyForwardedFields(
+              {
+                path: "/responses",
+                method: "POST",
+                headers: {
+                  "content-type": "application/json"
+                },
+                query: {},
+                jsonBody: {
+                  model: request.model,
+                  stream: false,
+                  input: buildOpenAIResponsesInput(request),
                 ...(mapCanonicalOpenAIResponsesText(request) ?? {}),
                 ...(request.prompt !== undefined
                   ? {
@@ -1635,6 +1683,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   : {})
               }
             },
+            context
+          ),
             authStrategy,
             {
               "openai-api-key": this.#apiKey
@@ -1689,10 +1739,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       let errorMessage = "Upstream provider error";
       let upstreamErrorCode: string | undefined;
       try {
-        const payload = (await response.json()) as {
+        const payload = (await response.json()) as Record<string, unknown> & {
           error?: { message?: string; code?: string; type?: string };
         };
-        errorMessage = payload.error?.message ?? errorMessage;
+        errorMessage =
+          payload.error?.message ??
+          (typeof payload.msg === "string" ? payload.msg : undefined) ??
+          (typeof payload.message === "string" ? payload.message : undefined) ??
+          (typeof payload.detail === "string" ? payload.detail : undefined) ??
+          errorMessage;
         upstreamErrorCode = payload.error?.code ?? payload.error?.type;
       } catch {
         // Non-JSON error body — use generic message
@@ -1709,7 +1764,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       });
     }
 
-    const payload = (await response.json()) as {
+    const payload = (await response.json()) as Record<string, unknown> & {
       id: string;
       created_at?: number;
       model: string;
@@ -1928,17 +1983,18 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       ? await applySigningStrategy(
           applyRequestShaping(
             applyAuthStrategy(
-              {
-                path: "/responses",
-                method: "POST",
-                headers: {
-                  "content-type": "application/json"
-                },
-                query: {},
-                jsonBody: {
-                  model: request.model,
-                  stream: true,
-                  input: buildOpenAIResponsesInput(request),
+              applyForwardedFields(
+                {
+                  path: "/responses",
+                  method: "POST",
+                  headers: {
+                    "content-type": "application/json"
+                  },
+                  query: {},
+                  jsonBody: {
+                    model: request.model,
+                    stream: true,
+                    input: buildOpenAIResponsesInput(request),
                   ...(mapCanonicalOutputFormatToOpenAIResponses(
                     request.outputFormat
                   )
@@ -2027,9 +2083,12 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                             request.allowParallelToolCalls
                           )
                       }
-                    : {})
+                    : {}),
+                  ...mergePassthrough(request.passthrough)
                 }
               },
+              context
+            ),
               authStrategy,
               {
                 "openai-api-key": this.#apiKey
@@ -2042,17 +2101,18 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
         )
       : applyRequestShaping(
           applyAuthStrategy(
-            {
-              path: "/responses",
-              method: "POST",
-              headers: {
-                "content-type": "application/json"
-              },
-              query: {},
-              jsonBody: {
-                model: request.model,
-                stream: true,
-                input: buildOpenAIResponsesInput(request),
+            applyForwardedFields(
+              {
+                path: "/responses",
+                method: "POST",
+                headers: {
+                  "content-type": "application/json"
+                },
+                query: {},
+                jsonBody: {
+                  model: request.model,
+                  stream: true,
+                  input: buildOpenAIResponsesInput(request),
                 ...(mapCanonicalOutputFormatToOpenAIResponses(
                   request.outputFormat
                 )
@@ -2147,6 +2207,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                   : {})
               }
             },
+            context
+          ),
             authStrategy,
             {
               "openai-api-key": this.#apiKey
@@ -2209,10 +2271,15 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
       let errorMessage = "Upstream provider error";
       let upstreamErrorCode: string | undefined;
       try {
-        const payload = (await response.json()) as {
+        const payload = (await response.json()) as Record<string, unknown> & {
           error?: { message?: string; code?: string; type?: string };
         };
-        errorMessage = payload.error?.message ?? errorMessage;
+        errorMessage =
+          payload.error?.message ??
+          (typeof payload.msg === "string" ? payload.msg : undefined) ??
+          (typeof payload.message === "string" ? payload.message : undefined) ??
+          (typeof payload.detail === "string" ? payload.detail : undefined) ??
+          errorMessage;
         upstreamErrorCode = payload.error?.code ?? payload.error?.type;
       } catch {
         // Non-JSON error body — use generic message

@@ -12,6 +12,16 @@ import type {
 
 type CanonicalUsageValue = CanonicalResponse["usage"];
 
+function extractPassthrough(
+  request: Record<string, unknown>,
+  knownFields: ReadonlySet<string>
+): Record<string, unknown> | undefined {
+  const entries = Object.entries(request).filter(
+    ([key]) => !knownFields.has(key)
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
 type OpenAIResponsesTextInputBlockValue = {
   type: "input_text";
   text: string;
@@ -579,6 +589,16 @@ function normalizeOpenAIResponsesTypedInputItems(
   return messages;
 }
 
+const OPENAI_CHAT_KNOWN_FIELDS = new Set([
+  "model", "stream", "user", "safety_identifier", "metadata",
+  "service_tier", "store", "prompt_cache_key", "prompt_cache_retention",
+  "max_tokens", "max_completion_tokens", "reasoning_effort",
+  "temperature", "top_p", "logprobs", "top_logprobs",
+  "frequency_penalty", "presence_penalty", "seed",
+  "response_format", "modalities", "stop", "stream_options",
+  "parallel_tool_calls", "tools", "tool_choice", "messages", "airlock"
+]);
+
 export function normalizeOpenAIChatRequest(
   request: OpenAIChatCompletionRequest
 ): CanonicalRequest {
@@ -695,9 +715,22 @@ export function normalizeOpenAIChatRequest(
         role: message.role === "developer" ? "system" : message.role,
         content
       };
-    })
+    }),
+    ...(extractPassthrough(request as unknown as Record<string, unknown>, OPENAI_CHAT_KNOWN_FIELDS)
+      ? { passthrough: extractPassthrough(request as unknown as Record<string, unknown>, OPENAI_CHAT_KNOWN_FIELDS)! }
+      : {})
   };
 }
+
+const OPENAI_RESPONSES_KNOWN_FIELDS = new Set([
+  "model", "stream", "user", "safety_identifier", "metadata",
+  "service_tier", "store", "prompt_cache_key", "prompt_cache_retention",
+  "max_output_tokens", "temperature", "top_p", "top_logprobs",
+  "stop", "truncation", "reasoning", "text", "instructions",
+  "input", "tools", "tool_choice", "parallel_tool_calls",
+  "previous_response_id", "conversation", "include", "stream_options",
+  "prompt", "prompt_id", "airlock"
+]);
 
 export function normalizeOpenAIResponsesRequest(
   request: OpenAIResponsesRequest
@@ -826,9 +859,17 @@ export function normalizeOpenAIResponsesRequest(
     ...(request.parallel_tool_calls !== undefined
       ? { allowParallelToolCalls: request.parallel_tool_calls }
       : {}),
-    messages: [...instructionMessages, ...inputMessages]
+    messages: [...instructionMessages, ...inputMessages],
+    ...(extractPassthrough(request as unknown as Record<string, unknown>, OPENAI_RESPONSES_KNOWN_FIELDS)
+      ? { passthrough: extractPassthrough(request as unknown as Record<string, unknown>, OPENAI_RESPONSES_KNOWN_FIELDS)! }
+      : {})
   };
 }
+
+const ANTHROPIC_MESSAGES_KNOWN_FIELDS = new Set([
+  "model", "stream", "system", "max_tokens", "temperature", "top_p",
+  "stop_sequences", "metadata", "tools", "tool_choice", "messages", "airlock"
+]);
 
 export function normalizeAnthropicMessagesRequest(
   request: AnthropicMessagesRequest
@@ -985,7 +1026,10 @@ export function normalizeAnthropicMessagesRequest(
                     }
         }
       : {}),
-    messages: [...systemMessages, ...messages]
+    messages: [...systemMessages, ...messages],
+    ...(extractPassthrough(request as unknown as Record<string, unknown>, ANTHROPIC_MESSAGES_KNOWN_FIELDS)
+      ? { passthrough: extractPassthrough(request as unknown as Record<string, unknown>, ANTHROPIC_MESSAGES_KNOWN_FIELDS)! }
+      : {})
   };
 }
 

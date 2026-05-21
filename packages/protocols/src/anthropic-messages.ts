@@ -81,7 +81,7 @@ export const anthropicMessagesRequestSchema = z.object({
   tool_choice: anthropicToolChoiceSchema.optional(),
   messages: z.array(anthropicMessageInputSchema).min(1),
   airlock: airlockRequestExtensionsSchema.optional()
-});
+}).passthrough();
 
 export const anthropicMessagesResponseSchema = z.object({
   id: z.string().min(1),

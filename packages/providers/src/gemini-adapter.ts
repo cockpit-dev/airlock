@@ -66,9 +66,10 @@ export class GeminiProviderAdapter implements ProviderAdapter {
                 path: `/models/${request.model}:generateContent`,
                 method: "POST",
                 headers: {
+                  ...(context.forwardedHeaders ?? {}),
                   "content-type": "application/json"
                 },
-                query: {},
+                query: { ...(context.forwardedQuery ?? {}) },
                 jsonBody: requestBody
               },
               authStrategy,
@@ -87,9 +88,10 @@ export class GeminiProviderAdapter implements ProviderAdapter {
               path: `/models/${request.model}:generateContent`,
               method: "POST",
               headers: {
+                ...(context.forwardedHeaders ?? {}),
                 "content-type": "application/json"
               },
-              query: {},
+              query: { ...(context.forwardedQuery ?? {}) },
               jsonBody: requestBody
             },
             authStrategy,
@@ -241,9 +243,11 @@ export class GeminiProviderAdapter implements ProviderAdapter {
                 path: `/models/${request.model}:streamGenerateContent`,
                 method: "POST",
                 headers: {
+                  ...(context.forwardedHeaders ?? {}),
                   "content-type": "application/json"
                 },
                 query: {
+                  ...(context.forwardedQuery ?? {}),
                   alt: "sse"
                 },
                 jsonBody: requestBody
@@ -264,9 +268,11 @@ export class GeminiProviderAdapter implements ProviderAdapter {
               path: `/models/${request.model}:streamGenerateContent`,
               method: "POST",
               headers: {
+                ...(context.forwardedHeaders ?? {}),
                 "content-type": "application/json"
               },
               query: {
+                ...(context.forwardedQuery ?? {}),
                 alt: "sse"
               },
               jsonBody: requestBody
@@ -768,6 +774,9 @@ function buildGeminiRequestBody(request: CanonicalRequest) {
               : {})
           }
         }
+      : {}),
+    ...(request.passthrough && Object.keys(request.passthrough).length > 0
+      ? { ...request.passthrough }
       : {})
   };
 }

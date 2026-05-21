@@ -93,6 +93,7 @@ export interface CanonicalRequest {
   tools?: CanonicalToolDefinition[];
   toolChoice?: CanonicalToolChoice;
   allowParallelToolCalls?: boolean;
+  passthrough?: Record<string, unknown>;
 }
 
 export interface RequestClass {

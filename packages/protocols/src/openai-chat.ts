@@ -148,6 +148,7 @@ export const openAIChatCompletionRequestSchema = z
     messages: z.array(openAIChatMessageSchema).min(1),
     airlock: airlockRequestExtensionsSchema.optional()
   })
+  .passthrough()
   .superRefine((value, context) => {
     if (
       value.user !== undefined &&

@@ -222,6 +222,7 @@ export const openAIResponsesRequestSchema = z
       .optional(),
     airlock: airlockRequestExtensionsSchema.optional()
   })
+  .passthrough()
   .refine(
     (value) =>
       value.input !== undefined ||

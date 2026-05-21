@@ -44,9 +44,13 @@ export interface ProviderRequestContext {
   /** Per-read idle timeout for streaming responses. Resets on each successful reader.read(). */
   streamIdleTimeoutMs?: number;
   requestShaping?: RequestShapingProfile;
-  requestMode?: "default" | "openai_responses";
+  requestMode?: "openai_chat" | "openai_responses" | "anthropic_messages";
   /** Mutable counter incremented by provider adapters when an SSE frame fails JSON.parse. */
   malformedSseEventCount?: number;
+  /** Client-originated headers to forward to upstream, excluding gateway-internal headers. */
+  forwardedHeaders?: Record<string, string>;
+  /** Client-originated query parameters to forward to upstream. */
+  forwardedQuery?: Record<string, string>;
 }
 
 export interface ProviderAdapter {

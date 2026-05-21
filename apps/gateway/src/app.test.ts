@@ -38169,4 +38169,251 @@ describe("health_score target selection strategy", () => {
       "https://api.openai.com/v1/chat/completions"
     );
   });
+
+  it("forwards unknown body fields to the upstream provider via passthrough on /v1/chat/completions", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: "hello" }
+            }
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          max_tokens: 64,
+          messages: [{ role: "user", content: "hi" }],
+          future_option: true
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    const upstreamBody = JSON.parse(init.body as string) as Record<
+      string,
+      unknown
+    >;
+    expect(upstreamBody.future_option).toBe(true);
+    expect(upstreamBody.max_tokens).toBe(64);
+  });
+
+  it("forwards unknown body fields to the upstream provider via passthrough on /v1/messages", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "text", text: "hello" }],
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          usage: { input_tokens: 5, output_tokens: 2 }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          stream: false,
+          max_tokens: 64,
+          messages: [{ role: "user", content: "hi" }],
+          thinking: { type: "enabled", budget_tokens: 10000 }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    const upstreamBody = JSON.parse(init.body as string) as Record<
+      string,
+      unknown
+    >;
+    expect(upstreamBody.thinking).toEqual({
+      type: "enabled",
+      budget_tokens: 10000
+    });
+  });
+
+  it("forwards custom client headers to the upstream provider", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: "hello" }
+            }
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret",
+          "x-custom-trace": "trace-abc",
+          "x-api-version": "2024-01"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          max_tokens: 64,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["x-custom-trace"]).toBe("trace-abc");
+    expect(headers["x-api-version"]).toBe("2024-01");
+  });
+
+  it("does not forward gateway-internal headers to the upstream provider", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: "hello" }
+            }
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret",
+          host: "localhost",
+          "x-request-id": "req_123",
+          connection: "keep-alive",
+          accept: "application/json"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          max_tokens: 64,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["host"]).toBeUndefined();
+    expect(headers["x-request-id"]).toBeUndefined();
+    expect(headers["connection"]).toBeUndefined();
+    expect(headers["accept"]).toBeUndefined();
+  });
+
+  it("forwards client query parameters to the upstream provider", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: "hello" }
+            }
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions?beta=true&version=v2",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          max_tokens: 64,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const upstreamUrl = fetcher.mock.calls[0]?.[0] as string;
+    expect(upstreamUrl).toContain("beta=true");
+    expect(upstreamUrl).toContain("version=v2");
+  });
 });

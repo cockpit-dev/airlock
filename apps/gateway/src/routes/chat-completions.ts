@@ -20,10 +20,13 @@ import {
 } from "../auth.js";
 import { resolveGatewayConfigWithOverlay } from "../config.js";
 import type { GatewayBindings } from "../env.js";
-import { parseRequestShapingExtension } from "../request-extensions.js";
+import {
+  extractForwardedHeaders,
+  extractForwardedQuery,
+  parseRequestShapingExtension
+} from "../request-extensions.js";
 import type { CreateAppOptions } from "../app.js";
 import {
-  assertAllowedOpenAITopLevelFields,
   assertOpenAIForcedToolChoiceMatchesDeclaredTools,
   assertSupportedOpenAIChatLogprobsSemantics,
   assertSupportedOpenAIChatResponseFormat,
@@ -46,37 +49,6 @@ import {
   executeRoutedRequest,
   executeRoutedStreamRequest
 } from "../provider-execution.js";
-
-const allowedOpenAIChatTopLevelFields = [
-  "model",
-  "stream",
-  "user",
-  "safety_identifier",
-  "metadata",
-  "service_tier",
-  "store",
-  "prompt_cache_key",
-  "prompt_cache_retention",
-  "max_tokens",
-  "max_completion_tokens",
-  "reasoning_effort",
-  "temperature",
-  "top_p",
-  "logprobs",
-  "top_logprobs",
-  "frequency_penalty",
-  "presence_penalty",
-  "seed",
-  "response_format",
-  "modalities",
-  "stop",
-  "stream_options",
-  "parallel_tool_calls",
-  "tools",
-  "tool_choice",
-  "messages",
-  "airlock"
-] as const;
 
 export async function handleChatCompletions(
   context: Context<{
@@ -144,12 +116,6 @@ export async function handleChatCompletions(
       requestId
     });
   }
-  assertAllowedOpenAITopLevelFields(
-    json,
-    requestId,
-    "OpenAI Chat",
-    allowedOpenAIChatTopLevelFields
-  );
   assertSupportedOpenAIChatResponseFormat(json, requestId);
   assertSupportedOpenAIChatLogprobsSemantics(json);
   assertSupportedOpenAIChatStreamOptions(json, requestId);
@@ -182,6 +148,8 @@ export async function handleChatCompletions(
   const requestShaping = parseRequestShapingExtension(
     parsed.airlock?.requestShaping
   );
+  const forwardedHeaders = extractForwardedHeaders(context.req.raw.headers);
+  const forwardedQuery = extractForwardedQuery(context.req.url);
 
   const quota = await acquireQuotaResources({
     env: context.env,
@@ -229,6 +197,7 @@ export async function handleChatCompletions(
         config,
         gatewayApiKey,
         requestId,
+        requestMode: "openai_chat",
         signal: context.req.raw.signal,
         ...(quota.circuitBreakerBackend
           ? { circuitBreakerBackend: quota.circuitBreakerBackend }
@@ -239,7 +208,9 @@ export async function handleChatCompletions(
         routingMetadata: quota.routingMetadata,
         ...(now ? { now } : {}),
         ...(requestShaping ? { requestShaping } : {}),
-        ...(fetcher ? { fetcher } : {})
+        ...(fetcher ? { fetcher } : {}),
+        ...(forwardedHeaders ? { forwardedHeaders } : {}),
+        ...(forwardedQuery ? { forwardedQuery } : {})
       }
     );
     const reassembledStream = createStreamReassemblyIterable(
@@ -382,6 +353,7 @@ export async function handleChatCompletions(
       config,
       gatewayApiKey,
       requestId,
+      requestMode: "openai_chat",
       signal: context.req.raw.signal,
       ...(quota.circuitBreakerBackend
         ? { circuitBreakerBackend: quota.circuitBreakerBackend }
@@ -392,7 +364,9 @@ export async function handleChatCompletions(
       routingMetadata: quota.routingMetadata,
       ...(now ? { now } : {}),
       ...(requestShaping ? { requestShaping } : {}),
-      ...(fetcher ? { fetcher } : {})
+      ...(fetcher ? { fetcher } : {}),
+      ...(forwardedHeaders ? { forwardedHeaders } : {}),
+      ...(forwardedQuery ? { forwardedQuery } : {})
     });
   } catch (error) {
     await handleQuotaError(context.env, telemetryBase, false, error);

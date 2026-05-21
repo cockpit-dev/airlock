@@ -20,10 +20,13 @@ import {
 } from "../auth.js";
 import { resolveGatewayConfigWithOverlay } from "../config.js";
 import type { GatewayBindings } from "../env.js";
-import { parseRequestShapingExtension } from "../request-extensions.js";
+import {
+  extractForwardedHeaders,
+  extractForwardedQuery,
+  parseRequestShapingExtension
+} from "../request-extensions.js";
 import type { CreateAppOptions } from "../app.js";
 import {
-  assertAllowedOpenAITopLevelFields,
   assertOpenAIForcedToolChoiceMatchesDeclaredTools,
   assertSupportedOpenAIResponsesSemantics,
   assertSupportedOpenAIResponsesStreamOptions,
@@ -45,37 +48,6 @@ import {
   executeRoutedRequest,
   executeRoutedStreamRequest
 } from "../provider-execution.js";
-
-const allowedOpenAIResponsesTopLevelFields = [
-  "model",
-  "stream",
-  "safety_identifier",
-  "metadata",
-  "service_tier",
-  "store",
-  "prompt_cache_key",
-  "prompt_cache_retention",
-  "prompt",
-  "prompt_id",
-  "previous_response_id",
-  "conversation",
-  "max_output_tokens",
-  "temperature",
-  "top_p",
-  "stop",
-  "instructions",
-  "reasoning",
-  "text",
-  "include",
-  "top_logprobs",
-  "truncation",
-  "stream_options",
-  "parallel_tool_calls",
-  "tools",
-  "tool_choice",
-  "input",
-  "airlock"
-] as const;
 
 export async function handleResponses(
   context: Context<{
@@ -143,12 +115,6 @@ export async function handleResponses(
       requestId
     });
   }
-  assertAllowedOpenAITopLevelFields(
-    json,
-    requestId,
-    "OpenAI Responses",
-    allowedOpenAIResponsesTopLevelFields
-  );
   assertSupportedOpenAIResponsesSemantics(json, requestId);
   assertSupportedOpenAIResponsesStreamOptions(json, requestId);
   assertSupportedOpenAIResponsesToolsSemantics(json, requestId);
@@ -178,6 +144,8 @@ export async function handleResponses(
   const requestShaping = parseRequestShapingExtension(
     parsed.airlock?.requestShaping
   );
+  const forwardedHeaders = extractForwardedHeaders(context.req.raw.headers);
+  const forwardedQuery = extractForwardedQuery(context.req.url);
   const requestMode = "openai_responses" as const;
 
   const quota = await acquireQuotaResources({
@@ -252,7 +220,9 @@ export async function handleResponses(
         routingMetadata: quota.routingMetadata,
         ...(now ? { now } : {}),
         ...(requestShaping ? { requestShaping } : {}),
-        ...(fetcher ? { fetcher } : {})
+        ...(fetcher ? { fetcher } : {}),
+        ...(forwardedHeaders ? { forwardedHeaders } : {}),
+        ...(forwardedQuery ? { forwardedQuery } : {})
       }
     );
     const reassembledStream = createStreamReassemblyIterable(

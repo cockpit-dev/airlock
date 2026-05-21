@@ -204,6 +204,19 @@ export function assertSupportedOpenAIResponsesSemantics(
     return;
   }
 
+  if ("user" in payload && payload.user !== undefined) {
+    throw new GatewayError(
+      "Unsupported OpenAI Responses semantic field: user",
+      {
+        code: "request_unsupported_openai_semantics",
+        category: "request",
+        httpStatus: 400,
+        retryable: false,
+        requestId
+      }
+    );
+  }
+
   if ("reasoning" in payload && payload.reasoning !== undefined) {
     if (typeof payload.reasoning !== "object" || payload.reasoning === null) {
       throw new GatewayError("Unsupported OpenAI Responses reasoning config", {
