@@ -24,7 +24,7 @@ function stripTrailingSlash(url: string): string {
 
 export function registerAdminProviderModelsRoutes(app: GatewayApp): void {
   app.post("/_airlock/providers/fetch-models", async (context) => {
-    await requireAdminScope(context, "config.read");
+    await requireAdminScope(context, "config.write");
     const requestId = context.get("requestId");
     const fetcher = context.get("fetcher") ?? fetch;
 
@@ -142,7 +142,9 @@ async function fetchAnthropicModels(
   let pages = 0;
 
   while (pages < MAX_PAGES) {
-    const url = afterId ? `${base}?after_id=${afterId}&limit=100` : `${base}?limit=100`;
+    const url = afterId
+      ? `${base}?after_id=${encodeURIComponent(afterId)}&limit=100`
+      : `${base}?limit=100`;
     const data = await fetcherWithError(fetcher, url, headers);
     const items = data.data;
     if (Array.isArray(items)) {
@@ -174,18 +176,15 @@ async function fetchGeminiModels(
   let pages = 0;
 
   while (pages < MAX_PAGES) {
-    let url = `${base}?key=${apiKey}&pageSize=100`;
-    if (pageToken) url += `&pageToken=${pageToken}`;
+    let url = `${base}?key=${encodeURIComponent(apiKey)}&pageSize=100`;
+    if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
     const data = await fetcherWithError(fetcher, url, {});
     const items = data.models;
     if (Array.isArray(items)) {
       for (const m of items as Array<Record<string, unknown>>) {
         // Only include models that support generateContent
         const methods = m.supportedGenerationMethods;
-        if (
-          !Array.isArray(methods) ||
-          !methods.includes("generateContent")
-        ) {
+        if (!Array.isArray(methods) || !methods.includes("generateContent")) {
           continue;
         }
         // Prefer baseModelId (e.g. "gemini-2.5-pro") over name (e.g. "models/gemini-2.5-pro")
@@ -194,9 +193,7 @@ async function fetchGeminiModels(
           allModels.push(baseModelId);
         } else {
           const name = (m.name ?? "") as string;
-          const stripped = name.startsWith("models/")
-            ? name.slice(7)
-            : name;
+          const stripped = name.startsWith("models/") ? name.slice(7) : name;
           if (stripped) allModels.push(stripped);
         }
       }

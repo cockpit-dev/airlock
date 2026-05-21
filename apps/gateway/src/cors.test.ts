@@ -38,15 +38,17 @@ describe("parseCorsOrigins", () => {
 
 describe("corsHeaders", () => {
   it("echoes back browser origin when CORS is not explicitly configured", () => {
-    const headers = corsHeaders("http://localhost:3000", { allowedOrigins: undefined });
-    expect(headers["Access-Control-Allow-Origin"]).toBe("http://localhost:3000");
+    const headers = corsHeaders("http://localhost:3000", {
+      allowedOrigins: undefined
+    });
+    expect(headers["Access-Control-Allow-Origin"]).toBe(
+      "http://localhost:3000"
+    );
     expect(headers["Access-Control-Allow-Methods"]).toBeDefined();
   });
 
   it("returns empty object when no explicit config and no request origin", () => {
-    expect(
-      corsHeaders(undefined, { allowedOrigins: undefined })
-    ).toEqual({});
+    expect(corsHeaders(undefined, { allowedOrigins: undefined })).toEqual({});
   });
 
   it("returns wildcard headers when origins is asterisk", () => {
@@ -119,11 +121,15 @@ describe("createPreflightResponse", () => {
   });
 
   it("echoes back request headers in allow-headers", () => {
-    const response = createPreflightResponse("http://localhost:3000", {
-      allowedOrigins: "http://localhost:3000"
-    }, {
-      requestHeaders: "X-Stainless-OS, X-Stainless-Runtime"
-    });
+    const response = createPreflightResponse(
+      "http://localhost:3000",
+      {
+        allowedOrigins: "http://localhost:3000"
+      },
+      {
+        requestHeaders: "X-Stainless-OS, X-Stainless-Runtime"
+      }
+    );
     const allowHeaders = response.headers.get("Access-Control-Allow-Headers")!;
     expect(allowHeaders).toContain("Authorization");
     expect(allowHeaders).toContain("X-Stainless-OS");

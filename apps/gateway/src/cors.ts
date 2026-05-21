@@ -91,9 +91,7 @@ export function createPreflightResponse(
   // our baseline set. This handles SDK-specific headers (x-stainless-*, etc.)
   // without needing to enumerate every possible client header.
   const extra = options?.requestHeaders?.trim();
-  const allowHeaders = extra
-    ? `${ALLOWED_HEADERS}, ${extra}`
-    : ALLOWED_HEADERS;
+  const allowHeaders = extra ? `${ALLOWED_HEADERS}, ${extra}` : ALLOWED_HEADERS;
 
   return new Response(null, {
     status: 204,

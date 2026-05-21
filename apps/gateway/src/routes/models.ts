@@ -47,7 +47,9 @@ export async function handleModels(
   const allModels = [...new Set([...routeModels, ...providerModels])];
   const created = getModelCreatedEpoch();
 
-  const data = allModels.map((modelId) => createModelDescriptor(modelId, created));
+  const data = allModels.map((modelId) =>
+    createModelDescriptor(modelId, created)
+  );
 
   // OpenAI-compatible pagination: ?after=<id>&limit=<n>
   const afterId = context.req.query("after");
@@ -66,7 +68,13 @@ export async function handleModels(
   return context.json({
     object: "list",
     data: sliced,
-    ...(hasMore ? { has_more: true, first_id: sliced[0]?.id, last_id: sliced[sliced.length - 1]?.id } : {})
+    ...(hasMore
+      ? {
+          has_more: true,
+          first_id: sliced[0]?.id,
+          last_id: sliced[sliced.length - 1]?.id
+        }
+      : {})
   });
 }
 

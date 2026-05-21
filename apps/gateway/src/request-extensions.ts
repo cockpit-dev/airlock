@@ -30,7 +30,11 @@ export function extractForwardedHeaders(
 ): Record<string, string> | undefined {
   const result: Record<string, string> = {};
   headers.forEach((value, key) => {
-    if (!GATEWAY_RESERVED_HEADERS.has(key.toLowerCase()) && !key.startsWith("cf-") && !key.startsWith("sec-")) {
+    if (
+      !GATEWAY_RESERVED_HEADERS.has(key.toLowerCase()) &&
+      !key.startsWith("cf-") &&
+      !key.startsWith("sec-")
+    ) {
       result[key] = value;
     }
   });

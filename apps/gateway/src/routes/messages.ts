@@ -359,7 +359,9 @@ export async function handleMessages(
       routingMetadata: quota.routingMetadata,
       ...(now ? { now } : {}),
       ...(requestShaping ? { requestShaping } : {}),
-      ...(fetcher ? { fetcher } : {})
+      ...(fetcher ? { fetcher } : {}),
+      ...(forwardedHeaders ? { forwardedHeaders } : {}),
+      ...(forwardedQuery ? { forwardedQuery } : {})
     });
   } catch (error) {
     await handleQuotaError(context.env, telemetryBase, false, error);

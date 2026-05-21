@@ -22,7 +22,7 @@ type GatewayApp = Hono<{
 
 export function registerAdminConfigManageRoutes(app: GatewayApp): void {
   app.get("/_airlock/config/manage", async (context) => {
-    await requireAdminScope(context, "config.read");
+    await requireAdminScope(context, "config.write");
     const namespace = context.env.AIRLOCK_CONFIG_STORE;
     if (!namespace) {
       return context.json(
@@ -36,7 +36,7 @@ export function registerAdminConfigManageRoutes(app: GatewayApp): void {
   });
 
   app.get("/_airlock/config/manage/:section", async (context) => {
-    await requireAdminScope(context, "config.read");
+    await requireAdminScope(context, "config.write");
     const section = context.req.param("section");
     if (
       !section ||

@@ -66,22 +66,24 @@ const anthropicMessageInputSchema = z.object({
   ])
 });
 
-export const anthropicMessagesRequestSchema = z.object({
-  model: z.string().min(1),
-  max_tokens: z.number().int().positive(),
-  stream: z.boolean().default(false),
-  system: z
-    .union([z.string().min(1), anthropicTextBlockArraySchema])
-    .optional(),
-  temperature: z.number().min(0).max(1).optional(),
-  top_p: z.number().min(0).max(1).optional(),
-  stop_sequences: z.array(z.string().min(1)).min(1).optional(),
-  metadata: anthropicMetadataSchema.optional(),
-  tools: z.array(anthropicToolSchema).min(1).optional(),
-  tool_choice: anthropicToolChoiceSchema.optional(),
-  messages: z.array(anthropicMessageInputSchema).min(1),
-  airlock: airlockRequestExtensionsSchema.optional()
-}).passthrough();
+export const anthropicMessagesRequestSchema = z
+  .object({
+    model: z.string().min(1),
+    max_tokens: z.number().int().positive(),
+    stream: z.boolean().default(false),
+    system: z
+      .union([z.string().min(1), anthropicTextBlockArraySchema])
+      .optional(),
+    temperature: z.number().min(0).max(1).optional(),
+    top_p: z.number().min(0).max(1).optional(),
+    stop_sequences: z.array(z.string().min(1)).min(1).optional(),
+    metadata: anthropicMetadataSchema.optional(),
+    tools: z.array(anthropicToolSchema).min(1).optional(),
+    tool_choice: anthropicToolChoiceSchema.optional(),
+    messages: z.array(anthropicMessageInputSchema).min(1),
+    airlock: airlockRequestExtensionsSchema.optional()
+  })
+  .passthrough();
 
 export const anthropicMessagesResponseSchema = z.object({
   id: z.string().min(1),

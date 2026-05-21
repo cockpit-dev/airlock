@@ -66,7 +66,11 @@ type ProviderCapabilityDescriptorResolver = (
 ) => ProviderCapabilityDescriptor;
 
 function resolveEffectiveRequestMode(
-  baseRequestMode: "openai_chat" | "openai_responses" | "anthropic_messages" | undefined,
+  baseRequestMode:
+    | "openai_chat"
+    | "openai_responses"
+    | "anthropic_messages"
+    | undefined,
   targetProviderType: ProviderId,
   targetProviderBaseUrl: string,
   getDescriptor: ProviderCapabilityDescriptorResolver
@@ -76,7 +80,9 @@ function resolveEffectiveRequestMode(
   try {
     const descriptor = getDescriptor(targetProviderType);
     if (descriptor.supportsOpenAIResponsesEndpoint) return "openai_responses";
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   return "openai_chat";
 }
 
@@ -1069,7 +1075,10 @@ export async function* executeRoutedStreamRequest(
             route,
             target
           );
-          const streamProviderConfig = resolveProviderConfig(target.provider, config);
+          const streamProviderConfig = resolveProviderConfig(
+            target.provider,
+            config
+          );
           const streamEffectiveRequestMode = resolveEffectiveRequestMode(
             requestMode,
             streamProviderConfig.type,

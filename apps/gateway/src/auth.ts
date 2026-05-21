@@ -28,8 +28,7 @@ const ADMIN_KEY: GatewayApiKeyRecord = Object.freeze({
 
 async function tryAdminPassthrough(
   authorization: string | undefined,
-  config: GatewayConfig,
-  requestId: string
+  config: GatewayConfig
 ): Promise<GatewayApiKeyRecord | undefined> {
   const adminToken = config.internalAdminToken;
   const adminCredentials = config.internalAdminCredentials;
@@ -100,11 +99,7 @@ export async function requireGatewayAuthorization(
   requestId: string
 ) {
   const authorization = resolveAuthorizationHeader(context);
-  const adminKey = await tryAdminPassthrough(
-    authorization,
-    config,
-    requestId
-  );
+  const adminKey = await tryAdminPassthrough(authorization, config);
   if (adminKey) return adminKey;
 
   return authorizeGatewayKeyAccess(

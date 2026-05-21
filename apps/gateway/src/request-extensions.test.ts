@@ -57,7 +57,9 @@ describe("extractForwardedHeaders", () => {
 
 describe("extractForwardedQuery", () => {
   it("returns undefined for URL without query string", () => {
-    expect(extractForwardedQuery("http://localhost/v1/messages")).toBeUndefined();
+    expect(
+      extractForwardedQuery("http://localhost/v1/messages")
+    ).toBeUndefined();
   });
 
   it("extracts query parameters from URL", () => {
@@ -68,6 +70,8 @@ describe("extractForwardedQuery", () => {
   });
 
   it("returns undefined for empty query string", () => {
-    expect(extractForwardedQuery("http://localhost/v1/messages?")).toBeUndefined();
+    expect(
+      extractForwardedQuery("http://localhost/v1/messages?")
+    ).toBeUndefined();
   });
 });

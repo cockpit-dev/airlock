@@ -334,6 +334,20 @@ function parseProviderCatalog(
   return normalizeProviderCatalog(parsed);
 }
 
+function normalizeOptionalStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const strings = value
+    .filter(
+      (item: unknown): item is string =>
+        typeof item === "string" && item.trim().length > 0
+    )
+    .map((item) => item.trim());
+  return strings.length > 0 ? strings : undefined;
+}
+
 function normalizeProviderCatalog(data: unknown): GatewayProviderEntry[] {
   if (!Array.isArray(data)) {
     throw new GatewayError("Provider catalog config must be a JSON array", {
@@ -409,6 +423,8 @@ function normalizeProviderCatalog(data: unknown): GatewayProviderEntry[] {
       );
     }
 
+    const models = normalizeOptionalStringList(entry.models);
+
     providers.push({
       id,
       type,
@@ -422,13 +438,7 @@ function normalizeProviderCatalog(data: unknown): GatewayProviderEntry[] {
       entry.defaultMaxTokens > 0
         ? { defaultMaxTokens: entry.defaultMaxTokens }
         : {}),
-      ...(Array.isArray(entry.models) && entry.models.length > 0
-        ? {
-            models: entry.models.filter(
-              (m: unknown) => typeof m === "string" && (m as string).trim()
-            ) as string[]
-          }
-        : {})
+      ...(models ? { models } : {})
     });
   }
 
@@ -1026,6 +1036,8 @@ function validateProviderEntry(data: unknown): DashboardProviderEntry {
       `Provider instance ${entry.id.trim()} must include supported type, apiKey, and baseUrl`
     );
   }
+  const models = normalizeOptionalStringList(entry.models);
+
   return {
     id: entry.id.trim(),
     type: entry.type.trim() as ProviderId,
@@ -1037,13 +1049,7 @@ function validateProviderEntry(data: unknown): DashboardProviderEntry {
     ...(typeof entry.defaultMaxTokens === "number" && entry.defaultMaxTokens > 0
       ? { defaultMaxTokens: entry.defaultMaxTokens }
       : {}),
-    ...(Array.isArray(entry.models) && entry.models.length > 0
-      ? {
-          models: entry.models.filter(
-            (m: unknown) => typeof m === "string" && (m as string).trim()
-          ) as string[]
-        }
-      : {})
+    ...(models ? { models } : {})
   };
 }
 

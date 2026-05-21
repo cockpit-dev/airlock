@@ -590,18 +590,40 @@ function normalizeOpenAIResponsesTypedInputItems(
 }
 
 const OPENAI_CHAT_KNOWN_FIELDS = new Set([
-  "model", "stream", "user", "safety_identifier", "metadata",
-  "service_tier", "store", "prompt_cache_key", "prompt_cache_retention",
-  "max_tokens", "max_completion_tokens", "reasoning_effort",
-  "temperature", "top_p", "logprobs", "top_logprobs",
-  "frequency_penalty", "presence_penalty", "seed",
-  "response_format", "modalities", "stop", "stream_options",
-  "parallel_tool_calls", "tools", "tool_choice", "messages", "airlock"
+  "model",
+  "stream",
+  "user",
+  "safety_identifier",
+  "metadata",
+  "service_tier",
+  "store",
+  "prompt_cache_key",
+  "prompt_cache_retention",
+  "max_tokens",
+  "max_completion_tokens",
+  "reasoning_effort",
+  "temperature",
+  "top_p",
+  "logprobs",
+  "top_logprobs",
+  "frequency_penalty",
+  "presence_penalty",
+  "seed",
+  "response_format",
+  "modalities",
+  "stop",
+  "stream_options",
+  "parallel_tool_calls",
+  "tools",
+  "tool_choice",
+  "messages",
+  "airlock"
 ]);
 
 export function normalizeOpenAIChatRequest(
   request: OpenAIChatCompletionRequest
 ): CanonicalRequest {
+  const passthrough = extractPassthrough(request, OPENAI_CHAT_KNOWN_FIELDS);
   const endUserId = request.safety_identifier ?? request.user;
   const maxOutputTokens = request.max_completion_tokens ?? request.max_tokens;
   const stopSequences =
@@ -716,25 +738,49 @@ export function normalizeOpenAIChatRequest(
         content
       };
     }),
-    ...(extractPassthrough(request as unknown as Record<string, unknown>, OPENAI_CHAT_KNOWN_FIELDS)
-      ? { passthrough: extractPassthrough(request as unknown as Record<string, unknown>, OPENAI_CHAT_KNOWN_FIELDS)! }
-      : {})
+    ...(passthrough ? { passthrough } : {})
   };
 }
 
 const OPENAI_RESPONSES_KNOWN_FIELDS = new Set([
-  "model", "stream", "user", "safety_identifier", "metadata",
-  "service_tier", "store", "prompt_cache_key", "prompt_cache_retention",
-  "max_output_tokens", "temperature", "top_p", "top_logprobs",
-  "stop", "truncation", "reasoning", "text", "instructions",
-  "input", "tools", "tool_choice", "parallel_tool_calls",
-  "previous_response_id", "conversation", "include", "stream_options",
-  "prompt", "prompt_id", "airlock"
+  "model",
+  "stream",
+  "user",
+  "safety_identifier",
+  "metadata",
+  "service_tier",
+  "store",
+  "prompt_cache_key",
+  "prompt_cache_retention",
+  "max_output_tokens",
+  "temperature",
+  "top_p",
+  "top_logprobs",
+  "stop",
+  "truncation",
+  "reasoning",
+  "text",
+  "instructions",
+  "input",
+  "tools",
+  "tool_choice",
+  "parallel_tool_calls",
+  "previous_response_id",
+  "conversation",
+  "include",
+  "stream_options",
+  "prompt",
+  "prompt_id",
+  "airlock"
 ]);
 
 export function normalizeOpenAIResponsesRequest(
   request: OpenAIResponsesRequest
 ): CanonicalRequest {
+  const passthrough = extractPassthrough(
+    request,
+    OPENAI_RESPONSES_KNOWN_FIELDS
+  );
   const inputMessages =
     request.input === undefined
       ? []
@@ -860,20 +906,32 @@ export function normalizeOpenAIResponsesRequest(
       ? { allowParallelToolCalls: request.parallel_tool_calls }
       : {}),
     messages: [...instructionMessages, ...inputMessages],
-    ...(extractPassthrough(request as unknown as Record<string, unknown>, OPENAI_RESPONSES_KNOWN_FIELDS)
-      ? { passthrough: extractPassthrough(request as unknown as Record<string, unknown>, OPENAI_RESPONSES_KNOWN_FIELDS)! }
-      : {})
+    ...(passthrough ? { passthrough } : {})
   };
 }
 
 const ANTHROPIC_MESSAGES_KNOWN_FIELDS = new Set([
-  "model", "stream", "system", "max_tokens", "temperature", "top_p",
-  "stop_sequences", "metadata", "tools", "tool_choice", "messages", "airlock"
+  "model",
+  "stream",
+  "system",
+  "max_tokens",
+  "temperature",
+  "top_p",
+  "stop_sequences",
+  "metadata",
+  "tools",
+  "tool_choice",
+  "messages",
+  "airlock"
 ]);
 
 export function normalizeAnthropicMessagesRequest(
   request: AnthropicMessagesRequest
 ): CanonicalRequest {
+  const passthrough = extractPassthrough(
+    request,
+    ANTHROPIC_MESSAGES_KNOWN_FIELDS
+  );
   function joinAnthropicTextBlocks(
     blocks: Array<{
       type: "text";
@@ -1027,9 +1085,7 @@ export function normalizeAnthropicMessagesRequest(
         }
       : {}),
     messages: [...systemMessages, ...messages],
-    ...(extractPassthrough(request as unknown as Record<string, unknown>, ANTHROPIC_MESSAGES_KNOWN_FIELDS)
-      ? { passthrough: extractPassthrough(request as unknown as Record<string, unknown>, ANTHROPIC_MESSAGES_KNOWN_FIELDS)! }
-      : {})
+    ...(passthrough ? { passthrough } : {})
   };
 }
 

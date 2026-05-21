@@ -37051,7 +37051,9 @@ describe("GET /_airlock/routing/health", () => {
       );
 
       expect(response.status).toBe(204);
-      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://example.com");
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        "https://example.com"
+      );
     });
 
     it("echoes back browser origin when AIRLOCK_CORS_ORIGINS is not set", async () => {
@@ -37070,7 +37072,9 @@ describe("GET /_airlock/routing/health", () => {
         createBindings()
       );
 
-      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://example.com");
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        "https://example.com"
+      );
     });
 
     it("adds CORS headers to /v1/models GET responses", async () => {
@@ -37462,6 +37466,210 @@ describe("GET /_airlock/config", () => {
     const limits = body.limits as Record<string, unknown>;
     expect(limits).toHaveProperty("providerTimeoutMs");
     expect(limits).toHaveProperty("maxRequestBodyBytes");
+  });
+
+  it("allows config.read credentials to access redacted active config", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/_airlock/config",
+      {
+        headers: { authorization: "Bearer config-reader-token" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_CREDENTIALS: JSON.stringify([
+          {
+            id: "config_reader",
+            tokenHash:
+              "8adddec7e48243c567b6b3fc3c9169d611bffef4c40c04292411f7bf3c82ce96",
+            actor: "reader@example.com",
+            scopes: ["config.read"]
+          }
+        ]),
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await readJson(response)) as Record<string, unknown>;
+    const providers = body.providers as Array<Record<string, unknown>>;
+    expect(providers[0]).not.toHaveProperty("apiKey");
+  });
+
+  it("rejects config.read credentials on raw config store snapshots", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+    const configStoreNamespace = createConfigStoreNamespace({
+      sections: {
+        providers: {
+          data: [
+            {
+              id: "openai",
+              type: "openai",
+              apiKey: "sk-live-secret",
+              baseUrl: "https://api.openai.com/v1"
+            }
+          ],
+          updatedAt: 1,
+          updatedBy: "system",
+          version: 1
+        }
+      },
+      globalVersion: 1
+    });
+
+    const response = await app.request(
+      "http://localhost/_airlock/config/manage",
+      {
+        headers: { authorization: "Bearer config-reader-token" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_CREDENTIALS: JSON.stringify([
+          {
+            id: "config_reader",
+            tokenHash:
+              "8adddec7e48243c567b6b3fc3c9169d611bffef4c40c04292411f7bf3c82ce96",
+            actor: "reader@example.com",
+            scopes: ["config.read"]
+          }
+        ]),
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace(),
+        AIRLOCK_CONFIG_STORE: configStoreNamespace
+      }
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("rejects config.read credentials on provider model discovery", async () => {
+    const fetcher = vi.fn();
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/_airlock/providers/fetch-models",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer config-reader-token"
+        },
+        body: JSON.stringify({
+          type: "openai",
+          baseUrl: "https://api.openai.com/v1",
+          apiKey: "sk-live-secret"
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_CREDENTIALS: JSON.stringify([
+          {
+            id: "config_reader",
+            tokenHash:
+              "8adddec7e48243c567b6b3fc3c9169d611bffef4c40c04292411f7bf3c82ce96",
+            actor: "reader@example.com",
+            scopes: ["config.read"]
+          }
+        ]),
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(403);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("URL-encodes Gemini provider discovery key and page token parameters", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          models: [],
+          nextPageToken: "next+/token="
+        })
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          models: [
+            {
+              baseModelId: "gemini-2.5-pro",
+              supportedGenerationMethods: ["generateContent"]
+            }
+          ]
+        })
+      );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/_airlock/providers/fetch-models",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          type: "gemini",
+          baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+          apiKey: "key+/value=&"
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const firstUrl = fetcher.mock.calls[0]?.[0] as string;
+    const secondUrl = fetcher.mock.calls[1]?.[0] as string;
+    expect(firstUrl).toContain("key=key%2B%2Fvalue%3D%26");
+    expect(secondUrl).toContain("pageToken=next%2B%2Ftoken%3D");
+  });
+
+  it("URL-encodes Anthropic provider discovery pagination cursors", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          data: [{ id: "claude-sonnet-4-5" }],
+          has_more: true,
+          last_id: "cursor+/value="
+        })
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          data: [{ id: "claude-opus-4-5" }],
+          has_more: false
+        })
+      );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/_airlock/providers/fetch-models",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          type: "anthropic",
+          baseUrl: "https://api.anthropic.com",
+          apiKey: "anthropic-secret"
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const secondUrl = fetcher.mock.calls[1]?.[0] as string;
+    expect(secondUrl).toContain("after_id=cursor%2B%2Fvalue%3D");
   });
 });
 
@@ -38415,5 +38623,105 @@ describe("health_score target selection strategy", () => {
     const upstreamUrl = fetcher.mock.calls[0]?.[0] as string;
     expect(upstreamUrl).toContain("beta=true");
     expect(upstreamUrl).toContain("version=v2");
+  });
+
+  it("forwards client headers and query parameters for non-streaming responses requests", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello"
+                }
+              ]
+            }
+          ],
+          usage: { input_tokens: 5, output_tokens: 2, total_tokens: 7 }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses?beta=true&version=v2",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret",
+          "x-custom-trace": "trace-abc"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          input: "hi"
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [upstreamUrl, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(upstreamUrl).toContain("beta=true");
+    expect(upstreamUrl).toContain("version=v2");
+    expect(headers["x-custom-trace"]).toBe("trace-abc");
+  });
+
+  it("forwards client headers and query parameters for non-streaming Anthropic messages requests", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: "hello" }],
+          usage: { input_tokens: 5, output_tokens: 2 }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages?beta=true&version=v2",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret",
+          "x-custom-trace": "trace-abc"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          stream: false,
+          max_tokens: 64,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [upstreamUrl, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(upstreamUrl).toContain("beta=true");
+    expect(upstreamUrl).toContain("version=v2");
+    expect(headers["x-custom-trace"]).toBe("trace-abc");
   });
 });

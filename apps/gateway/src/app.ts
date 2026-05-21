@@ -194,9 +194,9 @@ export function createApp(options: CreateAppOptions = {}) {
       statusCode: context.res.status,
       durationMs
     };
-    const mp = context.get("_airlock_metrics_provider") as string | undefined;
-    const mm = context.get("_airlock_metrics_model") as string | undefined;
-    const ms = context.get("_airlock_metrics_stream") as boolean | undefined;
+    const mp = context.get("_airlock_metrics_provider");
+    const mm = context.get("_airlock_metrics_model");
+    const ms = context.get("_airlock_metrics_stream");
     if (mp) metricsRecord.providerId = mp;
     if (mm) metricsRecord.modelId = mm;
     if (ms !== undefined) metricsRecord.isStream = ms;
@@ -239,7 +239,9 @@ export function createApp(options: CreateAppOptions = {}) {
   app.options("/_airlock/*", async (context) => {
     const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
     const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
-    const adminRequestHeaders = context.req.header("Access-Control-Request-Headers");
+    const adminRequestHeaders = context.req.header(
+      "Access-Control-Request-Headers"
+    );
     return createPreflightResponse(context.req.header("Origin"), config, {
       allowAdminMethods: true,
       ...(adminRequestHeaders ? { requestHeaders: adminRequestHeaders } : {})
