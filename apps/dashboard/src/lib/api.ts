@@ -160,12 +160,14 @@ export class AirlockClient {
 
   // Provider model discovery
   fetchProviderModels(baseUrl: string, apiKey: string, type?: string) {
-    return this.request<{ models: string[] }>("/_airlock/providers/fetch-models", {
-      method: "POST",
-      body: JSON.stringify({ baseUrl, apiKey, type })
-    });
+    return this.request<{ models: string[] }>(
+      "/_airlock/providers/fetch-models",
+      {
+        method: "POST",
+        body: JSON.stringify({ baseUrl, apiKey, type })
+      }
+    );
   }
-
 }
 
 export class AuthError extends Error {
@@ -239,7 +241,12 @@ export interface MetricsSnapshot {
   >;
   byProvider: Record<
     string,
-    { requests: number; errors: number; avgDurationMs: number; streamCount: number }
+    {
+      requests: number;
+      errors: number;
+      avgDurationMs: number;
+      streamCount: number;
+    }
   >;
 }
 

@@ -46,7 +46,9 @@
           return;
         }
       }
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
 
     // Source 2: admin config store — providers with models field
     try {
@@ -66,18 +68,22 @@
           return;
         }
       }
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
 
     // Source 3: admin config — routes
     try {
       const client = createClient(creds.url, creds.token);
       const config = await client.getConfig();
-      const routeModels = config.routes.map(r => r.externalModel);
+      const routeModels = config.routes.map((r) => r.externalModel);
       if (routeModels.length > 0) {
         models = routeModels.sort();
         selectedModel = models[0];
       }
-    } catch { /* empty */ }
+    } catch {
+      /* empty */
+    }
   }
 
   function getOpenAIClient(): OpenAI | null {
@@ -86,7 +92,7 @@
     return new OpenAI({
       baseURL: base.endsWith("/v1") ? base : `${base}/v1`,
       apiKey: creds.token,
-      dangerouslyAllowBrowser: true,
+      dangerouslyAllowBrowser: true
     });
   }
 
@@ -97,9 +103,9 @@
   }
 
   function buildInput(): EasyInputMessage[] {
-    return messages.map(m => ({
-      role: m.role === "user" ? "user" as const : "assistant" as const,
-      content: m.content,
+    return messages.map((m) => ({
+      role: m.role === "user" ? ("user" as const) : ("assistant" as const),
+      content: m.content
     }));
   }
 
@@ -118,13 +124,16 @@
     abortCtrl = new AbortController();
 
     try {
-      const stream = await client.responses.create({
-        model: selectedModel,
-        input: [...buildInput()],
-        ...(instructions.trim() ? { instructions: instructions.trim() } : {}),
-        temperature,
-        stream: true,
-      }, { signal: abortCtrl.signal });
+      const stream = await client.responses.create(
+        {
+          model: selectedModel,
+          input: [...buildInput()],
+          ...(instructions.trim() ? { instructions: instructions.trim() } : {}),
+          temperature,
+          stream: true
+        },
+        { signal: abortCtrl.signal }
+      );
 
       for await (const event of stream) {
         if (event.type === "response.output_text.delta") {
@@ -138,14 +147,20 @@
       }
 
       if (streamingContent) {
-        messages = [...messages, { role: "assistant", content: streamingContent }];
+        messages = [
+          ...messages,
+          { role: "assistant", content: streamingContent }
+        ];
       }
       streamingContent = "";
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
         errorMsg = e instanceof Error ? e.message : "Request failed";
         if (streamingContent) {
-          messages = [...messages, { role: "assistant", content: streamingContent }];
+          messages = [
+            ...messages,
+            { role: "assistant", content: streamingContent }
+          ];
           streamingContent = "";
         }
       }
@@ -160,7 +175,10 @@
   function stopStreaming() {
     abortCtrl?.abort();
     if (streamingContent) {
-      messages = [...messages, { role: "assistant", content: streamingContent }];
+      messages = [
+        ...messages,
+        { role: "assistant", content: streamingContent }
+      ];
       streamingContent = "";
     }
     streaming = false;
@@ -180,7 +198,9 @@
     }
   }
 
-  loadModels().finally(() => { initializing = false; });
+  loadModels().finally(() => {
+    initializing = false;
+  });
 </script>
 
 <svelte:head><title>Playground - Airlock</title></svelte:head>
@@ -190,7 +210,9 @@
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center">
         <h2 class="text-sm font-semibold mb-1">No Gateway Connected</h2>
-        <p class="text-xs text-muted-foreground mb-3">Connect to a gateway to use the playground.</p>
+        <p class="text-xs text-muted-foreground mb-3">
+          Connect to a gateway to use the playground.
+        </p>
         <Button size="sm" href="/login">Connect Gateway</Button>
       </div>
     </div>
@@ -205,7 +227,9 @@
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center max-w-sm">
         <h2 class="text-sm font-semibold mb-1">No Models Available</h2>
-        <p class="text-xs text-muted-foreground mb-3">Add models to your providers or configure routes.</p>
+        <p class="text-xs text-muted-foreground mb-3">
+          Add models to your providers or configure routes.
+        </p>
         <Button size="sm" href="/config/providers">Configure Providers</Button>
       </div>
     </div>
@@ -222,13 +246,18 @@
           {/each}
         </select>
         <button
-          onclick={() => showSettings = !showSettings}
+          onclick={() => (showSettings = !showSettings)}
           class="size-7 inline-flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
           <Settings2 class="size-3.5" />
         </button>
       </div>
-      <Button variant="ghost" size="xs" onclick={clearChat} disabled={messages.length === 0 && !streamingContent}>
+      <Button
+        variant="ghost"
+        size="xs"
+        onclick={clearChat}
+        disabled={messages.length === 0 && !streamingContent}
+      >
         <Trash2 data-icon="inline-start" />Clear
       </Button>
     </div>
@@ -238,17 +267,25 @@
       <div class="border-b bg-muted/30 px-3 py-2">
         <div class="max-w-3xl mx-auto flex flex-wrap items-end gap-2">
           <div class="w-[72px]">
-            <label class="text-[11px] text-muted-foreground">Temp</label>
+            <label for="temperature" class="text-[11px] text-muted-foreground"
+              >Temp</label
+            >
             <input
+              id="temperature"
               type="number"
               bind:value={temperature}
-              min="0" max="2" step="0.1"
+              min="0"
+              max="2"
+              step="0.1"
               class="border-input bg-background flex h-7 w-full rounded-lg border px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             />
           </div>
           <div class="flex-1 min-w-[200px]">
-            <label class="text-[11px] text-muted-foreground">Instructions</label>
+            <label for="instructions" class="text-[11px] text-muted-foreground"
+              >Instructions</label
+            >
             <input
+              id="instructions"
               type="text"
               bind:value={instructions}
               placeholder="(optional)"
@@ -265,7 +302,9 @@
         <div class="flex items-center justify-center h-full">
           <div class="text-center">
             <p class="text-sm font-medium mb-0.5">{selectedModel}</p>
-            <p class="text-xs text-muted-foreground">What can I help you with?</p>
+            <p class="text-xs text-muted-foreground">
+              What can I help you with?
+            </p>
           </div>
         </div>
       {:else}
@@ -273,13 +312,17 @@
           {#each messages as msg}
             {#if msg.role === "user"}
               <div class="flex justify-end">
-                <div class="max-w-[80%] rounded-2xl rounded-br-md bg-primary text-primary-foreground px-3.5 py-2.5 text-sm whitespace-pre-wrap break-words leading-relaxed">
+                <div
+                  class="max-w-[80%] rounded-2xl rounded-br-md bg-primary text-primary-foreground px-3.5 py-2.5 text-sm whitespace-pre-wrap break-words leading-relaxed"
+                >
                   {msg.content}
                 </div>
               </div>
             {:else}
               <div class="flex justify-start">
-                <div class="max-w-[80%] rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm whitespace-pre-wrap break-words leading-relaxed">
+                <div
+                  class="max-w-[80%] rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm whitespace-pre-wrap break-words leading-relaxed"
+                >
                   {msg.content}
                 </div>
               </div>
@@ -287,14 +330,20 @@
           {/each}
           {#if streamingContent}
             <div class="flex justify-start">
-              <div class="max-w-[80%] rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm whitespace-pre-wrap break-words leading-relaxed">
-                {streamingContent}<span class="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse align-text-bottom ml-0.5 rounded-sm"></span>
+              <div
+                class="max-w-[80%] rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm whitespace-pre-wrap break-words leading-relaxed"
+              >
+                {streamingContent}<span
+                  class="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse align-text-bottom ml-0.5 rounded-sm"
+                ></span>
               </div>
             </div>
           {/if}
           {#if errorMsg}
             <div class="flex justify-center">
-              <div class="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive max-w-md">
+              <div
+                class="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive max-w-md"
+              >
                 {errorMsg}
               </div>
             </div>
@@ -318,11 +367,21 @@
             />
           </div>
           {#if streaming}
-            <Button variant="destructive" size="icon" onclick={stopStreaming} class="shrink-0 size-9">
+            <Button
+              variant="destructive"
+              size="icon"
+              onclick={stopStreaming}
+              class="shrink-0 size-9"
+            >
               <StopCircle class="size-4" />
             </Button>
           {:else}
-            <Button size="icon" onclick={handleSend} disabled={!input.trim()} class="shrink-0 size-9">
+            <Button
+              size="icon"
+              onclick={handleSend}
+              disabled={!input.trim()}
+              class="shrink-0 size-9"
+            >
               <Send class="size-4" />
             </Button>
           {/if}

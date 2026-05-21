@@ -101,7 +101,9 @@
     <Breadcrumb.Separator />
     <Breadcrumb.Item>
       <Breadcrumb.Page
-        >{k ? (k.id as string).slice(0, 12) + "..." : page.params.id}</Breadcrumb.Page
+        >{k
+          ? (k.id as string).slice(0, 12) + "..."
+          : page.params.id}</Breadcrumb.Page
       >
     </Breadcrumb.Item>
   </Breadcrumb.List>
@@ -112,12 +114,18 @@
   {#if k}
     <div class="flex gap-1.5">
       {#if lifecycle === "active"}
-        <Button variant="outline" size="xs" onclick={handleRevoke}>Revoke</Button>
-        <Button variant="outline" size="xs" onclick={handleArchive}>Archive</Button>
+        <Button variant="outline" size="xs" onclick={handleRevoke}
+          >Revoke</Button
+        >
+        <Button variant="outline" size="xs" onclick={handleArchive}
+          >Archive</Button
+        >
       {:else if lifecycle === "archived"}
         <Button size="xs" onclick={handleRestore}>Restore</Button>
       {/if}
-      <Button variant="destructive" size="xs" onclick={handleDelete}>Delete</Button>
+      <Button variant="destructive" size="xs" onclick={handleDelete}
+        >Delete</Button
+      >
     </div>
   {/if}
 </div>
@@ -127,24 +135,44 @@
     <Card.Content>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div>
-          <p class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">ID</p>
+          <p
+            class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium"
+          >
+            ID
+          </p>
           <p class="font-mono text-xs mt-0.5">{k.id as string}</p>
         </div>
         <div>
-          <p class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Label</p>
+          <p
+            class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium"
+          >
+            Label
+          </p>
           <p class="text-xs mt-0.5">{(k.label as string) ?? "-"}</p>
         </div>
         <div>
-          <p class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Status</p>
+          <p
+            class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium"
+          >
+            Status
+          </p>
           <div class="flex items-center gap-1.5 mt-0.5">
             <Badge variant="secondary">
-              <span class="inline-block size-2 rounded-full {statusDotColor(lifecycle)}"></span>
+              <span
+                class="inline-block size-2 rounded-full {statusDotColor(
+                  lifecycle
+                )}"
+              ></span>
               {lifecycle}
             </Badge>
           </div>
         </div>
         <div>
-          <p class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Created</p>
+          <p
+            class="text-[10px] text-muted-foreground uppercase tracking-wider font-medium"
+          >
+            Created
+          </p>
           <p class="text-xs mt-0.5">{(k.createdAt as string) ?? "-"}</p>
         </div>
       </div>
@@ -155,7 +183,10 @@
     {@const s = status as Record<string, unknown>}
     <Card.Root class="mb-3">
       <Card.Header>
-        <Card.Title class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Quota Status</Card.Title>
+        <Card.Title
+          class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium"
+          >Quota Status</Card.Title
+        >
       </Card.Header>
       <Card.Content>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -176,7 +207,11 @@
 
   {#if events.length > 0}
     <div>
-      <p class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-2">Audit Events</p>
+      <p
+        class="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-2"
+      >
+        Audit Events
+      </p>
       <Table.Root>
         <Table.Header>
           <Table.Row>

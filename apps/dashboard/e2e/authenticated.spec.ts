@@ -19,29 +19,27 @@ test.describe("Dashboard home page", () => {
   });
 
   test("shows status section", async ({ page }) => {
-    await expect(
-      page.getByText("Request Status")
-    ).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("Request Status")).toBeVisible({
+      timeout: 5000
+    });
   });
 
   test("shows navigation links", async ({ page }) => {
     await expect(page.getByRole("link", { name: /dashboard/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /keys/i })).toBeVisible();
-    // Config is inside a collapsible; click to expand, then check sub-items
-    await page.getByRole("button", { name: /config/i }).click();
-    await expect(page.getByRole("link", { name: /general/i })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Keys", exact: true })
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Providers" })).toBeVisible();
   });
 
   test("navigates to keys page", async ({ page }) => {
-    await page.getByRole("link", { name: /keys/i }).click();
+    await page.getByRole("link", { name: "Keys", exact: true }).click();
     await expect(page).toHaveURL(/\/keys/, { timeout: 5000 });
   });
 
   test("navigates to config page", async ({ page }) => {
-    // Expand config collapsible first
-    await page.getByRole("button", { name: /config/i }).click();
-    await page.getByRole("link", { name: /general/i }).click();
-    await expect(page).toHaveURL(/\/config/, { timeout: 5000 });
+    await page.getByRole("link", { name: "Providers" }).click();
+    await expect(page).toHaveURL(/\/config\/providers/, { timeout: 5000 });
   });
 });
 

@@ -82,6 +82,8 @@ function buildMetricsPayload() {
     errors: 1,
     errorRate: 0.0238,
     avgDurationMs: 420,
+    streamCount: 12,
+    streamRatio: 0.2857,
     statusCodes: { 200: 41, 500: 1 },
     byRoute: {
       "/v1/chat/completions": {
@@ -93,6 +95,14 @@ function buildMetricsPayload() {
         requests: 12,
         errors: 0,
         avgDurationMs: 540
+      }
+    },
+    byProvider: {
+      openai: {
+        requests: 42,
+        errors: 1,
+        avgDurationMs: 420,
+        streamCount: 12
       }
     }
   };

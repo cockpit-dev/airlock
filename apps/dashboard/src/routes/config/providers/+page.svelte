@@ -43,7 +43,11 @@
   };
   const providerDefaultModels: Record<ProviderType, string[]> = {
     openai: ["gpt-4.1-mini", "gpt-4.1", "gpt-4.1-nano", "o3", "o4-mini"],
-    anthropic: ["claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-haiku-4-20250514"],
+    anthropic: [
+      "claude-sonnet-4-20250514",
+      "claude-opus-4-20250514",
+      "claude-haiku-4-20250514"
+    ],
     gemini: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"]
   };
   const allProtocols = [
@@ -177,25 +181,19 @@
     const cp = providers.find((p) => p.id === pk);
     if (!cp) return;
     const models = [...(cp.models ?? []), ""];
-    providers = providers.map((p) =>
-      p.id === pk ? { ...cp, models } : p
-    );
+    providers = providers.map((p) => (p.id === pk ? { ...cp, models } : p));
   }
   function removeModel(pk: string, index: number) {
     const cp = providers.find((p) => p.id === pk);
     if (!cp) return;
     const models = (cp.models ?? []).filter((_, i) => i !== index);
-    providers = providers.map((p) =>
-      p.id === pk ? { ...cp, models } : p
-    );
+    providers = providers.map((p) => (p.id === pk ? { ...cp, models } : p));
   }
   function updateModel(pk: string, index: number, value: string) {
     const cp = providers.find((p) => p.id === pk);
     if (!cp) return;
-    const models = (cp.models ?? []).map((m, i) => i === index ? value : m);
-    providers = providers.map((p) =>
-      p.id === pk ? { ...cp, models } : p
-    );
+    const models = (cp.models ?? []).map((m, i) => (i === index ? value : m));
+    providers = providers.map((p) => (p.id === pk ? { ...cp, models } : p));
   }
   async function fetchModels(pk: string) {
     const cp = providers.find((p) => p.id === pk);
@@ -209,7 +207,11 @@
     fetchingModels = { ...fetchingModels, [pk]: true };
     error = "";
     try {
-      const result = await client.fetchProviderModels(cp.baseUrl, cp.apiKey, cp.type);
+      const result = await client.fetchProviderModels(
+        cp.baseUrl,
+        cp.apiKey,
+        cp.type
+      );
       if (result.models.length > 0) {
         providers = providers.map((p) =>
           p.id === pk ? { ...cp, models: result.models } : p
@@ -231,9 +233,13 @@
 
 <Breadcrumb.Root>
   <Breadcrumb.List>
-    <Breadcrumb.Item><Breadcrumb.Link href="/config">Config</Breadcrumb.Link></Breadcrumb.Item>
+    <Breadcrumb.Item
+      ><Breadcrumb.Link href="/config">Config</Breadcrumb.Link></Breadcrumb.Item
+    >
     <Breadcrumb.Separator />
-    <Breadcrumb.Item><Breadcrumb.Page>Providers</Breadcrumb.Page></Breadcrumb.Item>
+    <Breadcrumb.Item
+      ><Breadcrumb.Page>Providers</Breadcrumb.Page></Breadcrumb.Item
+    >
   </Breadcrumb.List>
 </Breadcrumb.Root>
 
@@ -242,24 +248,41 @@
 </div>
 
 {#if error}
-  <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 mb-3 text-xs text-destructive">{error}</div>
+  <div
+    class="rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 mb-3 text-xs text-destructive"
+  >
+    {error}
+  </div>
 {/if}
 {#if success}
-  <div class="rounded-lg border border-success/30 bg-success/5 p-2.5 mb-3 text-xs text-success">{success}</div>
+  <div
+    class="rounded-lg border border-success/30 bg-success/5 p-2.5 mb-3 text-xs text-success"
+  >
+    {success}
+  </div>
 {/if}
 
 {#if loading}
   <Card.Root class="py-4 text-center">
-    <Card.Content><p class="text-sm text-muted-foreground">Loading...</p></Card.Content>
+    <Card.Content
+      ><p class="text-sm text-muted-foreground">Loading...</p></Card.Content
+    >
   </Card.Root>
 {:else}
   <!-- Add Provider Form -->
   <Card.Root class="mb-3">
     <Card.Content>
-      <div class="grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-2 items-end">
+      <div
+        class="grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-2 items-end"
+      >
         <div class="grid gap-1">
           <Label for="new-pk">Provider Key</Label>
-          <Input id="new-pk" type="text" placeholder="e.g. openai-prod" bind:value={newProviderKey} />
+          <Input
+            id="new-pk"
+            type="text"
+            placeholder="e.g. openai-prod"
+            bind:value={newProviderKey}
+          />
         </div>
         <div class="grid gap-1">
           <Label for="new-pt">Adapter</Label>
@@ -268,10 +291,14 @@
             bind:value={newProviderType}
             class="border-input bg-background flex h-8 w-full rounded-lg border px-2.5 py-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           >
-            {#each providerTypes as t}<option value={t}>{providerTypeLabels[t]}</option>{/each}
+            {#each providerTypes as t}<option value={t}
+                >{providerTypeLabels[t]}</option
+              >{/each}
           </select>
         </div>
-        <Button size="sm" onclick={addProvider}><Plus data-icon="inline-start" />Add</Button>
+        <Button size="sm" onclick={addProvider}
+          ><Plus data-icon="inline-start" />Add</Button
+        >
       </div>
     </Card.Content>
   </Card.Root>
@@ -295,15 +322,23 @@
               class="flex w-full items-center justify-between rounded-md -mx-1 -mt-1 px-1 py-1 hover:bg-muted/50 transition-colors"
             >
               <div class="flex items-center gap-2">
-                <span class="size-2 rounded-full {config.apiKey && config.baseUrl ? 'bg-success' : 'bg-muted-foreground'}"></span>
+                <span
+                  class="size-2 rounded-full {config.apiKey && config.baseUrl
+                    ? 'bg-success'
+                    : 'bg-muted-foreground'}"
+                ></span>
                 <span class="text-sm font-medium">{pk}</span>
                 <Badge variant="secondary">{config.type}</Badge>
                 {#if (config.models ?? []).length > 0}
-                  <Badge variant="outline">{config.models!.length} models</Badge>
+                  <Badge variant="outline">{config.models!.length} models</Badge
+                  >
                 {/if}
               </div>
               <ChevronDown
-                class="size-3.5 text-muted-foreground transition-transform {editProvider === pk ? 'rotate-180' : ''}"
+                class="size-3.5 text-muted-foreground transition-transform {editProvider ===
+                pk
+                  ? 'rotate-180'
+                  : ''}"
               />
             </Collapsible.Trigger>
           </Card.Header>
@@ -319,11 +354,12 @@
                       updateProviderType(
                         pk,
                         (e.target as HTMLSelectElement).value as ProviderType
-                      )
-                    }
+                      )}
                     class="border-input bg-background flex h-8 w-full rounded-lg border px-2.5 py-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
-                    {#each providerTypes as t}<option value={t}>{providerTypeLabels[t]}</option>{/each}
+                    {#each providerTypes as t}<option value={t}
+                        >{providerTypeLabels[t]}</option
+                      >{/each}
                   </select>
                 </div>
                 <div class="grid gap-1">
@@ -334,10 +370,18 @@
                     placeholder="secret"
                     value={config.apiKey}
                     oninput={(e) =>
-                      updateField(pk, "apiKey", (e.target as HTMLInputElement).value)
-                    }
+                      updateField(
+                        pk,
+                        "apiKey",
+                        (e.target as HTMLInputElement).value
+                      )}
                     onblur={() => {
-                      if (config.apiKey && config.baseUrl && !fetchingModels[pk]) fetchModels(pk);
+                      if (
+                        config.apiKey &&
+                        config.baseUrl &&
+                        !fetchingModels[pk]
+                      )
+                        fetchModels(pk);
                     }}
                   />
                 </div>
@@ -349,10 +393,14 @@
                   type="url"
                   value={config.baseUrl}
                   oninput={(e) =>
-                    updateField(pk, "baseUrl", (e.target as HTMLInputElement).value)
-                  }
+                    updateField(
+                      pk,
+                      "baseUrl",
+                      (e.target as HTMLInputElement).value
+                    )}
                   onblur={() => {
-                    if (config.apiKey && config.baseUrl && !fetchingModels[pk]) fetchModels(pk);
+                    if (config.apiKey && config.baseUrl && !fetchingModels[pk])
+                      fetchModels(pk);
                   }}
                   class="font-mono text-xs"
                 />
@@ -367,12 +415,21 @@
                       variant="outline"
                       size="xs"
                       onclick={() => fetchModels(pk)}
-                      disabled={fetchingModels[pk] || !config.apiKey || !config.baseUrl}
+                      disabled={fetchingModels[pk] ||
+                        !config.apiKey ||
+                        !config.baseUrl}
                     >
-                      <RefreshCw data-icon="inline-start" class={fetchingModels[pk] ? "animate-spin" : ""} />
+                      <RefreshCw
+                        data-icon="inline-start"
+                        class={fetchingModels[pk] ? "animate-spin" : ""}
+                      />
                       {fetchingModels[pk] ? "Fetching..." : "Auto Fetch"}
                     </Button>
-                    <Button variant="ghost" size="xs" onclick={() => addModel(pk)}>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onclick={() => addModel(pk)}
+                    >
                       <Plus data-icon="inline-start" />Add
                     </Button>
                   </div>
@@ -384,30 +441,47 @@
                         type="text"
                         value={model}
                         placeholder="model-name"
-                        oninput={(e) => updateModel(pk, i, (e.target as HTMLInputElement).value)}
+                        oninput={(e) =>
+                          updateModel(
+                            pk,
+                            i,
+                            (e.target as HTMLInputElement).value
+                          )}
                         class="border-input bg-background flex h-7 flex-1 rounded-lg border px-2 py-1 text-xs font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring/50 placeholder:text-muted-foreground"
                       />
-                      <Button variant="ghost" size="icon-xs" onclick={() => removeModel(pk, i)}>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onclick={() => removeModel(pk, i)}
+                      >
                         <X />
                       </Button>
                     </div>
                   {/each}
                   {#if (config.models ?? []).length === 0}
-                    <p class="text-xs text-muted-foreground py-1">No models added. Click Add to specify models this provider supports.</p>
+                    <p class="text-xs text-muted-foreground py-1">
+                      No models added. Click Add to specify models this provider
+                      supports.
+                    </p>
                   {/if}
                 </div>
               </div>
 
               {#if config.type === "anthropic"}
                 <div class="grid gap-1">
-                  <Label for={providerFieldId(pk, "defaultMaxTokens")}>Max Tokens</Label>
+                  <Label for={providerFieldId(pk, "defaultMaxTokens")}
+                    >Max Tokens</Label
+                  >
                   <Input
                     id={providerFieldId(pk, "defaultMaxTokens")}
                     type="number"
                     value={config.defaultMaxTokens ?? 4096}
                     oninput={(e) =>
-                      updateField(pk, "defaultMaxTokens", Number((e.target as HTMLInputElement).value))
-                    }
+                      updateField(
+                        pk,
+                        "defaultMaxTokens",
+                        Number((e.target as HTMLInputElement).value)
+                      )}
                   />
                 </div>
               {/if}
@@ -421,7 +495,9 @@
                       class="cursor-pointer"
                     >
                       <Badge
-                        variant={(config.protocols ?? []).includes(proto) ? "default" : "outline"}
+                        variant={(config.protocols ?? []).includes(proto)
+                          ? "default"
+                          : "outline"}
                       >
                         {proto}
                       </Badge>
@@ -452,7 +528,11 @@
     {/each}
     {#if providers.length === 0}
       <Card.Root class="py-4 text-center">
-        <Card.Content><p class="text-sm text-muted-foreground">No providers configured.</p></Card.Content>
+        <Card.Content
+          ><p class="text-sm text-muted-foreground">
+            No providers configured.
+          </p></Card.Content
+        >
       </Card.Root>
     {/if}
   </div>

@@ -27,20 +27,26 @@
   let createLabel = $state("");
   let createError = $state("");
   let createLoading = $state(false);
-  let createdSecrets = $state<{ id: string; label: string; secret: string }[]>([]);
+  let createdSecrets = $state<{ id: string; label: string; secret: string }[]>(
+    []
+  );
   let copiedId = $state("");
 
   function generateSecret(): string {
     const bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
-    const hex = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(
+      ""
+    );
     return `airlok_${hex}`;
   }
 
   async function sha256Hex(text: string): Promise<string> {
     const data = new TextEncoder().encode(text);
     const hash = await crypto.subtle.digest("SHA-256", data);
-    return Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(hash), (b) =>
+      b.toString(16).padStart(2, "0")
+    ).join("");
   }
 
   async function handleCreate(e: Event) {
@@ -58,10 +64,13 @@
         id,
         label: createLabel.trim() || id,
         valueHash,
-        status: "active",
+        status: "active"
       };
       await client.createKey(payload);
-      createdSecrets = [...createdSecrets, { id, label: createLabel.trim() || id, secret }];
+      createdSecrets = [
+        ...createdSecrets,
+        { id, label: createLabel.trim() || id, secret }
+      ];
       createLabel = "";
     } catch (err) {
       createError = err instanceof Error ? err.message : "Failed to create key";
@@ -73,11 +82,13 @@
   function copySecret(id: string, text: string) {
     navigator.clipboard.writeText(text);
     copiedId = id;
-    setTimeout(() => { copiedId = ""; }, 2000);
+    setTimeout(() => {
+      copiedId = "";
+    }, 2000);
   }
 
   function dismissSecret(id: string) {
-    createdSecrets = createdSecrets.filter(s => s.id !== id);
+    createdSecrets = createdSecrets.filter((s) => s.id !== id);
   }
   async function handleDelete(keyId: string) {
     if (!confirm("Delete this key?")) return;
@@ -145,14 +156,27 @@
       <Card.Content>
         <div class="flex items-center justify-between mb-1.5">
           <p class="text-sm font-medium">{cs.label}</p>
-          <Button variant="ghost" size="xs" onclick={() => dismissSecret(cs.id)}>
+          <Button
+            variant="ghost"
+            size="xs"
+            onclick={() => dismissSecret(cs.id)}
+          >
             <X class="size-3" />
           </Button>
         </div>
         <div class="flex items-center gap-2">
-          <code class="flex-1 text-xs font-mono bg-background rounded-lg border px-3 py-2 break-all select-all">{cs.secret}</code>
-          <Button variant="outline" size="icon" onclick={() => copySecret(cs.id, cs.secret)}>
-            {#if copiedId === cs.id}<Check class="size-4 text-success" />{:else}<Copy class="size-4" />{/if}
+          <code
+            class="flex-1 text-xs font-mono bg-background rounded-lg border px-3 py-2 break-all select-all"
+            >{cs.secret}</code
+          >
+          <Button
+            variant="outline"
+            size="icon"
+            onclick={() => copySecret(cs.id, cs.secret)}
+          >
+            {#if copiedId === cs.id}<Check
+                class="size-4 text-success"
+              />{:else}<Copy class="size-4" />{/if}
           </Button>
         </div>
       </Card.Content>
@@ -304,8 +328,11 @@
     <Card.Content class="flex flex-col items-center justify-center">
       <KeyRound class="size-8 text-muted-foreground/50 mb-2" />
       <p class="text-xs text-muted-foreground">No API keys yet</p>
-      <Button variant="link" size="sm" onclick={() => (showCreate = true)} class="mt-2"
-        >Create your first key</Button
+      <Button
+        variant="link"
+        size="sm"
+        onclick={() => (showCreate = true)}
+        class="mt-2">Create your first key</Button
       >
     </Card.Content>
   </Card.Root>
