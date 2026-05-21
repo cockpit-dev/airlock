@@ -236,6 +236,162 @@ describe("GatewayConfigStoreDurableObject", () => {
     expect(body.updatedBy).toBe("admin@example.com");
   });
 
+  it("creates missing routes for provider models when providers are saved", async () => {
+    const { state } = createMockState();
+    const do_ = new GatewayConfigStoreDurableObject(state);
+
+    const response = await do_.fetch(
+      createRequest("PUT", "/sections/providers", [
+        {
+          id: "openai-prod",
+          type: "openai",
+          apiKey: "sk-test",
+          baseUrl: "https://api.openai.com/v1",
+          models: ["gpt-4.1-mini", "gpt-4.1"]
+        },
+        {
+          id: "anthropic-prod",
+          type: "anthropic",
+          apiKey: "sk-ant",
+          baseUrl: "https://api.anthropic.com",
+          models: ["claude-sonnet-4-20250514"]
+        }
+      ])
+    );
+
+    expect(response.status).toBe(200);
+
+    const routesResponse = await do_.fetch(
+      createRequest("GET", "/sections/routes")
+    );
+    expect(routesResponse.status).toBe(200);
+    const routesBody = (await routesResponse.json()) as StoredConfigSection;
+    expect(routesBody.data).toEqual([
+      {
+        externalModel: "gpt-4.1-mini",
+        target: {
+          provider: "openai-prod",
+          providerModel: "gpt-4.1-mini"
+        }
+      },
+      {
+        externalModel: "gpt-4.1",
+        target: {
+          provider: "openai-prod",
+          providerModel: "gpt-4.1"
+        }
+      },
+      {
+        externalModel: "claude-sonnet-4-20250514",
+        target: {
+          provider: "anthropic-prod",
+          providerModel: "claude-sonnet-4-20250514"
+        }
+      }
+    ]);
+    expect(routesBody.version).toBe(1);
+  });
+
+  it("does not overwrite existing routes when providers are saved", async () => {
+    const { state } = createMockState();
+    const do_ = new GatewayConfigStoreDurableObject(state);
+
+    await do_.fetch(
+      createRequest("PUT", "/sections/routes", [
+        {
+          externalModel: "gpt-4.1-mini",
+          target: {
+            provider: "manual-provider",
+            providerModel: "manual-model"
+          },
+          fallbacks: [
+            {
+              provider: "fallback-provider",
+              providerModel: "fallback-model"
+            }
+          ]
+        }
+      ])
+    );
+
+    await do_.fetch(
+      createRequest("PUT", "/sections/providers", [
+        {
+          id: "openai-prod",
+          type: "openai",
+          apiKey: "sk-test",
+          baseUrl: "https://api.openai.com/v1",
+          models: ["gpt-4.1-mini", "gpt-4.1-mini", " ", "gpt-4.1"]
+        }
+      ])
+    );
+
+    const routesResponse = await do_.fetch(
+      createRequest("GET", "/sections/routes")
+    );
+    const routesBody = (await routesResponse.json()) as StoredConfigSection;
+    expect(routesBody.data).toEqual([
+      {
+        externalModel: "gpt-4.1-mini",
+        target: {
+          provider: "manual-provider",
+          providerModel: "manual-model"
+        },
+        fallbacks: [
+          {
+            provider: "fallback-provider",
+            providerModel: "fallback-model"
+          }
+        ]
+      },
+      {
+        externalModel: "gpt-4.1",
+        target: {
+          provider: "openai-prod",
+          providerModel: "gpt-4.1"
+        }
+      }
+    ]);
+    expect(routesBody.version).toBe(2);
+  });
+
+  it("preserves existing non-standard route entries while adding provider model routes", async () => {
+    const { state } = createMockState();
+    const do_ = new GatewayConfigStoreDurableObject(state);
+
+    const legacyRoute = {
+      note: "legacy non-dashboard route data"
+    };
+    await do_.fetch(createRequest("PUT", "/sections/routes", [legacyRoute]));
+
+    await do_.fetch(
+      createRequest("PUT", "/sections/providers", [
+        {
+          id: "openai-prod",
+          type: "openai",
+          apiKey: "sk-test",
+          baseUrl: "https://api.openai.com/v1",
+          models: ["gpt-4.1-mini"]
+        }
+      ])
+    );
+
+    const routesResponse = await do_.fetch(
+      createRequest("GET", "/sections/routes")
+    );
+    const routesBody = (await routesResponse.json()) as StoredConfigSection;
+    expect(routesBody.data).toEqual([
+      legacyRoute,
+      {
+        externalModel: "gpt-4.1-mini",
+        target: {
+          provider: "openai-prod",
+          providerModel: "gpt-4.1-mini"
+        }
+      }
+    ]);
+  });
+
   it("defaults actor to 'system'", async () => {
     const { state } = createMockState();
     const do_ = new GatewayConfigStoreDurableObject(state);

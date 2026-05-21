@@ -37,10 +37,12 @@ key governance, and a built-in admin dashboard.
 - **Observability** — Structured request logging, telemetry event pipeline
   (Queue + Analytics Engine), per-route health metrics, and in-memory request
   statistics.
-- **Admin API** — 29 authenticated admin endpoints covering status, metrics,
-  configuration, routing health, and full key lifecycle management.
-- **Dashboard** — SvelteKit 5 control plane UI with login, key management,
-  routing health, configuration viewer, and status monitoring.
+- **Admin API** — Authenticated admin surface covering status, metrics,
+  redacted config, raw config-store management, provider model discovery,
+  routing health, and full key lifecycle management.
+- **Dashboard** — SvelteKit 5 control plane UI with token login, optional
+  Google OAuth, metrics, key management, providers, routes, accounts, routing
+  health, and an OpenAI Responses playground.
 - **Production hardening** — Request body size limits, Content-Type validation,
   CORS, timing-safe admin auth, per-IP rate limiting, client abort signal
   forwarding, empty stream detection, SSE buffer limits, and centralized error
@@ -151,13 +153,16 @@ pnpm --filter @airlock/dashboard dev
 
 ```bash
 # Run all checks
-pnpm typecheck && pnpm test && pnpm build
+pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm e2e && pnpm run audit
 
 # Or individually
+pnpm format        # Prettier check for tracked files
 pnpm lint          # ESLint across all packages
 pnpm typecheck     # TypeScript type checking
 pnpm test          # Vitest across all packages
 pnpm build         # Build all packages and apps
+pnpm e2e           # Playwright dashboard E2E tests
+pnpm run audit     # Production dependency audit
 ```
 
 ---
@@ -193,17 +198,33 @@ defaults.
 
 ### Key Optional Variables
 
-| Variable                           | Description                                   | Default |
-| ---------------------------------- | --------------------------------------------- | ------- |
-| `AIRLOCK_MODE`                     | Operating mode: `free` or `scale`             | `free`  |
-| `AIRLOCK_MODEL_ALIASES`            | Env-side model routing (JSON)                 | —       |
-| `AIRLOCK_MODEL_FALLBACKS`          | Env-side fallback targets (JSON)              | —       |
-| `AIRLOCK_PROVIDER_TIMEOUT_MS`      | Upstream request timeout                      | `30000` |
-| `AIRLOCK_PROVIDER_MAX_RETRIES`     | Max cross-provider retries                    | `0`     |
-| `AIRLOCK_CORS_ORIGINS`             | Env fallback CORS origins                     | —       |
-| `AIRLOCK_REQUEST_LOGGING`          | Env fallback structured logging               | `false` |
-| `AIRLOCK_CONFIG_STORE`             | Dashboard overlay config store binding        | —       |
-| `AIRLOCK_GOOGLE_SUPER_ADMIN_EMAIL` | Map matching Google OAuth user to super admin | —       |
+| Variable                           | Description                                        | Default |
+| ---------------------------------- | -------------------------------------------------- | ------- |
+| `AIRLOCK_MODE`                     | Operating mode: `free` or `scale`                  | `free`  |
+| `AIRLOCK_MODEL_ALIASES`            | Env-side model routing (`external=provider:model`) | —       |
+| `AIRLOCK_MODEL_FALLBACKS`          | Env-side fallback targets (JSON)                   | —       |
+| `AIRLOCK_MODEL_TARGET_SELECTION`   | Env-side target selection strategy config (JSON)   | —       |
+| `AIRLOCK_MODEL_KEY_POLICY`         | Env-side route key access policy (JSON)            | —       |
+| `AIRLOCK_MODEL_SHAPING`            | Env-side outbound request shaping (JSON)           | —       |
+| `AIRLOCK_MODEL_GROUPS`             | Env-side model groups for key policies (JSON)      | —       |
+| `AIRLOCK_PROVIDER_TIMEOUT_MS`      | Upstream request timeout                           | `30000` |
+| `AIRLOCK_PROVIDER_MAX_RETRIES`     | Max cross-provider retries                         | `0`     |
+| `AIRLOCK_CORS_ORIGINS`             | Env fallback CORS origins                          | —       |
+| `AIRLOCK_REQUEST_LOGGING`          | Env fallback structured logging                    | `false` |
+| `AIRLOCK_IP_RATE_LIMIT_POLICY`     | Env fallback IP rate limit policy (JSON)           | —       |
+| `AIRLOCK_CONFIG_STORE`             | Dashboard overlay config store binding             | —       |
+| `AIRLOCK_GOOGLE_SUPER_ADMIN_EMAIL` | Map matching Google OAuth user to super admin      | —       |
+
+### Dashboard Optional OAuth Variables
+
+Google OAuth is exposed on the dashboard login page only when all three values
+are configured:
+
+| Variable               | Description                        |
+| ---------------------- | ---------------------------------- |
+| `AUTH_SECRET`          | Auth.js session secret (32+ chars) |
+| `GOOGLE_CLIENT_ID`     | Google OAuth client ID             |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret         |
 
 ---
 
@@ -211,39 +232,72 @@ defaults.
 
 ### Data Plane
 
-| Endpoint               | Method | Description                             |
-| ---------------------- | ------ | --------------------------------------- |
-| `/v1/chat/completions` | POST   | OpenAI Chat Completions protocol        |
-| `/v1/responses`        | POST   | OpenAI Responses protocol               |
-| `/v1/messages`         | POST   | Anthropic Messages protocol             |
-| `/v1/models`           | GET    | List available models                   |
-| `/v1/models/:model`    | GET    | Get model details                       |
-| `/healthz`             | GET    | Liveness probe                          |
-| `/readyz`              | GET    | Readiness probe (provider verification) |
+| Endpoint                      | Method | Description                          |
+| ----------------------------- | ------ | ------------------------------------ |
+| `/v1/chat/completions`        | POST   | OpenAI Chat Completions protocol     |
+| `/v1/responses`               | POST   | OpenAI Responses protocol            |
+| `/v1/messages`                | POST   | Anthropic Messages protocol          |
+| `/v1/models`                  | GET    | List available models                |
+| `/v1/models/:model`           | GET    | Get model details                    |
+| `/v1/models/:provider/:model` | GET    | Get provider-addressed model details |
 
-All data plane endpoints require an API key via the `Authorization: Bearer <key>`
-header (or legacy `x-api-key` header).
+All `/v1/*` data plane endpoints require an API key via the
+`Authorization: Bearer <key>` header (or legacy `x-api-key` header).
+
+### Probes
+
+| Endpoint   | Method | Description                             |
+| ---------- | ------ | --------------------------------------- |
+| `/healthz` | GET    | Liveness probe                          |
+| `/readyz`  | GET    | Readiness probe (provider verification) |
+
+Probe endpoints are unauthenticated so infrastructure health checks can call
+them directly.
 
 ### Admin Plane
 
-| Endpoint                        | Method | Description                                |
-| ------------------------------- | ------ | ------------------------------------------ |
-| `/_airlock/status`              | GET    | Gateway status and config fingerprint      |
-| `/_airlock/metrics`             | GET    | Request metrics (sliding window)           |
-| `/_airlock/config`              | GET    | Active configuration (secrets redacted)    |
-| `/_airlock/routing/health`      | GET    | Per-route health and circuit breaker state |
-| `/_airlock/keys`                | GET    | List gateway keys                          |
-| `/_airlock/keys`                | POST   | Create a key                               |
-| `/_airlock/keys/:id`            | GET    | Get key details                            |
-| `/_airlock/keys/:id`            | DELETE | Delete a key                               |
-| `/_airlock/keys/:id/rotate`     | POST   | Rotate a key                               |
-| `/_airlock/keys/:id/archive`    | POST   | Archive a key                              |
-| `/_airlock/keys/:id/restore`    | POST   | Restore an archived key                    |
-| `/_airlock/keys/:id/revocation` | POST   | Revoke a key                               |
-| `/_airlock/keys/:id/status`     | GET    | Key quota status                           |
-| `/_airlock/keys/:id/events`     | GET    | Key audit events                           |
+Admin endpoints require `Authorization: Bearer <admin-token>`. Legacy
+`AIRLOCK_INTERNAL_ADMIN_TOKEN` acts as a superuser token. Structured
+`AIRLOCK_INTERNAL_ADMIN_CREDENTIALS` enforce the scopes shown below.
 
-Admin endpoints require authentication via `Authorization: Bearer <admin-token>`.
+| Endpoint                                        | Method | Scope          | Description                                        |
+| ----------------------------------------------- | ------ | -------------- | -------------------------------------------------- |
+| `/_airlock/status`                              | GET    | `status.read`  | Gateway status and config fingerprint              |
+| `/_airlock/metrics`                             | GET    | `metrics.read` | Request metrics (sliding window)                   |
+| `/_airlock/config`                              | GET    | `config.read`  | Active configuration (secrets redacted)            |
+| `/_airlock/config/manage`                       | GET    | `config.write` | Raw config-store snapshot                          |
+| `/_airlock/config/manage/:section`              | GET    | `config.write` | Raw config-store section                           |
+| `/_airlock/config/manage/:section`              | PUT    | `config.write` | Write config-store section                         |
+| `/_airlock/config/manage/:section`              | DELETE | `config.write` | Delete config-store section                        |
+| `/_airlock/providers/fetch-models`              | POST   | `config.write` | Discover provider models with supplied credentials |
+| `/_airlock/routing/health`                      | GET    | `routing.read` | Per-route health and circuit breaker state         |
+| `/_airlock/keys`                                | GET    | `keys.read`    | List gateway keys                                  |
+| `/_airlock/keys`                                | POST   | `keys.write`   | Create a key                                       |
+| `/_airlock/keys`                                | PATCH  | `keys.write`   | Bulk update keys                                   |
+| `/_airlock/keys/bulk-create`                    | POST   | `keys.write`   | Bulk create keys                                   |
+| `/_airlock/keys/bulk-rotate`                    | POST   | `keys.write`   | Bulk rotate keys                                   |
+| `/_airlock/keys/bulk-delete`                    | POST   | `keys.write`   | Bulk delete keys                                   |
+| `/_airlock/keys/bulk-archive`                   | POST   | `keys.write`   | Bulk archive keys                                  |
+| `/_airlock/keys/bulk-restore`                   | POST   | `keys.write`   | Bulk restore keys                                  |
+| `/_airlock/keys/bulk-rotate/finalize`           | POST   | `keys.write`   | Finalize bulk staged rotations                     |
+| `/_airlock/keys/bulk-rotate/cancel`             | POST   | `keys.write`   | Cancel bulk staged rotations                       |
+| `/_airlock/keys/:id`                            | GET    | `keys.read`    | Get key details                                    |
+| `/_airlock/keys/:id`                            | PUT    | `keys.write`   | Update key metadata/policy                         |
+| `/_airlock/keys/:id`                            | DELETE | `keys.write`   | Delete a key                                       |
+| `/_airlock/keys/:id/rotate`                     | POST   | `keys.write`   | Rotate a key                                       |
+| `/_airlock/keys/:id/rotate/finalize`            | POST   | `keys.write`   | Finalize staged key rotation                       |
+| `/_airlock/keys/:id/rotate/cancel`              | POST   | `keys.write`   | Cancel staged key rotation                         |
+| `/_airlock/keys/:id/archive`                    | POST   | `keys.write`   | Archive a key                                      |
+| `/_airlock/keys/:id/restore`                    | POST   | `keys.write`   | Restore an archived key                            |
+| `/_airlock/keys/:id/revocation`                 | GET    | `keys.read`    | Read key revocation status                         |
+| `/_airlock/keys/:id/revocation`                 | POST   | `keys.write`   | Revoke a key                                       |
+| `/_airlock/keys/:id/revocation`                 | DELETE | `keys.write`   | Clear key revocation                               |
+| `/_airlock/keys/:id/status`                     | GET    | `keys.read`    | Key quota/status snapshot                          |
+| `/_airlock/keys/:id/events`                     | GET    | `keys.read`    | Key audit events                                   |
+| `/_airlock/keys/operations/:operationId/events` | GET    | `keys.read`    | Operation-level key audit events                   |
+| `/_airlock/keys/:id/registry`                   | GET    | `keys.read`    | Read registry override view                        |
+| `/_airlock/keys/:id/registry`                   | PUT    | `keys.write`   | Set registry override                              |
+| `/_airlock/keys/:id/registry`                   | DELETE | `keys.write`   | Clear registry override                            |
 
 ---
 
@@ -276,7 +330,8 @@ cd apps/dashboard && pnpm build
 
 Two GitHub Actions workflows are included:
 
-- **CI** (`ci.yml`) — Runs on push and PR: lint, typecheck, test, build, audit
+- **CI** (`ci.yml`) — Runs on push and PR: lint, typecheck, test, build, format,
+  production audit, and Playwright E2E
 - **Deploy** (`deploy.yml`) — Runs on push to main: verify + deploy to
   Cloudflare Workers (supports production and staging environments)
 
@@ -284,23 +339,16 @@ Two GitHub Actions workflows are included:
 
 ## Model Routing Example
 
-```jsonc
-// AIRLOCK_MODEL_ALIASES
-[
-  {
-    "external": "gpt-4",
-    "target": { "provider": "openai", "model": "gpt-4.1-mini" },
-    "fallbacks": [{ "provider": "anthropic", "model": "claude-sonnet-4-5" }]
-  },
-  {
-    "external": "claude",
-    "target": { "provider": "anthropic", "model": "claude-sonnet-4-5" }
-  }
-]
+```bash
+AIRLOCK_MODEL_ALIASES='gpt-4=openai-prod:gpt-4.1-mini,claude=anthropic-prod:claude-sonnet-4-5'
+AIRLOCK_MODEL_FALLBACKS='{"gpt-4":["openai-compatible-a:gpt-4.1-mini","anthropic-prod:claude-sonnet-4-5"]}'
+AIRLOCK_MODEL_TARGET_SELECTION='{"gpt-4":{"strategy":"weighted","weights":{"openai-prod:gpt-4.1-mini":10,"anthropic-prod:claude-sonnet-4-5":1}}}'
+AIRLOCK_MODEL_KEY_POLICY='{"gpt-4":{"requiredKeyTier":"premium","requiredKeyTags":["chat"]}}'
 ```
 
 Clients can then use `gpt-4` or `claude` as model names — Airlock routes to
-the configured provider and falls back automatically on failures.
+the configured provider instance and falls back automatically on failures.
+Provider-addressed model IDs like `openai-prod/gpt-4.1-mini` are also accepted.
 
 ---
 
@@ -310,11 +358,14 @@ the configured provider and falls back automatically on failures.
 pnpm test           # Run all test suites
 pnpm typecheck      # Type checking (tsgo)
 pnpm build          # Build all packages
+pnpm e2e            # Run dashboard Playwright E2E tests
+pnpm run audit      # Production dependency audit
 ```
 
-The project maintains 1850+ tests across 48 test files covering protocols,
-canonical pipeline, providers, routing, governance, request shaping, telemetry,
-and gateway integration.
+The current verification suite covers 2000+ Vitest unit/integration tests plus
+Playwright E2E coverage for the dashboard. Coverage spans protocols, canonical
+pipeline, providers, routing, governance, request shaping, telemetry, gateway
+integration, and dashboard workflows.
 
 ---
 
@@ -334,4 +385,4 @@ and gateway integration.
 
 ## License
 
-Private. All rights reserved.
+MIT. See [LICENSE](./LICENSE).

@@ -2,6 +2,12 @@
   "name": "@airlock/dashboard",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "author": "iota9star",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cockpit-dev/airlock"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite dev",

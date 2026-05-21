@@ -34,6 +34,10 @@ function isValidSection(name: string): name is ConfigSectionName {
   return VALID_SECTIONS.has(name);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export interface DashboardProviderEntry {
   id: string;
   type: ProviderId;
@@ -116,6 +120,77 @@ export interface DashboardConfigOverlay {
   routes?: DashboardRouteConfig[];
   modelGroups?: Record<string, string[]>;
   limits?: DashboardLimitsConfig;
+}
+
+function getProviderModelRoutes(data: unknown): DashboardRouteConfig[] {
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  const routes: DashboardRouteConfig[] = [];
+  const seenExternalModels = new Set<string>();
+
+  for (const provider of data) {
+    if (!isRecord(provider) || typeof provider.id !== "string") {
+      continue;
+    }
+
+    const providerId = provider.id.trim();
+    if (!providerId || !Array.isArray(provider.models)) {
+      continue;
+    }
+
+    for (const model of provider.models) {
+      if (typeof model !== "string") {
+        continue;
+      }
+
+      const providerModel = model.trim();
+      if (!providerModel || seenExternalModels.has(providerModel)) {
+        continue;
+      }
+
+      seenExternalModels.add(providerModel);
+      routes.push({
+        externalModel: providerModel,
+        target: {
+          provider: providerId,
+          providerModel
+        }
+      });
+    }
+  }
+
+  return routes;
+}
+
+function getExistingRoutes(data: unknown): DashboardRouteConfig[] {
+  return Array.isArray(data) ? (data as DashboardRouteConfig[]) : [];
+}
+
+function appendMissingProviderModelRoutes(
+  existingRoutes: DashboardRouteConfig[],
+  providerModelRoutes: DashboardRouteConfig[]
+): DashboardRouteConfig[] {
+  if (providerModelRoutes.length === 0) {
+    return existingRoutes;
+  }
+
+  const existingExternalModels = new Set(
+    existingRoutes
+      .map((route) => route.externalModel)
+      .filter((externalModel): externalModel is string => {
+        return typeof externalModel === "string";
+      })
+      .map((externalModel) => externalModel.trim())
+  );
+  const missingRoutes = providerModelRoutes.filter((route) => {
+    return !existingExternalModels.has(route.externalModel);
+  });
+
+  return missingRoutes.length > 0
+    ? [...existingRoutes, ...missingRoutes]
+    : existingRoutes;
 }
 
 export class GatewayConfigStoreDurableObject {
@@ -232,9 +307,43 @@ export class GatewayConfigStoreDurableObject {
     // DO runtime batches sequential puts within the same handler into
     // a single transaction, so these writes are effectively atomic.
     await this.state.storage.put(`section:${name}`, section);
+
+    if (name === "providers") {
+      await this.syncProviderModelRoutes(data, actorHeader);
+    }
+
     await this.state.storage.put("global_version", nextGlobalVersion);
 
     return Response.json({ ...section, globalVersion: nextGlobalVersion });
+  }
+
+  private async syncProviderModelRoutes(
+    providersData: unknown,
+    actorHeader: string
+  ): Promise<void> {
+    const providerModelRoutes = getProviderModelRoutes(providersData);
+    if (providerModelRoutes.length === 0) {
+      return;
+    }
+
+    const existingRoutesSection =
+      await this.state.storage.get<StoredConfigSection>("section:routes");
+    const existingRoutes = getExistingRoutes(existingRoutesSection?.data);
+    const nextRoutes = appendMissingProviderModelRoutes(
+      existingRoutes,
+      providerModelRoutes
+    );
+
+    if (nextRoutes.length === existingRoutes.length) {
+      return;
+    }
+
+    await this.state.storage.put("section:routes", {
+      data: nextRoutes,
+      updatedAt: Date.now(),
+      updatedBy: actorHeader,
+      version: (existingRoutesSection?.version ?? 0) + 1
+    });
   }
 
   private async handleDeleteSection(
