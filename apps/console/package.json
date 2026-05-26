@@ -1,0 +1,34 @@
+{
+  "name": "@airlock/console",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "author": "iota9star",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@heroui/react": "^3.1.0",
+    "@heroui/styles": "^3.1.0",
+    "@tanstack/react-query": "^5.90.0",
+    "@tanstack/react-query-devtools": "^5.90.0",
+    "@tanstack/react-router": "^1.134.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-icons": "^5.5.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "@tanstack/router-plugin": "^1.134.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react-swc": "^4.3.0",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^6.0.0",
+    "vite": "^8.0.0"
+  }
+}

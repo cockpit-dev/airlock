@@ -5,6 +5,7 @@ packages:
 overrides:
   "@sveltejs/kit>cookie": ^0.7.2
   ws: 8.20.1
+  semver: 6.3.0
 
 minimumReleaseAge: 1440
 minimumReleaseAgeStrict: true
@@ -18,6 +19,7 @@ minimumReleaseAgeExclude:
   - "@typescript/native-preview-linux-arm64"
   - "@typescript/native-preview-win32-x64"
   - "@typescript/native-preview-win32-arm64"
+  - "@heroui/*"
 trustPolicy: no-downgrade
 blockExoticSubdeps: true
 preferFrozenLockfile: true
@@ -26,3 +28,4 @@ allowBuilds:
   esbuild: true
   workerd: true
   sharp: false
+  "@swc/core": true
