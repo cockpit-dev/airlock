@@ -17,7 +17,6 @@ import {
   useArchiveKey,
   useRestoreKey,
   useRotateKey,
-  useRevokeKey,
 } from "../../hooks/use-queries";
 import { useState } from "react";
 
@@ -39,6 +38,7 @@ function KeyDetailPage() {
   const confirmDelete = useOverlayState();
   const confirmArchive = useOverlayState();
   const confirmRotate = useOverlayState();
+  const [pending, setPending] = useState(false);
 
   if (key.isLoading) {
     return (
@@ -83,7 +83,15 @@ function KeyDetailPage() {
           {keyData.status === "archived" && (
             <Button
               variant="primary"
-              onPress={() => restoreKey.mutateAsync({ keyId })}
+              isDisabled={pending}
+              onPress={async () => {
+                setPending(true);
+                try {
+                  await restoreKey.mutateAsync({ keyId });
+                } finally {
+                  setPending(false);
+                }
+              }}
             >
               <FiRefreshCw /> Restore
             </Button>
@@ -232,13 +240,19 @@ function KeyDetailPage() {
                 </Button>
                 <Button
                   variant="danger"
-                  onPress={() => {
-                    deleteKey.mutate({ keyId });
-                    confirmDelete.close();
-                    navigate({ to: "/keys" });
+                  isDisabled={pending}
+                  onPress={async () => {
+                    setPending(true);
+                    try {
+                      await deleteKey.mutateAsync({ keyId });
+                      confirmDelete.close();
+                      navigate({ to: "/keys" });
+                    } finally {
+                      setPending(false);
+                    }
                   }}
                 >
-                  Delete
+                  {pending ? "Deleting..." : "Delete"}
                 </Button>
               </Modal.Footer>
             </Modal.Dialog>
@@ -260,13 +274,18 @@ function KeyDetailPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  onPress={() => {
-                    archiveKey.mutate({ keyId });
-                    confirmArchive.close();
-                    key.refetch();
+                  isDisabled={pending}
+                  onPress={async () => {
+                    setPending(true);
+                    try {
+                      await archiveKey.mutateAsync({ keyId });
+                      confirmArchive.close();
+                    } finally {
+                      setPending(false);
+                    }
                   }}
                 >
-                  Archive
+                  {pending ? "Archiving..." : "Archive"}
                 </Button>
               </Modal.Footer>
             </Modal.Dialog>
@@ -288,13 +307,18 @@ function KeyDetailPage() {
                 </Button>
                 <Button
                   variant="primary"
-                  onPress={() => {
-                    rotateKey.mutate({ keyId });
-                    confirmRotate.close();
-                    key.refetch();
+                  isDisabled={pending}
+                  onPress={async () => {
+                    setPending(true);
+                    try {
+                      await rotateKey.mutateAsync({ keyId });
+                      confirmRotate.close();
+                    } finally {
+                      setPending(false);
+                    }
                   }}
                 >
-                  Rotate
+                  {pending ? "Rotating..." : "Rotate"}
                 </Button>
               </Modal.Footer>
             </Modal.Dialog>

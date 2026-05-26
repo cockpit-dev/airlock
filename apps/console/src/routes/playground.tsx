@@ -7,8 +7,9 @@ import {
   Spinner,
   ListBox,
   ListBoxItem,
+  TextArea,
 } from "@heroui/react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { getStoredCredentials } from "../lib/auth";
 
 export const Route = createFileRoute("/playground")({
@@ -31,15 +32,17 @@ function PlaygroundPage() {
   const abortRef = useRef<AbortController | null>(null);
 
   const creds = getStoredCredentials();
+  const gatewayUrl = creds?.url ?? null;
+  const gatewayToken = creds?.token ?? null;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   useEffect(() => {
-    if (!creds) return;
-    fetch(`${creds.url}/v1/models`, {
-      headers: { Authorization: `Bearer ${creds.token}` },
+    if (!gatewayUrl || !gatewayToken) return;
+    fetch(`${gatewayUrl}/v1/models`, {
+      headers: { Authorization: `Bearer ${gatewayToken}` },
     })
       .then((r) => r.json())
       .then((data) => {
@@ -50,7 +53,7 @@ function PlaygroundPage() {
         if (ids.length > 0 && !model) setModel(ids[0]);
       })
       .catch(() => {});
-  }, [creds]);
+  }, [gatewayUrl, gatewayToken]);
 
   async function handleSend() {
     if (!input.trim() || !model || !creds) return;
@@ -207,7 +210,7 @@ function PlaygroundPage() {
                 {streaming &&
                   i === messages.length - 1 &&
                   msg.role === "assistant" && (
-                    <Spinner size="sm" color="current" className="mt-1" />
+                    <Spinner size="sm" className="mt-1" />
                   )}
               </Card.Content>
             </Card.Root>
@@ -218,19 +221,18 @@ function PlaygroundPage() {
 
       <div className="p-4 border-t border-divider">
         <div className="flex gap-2">
-          <textarea
+          <TextArea
             placeholder="Type a message..."
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
+            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
+            onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
               }
             }}
-            rows={1}
-            className="flex-1 rounded-md border border-default-200 bg-content1 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-            style={{ minHeight: "38px", maxHeight: "120px" }}
+            rows={2}
+            className="flex-1"
           />
           {streaming ? (
             <Button variant="danger" onPress={handleStop}>

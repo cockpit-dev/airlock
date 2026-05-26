@@ -8,11 +8,12 @@ export class AirlockClient {
   }
 
   private async request<T>(path: string, options?: RequestInit): Promise<T> {
+    const hasBody = options?.body != null;
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...options,
       headers: {
         Authorization: `Bearer ${this.token}`,
-        "Content-Type": "application/json",
+        ...(hasBody ? { "Content-Type": "application/json" } : {}),
         ...options?.headers,
       },
     });
@@ -26,6 +27,10 @@ export class AirlockClient {
       );
     }
 
+    const contentLength = response.headers.get("content-length");
+    if (response.status === 204 || contentLength === "0") {
+      return undefined as T;
+    }
     return response.json() as Promise<T>;
   }
 

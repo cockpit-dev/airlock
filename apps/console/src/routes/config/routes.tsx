@@ -65,6 +65,7 @@ function ConfigRoutesPage() {
   }
 
   function handleSave() {
+    if (!editModel.trim() || !editProvider.trim() || !editProviderModel.trim()) return;
     const existing = routes.filter((r) => r.externalModel !== editModel);
     const updated = [
       ...existing,

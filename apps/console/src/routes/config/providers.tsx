@@ -43,6 +43,7 @@ function ProvidersPage() {
   }>) ?? [];
 
   function handleSave() {
+    if (!editId.trim() || !editBaseUrl.trim()) return;
     const existing = providers.filter((p) => p.id !== editId);
     const updated = [
       ...existing,

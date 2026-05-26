@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   Outlet,
   createRootRouteWithContext,
@@ -18,7 +19,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 function RootLayout() {
-  const client = createClientFromStorage();
+  const client = useMemo(() => createClientFromStorage(), []);
 
   if (!client) {
     return <Outlet />;

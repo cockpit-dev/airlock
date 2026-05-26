@@ -30,13 +30,17 @@ function KeysPage() {
   const [newKeyTier, setNewKeyTier] = useState<string | null>(null);
 
   async function handleCreate() {
-    await createKey.mutateAsync({
-      name: newKeyName || undefined,
-      tier: newKeyTier || undefined,
-    });
-    setNewKeyName("");
-    setNewKeyTier(null);
-    modalState.close();
+    try {
+      await createKey.mutateAsync({
+        name: newKeyName || undefined,
+        tier: newKeyTier || undefined,
+      });
+      setNewKeyName("");
+      setNewKeyTier(null);
+      modalState.close();
+    } catch {
+      // error is available via createKey.error state
+    }
   }
 
   const filteredKeys = keys.data?.keys?.filter(

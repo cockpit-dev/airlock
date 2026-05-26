@@ -92,8 +92,10 @@ export function useRotateKey() {
   return useMutation({
     mutationFn: ({ keyId, payload }: { keyId: string; payload?: unknown }) =>
       client.rotateKey(keyId, payload),
-    onSuccess: (_, { keyId }) =>
-      qc.invalidateQueries({ queryKey: queryKeys.keys.detail(keyId) }),
+    onSuccess: (_, { keyId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.keys.detail(keyId) });
+      qc.invalidateQueries({ queryKey: queryKeys.keys.all });
+    },
   });
 }
 
@@ -123,8 +125,10 @@ export function useRevokeKey() {
   return useMutation({
     mutationFn: ({ keyId, payload }: { keyId: string; payload?: unknown }) =>
       client.revokeKey(keyId, payload),
-    onSuccess: (_, { keyId }) =>
-      qc.invalidateQueries({ queryKey: queryKeys.keys.detail(keyId) }),
+    onSuccess: (_, { keyId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.keys.detail(keyId) });
+      qc.invalidateQueries({ queryKey: queryKeys.keys.all });
+    },
   });
 }
 
