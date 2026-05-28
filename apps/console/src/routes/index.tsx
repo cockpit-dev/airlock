@@ -1,11 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  Button,
-  Card,
-  Chip,
-  ProgressBar,
-  Skeleton,
-} from "@heroui/react";
+import { Button, Card, Chip, ProgressBar, Skeleton } from "@heroui/react";
 import {
   FiServer,
   FiGitBranch,
@@ -17,7 +11,7 @@ import {
   FiPieChart,
   FiBarChart2,
   FiClock,
-  FiCpu,
+  FiCpu
 } from "react-icons/fi";
 import { useStatus, useMetrics, useRoutingHealth } from "../hooks/use-queries";
 import { HealthChip } from "../components/health-chip";
@@ -28,12 +22,12 @@ import {
   RouteLatencyChart,
   TokenUsageByKeyChart,
   TokenUsageByModelChart,
-  TokenUsageByProtocolChart,
+  TokenUsageByProtocolChart
 } from "../components/dashboard-charts";
 import { DataTable, Table } from "../components/data-table";
 
 export const Route = createFileRoute("/")({
-  component: DashboardPage,
+  component: DashboardPage
 });
 
 function DashboardPage() {
@@ -52,9 +46,7 @@ function DashboardPage() {
             <p className="font-medium text-sm text-danger">
               Failed to load dashboard
             </p>
-            <p className="text-xs text-muted mt-0.5">
-              {status.error.message}
-            </p>
+            <p className="text-xs text-muted mt-0.5">{status.error.message}</p>
           </div>
           <Button
             size="sm"
@@ -124,9 +116,7 @@ function DashboardPage() {
           iconBg="bg-success/10 text-success"
           label="Keys"
           value={data.keys.total}
-          subtitle={
-            <span className="text-[11px] text-muted">registry</span>
-          }
+          subtitle={<span className="text-[11px] text-muted">registry</span>}
         />
         <StatCard
           icon={<FiAlertTriangle size={15} />}
@@ -172,9 +162,7 @@ function DashboardPage() {
               <MetricItem
                 label="Errors"
                 value={metrics.data.errors.toLocaleString()}
-                valueClass={
-                  metrics.data.errors > 0 ? "text-danger" : undefined
-                }
+                valueClass={metrics.data.errors > 0 ? "text-danger" : undefined}
               />
               <MetricItem
                 label="Error Rate"
@@ -295,9 +283,7 @@ function DashboardPage() {
               </Card.Title>
             </Card.Header>
             <Card.Content>
-              <TokenUsageByProtocolChart
-                byProtocol={metrics.data.byProtocol}
-              />
+              <TokenUsageByProtocolChart byProtocol={metrics.data.byProtocol} />
             </Card.Content>
           </Card.Root>
 
@@ -347,7 +333,9 @@ function DashboardPage() {
           <Card.Content className="p-0">
             <DataTable aria-label="Route health">
               <Table.Header>
-                <Table.Column id="route" isRowHeader>Route</Table.Column>
+                <Table.Column id="route" isRowHeader>
+                  Route
+                </Table.Column>
                 <Table.Column id="status">Status</Table.Column>
                 <Table.Column id="strategy">Strategy</Table.Column>
                 <Table.Column id="targets">Targets</Table.Column>
@@ -408,7 +396,7 @@ function StatCard({
   iconBg,
   label,
   value,
-  subtitle,
+  subtitle
 }: {
   icon: React.ReactNode;
   iconBg: string;
@@ -439,7 +427,7 @@ function StatCard({
 function MetricItem({
   label,
   value,
-  valueClass,
+  valueClass
 }: {
   label: string;
   value: string;
@@ -447,12 +435,8 @@ function MetricItem({
 }) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wider text-muted">
-        {label}
-      </p>
-      <p className={`text-base font-semibold ${valueClass ?? ""}`}>
-        {value}
-      </p>
+      <p className="text-[10px] uppercase tracking-wider text-muted">{label}</p>
+      <p className={`text-base font-semibold ${valueClass ?? ""}`}>{value}</p>
     </div>
   );
 }

@@ -34,6 +34,9 @@ function getTrackedFiles() {
     .split("\0")
     .filter(Boolean)
     .filter((file) => {
+      if (file === "apps/console/src/routeTree.gen.ts") {
+        return false;
+      }
       const basename = file.split("/").pop() ?? file;
       if (supportedBasenames.has(basename)) {
         return true;

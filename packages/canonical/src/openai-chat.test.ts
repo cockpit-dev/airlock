@@ -1697,7 +1697,7 @@ describe("normalizeOpenAIResponsesRequest", () => {
           type: "custom_tool_call",
           call_id: "custom_123",
           name: "shell_command",
-          input: "{\"command\":\"pwd\"}"
+          input: '{"command":"pwd"}'
         },
         {
           type: "custom_tool_call_output",
@@ -1717,7 +1717,7 @@ describe("normalizeOpenAIResponsesRequest", () => {
           type: "custom_tool_call",
           call_id: "custom_123",
           name: "shell_command",
-          input: "{\"command\":\"pwd\"}"
+          input: '{"command":"pwd"}'
         },
         {
           type: "custom_tool_call_output",

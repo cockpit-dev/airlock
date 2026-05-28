@@ -5,7 +5,7 @@ const ClientContext = createContext<AirlockClient | null>(null);
 
 export function ClientProvider({
   client,
-  children,
+  children
 }: {
   client: AirlockClient;
   children: ReactNode;

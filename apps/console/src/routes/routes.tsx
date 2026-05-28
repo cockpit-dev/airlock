@@ -1,26 +1,20 @@
 import { useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  Button,
-  Card,
-  Chip,
-  ProgressBar,
-  Skeleton,
-} from "@heroui/react";
+import { Button, Card, Chip, ProgressBar, Skeleton } from "@heroui/react";
 import {
   FiAlertCircle,
   FiRefreshCw,
   FiCheckCircle,
   FiAlertTriangle,
   FiXCircle,
-  FiTarget,
+  FiTarget
 } from "react-icons/fi";
 import { useRoutingHealth } from "../hooks/use-queries";
 import { HealthChip } from "../components/health-chip";
 import { DataTable, Table } from "../components/data-table";
 
 export const Route = createFileRoute("/routes")({
-  component: RoutesPage,
+  component: RoutesPage
 });
 
 function RoutesPage() {
@@ -33,7 +27,7 @@ function RoutesPage() {
       healthy: entries.filter((r) => r.healthStatus === "healthy").length,
       degraded: entries.filter((r) => r.healthStatus === "degraded").length,
       down: entries.filter((r) => r.healthStatus === "down").length,
-      totalTargets: entries.reduce((sum, r) => sum + r.totalTargetCount, 0),
+      totalTargets: entries.reduce((sum, r) => sum + r.totalTargetCount, 0)
     };
   }, [health.data]);
 
@@ -48,9 +42,7 @@ function RoutesPage() {
             <p className="font-medium text-sm text-danger">
               Failed to load routes health
             </p>
-            <p className="text-xs text-muted mt-0.5">
-              {health.error.message}
-            </p>
+            <p className="text-xs text-muted mt-0.5">{health.error.message}</p>
           </div>
           <Button
             size="sm"
@@ -123,7 +115,10 @@ function RoutesPage() {
         </Card.Header>
         <Card.Content>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <ConfigItem label="Threshold" value={String(config.circuitBreakerPolicy.threshold)} />
+            <ConfigItem
+              label="Threshold"
+              value={String(config.circuitBreakerPolicy.threshold)}
+            />
             <ConfigItem label="Cooldown" value={cooldownLabel} />
             <ConfigItem
               label="Persistent"
@@ -144,7 +139,9 @@ function RoutesPage() {
         <Card.Content className="p-0">
           <DataTable aria-label="Route health">
             <Table.Header>
-              <Table.Column id="route" isRowHeader>Route</Table.Column>
+              <Table.Column id="route" isRowHeader>
+                Route
+              </Table.Column>
               <Table.Column id="status">Status</Table.Column>
               <Table.Column id="strategy">Strategy</Table.Column>
               <Table.Column id="targets">Targets</Table.Column>
@@ -158,8 +155,10 @@ function RoutesPage() {
                   .filter(Boolean);
                 const avgErrorRate =
                   targetMetrics.length > 0
-                    ? targetMetrics.reduce((a, t) => a + t.metrics.errorRate, 0) /
-                      targetMetrics.length
+                    ? targetMetrics.reduce(
+                        (a, t) => a + t.metrics.errorRate,
+                        0
+                      ) / targetMetrics.length
                     : 0;
 
                 return (
@@ -214,7 +213,9 @@ function RoutesPage() {
         <Card.Content className="p-0">
           <DataTable aria-label="Target health">
             <Table.Header>
-              <Table.Column id="target" isRowHeader>Target</Table.Column>
+              <Table.Column id="target" isRowHeader>
+                Target
+              </Table.Column>
               <Table.Column id="errorRate">Error Rate</Table.Column>
               <Table.Column id="recoveryScore">Recovery Score</Table.Column>
               <Table.Column id="latency">Latency</Table.Column>
@@ -269,7 +270,7 @@ function SummaryCard({
   iconBg,
   label,
   value,
-  valueClass,
+  valueClass
 }: {
   icon: React.ReactNode;
   iconBg: string;

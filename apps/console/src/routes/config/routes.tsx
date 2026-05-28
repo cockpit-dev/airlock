@@ -12,19 +12,19 @@ import {
   toast,
   useOverlayState,
   ListBox,
-  ListBoxItem,
+  ListBoxItem
 } from "@heroui/react";
 import { FiPlus, FiGitBranch } from "react-icons/fi";
 import { useState } from "react";
 import {
   useConfigStoreSection,
-  usePutConfigStoreSection,
+  usePutConfigStoreSection
 } from "../../hooks/use-queries";
 import { DataTable, Table } from "../../components/data-table";
 import { EmptyContent } from "../../components/empty-content";
 
 export const Route = createFileRoute("/config/routes")({
-  component: ConfigRoutesPage,
+  component: ConfigRoutesPage
 });
 
 const STRATEGIES = [
@@ -32,7 +32,7 @@ const STRATEGIES = [
   "lowest_cost",
   "health_priority",
   "priority",
-  "health_score",
+  "health_score"
 ];
 
 interface RouteConfig {
@@ -75,7 +75,11 @@ function ConfigRoutesPage() {
   }
 
   function handleSave() {
-    if (!editModel.trim() || !editProvider.trim() || !editProviderModel.trim()) {
+    if (
+      !editModel.trim() ||
+      !editProvider.trim() ||
+      !editProviderModel.trim()
+    ) {
       toast.danger("All fields are required.");
       return;
     }
@@ -85,17 +89,21 @@ function ConfigRoutesPage() {
       {
         externalModel: editModel,
         target: { provider: editProvider, providerModel: editProviderModel },
-        strategy: editStrategy ?? "weighted",
-      },
+        strategy: editStrategy ?? "weighted"
+      }
     ];
     putSection.mutate(updated, {
       onSuccess: () => {
-        toast.success(`Route "${editModel}" ${isEditing ? "updated" : "created"} successfully.`);
+        toast.success(
+          `Route "${editModel}" ${isEditing ? "updated" : "created"} successfully.`
+        );
         modalState.close();
       },
       onError: (err) => {
-        toast.danger(`Failed to save route: ${err instanceof Error ? err.message : "Unknown error"}`);
-      },
+        toast.danger(
+          `Failed to save route: ${err instanceof Error ? err.message : "Unknown error"}`
+        );
+      }
     });
   }
 
@@ -114,8 +122,10 @@ function ConfigRoutesPage() {
         setDeleteTarget(null);
       },
       onError: (err) => {
-        toast.danger(`Failed to delete route: ${err instanceof Error ? err.message : "Unknown error"}`);
-      },
+        toast.danger(
+          `Failed to delete route: ${err instanceof Error ? err.message : "Unknown error"}`
+        );
+      }
     });
   }
 
@@ -136,15 +146,33 @@ function ConfigRoutesPage() {
           <Card.Content className="p-0">
             <div className="p-3 space-y-2.5">
               <div className="flex gap-3">
-                <Skeleton animationType="pulse" className="h-3.5 w-28 rounded" />
-                <Skeleton animationType="pulse" className="h-3.5 w-24 rounded" />
-                <Skeleton animationType="pulse" className="h-3.5 w-16 rounded" />
+                <Skeleton
+                  animationType="pulse"
+                  className="h-3.5 w-28 rounded"
+                />
+                <Skeleton
+                  animationType="pulse"
+                  className="h-3.5 w-24 rounded"
+                />
+                <Skeleton
+                  animationType="pulse"
+                  className="h-3.5 w-16 rounded"
+                />
               </div>
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="flex gap-3">
-                  <Skeleton animationType="pulse" className="h-7 w-28 rounded" />
-                  <Skeleton animationType="pulse" className="h-7 w-24 rounded" />
-                  <Skeleton animationType="pulse" className="h-7 w-16 rounded" />
+                  <Skeleton
+                    animationType="pulse"
+                    className="h-7 w-28 rounded"
+                  />
+                  <Skeleton
+                    animationType="pulse"
+                    className="h-7 w-24 rounded"
+                  />
+                  <Skeleton
+                    animationType="pulse"
+                    className="h-7 w-16 rounded"
+                  />
                 </div>
               ))}
             </div>
@@ -184,9 +212,14 @@ function ConfigRoutesPage() {
               </Table.Header>
               <Table.Body>
                 {routes.map((route) => (
-                  <Table.Row key={route.externalModel} className="hover:bg-default/50">
+                  <Table.Row
+                    key={route.externalModel}
+                    className="hover:bg-default/50"
+                  >
                     <Table.Cell>
-                      <span className="font-mono text-xs">{route.externalModel}</span>
+                      <span className="font-mono text-xs">
+                        {route.externalModel}
+                      </span>
                     </Table.Cell>
                     <Table.Cell>
                       <span className="text-xs">
@@ -241,102 +274,106 @@ function ConfigRoutesPage() {
         isOpen={modalState.isOpen}
         onOpenChange={modalState.setOpen}
       >
-          <Modal.Container>
-            <Modal.Dialog>
-              <Modal.Header>
-                <Modal.Heading>
-                  {isEditing ? "Edit Route" : "Add Route"}
-                </Modal.Heading>
-              </Modal.Header>
-              <Modal.Body className="gap-3">
-                <TextField value={editModel} onChange={setEditModel}>
-                  <Label>External Model</Label>
-                  <Input
-                    placeholder="e.g. gpt-4o"
-                  />
-                </TextField>
-                <TextField value={editProvider} onChange={setEditProvider}>
-                  <Label>Target Provider</Label>
-                  <Input
-                    placeholder="e.g. openai-primary"
-                  />
-                </TextField>
-                <TextField value={editProviderModel} onChange={setEditProviderModel}>
-                  <Label>Target Model</Label>
-                  <Input
-                    placeholder="e.g. gpt-4o"
-                  />
-                </TextField>
-                <Select.Root
-                  aria-label="Strategy"
-                  selectedKey={editStrategy}
-                  onSelectionChange={(key) =>
-                    setEditStrategy(key as string | null)
-                  }
-                >
-                  <Label>Strategy</Label>
-                  <Select.Trigger>
-                    <Select.Value />
-                    <Select.Indicator />
-                  </Select.Trigger>
-                  <Select.Popover>
-                    <ListBox>
-                      {STRATEGIES.map((s) => (
-                        <ListBoxItem id={s} key={s} textValue={s}>
-                          {s}
-                        </ListBoxItem>
-                      ))}
-                    </ListBox>
-                  </Select.Popover>
-                </Select.Root>
-              </Modal.Body>
-              <Modal.Footer>
-                <Button size="sm" variant="ghost" onPress={modalState.close}>
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onPress={handleSave}
-                  isPending={putSection.isPending}
-                >
-                  Save
-                </Button>
-              </Modal.Footer>
-            </Modal.Dialog>
-          </Modal.Container>
+        <Modal.Container>
+          <Modal.Dialog>
+            <Modal.Header>
+              <Modal.Heading>
+                {isEditing ? "Edit Route" : "Add Route"}
+              </Modal.Heading>
+            </Modal.Header>
+            <Modal.Body className="gap-3">
+              <TextField value={editModel} onChange={setEditModel}>
+                <Label>External Model</Label>
+                <Input placeholder="e.g. gpt-4o" />
+              </TextField>
+              <TextField value={editProvider} onChange={setEditProvider}>
+                <Label>Target Provider</Label>
+                <Input placeholder="e.g. openai-primary" />
+              </TextField>
+              <TextField
+                value={editProviderModel}
+                onChange={setEditProviderModel}
+              >
+                <Label>Target Model</Label>
+                <Input placeholder="e.g. gpt-4o" />
+              </TextField>
+              <Select.Root
+                aria-label="Strategy"
+                selectedKey={editStrategy}
+                onSelectionChange={(key) =>
+                  setEditStrategy(key as string | null)
+                }
+              >
+                <Label>Strategy</Label>
+                <Select.Trigger>
+                  <Select.Value />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox>
+                    {STRATEGIES.map((s) => (
+                      <ListBoxItem id={s} key={s} textValue={s}>
+                        {s}
+                      </ListBoxItem>
+                    ))}
+                  </ListBox>
+                </Select.Popover>
+              </Select.Root>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button size="sm" variant="ghost" onPress={modalState.close}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                onPress={handleSave}
+                isPending={putSection.isPending}
+              >
+                Save
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
       </Modal.Backdrop>
 
       <Modal.Backdrop
         isOpen={deleteModalState.isOpen}
         onOpenChange={deleteModalState.setOpen}
       >
-          <Modal.Container>
-            <Modal.Dialog>
-              <Modal.Header>
-                <Modal.Heading>Delete Route</Modal.Heading>
-              </Modal.Header>
-              <Modal.Body>
-                <p className="text-sm text-muted">
-                  Are you sure you want to delete route{" "}
-                  <span className="font-mono font-semibold text-foreground">{deleteTarget}</span>? This action cannot be undone.
-                </p>
-              </Modal.Body>
-              <Modal.Footer>
-                <Button size="sm" variant="ghost" onPress={deleteModalState.close}>
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onPress={handleDelete}
-                  isPending={putSection.isPending}
-                >
-                  Delete
-                </Button>
-              </Modal.Footer>
-            </Modal.Dialog>
-          </Modal.Container>
+        <Modal.Container>
+          <Modal.Dialog>
+            <Modal.Header>
+              <Modal.Heading>Delete Route</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              <p className="text-sm text-muted">
+                Are you sure you want to delete route{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {deleteTarget}
+                </span>
+                ? This action cannot be undone.
+              </p>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button
+                size="sm"
+                variant="ghost"
+                onPress={deleteModalState.close}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onPress={handleDelete}
+                isPending={putSection.isPending}
+              >
+                Delete
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
       </Modal.Backdrop>
     </div>
   );

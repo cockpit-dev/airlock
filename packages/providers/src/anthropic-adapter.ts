@@ -253,7 +253,8 @@ function buildAnthropicRequestBody(
     return message.role === "system";
   });
   const messages =
-    nativeAnthropicRequest?.messages ?? buildAnthropicMessages(request, requestId);
+    nativeAnthropicRequest?.messages ??
+    buildAnthropicMessages(request, requestId);
   const toolChoice = mapCanonicalToolChoiceToAnthropic(request.toolChoice);
 
   return {
@@ -263,15 +264,15 @@ function buildAnthropicRequestBody(
     ...(nativeAnthropicRequest?.system !== undefined
       ? { system: nativeAnthropicRequest.system }
       : systemMessage
-      ? {
-          system: [
-            {
-              type: "text" as const,
-              text: systemMessage.content
-            }
-          ]
-        }
-      : {}),
+        ? {
+            system: [
+              {
+                type: "text" as const,
+                text: systemMessage.content
+              }
+            ]
+          }
+        : {}),
     ...(request.endUserId !== undefined
       ? {
           metadata: {
@@ -487,6 +488,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
     };
 
     const content = payload.content ?? [];
+    const usage = payload.usage ? mapAnthropicUsage(payload.usage) : undefined;
 
     return {
       id: payload.id,
@@ -509,7 +511,7 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
       finishReason: normalizeAnthropicFinishReason(
         payload.stop_reason ?? undefined
       ),
-      ...(payload.usage ? { usage: mapAnthropicUsage(payload.usage) } : {}),
+      ...(usage !== undefined ? { usage } : {}),
       nativeResponse: {
         anthropicMessages: payload
       }

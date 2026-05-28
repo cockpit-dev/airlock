@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { GatewayMetricsCollector, GatewayMetricsDurableObject } from "./metrics.js";
+import {
+  GatewayMetricsCollector,
+  GatewayMetricsDurableObject
+} from "./metrics.js";
 import type { DurableObjectStateLike } from "./durable-object-state.js";
 
 function createMockState(): {

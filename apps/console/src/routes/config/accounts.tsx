@@ -13,19 +13,19 @@ import {
   toast,
   useOverlayState,
   ListBox,
-  ListBoxItem,
+  ListBoxItem
 } from "@heroui/react";
 import { FiPlus, FiUsers } from "react-icons/fi";
 import { useState } from "react";
 import {
   useConfigStoreSection,
-  usePutConfigStoreSection,
+  usePutConfigStoreSection
 } from "../../hooks/use-queries";
 import { DataTable, Table } from "../../components/data-table";
 import { EmptyContent } from "../../components/empty-content";
 
 export const Route = createFileRoute("/config/accounts")({
-  component: AccountsPage,
+  component: AccountsPage
 });
 
 const ROLES = ["super_admin", "admin", "operator", "viewer"];
@@ -36,11 +36,14 @@ interface Account {
   enabled: boolean;
 }
 
-const ROLE_COLORS: Record<string, "accent" | "default" | "success" | "warning"> = {
+const ROLE_COLORS: Record<
+  string,
+  "accent" | "default" | "success" | "warning"
+> = {
   super_admin: "accent",
   admin: "default",
   operator: "success",
-  viewer: "warning",
+  viewer: "warning"
 };
 
 function AccountsPage() {
@@ -79,16 +82,20 @@ function AccountsPage() {
     const enabled = isEditing ? (existingAccount?.enabled ?? true) : true;
     const updated = [
       ...existing,
-      { email: editEmail, role: editRole ?? "viewer", enabled },
+      { email: editEmail, role: editRole ?? "viewer", enabled }
     ];
     putSection.mutate(updated, {
       onSuccess: () => {
-        toast.success(`Account "${editEmail}" ${isEditing ? "updated" : "created"} successfully.`);
+        toast.success(
+          `Account "${editEmail}" ${isEditing ? "updated" : "created"} successfully.`
+        );
         modalState.close();
       },
       onError: (err) => {
-        toast.danger(`Failed to save account: ${err instanceof Error ? err.message : "Unknown error"}`);
-      },
+        toast.danger(
+          `Failed to save account: ${err instanceof Error ? err.message : "Unknown error"}`
+        );
+      }
     });
   }
 
@@ -98,11 +105,15 @@ function AccountsPage() {
     );
     putSection.mutate(updated, {
       onSuccess: () => {
-        toast.success(`Account "${email}" ${enabled ? "enabled" : "disabled"}.`);
+        toast.success(
+          `Account "${email}" ${enabled ? "enabled" : "disabled"}.`
+        );
       },
       onError: (err) => {
-        toast.danger(`Failed to update account: ${err instanceof Error ? err.message : "Unknown error"}`);
-      },
+        toast.danger(
+          `Failed to update account: ${err instanceof Error ? err.message : "Unknown error"}`
+        );
+      }
     });
   }
 
@@ -121,8 +132,10 @@ function AccountsPage() {
         setDeleteTarget(null);
       },
       onError: (err) => {
-        toast.danger(`Failed to delete account: ${err instanceof Error ? err.message : "Unknown error"}`);
-      },
+        toast.danger(
+          `Failed to delete account: ${err instanceof Error ? err.message : "Unknown error"}`
+        );
+      }
     });
   }
 
@@ -143,14 +156,29 @@ function AccountsPage() {
           <Card.Content className="p-0">
             <div className="p-3 space-y-2.5">
               <div className="flex gap-3">
-                <Skeleton animationType="pulse" className="h-3.5 w-32 rounded" />
-                <Skeleton animationType="pulse" className="h-3.5 w-20 rounded" />
-                <Skeleton animationType="pulse" className="h-3.5 w-16 rounded" />
+                <Skeleton
+                  animationType="pulse"
+                  className="h-3.5 w-32 rounded"
+                />
+                <Skeleton
+                  animationType="pulse"
+                  className="h-3.5 w-20 rounded"
+                />
+                <Skeleton
+                  animationType="pulse"
+                  className="h-3.5 w-16 rounded"
+                />
               </div>
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="flex gap-3">
-                  <Skeleton animationType="pulse" className="h-7 w-32 rounded" />
-                  <Skeleton animationType="pulse" className="h-5 w-20 rounded-full" />
+                  <Skeleton
+                    animationType="pulse"
+                    className="h-7 w-32 rounded"
+                  />
+                  <Skeleton
+                    animationType="pulse"
+                    className="h-5 w-20 rounded-full"
+                  />
                   <Skeleton animationType="pulse" className="h-5 w-8 rounded" />
                 </div>
               ))}
@@ -190,7 +218,10 @@ function AccountsPage() {
               </Table.Header>
               <Table.Body>
                 {accounts.map((account) => (
-                  <Table.Row key={account.email} className="hover:bg-default/50">
+                  <Table.Row
+                    key={account.email}
+                    className="hover:bg-default/50"
+                  >
                     <Table.Cell>
                       <span className="font-mono text-xs">{account.email}</span>
                     </Table.Cell>
@@ -249,95 +280,101 @@ function AccountsPage() {
         isOpen={modalState.isOpen}
         onOpenChange={modalState.setOpen}
       >
-          <Modal.Container>
-            <Modal.Dialog>
-              <Modal.Header>
-                <Modal.Heading>
-                  {isEditing ? "Edit Account" : "Add Account"}
-                </Modal.Heading>
-              </Modal.Header>
-              <Modal.Body className="gap-3">
-                <TextField value={editEmail} onChange={setEditEmail}>
-                  <Label>Email</Label>
-                  <Input
-                    type="email"
-                    placeholder="user@example.com"
-                  />
-                </TextField>
-                <Select.Root
-                  aria-label="Role"
-                  selectedKey={editRole}
-                  onSelectionChange={(key) =>
-                    setEditRole(key as string | null)
-                  }
-                >
-                  <Label>Role</Label>
-                  <Select.Trigger>
-                    <Select.Value />
-                    <Select.Indicator />
-                  </Select.Trigger>
-                  <Select.Popover>
-                    <ListBox>
-                      {ROLES.map((r) => (
-                        <ListBoxItem id={r} key={r} textValue={r}>
-                          <div className="flex items-center gap-1.5">
-                            <Chip size="sm" variant="soft" color={ROLE_COLORS[r] ?? "default"}>
-                              {r}
-                            </Chip>
-                          </div>
-                        </ListBoxItem>
-                      ))}
-                    </ListBox>
-                  </Select.Popover>
-                </Select.Root>
-              </Modal.Body>
-              <Modal.Footer>
-                <Button size="sm" variant="ghost" onPress={modalState.close}>
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onPress={handleSave}
-                  isPending={putSection.isPending}
-                >
-                  Save
-                </Button>
-              </Modal.Footer>
-            </Modal.Dialog>
-          </Modal.Container>
+        <Modal.Container>
+          <Modal.Dialog>
+            <Modal.Header>
+              <Modal.Heading>
+                {isEditing ? "Edit Account" : "Add Account"}
+              </Modal.Heading>
+            </Modal.Header>
+            <Modal.Body className="gap-3">
+              <TextField value={editEmail} onChange={setEditEmail}>
+                <Label>Email</Label>
+                <Input type="email" placeholder="user@example.com" />
+              </TextField>
+              <Select.Root
+                aria-label="Role"
+                selectedKey={editRole}
+                onSelectionChange={(key) => setEditRole(key as string | null)}
+              >
+                <Label>Role</Label>
+                <Select.Trigger>
+                  <Select.Value />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox>
+                    {ROLES.map((r) => (
+                      <ListBoxItem id={r} key={r} textValue={r}>
+                        <div className="flex items-center gap-1.5">
+                          <Chip
+                            size="sm"
+                            variant="soft"
+                            color={ROLE_COLORS[r] ?? "default"}
+                          >
+                            {r}
+                          </Chip>
+                        </div>
+                      </ListBoxItem>
+                    ))}
+                  </ListBox>
+                </Select.Popover>
+              </Select.Root>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button size="sm" variant="ghost" onPress={modalState.close}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                onPress={handleSave}
+                isPending={putSection.isPending}
+              >
+                Save
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
       </Modal.Backdrop>
 
       <Modal.Backdrop
         isOpen={deleteModalState.isOpen}
         onOpenChange={deleteModalState.setOpen}
       >
-          <Modal.Container>
-            <Modal.Dialog>
-              <Modal.Header>
-                <Modal.Heading>Delete Account</Modal.Heading>
-              </Modal.Header>
-              <Modal.Body>
-                <p className="text-sm text-muted">
-                  Are you sure you want to delete account{" "}
-                  <span className="font-mono font-semibold text-foreground">{deleteTarget}</span>? This action cannot be undone.
-                </p>
-              </Modal.Body>
-              <Modal.Footer>
-                <Button size="sm" variant="ghost" onPress={deleteModalState.close}>
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onPress={handleDelete}
-                  isPending={putSection.isPending}
-                >
-                  Delete
-                </Button>
-              </Modal.Footer>
-            </Modal.Dialog>
-          </Modal.Container>
+        <Modal.Container>
+          <Modal.Dialog>
+            <Modal.Header>
+              <Modal.Heading>Delete Account</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              <p className="text-sm text-muted">
+                Are you sure you want to delete account{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {deleteTarget}
+                </span>
+                ? This action cannot be undone.
+              </p>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button
+                size="sm"
+                variant="ghost"
+                onPress={deleteModalState.close}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onPress={handleDelete}
+                isPending={putSection.isPending}
+              >
+                Delete
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
       </Modal.Backdrop>
     </div>
   );

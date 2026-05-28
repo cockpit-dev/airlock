@@ -30,7 +30,7 @@ jobs:
       - run: pnpm build
       - run: pnpm format
       - run: pnpm run audit
-      - run: pnpm --filter @airlock/dashboard exec playwright install --with-deps chromium
+      - run: pnpm --filter @airlock/console exec playwright install --with-deps chromium
       - run: pnpm e2e
   dependency-review:
     if: github.event_name == 'pull_request'

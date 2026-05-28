@@ -3,7 +3,7 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useSyncExternalStore,
+  useSyncExternalStore
 } from "react";
 
 const objectIs = Object.is;
@@ -68,7 +68,7 @@ export function useSyncExternalStoreWithSelector<Snapshot, Selection>(
       () => memoizedSelector(getSnapshot()),
       maybeGetServerSnapshot === null
         ? undefined
-        : () => memoizedSelector(maybeGetServerSnapshot()),
+        : () => memoizedSelector(maybeGetServerSnapshot())
     ] as const;
   }, [getSnapshot, getServerSnapshot, selector, isEqual]);
 

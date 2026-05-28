@@ -1,8 +1,10 @@
 import type {
   AnthropicMessagesRequest,
+  AnthropicMessagesResponse,
   GeminiGenerateContentRequest,
   OpenAIChatCompletionRequest,
-  OpenAIResponsesRequest
+  OpenAIResponsesRequest,
+  OpenAIResponsesResponse
 } from "@airlock/protocols";
 
 import type {
@@ -13,6 +15,83 @@ import type {
 } from "./models.js";
 
 type CanonicalUsageValue = CanonicalResponse["usage"];
+type OpenAIResponsesArrayInput = Exclude<
+  OpenAIResponsesRequest["input"],
+  string | undefined
+>;
+type OpenAIResponsesInputElement = Extract<
+  OpenAIResponsesArrayInput,
+  readonly unknown[]
+>[number];
+type OpenAIResponsesTypedInputItemValue = Extract<
+  OpenAIResponsesInputElement,
+  { type: string }
+>;
+type OpenAIResponsesStructuredInputMessage = Extract<
+  OpenAIResponsesInputElement,
+  { role: "user" | "assistant" | "system" | "developer" }
+>;
+type OpenAIResponsesResponsesUsage = NonNullable<
+  OpenAIResponsesResponse["usage"]
+>;
+type AnthropicMessagesUsage = NonNullable<AnthropicMessagesResponse["usage"]>;
+type GeminiGenerateContentResponse = {
+  responseId: string;
+  modelVersion: string;
+  candidates: Array<{
+    finishReason?: "STOP" | "MAX_TOKENS" | "SAFETY";
+    content: {
+      role: "model";
+      parts: Array<
+        | { text: string }
+        | {
+            functionCall: {
+              name: string;
+              args?: Record<string, unknown>;
+            };
+          }
+      >;
+    };
+  }>;
+  usageMetadata?: {
+    promptTokenCount: number;
+    candidatesTokenCount: number;
+    totalTokenCount: number;
+  };
+};
+type OpenAIResponsesCompletedToolCall = {
+  toolCallId: string;
+  toolCallName?: string;
+  toolCallArguments: string;
+  outputIndex: number;
+  toolType?: "custom_tool_call" | "function_call";
+};
+type OpenAIResponsesEncodedResponse = {
+  id: string;
+  object: "response";
+  created_at: number;
+  model: string;
+  status: "completed" | "incomplete";
+  metadata?: Record<string, string>;
+  conversation?: {
+    id: string;
+  };
+  service_tier?: "auto" | "default" | "flex" | "priority" | "scale";
+  prompt_cache_key?: string;
+  prompt_cache_retention?: "in_memory" | "24h";
+  truncation?: "auto" | "disabled";
+  text?: {
+    verbosity?: "low" | "medium" | "high";
+  };
+  parallel_tool_calls?: boolean;
+  tools: [];
+  output: unknown[];
+  output_text: string;
+  usage?: OpenAIResponsesResponsesUsage;
+  incomplete_details?: {
+    reason: "max_output_tokens";
+  };
+};
 
 function extractPassthrough(
   request: Record<string, unknown>,
@@ -23,59 +102,6 @@ function extractPassthrough(
   );
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
-
-type OpenAIResponsesTextInputBlockValue = {
-  type: "input_text";
-  text: string;
-};
-type OpenAIResponsesTextOutputBlockValue = {
-  type: "output_text";
-  text: string;
-};
-type OpenAIResponsesMessageItemTypedValue = {
-  type: "message";
-  role: "user" | "assistant" | "system" | "developer";
-  content:
-    | string
-    | OpenAIResponsesTextInputBlockValue[]
-    | OpenAIResponsesTextOutputBlockValue[];
-};
-type OpenAIResponsesFunctionCallItemValue = {
-  type: "function_call";
-  call_id: string;
-  name: string;
-  arguments: string;
-};
-type OpenAIResponsesFunctionCallOutputItemValue = {
-  type: "function_call_output";
-  call_id: string;
-  output: string;
-};
-type OpenAIResponsesReasoningItemValue = {
-  type: "reasoning";
-  id?: string;
-  encrypted_content?: string;
-  summary?: Array<{
-    type: "summary_text";
-    text: string;
-  }>;
-};
-type OpenAIResponsesOpaqueTypedInputItemValue = {
-  type:
-    | "local_shell_call"
-    | "tool_search_call"
-    | "custom_tool_call"
-    | "custom_tool_call_output"
-    | "tool_search_output";
-  [key: string]: unknown;
-};
-type OpenAIResponsesTypedInputItemValue =
-  | OpenAIResponsesTextInputBlockValue
-  | OpenAIResponsesMessageItemTypedValue
-  | OpenAIResponsesFunctionCallItemValue
-  | OpenAIResponsesFunctionCallOutputItemValue
-  | OpenAIResponsesReasoningItemValue
-  | OpenAIResponsesOpaqueTypedInputItemValue;
 
 interface OpenAIResponsesEventEncodingState {
   sequenceNumber: number;
@@ -90,13 +116,7 @@ interface OpenAIResponsesEventEncodingState {
   toolCallId?: string;
   toolCallName?: string;
   toolCallArguments?: string;
-  toolCalls?: Array<{
-    toolCallId: string;
-    toolCallName?: string;
-    toolCallArguments: string;
-    outputIndex: number;
-    toolType?: "function_call" | "custom_tool_call";
-  }>;
+  toolCalls?: OpenAIResponsesCompletedToolCall[];
   toolCallType?: "function_call" | "custom_tool_call";
 }
 
@@ -201,11 +221,13 @@ function encodeCanonicalResponsesUsage(usage: CanonicalUsageValue) {
     return undefined;
   }
 
-  return {
+  const encodedUsage: OpenAIResponsesResponsesUsage = {
     input_tokens: usage.inputTokens,
     output_tokens: usage.outputTokens,
     total_tokens: usage.totalTokens
   };
+
+  return encodedUsage;
 }
 
 function encodeCanonicalAnthropicUsage(usage: CanonicalUsageValue) {
@@ -213,10 +235,12 @@ function encodeCanonicalAnthropicUsage(usage: CanonicalUsageValue) {
     return undefined;
   }
 
-  return {
+  const encodedUsage: AnthropicMessagesUsage = {
     input_tokens: usage.inputTokens,
     output_tokens: usage.outputTokens
   };
+
+  return encodedUsage;
 }
 
 function encodeCanonicalGeminiUsage(usage: CanonicalUsageValue) {
@@ -422,7 +446,10 @@ function addOpenAIResponsesEnvelopeFields(
 
 function isOpenAIResponsesTypedInputItems(
   input: OpenAIResponsesRequest["input"]
-): input is OpenAIResponsesTypedInputItemValue[] {
+): input is Exclude<
+  OpenAIResponsesArrayInput,
+  OpenAIResponsesStructuredInputMessage[]
+> {
   return (
     Array.isArray(input) &&
     input.length > 0 &&
@@ -442,9 +469,7 @@ function isOpenAIResponsesTypedInputItems(
 }
 
 function encodeOpenAIResponsesMessageContent(
-  content:
-    | string
-    | Array<{ type: string; text?: string }>
+  content: string | Array<{ type: string; text?: string }>
 ): string {
   if (typeof content === "string") {
     return content;
@@ -465,7 +490,9 @@ function hasOpenAIResponsesOpaqueMessageContent(
 ) {
   return (
     Array.isArray(content) &&
-    content.some((block) => block.type !== "input_text" && block.type !== "output_text")
+    content.some(
+      (block) => block.type !== "input_text" && block.type !== "output_text"
+    )
   );
 }
 
@@ -478,9 +505,7 @@ function shouldPreserveNativeOpenAIResponsesInput(
 
   if (!isOpenAIResponsesTypedInputItems(input)) {
     return input.some((message) =>
-      hasOpenAIResponsesOpaqueMessageContent(
-        message.content as string | Array<{ type: string; text?: string }>
-      )
+      hasOpenAIResponsesOpaqueMessageContent(message.content)
     );
   }
 
@@ -719,6 +744,15 @@ function normalizeOpenAIResponsesTypedInputItems(
       continue;
     }
 
+    if (item.type === "message") {
+      flushPendingUserTextItems();
+      messages.push({
+        role: item.role === "developer" ? "system" : item.role,
+        content: encodeOpenAIResponsesMessageContent(item.content)
+      });
+      continue;
+    }
+
     if (
       item.type === "local_shell_call" ||
       item.type === "tool_search_call" ||
@@ -729,12 +763,6 @@ function normalizeOpenAIResponsesTypedInputItems(
       flushPendingUserTextItems();
       continue;
     }
-
-    flushPendingUserTextItems();
-    messages.push({
-      role: item.role === "developer" ? "system" : item.role,
-      content: encodeOpenAIResponsesMessageContent(item.content)
-    });
   }
 
   flushPendingUserTextItems();
@@ -941,12 +969,7 @@ export function normalizeOpenAIResponsesRequest(
         ? [{ role: "user" as const, content: request.input }]
         : isOpenAIResponsesTypedInputItems(request.input)
           ? normalizeOpenAIResponsesTypedInputItems(request.input)
-          : (
-              request.input as Array<{
-                role: "user" | "assistant" | "system" | "developer";
-                content: string | OpenAIResponsesTextInputBlockValue[];
-              }>
-            ).map((message) => {
+          : request.input.map((message) => {
               return {
                 role:
                   message.role === "developer"
@@ -981,7 +1004,7 @@ export function normalizeOpenAIResponsesRequest(
             : {}),
           ...(request.include?.includes("reasoning.encrypted_content")
             ? { include: request.include }
-            : {}),
+            : {})
         }
       : undefined;
 
@@ -1075,11 +1098,19 @@ export function normalizeOpenAIResponsesRequest(
       : {}),
     ...(request.tools !== undefined
       ? {
-          tools: request.tools.map((tool) => ({
-            name: tool.name,
-            ...(tool.description ? { description: tool.description } : {}),
-            inputSchema: tool.parameters
-          }))
+          tools: request.tools.flatMap((tool) => {
+            if (tool.type !== "function") {
+              return [];
+            }
+
+            return [
+              {
+                name: tool.name,
+                ...(tool.description ? { description: tool.description } : {}),
+                inputSchema: tool.parameters
+              }
+            ];
+          })
         }
       : {}),
     ...(toolChoice !== undefined ? { toolChoice } : {}),
@@ -1234,7 +1265,9 @@ export function normalizeAnthropicMessagesRequest(
       ? {
           nativeRequest: {
             anthropicMessages: {
-              ...(request.system !== undefined ? { system: request.system } : {}),
+              ...(request.system !== undefined
+                ? { system: request.system }
+                : {}),
               messages: request.messages
             }
           }
@@ -1313,7 +1346,8 @@ function normalizeGeminiToolChoice(
 
   if (mode === "NONE") return "none";
   if (mode === "ANY") {
-    const allowedFunctionName = functionCallingConfig.allowedFunctionNames?.[0];
+    const allowedFunctionName =
+      functionCallingConfig?.allowedFunctionNames?.[0];
     return allowedFunctionName
       ? { type: "tool", name: allowedFunctionName }
       : "required";
@@ -1679,13 +1713,38 @@ export function encodeCanonicalToOpenAIChatResponse(
 }
 
 export function encodeCanonicalToOpenAIResponsesResponse(
+  response: CanonicalResponse & {
+    nativeResponse?: CanonicalResponse["nativeResponse"] & {
+      openaiResponses?: undefined;
+    };
+  }
+): OpenAIResponsesEncodedResponse;
+export function encodeCanonicalToOpenAIResponsesResponse(
+  response: CanonicalResponse & {
+    nativeResponse: CanonicalResponse["nativeResponse"] & {
+      openaiResponses: unknown;
+    };
+  }
+): Record<string, unknown> & {
+  output_text?: string;
+  output?: unknown[];
+};
+export function encodeCanonicalToOpenAIResponsesResponse(
   response: CanonicalResponse
-) {
+):
+  | OpenAIResponsesEncodedResponse
+  | (Record<string, unknown> & {
+      output_text?: string;
+      output?: unknown[];
+    }) {
   if (response.nativeResponse?.openaiResponses !== undefined) {
     const nativeResponse = response.nativeResponse.openaiResponses as Record<
       string,
       unknown
-    >;
+    > & {
+      output_text?: string;
+      output?: unknown[];
+    };
 
     return {
       ...nativeResponse,
@@ -1696,7 +1755,11 @@ export function encodeCanonicalToOpenAIResponsesResponse(
         ? {
             output: [
               ...(response.reasoningSummary
-                ? [createOpenAIResponsesReasoningItem(response.reasoningSummary)]
+                ? [
+                    createOpenAIResponsesReasoningItem(
+                      response.reasoningSummary
+                    )
+                  ]
                 : []),
               ...(response.outputText.length > 0
                 ? [
@@ -1978,7 +2041,8 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
 
   if (event.type === "tool_call_delta") {
     const toolType = state.toolCallType ?? "function_call";
-    const currentArguments = (state.toolCallArguments ?? "") + event.argumentsDelta;
+    const currentArguments =
+      (state.toolCallArguments ?? "") + event.argumentsDelta;
     const toolItem =
       toolType === "custom_tool_call"
         ? createOpenAIResponsesCustomToolCallItem(
@@ -2154,15 +2218,17 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
   };
 
   if (isToolCallCompletion) {
-    const completedToolCalls =
+    const completedToolCalls: OpenAIResponsesCompletedToolCall[] =
       state.toolCalls && state.toolCalls.length > 0
         ? state.toolCalls
         : [
             {
               toolCallId: state.toolCallId ?? `${event.responseId}_tool_call_0`,
-              toolCallName: state.toolCallName,
               toolCallArguments: state.toolCallArguments ?? "{}",
-              outputIndex: state.outputIndex
+              outputIndex: state.outputIndex,
+              ...(state.toolCallName !== undefined
+                ? { toolCallName: state.toolCallName }
+                : {})
             }
           ];
     const reasoningCompletionEvents =
@@ -2463,9 +2529,10 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
 
 export function encodeCanonicalToAnthropicMessagesResponse(
   response: CanonicalResponse
-) {
+): AnthropicMessagesResponse {
   if (response.nativeResponse?.anthropicMessages !== undefined) {
-    return response.nativeResponse.anthropicMessages;
+    return response.nativeResponse
+      .anthropicMessages as AnthropicMessagesResponse;
   }
 
   const toolUseContent =
@@ -2504,7 +2571,7 @@ export function encodeCanonicalToAnthropicMessagesResponse(
 
 export function encodeCanonicalToGeminiGenerateContentResponse(
   response: CanonicalResponse
-) {
+): GeminiGenerateContentResponse {
   const parts = [
     ...(response.outputText.length > 0 ? [{ text: response.outputText }] : []),
     ...(response.toolCalls?.map((toolCall) => ({
@@ -2517,7 +2584,7 @@ export function encodeCanonicalToGeminiGenerateContentResponse(
     })) ?? [])
   ];
 
-  return {
+  const encodedResponse: GeminiGenerateContentResponse = {
     responseId: response.id,
     modelVersion: response.model,
     candidates: [
@@ -2528,11 +2595,17 @@ export function encodeCanonicalToGeminiGenerateContentResponse(
           parts
         }
       }
-    ],
-    ...(response.usage
-      ? { usageMetadata: encodeCanonicalGeminiUsage(response.usage) }
-      : {})
+    ]
   };
+
+  if (response.usage) {
+    const usageMetadata = encodeCanonicalGeminiUsage(response.usage);
+    if (usageMetadata !== undefined) {
+      encodedResponse.usageMetadata = usageMetadata;
+    }
+  }
+
+  return encodedResponse;
 }
 
 export function encodeCanonicalToGeminiGenerateContentStreamEvents(

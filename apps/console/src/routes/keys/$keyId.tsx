@@ -14,7 +14,7 @@ import {
   Switch,
   TextField,
   toast,
-  useOverlayState,
+  useOverlayState
 } from "@heroui/react";
 import {
   FiAlertTriangle,
@@ -24,7 +24,7 @@ import {
   FiEdit2,
   FiRotateCw,
   FiShield,
-  FiTrash2,
+  FiTrash2
 } from "react-icons/fi";
 
 import {
@@ -38,28 +38,28 @@ import {
   useRestoreKey,
   useRotateKey,
   useUpdateKey,
-  useUpdateKeyRegistryOverride,
+  useUpdateKeyRegistryOverride
 } from "../../hooks/use-queries";
 import type {
   GatewayApiKeyLifecycleStatus,
   GatewayApiKeyPolicy,
   GatewayApiKeyRegistrySnapshot,
-  RegistryKeyView,
+  RegistryKeyView
 } from "../../lib/api";
 import {
   buildUpdatedKeyPolicy,
   generateGatewayKeyValue,
   getConfiguredModels,
-  hashGatewayKeyValue,
+  hashGatewayKeyValue
 } from "../../lib/key-policy";
 import {
   CacheUsageByModelChart,
-  TokenUsageByModelChart,
+  TokenUsageByModelChart
 } from "../../components/dashboard-charts";
 import { DataTable, Table } from "../../components/data-table";
 
 export const Route = createFileRoute("/keys/$keyId")({
-  component: KeyDetailPage,
+  component: KeyDetailPage
 });
 
 function KeyDetailPage() {
@@ -157,7 +157,7 @@ function KeyDetailPage() {
     try {
       await archiveMut.mutateAsync({
         keyId,
-        payload: { reason: "archived from console" },
+        payload: { reason: "archived from console" }
       });
       toast.success("Key archived");
       archiveModal.close();
@@ -173,7 +173,7 @@ function KeyDetailPage() {
     try {
       await restoreMut.mutateAsync({
         keyId,
-        payload: { reason: "restored from console" },
+        payload: { reason: "restored from console" }
       });
       toast.success("Key restored");
     } catch (error) {
@@ -191,8 +191,8 @@ function KeyDetailPage() {
         keyId,
         payload: {
           valueHash: await hashGatewayKeyValue(nextKeyValue),
-          reason: "rotated from console",
-        },
+          reason: "rotated from console"
+        }
       });
       setRotatedPlainTextKey(nextKeyValue);
       toast.success("Key rotated");
@@ -231,7 +231,7 @@ function KeyDetailPage() {
       label: editLabel.trim() || snapshot.runtime.label,
       status: editEnabled ? "active" : "revoked",
       policy: nextPolicy ?? null,
-      reason: "updated from console",
+      reason: "updated from console"
     } as const;
 
     try {
@@ -269,9 +269,7 @@ function KeyDetailPage() {
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <h1 className="console-title truncate">
-              {snapshot.runtime.label}
-            </h1>
+            <h1 className="console-title truncate">{snapshot.runtime.label}</h1>
             <StatusChip status={snapshot.runtime.effectiveStatus} />
             <Chip size="sm" variant="soft">
               {snapshot.ownership}
@@ -323,7 +321,9 @@ function KeyDetailPage() {
         <Alert.Root status="warning">
           <Alert.Indicator />
           <Alert.Content>
-            <Alert.Title className="text-sm">Copy the rotated key now</Alert.Title>
+            <Alert.Title className="text-sm">
+              Copy the rotated key now
+            </Alert.Title>
             <Alert.Description className="text-xs">
               The plaintext value is shown once. After this page changes, only
               the hash remains in the registry.
@@ -346,12 +346,16 @@ function KeyDetailPage() {
             <Card.Header>
               <Card.Title className="text-sm">Runtime Status</Card.Title>
               <Card.Description className="text-[11px]">
-                Effective state after lifecycle windows, overrides, and revocation.
+                Effective state after lifecycle windows, overrides, and
+                revocation.
               </Card.Description>
             </Card.Header>
             <Card.Content>
               <div className="grid grid-cols-2 gap-3">
-                <InfoItem label="Accepted now" value={isAccepted ? "Yes" : "No"} />
+                <InfoItem
+                  label="Accepted now"
+                  value={isAccepted ? "Yes" : "No"}
+                />
                 <InfoItem
                   label="Lifecycle"
                   value={snapshot.runtime.lifecycleStatus}
@@ -393,7 +397,8 @@ function KeyDetailPage() {
             <Card.Header>
               <Card.Title className="text-sm">Model Access</Card.Title>
               <Card.Description className="text-[11px]">
-                All configured models stay enabled unless they appear in the disabled list.
+                All configured models stay enabled unless they appear in the
+                disabled list.
               </Card.Description>
             </Card.Header>
             <Card.Content>
@@ -431,11 +436,7 @@ function KeyDetailPage() {
               )}
 
               <div className="flex justify-end">
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onPress={openEditModal}
-                >
+                <Button size="sm" variant="primary" onPress={openEditModal}>
                   Edit Access
                 </Button>
               </div>
@@ -493,7 +494,8 @@ function KeyDetailPage() {
                 </div>
               ) : (
                 <p className="text-xs text-muted">
-                  No usage has been recorded for this key in the current metrics window.
+                  No usage has been recorded for this key in the current metrics
+                  window.
                 </p>
               )}
             </Card.Content>
@@ -503,7 +505,9 @@ function KeyDetailPage() {
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               <Card.Root>
                 <Card.Header>
-                  <Card.Title className="text-sm">Token Usage by Model</Card.Title>
+                  <Card.Title className="text-sm">
+                    Token Usage by Model
+                  </Card.Title>
                 </Card.Header>
                 <Card.Content>
                   <TokenUsageByModelChart byModel={keyModelMetrics} />
@@ -511,7 +515,9 @@ function KeyDetailPage() {
               </Card.Root>
               <Card.Root>
                 <Card.Header>
-                  <Card.Title className="text-sm">Cached Input by Model</Card.Title>
+                  <Card.Title className="text-sm">
+                    Cached Input by Model
+                  </Card.Title>
                 </Card.Header>
                 <Card.Content>
                   <CacheUsageByModelChart byModel={keyModelMetrics} />
@@ -528,7 +534,9 @@ function KeyDetailPage() {
               {keyEvents.data?.events?.length ? (
                 <DataTable aria-label="Key audit events">
                   <Table.Header>
-                    <Table.Column id="event" isRowHeader>Event</Table.Column>
+                    <Table.Column id="event" isRowHeader>
+                      Event
+                    </Table.Column>
                     <Table.Column id="actor">Actor</Table.Column>
                     <Table.Column id="reason">Reason</Table.Column>
                     <Table.Column id="time">Time</Table.Column>
@@ -542,9 +550,7 @@ function KeyDetailPage() {
                           </Chip>
                         </Table.Cell>
                         <Table.Cell>
-                          <span className="text-xs">
-                            {event.actor ?? "-"}
-                          </span>
+                          <span className="text-xs">{event.actor ?? "-"}</span>
                         </Table.Cell>
                         <Table.Cell>
                           <span className="text-xs text-muted">
@@ -665,17 +671,17 @@ function getEffectivePolicy(
   const policy =
     snapshot.ownership === "registry"
       ? registryKey?.key.policy
-      : snapshot.registryOverride?.policy ?? undefined;
+      : (snapshot.registryOverride?.policy ?? undefined);
 
   return {
     policy,
-    blocked: policy?.blockedExternalModels ?? [],
+    blocked: policy?.blockedExternalModels ?? []
   };
 }
 
 function ModelAccessStatus({
   model,
-  isEnabled,
+  isEnabled
 }: {
   model: string;
   isEnabled: boolean;
@@ -683,11 +689,7 @@ function ModelAccessStatus({
   return (
     <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl bg-default/40 px-3 py-2">
       <p className="truncate font-mono text-[11px]">{model}</p>
-      <Chip
-        size="sm"
-        variant="soft"
-        color={isEnabled ? "success" : "warning"}
-      >
+      <Chip size="sm" variant="soft" color={isEnabled ? "success" : "warning"}>
         {isEnabled ? "enabled" : "disabled"}
       </Chip>
     </div>
@@ -703,7 +705,7 @@ function StatusChip({ status }: { status: GatewayApiKeyLifecycleStatus }) {
     archived: "warning",
     revoked: "danger",
     expired: "danger",
-    not_yet_active: "warning",
+    not_yet_active: "warning"
   };
   return (
     <Chip size="sm" variant="soft" color={colorMap[status] ?? "default"}>
@@ -722,7 +724,7 @@ function EditKeyModal({
   onLabelChange,
   onEnabledChange,
   onModelEnabledChange,
-  onSave,
+  onSave
 }: {
   state: ReturnType<typeof useOverlayState>;
   label: string;
@@ -778,10 +780,7 @@ function EditKeyModal({
 
               <section className="space-y-3">
                 <div className="flex items-start gap-2">
-                  <FiShield
-                    size={14}
-                    className="mt-0.5 shrink-0 text-muted"
-                  />
+                  <FiShield size={14} className="mt-0.5 shrink-0 text-muted" />
                   <div>
                     <p className="text-[13px] font-medium">Model access</p>
                     <p className="text-xs text-muted">
@@ -833,7 +832,7 @@ function EditKeyModal({
 function ModelAccessSwitch({
   model,
   isEnabled,
-  onChange,
+  onChange
 }: {
   model: string;
   isEnabled: boolean;
@@ -849,9 +848,7 @@ function ModelAccessSwitch({
     >
       <Switch.Content className="min-w-0">
         <Label className="truncate font-mono text-[11px]">{model}</Label>
-        <Description>
-          {isEnabled ? "Enabled" : "Disabled"}
-        </Description>
+        <Description>{isEnabled ? "Enabled" : "Disabled"}</Description>
       </Switch.Content>
       <Switch.Control>
         <Switch.Thumb />
@@ -863,9 +860,7 @@ function ModelAccessSwitch({
 function InfoItem({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase text-muted">
-        {label}
-      </p>
+      <p className="text-[10px] font-semibold uppercase text-muted">{label}</p>
       <p className="mt-0.5 text-[13px] font-medium">{value}</p>
     </div>
   );
@@ -873,7 +868,7 @@ function InfoItem({ label, value }: { label: string; value: ReactNode }) {
 
 function InfoRow({
   label,
-  children,
+  children
 }: {
   label: string;
   children: React.ReactNode;
@@ -893,7 +888,7 @@ function ConfirmModal({
   actionLabel,
   actionVariant,
   isPending,
-  onAction,
+  onAction
 }: {
   state: ReturnType<typeof useOverlayState>;
   title: string;
@@ -910,28 +905,28 @@ function ConfirmModal({
           <Modal.Header>
             <Modal.Heading>{title}</Modal.Heading>
           </Modal.Header>
-            <Modal.Body>
-              <div className="flex items-start gap-2.5">
-                <FiAlertTriangle
-                  size={16}
-                  className="mt-0.5 shrink-0 text-warning"
-                />
-                <p className="text-sm text-muted">{description}</p>
-              </div>
-            </Modal.Body>
-            <Modal.Footer>
-              <Button size="sm" variant="ghost" onPress={state.close}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                variant={actionVariant}
-                isPending={isPending}
-                onPress={onAction}
-              >
-                {actionLabel}
-              </Button>
-            </Modal.Footer>
+          <Modal.Body>
+            <div className="flex items-start gap-2.5">
+              <FiAlertTriangle
+                size={16}
+                className="mt-0.5 shrink-0 text-warning"
+              />
+              <p className="text-sm text-muted">{description}</p>
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button size="sm" variant="ghost" onPress={state.close}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant={actionVariant}
+              isPending={isPending}
+              onPress={onAction}
+            >
+              {actionLabel}
+            </Button>
+          </Modal.Footer>
         </Modal.Dialog>
       </Modal.Container>
     </Modal.Backdrop>

@@ -206,10 +206,7 @@ describe("assertSupportedOpenAIResponsesSemantics", () => {
 
   it("passes with null reasoning so unsupported-but-forwardable payloads are not blocked", () => {
     expect(() =>
-      assertSupportedOpenAIResponsesSemantics(
-        { reasoning: null },
-        REQ_ID
-      )
+      assertSupportedOpenAIResponsesSemantics({ reasoning: null }, REQ_ID)
     ).not.toThrow();
   });
 

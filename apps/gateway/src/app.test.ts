@@ -189,6 +189,7 @@ interface DurableObjectNamespaceLike {
 interface ExecutionContextLike {
   waitUntil(promise: Promise<void>): void;
   passThroughOnException(): void;
+  props: Record<string, unknown>;
 }
 
 interface MetricsResponseBody {
@@ -229,7 +230,8 @@ function createMockExecutionContext(): {
           pending.delete(promise);
         });
       },
-      passThroughOnException() {}
+      passThroughOnException() {},
+      props: {}
     },
     async flush() {
       while (pending.size > 0) {
@@ -1152,19 +1154,17 @@ describe("gateway app", () => {
     const configStoreNamespace = {
       idFromName: () => "global",
       get: () => ({
-        fetch: vi.fn().mockRejectedValue(new Error("config store should not be read"))
+        fetch: vi
+          .fn()
+          .mockRejectedValue(new Error("config store should not be read"))
       })
     };
     const app = createApp({ fetcher: vi.fn() });
 
-    const response = await app.request(
-      "http://localhost/healthz",
-      undefined,
-      {
-        ...createBindings(),
-        AIRLOCK_CONFIG_STORE: configStoreNamespace
-      }
-    );
+    const response = await app.request("http://localhost/healthz", undefined, {
+      ...createBindings(),
+      AIRLOCK_CONFIG_STORE: configStoreNamespace
+    });
 
     expect(response.status).toBe(200);
     await expect(readJson(response)).resolves.toEqual({ ok: true });
@@ -26989,7 +26989,9 @@ describe("gateway app", () => {
     expect(body).toContain('"type":"response.reasoning_summary_part.added"');
     expect(body).toContain('"type":"response.reasoning_text.delta"');
     expect(body).toContain('"delta":"raw detail"');
-    expect(body).toContain('"content":[{"type":"reasoning_text","text":"raw detail"}]');
+    expect(body).toContain(
+      '"content":[{"type":"reasoning_text","text":"raw detail"}]'
+    );
     expect(body).toContain("data: [DONE]");
   });
 
@@ -28177,7 +28179,7 @@ describe("gateway app", () => {
               type: "custom_tool_call",
               call_id: "custom_123",
               name: "shell_command",
-              input: "{\"command\":\"pwd\"}"
+              input: '{"command":"pwd"}'
             }
           ],
           include: ["reasoning.encrypted_content"],
@@ -28215,7 +28217,7 @@ describe("gateway app", () => {
           type: "custom_tool_call",
           call_id: "custom_123",
           name: "shell_command",
-          input: "{\"command\":\"pwd\"}"
+          input: '{"command":"pwd"}'
         }
       ],
       tools: [
@@ -39023,10 +39025,10 @@ describe("GET /_airlock/metrics", () => {
     expect(metricsResponse.status).toBe(200);
     const body = (await readJson(metricsResponse)) as MetricsResponseBody;
     expect(body.totalTokens).toBeGreaterThanOrEqual(20);
-    expect(body.byProtocol.openai_chat.totalTokens).toBe(20);
-    expect(body.byProvider.openai.totalTokens).toBe(20);
-    expect(body.byModel["gpt-4.1-mini"].totalTokens).toBe(20);
-    expect(body.byRoute["/v1/chat/completions"].totalTokens).toBe(20);
+    expect(body.byProtocol.openai_chat?.totalTokens).toBe(20);
+    expect(body.byProvider.openai?.totalTokens).toBe(20);
+    expect(body.byModel["gpt-4.1-mini"]?.totalTokens).toBe(20);
+    expect(body.byRoute["/v1/chat/completions"]?.totalTokens).toBe(20);
   });
 
   it("includes usage breakdowns for streaming protocol requests", async () => {
@@ -39103,11 +39105,11 @@ describe("GET /_airlock/metrics", () => {
     expect(metricsResponse.status).toBe(200);
     const body = (await readJson(metricsResponse)) as MetricsResponseBody;
     expect(body.totalTokens).toBeGreaterThanOrEqual(20);
-    expect(body.byProtocol.openai_chat.totalTokens).toBe(20);
-    expect(body.byProvider.openai.totalTokens).toBe(20);
-    expect(body.byModel["gpt-4.1-mini"].totalTokens).toBe(20);
-    expect(body.byRoute["/v1/chat/completions"].totalTokens).toBe(20);
-    expect(body.byRoute["/v1/chat/completions"].streamCount).toBe(1);
+    expect(body.byProtocol.openai_chat?.totalTokens).toBe(20);
+    expect(body.byProvider.openai?.totalTokens).toBe(20);
+    expect(body.byModel["gpt-4.1-mini"]?.totalTokens).toBe(20);
+    expect(body.byRoute["/v1/chat/completions"]?.totalTokens).toBe(20);
+    expect(body.byRoute["/v1/chat/completions"]?.streamCount).toBe(1);
   });
 
   it("aggregates metrics by key id for authenticated requests", async () => {
@@ -39187,8 +39189,8 @@ describe("GET /_airlock/metrics", () => {
 
     expect(metricsResponse.status).toBe(200);
     const body = (await readJson(metricsResponse)) as MetricsResponseBody;
-    expect(body.byKey.gak_1.totalTokens).toBe(20);
-    expect(body.byKeyModel["gak_1::gpt-4.1-mini"].totalTokens).toBe(20);
+    expect(body.byKey.gak_1?.totalTokens).toBe(20);
+    expect(body.byKeyModel["gak_1::gpt-4.1-mini"]?.totalTokens).toBe(20);
   });
 });
 

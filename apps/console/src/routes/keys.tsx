@@ -2,7 +2,7 @@ import {
   Outlet,
   createFileRoute,
   useNavigate,
-  useRouterState,
+  useRouterState
 } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
@@ -19,7 +19,7 @@ import {
   Switch,
   TextField,
   toast,
-  useOverlayState,
+  useOverlayState
 } from "@heroui/react";
 import {
   FiCheck,
@@ -28,7 +28,7 @@ import {
   FiKey,
   FiPlus,
   FiSearch,
-  FiShield,
+  FiShield
 } from "react-icons/fi";
 
 import { useConfig, useCreateKey, useKeys } from "../hooks/use-queries";
@@ -36,18 +36,18 @@ import type { GatewayApiKeyRegistrySnapshot } from "../lib/api";
 import {
   buildGatewayKeyCreatePayload,
   generateGatewayKeyValue,
-  getConfiguredModels,
+  getConfiguredModels
 } from "../lib/key-policy";
 import { DataTable, Table } from "../components/data-table";
 import { EmptyContent } from "../components/empty-content";
 
 export const Route = createFileRoute("/keys")({
-  component: KeysRoutePage,
+  component: KeysRoutePage
 });
 
 function KeysRoutePage() {
   const pathname = useRouterState({
-    select: (state) => state.location.pathname,
+    select: (state) => state.location.pathname
   });
 
   if (pathname !== "/keys" && pathname !== "/keys/") {
@@ -90,9 +90,8 @@ function KeysPage() {
     const entries = keys.data?.keys ?? [];
     return {
       active: entries.filter((key) => key.runtime.acceptedNow).length,
-      blocked: entries.filter((key) => getBlockedModels(key).length > 0)
-        .length,
-      registry: entries.filter((key) => key.ownership === "registry").length,
+      blocked: entries.filter((key) => getBlockedModels(key).length > 0).length,
+      registry: entries.filter((key) => key.ownership === "registry").length
     };
   }, [keys.data?.keys]);
 
@@ -103,7 +102,7 @@ function KeysPage() {
         label: newKeyLabel,
         plainTextKey,
         blockedExternalModels: blockedModels,
-        reason: "created from console",
+        reason: "created from console"
       });
       await createKey.mutateAsync(payload);
       setCreatedKeyValue(plainTextKey);
@@ -158,22 +157,22 @@ function KeysPage() {
 
       <Card.Root>
         <Card.Content className="flex-row items-center justify-between gap-3 p-3">
-        <div className="relative w-full sm:max-w-xs">
-          <FiSearch
-            size={14}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
-          />
-          <Input
-            aria-label="Search keys"
-            placeholder="Search label, ID, or ownership"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="pl-8 text-sm"
-          />
-        </div>
-        <p className="text-[11px] text-muted hidden sm:block">
-          No blocked models means the key can use every configured model.
-        </p>
+          <div className="relative w-full sm:max-w-xs">
+            <FiSearch
+              size={14}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
+            />
+            <Input
+              aria-label="Search keys"
+              placeholder="Search label, ID, or ownership"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="pl-8 text-sm"
+            />
+          </div>
+          <p className="text-[11px] text-muted hidden sm:block">
+            No blocked models means the key can use every configured model.
+          </p>
         </Card.Content>
       </Card.Root>
 
@@ -206,17 +205,14 @@ function KeysPage() {
             {filteredKeys.map((key) => {
               const blocked = getBlockedModels(key);
               return (
-                <div
-                  key={key.keyId}
-                  className="rounded-3xl bg-default/40 p-3"
-                >
+                <div key={key.keyId} className="rounded-3xl bg-default/40 p-3">
                   <button
                     type="button"
                     className="block w-full min-w-0 text-left"
                     onClick={() =>
                       navigate({
                         to: "/keys/$keyId",
-                        params: { keyId: key.keyId },
+                        params: { keyId: key.keyId }
                       })
                     }
                   >
@@ -253,7 +249,7 @@ function KeysPage() {
                       onPress={() =>
                         navigate({
                           to: "/keys/$keyId",
-                          params: { keyId: key.keyId },
+                          params: { keyId: key.keyId }
                         })
                       }
                     >
@@ -289,7 +285,7 @@ function KeysPage() {
                       onClick={() =>
                         navigate({
                           to: "/keys/$keyId",
-                          params: { keyId: key.keyId },
+                          params: { keyId: key.keyId }
                         })
                       }
                     >
@@ -336,7 +332,7 @@ function KeysPage() {
                           onPress={() =>
                             navigate({
                               to: "/keys/$keyId",
-                              params: { keyId: key.keyId },
+                              params: { keyId: key.keyId }
                             })
                           }
                         >
@@ -361,78 +357,78 @@ function KeysPage() {
             <Modal.Header>
               <Modal.Heading>Create API Key</Modal.Heading>
             </Modal.Header>
-              <Modal.Body className="gap-4">
-                {createdKeyValue ? (
-                  <CreatedKeyView
-                    value={createdKeyValue}
-                    onClose={closeCreateModal}
-                  />
-                ) : (
-                  <Form
-                    className="flex flex-col gap-4"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      handleCreate();
-                    }}
-                  >
-                    <TextField isRequired value={newKeyLabel}>
-                      <Label>Name</Label>
-                      <Input
-                        placeholder="Production client"
-                        value={newKeyLabel}
-                        onChange={(event) => setNewKeyLabel(event.target.value)}
+            <Modal.Body className="gap-4">
+              {createdKeyValue ? (
+                <CreatedKeyView
+                  value={createdKeyValue}
+                  onClose={closeCreateModal}
+                />
+              ) : (
+                <Form
+                  className="flex flex-col gap-4"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    handleCreate();
+                  }}
+                >
+                  <TextField isRequired value={newKeyLabel}>
+                    <Label>Name</Label>
+                    <Input
+                      placeholder="Production client"
+                      value={newKeyLabel}
+                      onChange={(event) => setNewKeyLabel(event.target.value)}
+                    />
+                  </TextField>
+
+                  <section className="space-y-3">
+                    <div className="flex items-start gap-2">
+                      <FiShield
+                        size={14}
+                        className="mt-0.5 text-muted shrink-0"
                       />
-                    </TextField>
-
-                    <section className="space-y-3">
-                      <div className="flex items-start gap-2">
-                        <FiShield
-                          size={14}
-                          className="mt-0.5 text-muted shrink-0"
-                        />
-                        <div>
-                          <p className="text-[13px] font-medium">Model access</p>
-                          <p className="text-xs text-muted">
-                            New keys can call every model unless you turn one off.
-                          </p>
-                        </div>
-                      </div>
-
-                      {configuredModels.length > 0 ? (
-                        <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
-                          {configuredModels.map((model) => (
-                            <ModelAccessSwitch
-                              key={model}
-                              model={model}
-                              isEnabled={!blockedModels.includes(model)}
-                              onChange={(isEnabled) =>
-                                setModelEnabled(model, isEnabled)
-                              }
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="mt-3 text-xs text-muted">
-                          No configured models were reported by the gateway.
+                      <div>
+                        <p className="text-[13px] font-medium">Model access</p>
+                        <p className="text-xs text-muted">
+                          New keys can call every model unless you turn one off.
                         </p>
-                      )}
-                    </section>
-
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" onPress={closeCreateModal}>
-                        Cancel
-                      </Button>
-                      <Button
-                        type="submit"
-                        variant="primary"
-                        isPending={createKey.isPending}
-                      >
-                        Create
-                      </Button>
+                      </div>
                     </div>
-                  </Form>
-                )}
-              </Modal.Body>
+
+                    {configuredModels.length > 0 ? (
+                      <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
+                        {configuredModels.map((model) => (
+                          <ModelAccessSwitch
+                            key={model}
+                            model={model}
+                            isEnabled={!blockedModels.includes(model)}
+                            onChange={(isEnabled) =>
+                              setModelEnabled(model, isEnabled)
+                            }
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-xs text-muted">
+                        No configured models were reported by the gateway.
+                      </p>
+                    )}
+                  </section>
+
+                  <div className="flex justify-end gap-2">
+                    <Button variant="ghost" onPress={closeCreateModal}>
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      isPending={createKey.isPending}
+                    >
+                      Create
+                    </Button>
+                  </div>
+                </Form>
+              )}
+            </Modal.Body>
           </Modal.Dialog>
         </Modal.Container>
       </Modal.Backdrop>
@@ -443,7 +439,7 @@ function KeysPage() {
 function ModelAccessSwitch({
   model,
   isEnabled,
-  onChange,
+  onChange
 }: {
   model: string;
   isEnabled: boolean;
@@ -459,9 +455,7 @@ function ModelAccessSwitch({
     >
       <Switch.Content className="min-w-0">
         <Label className="truncate font-mono text-[11px]">{model}</Label>
-        <Description>
-          {isEnabled ? "Enabled" : "Disabled"}
-        </Description>
+        <Description>{isEnabled ? "Enabled" : "Disabled"}</Description>
       </Switch.Content>
       <Switch.Control>
         <Switch.Thumb />
@@ -472,7 +466,7 @@ function ModelAccessSwitch({
 
 function CreatedKeyView({
   value,
-  onClose,
+  onClose
 }: {
   value: string;
   onClose: () => void;
@@ -513,8 +507,8 @@ function SummaryTile({ label, value }: { label: string; value: number }) {
   return (
     <Card.Root>
       <Card.Content className="p-3">
-      <p className="console-label">{label}</p>
-      <p className="console-value mt-0.5">{value}</p>
+        <p className="console-label">{label}</p>
+        <p className="console-value mt-0.5">{value}</p>
       </Card.Content>
     </Card.Root>
   );
@@ -526,7 +520,9 @@ function KeysSkeleton() {
       <Card.Content className="p-0">
         <DataTable aria-label="Loading API keys">
           <Table.Header>
-            <Table.Column id="key" isRowHeader>Key</Table.Column>
+            <Table.Column id="key" isRowHeader>
+              Key
+            </Table.Column>
             <Table.Column id="status">Status</Table.Column>
             <Table.Column id="ownership">Ownership</Table.Column>
             <Table.Column id="models">Models</Table.Column>
@@ -557,7 +553,7 @@ function StatusChip({ status }: { status: string }) {
       archived: "warning",
       revoked: "danger",
       expired: "danger",
-      not_yet_active: "warning",
+      not_yet_active: "warning"
     };
   return (
     <Chip size="sm" variant="soft" color={colorMap[status] ?? "default"}>

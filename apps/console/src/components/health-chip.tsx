@@ -1,14 +1,14 @@
 import { Chip } from "@heroui/react";
 
 export function HealthChip({
-  status,
+  status
 }: {
   status: "healthy" | "degraded" | "down";
 }) {
   const color = {
     healthy: "success",
     degraded: "warning",
-    down: "danger",
+    down: "danger"
   }[status] as "success" | "warning" | "danger";
 
   return (

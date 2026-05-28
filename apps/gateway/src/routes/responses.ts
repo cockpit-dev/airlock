@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 
 import {
+  type CanonicalResponse,
   type CanonicalStreamEvent,
   createStreamReassemblyIterable,
   encodeCanonicalToOpenAIResponsesStreamEvent,
@@ -317,8 +318,8 @@ export async function handleResponses(
           event.nativeEvent.openaiResponses !== null &&
           "type" in
             (event.nativeEvent.openaiResponses as Record<string, unknown>) &&
-          (event.nativeEvent.openaiResponses as Record<string, unknown>).type ===
-            "response.custom_tool_call_input.delta"
+          (event.nativeEvent.openaiResponses as Record<string, unknown>)
+            .type === "response.custom_tool_call_input.delta"
             ? "custom_tool_call"
             : (currentToolCall.toolType ?? "function_call");
         currentToolCall.toolCallArguments += event.argumentsDelta;
@@ -356,10 +357,11 @@ export async function handleResponses(
               ...(event.toolName !== undefined
                 ? { toolCallName: event.toolName }
                 : {}),
-              ...(streamedToolCalls.get(event.toolCallId)?.toolType !== undefined
+              ...(streamedToolCalls.get(event.toolCallId)?.toolType !==
+              undefined
                 ? {
-                    toolCallType:
-                      streamedToolCalls.get(event.toolCallId)!.toolType
+                    toolCallType: streamedToolCalls.get(event.toolCallId)!
+                      .toolType
                   }
                 : {}),
               ...(startedToolCallIds.has(event.toolCallId) &&
@@ -554,7 +556,13 @@ export async function handleResponses(
   emitSuccessTelemetry(telemetryBase, false, 200, canonicalResponse.usage);
 
   return context.json(
-    encodeCanonicalToOpenAIResponsesResponse(canonicalResponse),
+    encodeCanonicalToOpenAIResponsesResponse(
+      canonicalResponse as CanonicalResponse & {
+        nativeResponse?: CanonicalResponse["nativeResponse"] & {
+          openaiResponses?: undefined;
+        };
+      }
+    ),
     200,
     {
       "x-request-id": requestId,

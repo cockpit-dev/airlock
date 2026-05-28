@@ -620,7 +620,7 @@ function buildNativeOpenAIResponsesBody(
     input: native?.input ?? buildOpenAIResponsesInput(request),
     ...(native?.text !== undefined
       ? { text: native.text }
-      : mapCanonicalOpenAIResponsesText(request) ?? {}),
+      : (mapCanonicalOpenAIResponsesText(request) ?? {})),
     ...(request.prompt !== undefined
       ? {
           prompt: {
@@ -636,7 +636,7 @@ function buildNativeOpenAIResponsesBody(
       : {}),
     ...(native?.include !== undefined
       ? { include: native.include }
-      : mapCanonicalOpenAIResponsesLogprobs(request) ?? {}),
+      : (mapCanonicalOpenAIResponsesLogprobs(request) ?? {})),
     ...mapCanonicalOpenAIRequestMetadata(request),
     ...(request.previousResponseId !== undefined
       ? { previous_response_id: request.previousResponseId }

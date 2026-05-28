@@ -14,8 +14,8 @@ export class AirlockClient {
       headers: {
         Authorization: `Bearer ${this.token}`,
         ...(hasBody ? { "Content-Type": "application/json" } : {}),
-        ...options?.headers,
-      },
+        ...options?.headers
+      }
     });
 
     if (response.status === 401) throw new AuthError("Unauthorized");
@@ -58,7 +58,7 @@ export class AirlockClient {
   createKey(payload: GatewayKeyCreateRequest) {
     return this.request<RegistryKeyView>("/_airlock/keys", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     });
   }
   updateKey(keyId: string, payload: GatewayKeyUpdateRequest) {
@@ -79,7 +79,7 @@ export class AirlockClient {
   deleteKey(keyId: string, payload?: unknown) {
     return this.request<void>(`/_airlock/keys/${encodeURIComponent(keyId)}`, {
       method: "DELETE",
-      ...(payload ? { body: JSON.stringify(payload) } : {}),
+      ...(payload ? { body: JSON.stringify(payload) } : {})
     });
   }
   rotateKey(keyId: string, payload?: unknown) {

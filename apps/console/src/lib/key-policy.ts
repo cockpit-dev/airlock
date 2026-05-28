@@ -96,7 +96,7 @@ export async function buildGatewayKeyCreatePayload({
   label,
   plainTextKey,
   blockedExternalModels,
-  reason,
+  reason
 }: GatewayKeyCreateInput): Promise<GatewayKeyCreatePayload> {
   const trimmedLabel = label.trim() || "Console key";
   const policy = buildUpdatedKeyPolicy(undefined, blockedExternalModels ?? []);
@@ -104,7 +104,7 @@ export async function buildGatewayKeyCreatePayload({
     id: globalThis.crypto.randomUUID(),
     label: trimmedLabel,
     valueHash: await hashGatewayKeyValue(plainTextKey),
-    status: "active",
+    status: "active"
   };
 
   if (policy) payload.policy = policy;

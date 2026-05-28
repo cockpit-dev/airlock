@@ -286,7 +286,10 @@ function deserializeBucket(bucket: SerializedBucket): Bucket {
     cachedInputTokens: bucket.cachedInputTokens ?? 0,
     statusCodes: new Map(bucket.statusCodes),
     byRoute: new Map(
-      (bucket.byRoute ?? []).map(([key, value]) => [key, normalizeSubMetrics(value)])
+      (bucket.byRoute ?? []).map(([key, value]) => [
+        key,
+        normalizeSubMetrics(value)
+      ])
     ),
     byProvider: new Map(
       (bucket.byProvider ?? []).map(([key, value]) => [
@@ -295,7 +298,10 @@ function deserializeBucket(bucket: SerializedBucket): Bucket {
       ])
     ),
     byModel: new Map(
-      (bucket.byModel ?? []).map(([key, value]) => [key, normalizeSubMetrics(value)])
+      (bucket.byModel ?? []).map(([key, value]) => [
+        key,
+        normalizeSubMetrics(value)
+      ])
     ),
     byProtocol: new Map(
       (bucket.byProtocol ?? []).map(([key, value]) => [
@@ -304,7 +310,10 @@ function deserializeBucket(bucket: SerializedBucket): Bucket {
       ])
     ),
     byKey: new Map(
-      (bucket.byKey ?? []).map(([key, value]) => [key, normalizeSubMetrics(value)])
+      (bucket.byKey ?? []).map(([key, value]) => [
+        key,
+        normalizeSubMetrics(value)
+      ])
     ),
     byKeyModel: new Map(
       (bucket.byKeyModel ?? []).map(([key, value]) => [
@@ -777,7 +786,9 @@ function serializeRouteMetrics(
       requests: data.requests,
       errors: data.errors,
       avgDurationMs:
-        data.requests > 0 ? Math.round(data.totalDurationMs / data.requests) : 0,
+        data.requests > 0
+          ? Math.round(data.totalDurationMs / data.requests)
+          : 0,
       streamCount: data.streamCount,
       inputTokens: data.inputTokens,
       outputTokens: data.outputTokens,
@@ -816,9 +827,9 @@ function serializeProviderMetrics(
   return result;
 }
 
-function serializeSubMetrics<T extends ModelMetricsSnapshot | ProtocolMetricsSnapshot>(
-  map: Map<string, SubMetrics>
-): Record<string, T> {
+function serializeSubMetrics<
+  T extends ModelMetricsSnapshot | ProtocolMetricsSnapshot
+>(map: Map<string, SubMetrics>): Record<string, T> {
   const result: Record<string, T> = {};
   for (const [key, data] of map) {
     result[key] = {
@@ -890,8 +901,7 @@ const METRICS_STORAGE_KEY = "metrics_state";
 async function loadCollectorFromState(
   state: DurableObjectStateLike["storage"]
 ): Promise<GatewayMetricsCollector> {
-  const stored =
-    await state.get<SerializedCollectorState>(METRICS_STORAGE_KEY);
+  const stored = await state.get<SerializedCollectorState>(METRICS_STORAGE_KEY);
   return stored
     ? GatewayMetricsCollector.fromJSON(stored)
     : new GatewayMetricsCollector();
@@ -988,7 +998,9 @@ export async function fetchGatewayMetricsSnapshot(
   if (now !== undefined) {
     url.searchParams.set("now", String(now));
   }
-  const response = await stub.fetch(new Request(url.toString(), { method: "GET" }));
+  const response = await stub.fetch(
+    new Request(url.toString(), { method: "GET" })
+  );
 
   if (!response.ok) {
     throw new Error("Failed to read gateway metrics snapshot");
@@ -997,11 +1009,14 @@ export async function fetchGatewayMetricsSnapshot(
   return (await response.json()) as MetricsSnapshot;
 }
 
-export function dispatchBackgroundTask(task: Promise<void>, context: {
-  executionCtx?: {
-    waitUntil(promise: Promise<void>): void;
-  };
-}): void {
+export function dispatchBackgroundTask(
+  task: Promise<void>,
+  context: {
+    executionCtx?: {
+      waitUntil(promise: Promise<void>): void;
+    };
+  }
+): void {
   try {
     context.executionCtx?.waitUntil(task);
   } catch {

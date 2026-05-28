@@ -6,7 +6,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-  type TooltipContentProps,
+  type TooltipContentProps
 } from "recharts";
 import type { MetricsSnapshot } from "../lib/api";
 
@@ -14,11 +14,11 @@ const STATUS_COLORS: Record<string, string> = {
   "2": "var(--success)",
   "3": "var(--warning)",
   "4": "var(--warning)",
-  "5": "var(--danger)",
+  "5": "var(--danger)"
 };
 
 export function StatusCodeChart({
-  statusCodes,
+  statusCodes
 }: {
   statusCodes: MetricsSnapshot["statusCodes"];
 }) {
@@ -67,7 +67,7 @@ export function StatusCodeChart({
 }
 
 export function ProviderRequestsChart({
-  byProvider,
+  byProvider
 }: {
   byProvider: MetricsSnapshot["byProvider"];
 }) {
@@ -75,7 +75,7 @@ export function ProviderRequestsChart({
     .map(([provider, info]) => ({
       label: provider,
       requests: info.requests,
-      errors: info.errors,
+      errors: info.errors
     }))
     .sort((a, b) => b.requests - a.requests)
     .slice(0, 8);
@@ -95,7 +95,7 @@ export function ProviderRequestsChart({
 }
 
 export function RouteLatencyChart({
-  byRoute,
+  byRoute
 }: {
   byRoute: MetricsSnapshot["byRoute"];
 }) {
@@ -103,7 +103,7 @@ export function RouteLatencyChart({
     .map(([route, info]) => ({
       label: route,
       latency: Math.round(info.avgDurationMs),
-      errors: info.errors,
+      errors: info.errors
     }))
     .sort((a, b) => b.latency - a.latency)
     .slice(0, 8);
@@ -123,7 +123,7 @@ export function RouteLatencyChart({
 }
 
 export function TokenUsageByProtocolChart({
-  byProtocol,
+  byProtocol
 }: {
   byProtocol: MetricsSnapshot["byProtocol"];
 }) {
@@ -131,7 +131,7 @@ export function TokenUsageByProtocolChart({
     .map(([protocol, info]) => ({
       label: formatProtocolLabel(protocol),
       tokens: info.totalTokens,
-      requests: info.requests,
+      requests: info.requests
     }))
     .sort((a, b) => b.tokens - a.tokens)
     .slice(0, 6);
@@ -151,7 +151,7 @@ export function TokenUsageByProtocolChart({
 }
 
 export function TokenUsageByModelChart({
-  byModel,
+  byModel
 }: {
   byModel: MetricsSnapshot["byModel"];
 }) {
@@ -159,7 +159,7 @@ export function TokenUsageByModelChart({
     .map(([model, info]) => ({
       label: model,
       tokens: info.totalTokens,
-      requests: info.requests,
+      requests: info.requests
     }))
     .sort((a, b) => b.tokens - a.tokens)
     .slice(0, 8);
@@ -179,7 +179,7 @@ export function TokenUsageByModelChart({
 }
 
 export function TokenUsageByKeyChart({
-  byKey,
+  byKey
 }: {
   byKey: MetricsSnapshot["byKey"];
 }) {
@@ -187,7 +187,7 @@ export function TokenUsageByKeyChart({
     .map(([keyId, info]) => ({
       label: keyId,
       tokens: info.totalTokens,
-      requests: info.requests,
+      requests: info.requests
     }))
     .sort((a, b) => b.tokens - a.tokens)
     .slice(0, 8);
@@ -207,14 +207,14 @@ export function TokenUsageByKeyChart({
 }
 
 export function CacheUsageByModelChart({
-  byModel,
+  byModel
 }: {
   byModel: MetricsSnapshot["byModel"];
 }) {
   const data = Object.entries(byModel ?? {})
     .map(([model, info]) => ({
       label: model,
-      cached: info.cachedInputTokens,
+      cached: info.cachedInputTokens
     }))
     .filter((entry) => entry.cached > 0)
     .sort((a, b) => b.cached - a.cached)
@@ -238,7 +238,7 @@ function HorizontalMetricChart({
   data,
   dataKey,
   unit,
-  color,
+  color
 }: {
   data: Array<Record<string, string | number>>;
   dataKey: string;
@@ -286,7 +286,7 @@ function ChartTooltip({
   active,
   payload,
   label,
-  unit = "",
+  unit = ""
 }: TooltipContentProps & { unit?: string }) {
   if (!active || !payload?.length) return null;
   const item = payload[0];

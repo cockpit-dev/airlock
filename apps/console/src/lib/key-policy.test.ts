@@ -5,7 +5,7 @@ import {
   buildUpdatedKeyPolicy,
   generateGatewayKeyValue,
   getConfiguredModels,
-  hashGatewayKeyValue,
+  hashGatewayKeyValue
 } from "./key-policy";
 import type { AdminConfigResponse, GatewayApiKeyPolicy } from "./api";
 
@@ -16,25 +16,25 @@ const config = {
       type: "openai",
       baseUrl: "https://open.bigmodel.cn/api/paas/v4",
       configured: true,
-      models: ["glm-5.1", "glm-5-turbo"],
+      models: ["glm-5.1", "glm-5-turbo"]
     },
     {
       id: "openai",
       type: "openai",
       baseUrl: "https://api.openai.com/v1",
       configured: true,
-      models: ["gpt-5.5"],
-    },
+      models: ["gpt-5.5"]
+    }
   ],
   routes: [
     {
       externalModel: "glm/glm-5.1",
-      target: { provider: "glm", providerModel: "glm-5.1" },
+      target: { provider: "glm", providerModel: "glm-5.1" }
     },
     {
       externalModel: "gpt-5.5",
-      target: { provider: "openai", providerModel: "gpt-5.5" },
-    },
+      target: { provider: "openai", providerModel: "gpt-5.5" }
+    }
   ],
   modelGroups: {},
   keys: { total: 0, configured: 0, registryOwned: 0 },
@@ -47,15 +47,15 @@ const config = {
     ipRateLimit: false,
     telemetry: false,
     cors: true,
-    requestLogging: false,
+    requestLogging: false
   },
   limits: {
     providerTimeoutMs: 30_000,
     maxRequestBodyBytes: 1_048_576,
     providerStreamIdleTimeoutMs: 30_000,
     maxRetries: 2,
-    retryBackoffMs: 100,
-  },
+    retryBackoffMs: 100
+  }
 } satisfies AdminConfigResponse;
 
 describe("key policy helpers", () => {
@@ -64,7 +64,7 @@ describe("key policy helpers", () => {
       "glm/glm-5.1",
       "gpt-5.5",
       "glm/glm-5-turbo",
-      "openai/gpt-5.5",
+      "openai/gpt-5.5"
     ]);
   });
 
@@ -77,14 +77,14 @@ describe("key policy helpers", () => {
       tier: "prod",
       tags: ["tenant-a"],
       allowedProviders: ["glm"],
-      blockedExternalModels: ["gpt-5.5"],
+      blockedExternalModels: ["gpt-5.5"]
     };
 
     expect(buildUpdatedKeyPolicy(current, ["glm/glm-5.1"])).toEqual({
       tier: "prod",
       tags: ["tenant-a"],
       allowedProviders: ["glm"],
-      blockedExternalModels: ["glm/glm-5.1"],
+      blockedExternalModels: ["glm/glm-5.1"]
     });
   });
 
@@ -92,18 +92,18 @@ describe("key policy helpers", () => {
     const current: GatewayApiKeyPolicy = {
       tier: "prod",
       allowedExternalModels: ["glm/glm-5.1"],
-      allowedModelGroups: ["fast"],
+      allowedModelGroups: ["fast"]
     };
 
     expect(buildUpdatedKeyPolicy(current, ["gpt-5.5"])).toEqual({
       tier: "prod",
-      blockedExternalModels: ["gpt-5.5"],
+      blockedExternalModels: ["gpt-5.5"]
     });
   });
 
   it("removes the block list when every model is enabled", () => {
     const current: GatewayApiKeyPolicy = {
-      blockedExternalModels: ["gpt-5.5"],
+      blockedExternalModels: ["gpt-5.5"]
     };
 
     expect(buildUpdatedKeyPolicy(current, [])).toBeUndefined();
@@ -122,13 +122,13 @@ describe("key policy helpers", () => {
       buildGatewayKeyCreatePayload({
         label: "Production client",
         plainTextKey,
-        blockedExternalModels: [],
+        blockedExternalModels: []
       })
     ).resolves.toMatchObject({
       label: "Production client",
       status: "active",
       valueHash:
-        "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+        "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16"
     });
   });
 

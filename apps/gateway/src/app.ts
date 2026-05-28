@@ -73,7 +73,9 @@ function resolveDefaultRuntimeFeatureConfig(env: GatewayBindings): {
   requestLogging: boolean;
 } {
   return {
-    ...(env.AIRLOCK_CORS_ORIGINS ? { corsOrigins: env.AIRLOCK_CORS_ORIGINS } : {}),
+    ...(env.AIRLOCK_CORS_ORIGINS
+      ? { corsOrigins: env.AIRLOCK_CORS_ORIGINS }
+      : {}),
     requestLogging: env.AIRLOCK_REQUEST_LOGGING === true
   };
 }
@@ -235,7 +237,22 @@ export function createApp(options: CreateAppOptions = {}) {
     if (mm) metricsRecord.modelId = mm;
     if (ms !== undefined) metricsRecord.isStream = ms;
     if (mt) metricsRecord.protocol = mt;
-    if (mu) metricsRecord.usage = mu;
+    if (mu) {
+      metricsRecord.usage = {
+        inputTokens: mu.inputTokens,
+        outputTokens: mu.outputTokens,
+        totalTokens: mu.totalTokens,
+        ...(mu.cacheReadTokens !== undefined
+          ? { cacheReadTokens: mu.cacheReadTokens }
+          : {}),
+        ...(mu.cacheWriteTokens !== undefined
+          ? { cacheWriteTokens: mu.cacheWriteTokens }
+          : {}),
+        ...(mu.cachedInputTokens !== undefined
+          ? { cachedInputTokens: mu.cachedInputTokens }
+          : {})
+      };
+    }
     dispatchBackgroundTask(
       recordGatewayMetrics(context.env, metricsRecord, context.get("now")?.()),
       context

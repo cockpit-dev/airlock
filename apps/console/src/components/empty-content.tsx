@@ -5,7 +5,7 @@ export function EmptyContent({
   icon,
   title,
   description,
-  action,
+  action
 }: {
   icon?: ReactNode;
   title: string;

@@ -6,7 +6,7 @@ export function useStatus() {
   const client = useClient();
   return useQuery({
     queryKey: queryKeys.status,
-    queryFn: () => client.getStatus(),
+    queryFn: () => client.getStatus()
   });
 }
 
@@ -15,7 +15,7 @@ export function useMetrics(refreshInterval = 10_000) {
   return useQuery({
     queryKey: queryKeys.metrics,
     queryFn: () => client.getMetrics(),
-    refetchInterval: refreshInterval,
+    refetchInterval: refreshInterval
   });
 }
 
@@ -23,7 +23,7 @@ export function useConfig() {
   const client = useClient();
   return useQuery({
     queryKey: queryKeys.config,
-    queryFn: () => client.getConfig(),
+    queryFn: () => client.getConfig()
   });
 }
 
@@ -31,7 +31,7 @@ export function useRoutingHealth() {
   const client = useClient();
   return useQuery({
     queryKey: queryKeys.routingHealth,
-    queryFn: () => client.getRoutingHealth(),
+    queryFn: () => client.getRoutingHealth()
   });
 }
 
@@ -39,7 +39,7 @@ export function useKeys(params?: Record<string, string>) {
   const client = useClient();
   return useQuery({
     queryKey: queryKeys.keys.list(params),
-    queryFn: () => client.listKeys(params),
+    queryFn: () => client.listKeys(params)
   });
 }
 
@@ -47,7 +47,7 @@ export function useKey(keyId: string) {
   const client = useClient();
   return useQuery({
     queryKey: queryKeys.keys.detail(keyId),
-    queryFn: () => client.getKey(keyId),
+    queryFn: () => client.getKey(keyId)
   });
 }
 
@@ -55,7 +55,7 @@ export function useKeyStatus(keyId: string) {
   const client = useClient();
   return useQuery({
     queryKey: queryKeys.keys.status(keyId),
-    queryFn: () => client.getKeyStatus(keyId),
+    queryFn: () => client.getKeyStatus(keyId)
   });
 }
 
@@ -63,7 +63,7 @@ export function useKeyEvents(keyId: string) {
   const client = useClient();
   return useQuery({
     queryKey: queryKeys.keys.events(keyId),
-    queryFn: () => client.getKeyEvents(keyId),
+    queryFn: () => client.getKeyEvents(keyId)
   });
 }
 
@@ -77,7 +77,7 @@ export function useCreateKey() {
       qc.invalidateQueries({ queryKey: queryKeys.keys.all });
       qc.invalidateQueries({ queryKey: queryKeys.status });
       qc.invalidateQueries({ queryKey: queryKeys.config });
-    },
+    }
   });
 }
 
@@ -87,7 +87,7 @@ export function useUpdateKey() {
   return useMutation({
     mutationFn: ({
       keyId,
-      payload,
+      payload
     }: {
       keyId: string;
       payload: Parameters<typeof client.updateKey>[1];
@@ -97,7 +97,7 @@ export function useUpdateKey() {
       qc.invalidateQueries({ queryKey: queryKeys.keys.status(keyId) });
       qc.invalidateQueries({ queryKey: queryKeys.keys.events(keyId) });
       qc.invalidateQueries({ queryKey: queryKeys.keys.all });
-    },
+    }
   });
 }
 
@@ -107,7 +107,7 @@ export function useUpdateKeyRegistryOverride() {
   return useMutation({
     mutationFn: ({
       keyId,
-      payload,
+      payload
     }: {
       keyId: string;
       payload: Parameters<typeof client.updateKeyRegistryOverride>[1];
@@ -116,7 +116,7 @@ export function useUpdateKeyRegistryOverride() {
       qc.invalidateQueries({ queryKey: queryKeys.keys.status(keyId) });
       qc.invalidateQueries({ queryKey: queryKeys.keys.events(keyId) });
       qc.invalidateQueries({ queryKey: queryKeys.keys.all });
-    },
+    }
   });
 }
 
@@ -126,7 +126,7 @@ export function useDeleteKey() {
   return useMutation({
     mutationFn: ({ keyId, payload }: { keyId: string; payload?: unknown }) =>
       client.deleteKey(keyId, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.keys.all }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.keys.all })
   });
 }
 
@@ -139,7 +139,7 @@ export function useRotateKey() {
     onSuccess: (_, { keyId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.keys.detail(keyId) });
       qc.invalidateQueries({ queryKey: queryKeys.keys.all });
-    },
+    }
   });
 }
 
@@ -149,7 +149,7 @@ export function useArchiveKey() {
   return useMutation({
     mutationFn: ({ keyId, payload }: { keyId: string; payload?: unknown }) =>
       client.archiveKey(keyId, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.keys.all }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.keys.all })
   });
 }
 
@@ -159,7 +159,7 @@ export function useRestoreKey() {
   return useMutation({
     mutationFn: ({ keyId, payload }: { keyId: string; payload?: unknown }) =>
       client.restoreKey(keyId, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.keys.all }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.keys.all })
   });
 }
 
@@ -172,7 +172,7 @@ export function useRevokeKey() {
     onSuccess: (_, { keyId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.keys.detail(keyId) });
       qc.invalidateQueries({ queryKey: queryKeys.keys.all });
-    },
+    }
   });
 }
 
@@ -180,7 +180,7 @@ export function useConfigStoreSnapshot() {
   const client = useClient();
   return useQuery({
     queryKey: queryKeys.configStore.snapshot,
-    queryFn: () => client.getConfigStoreSnapshot(),
+    queryFn: () => client.getConfigStoreSnapshot()
   });
 }
 
@@ -188,7 +188,7 @@ export function useConfigStoreSection(section: string) {
   const client = useClient();
   return useQuery({
     queryKey: queryKeys.configStore.section(section),
-    queryFn: () => client.getConfigStoreSection(section),
+    queryFn: () => client.getConfigStoreSection(section)
   });
 }
 
@@ -196,10 +196,9 @@ export function usePutConfigStoreSection(section: string) {
   const client = useClient();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: unknown) =>
-      client.putConfigStoreSection(section, data),
+    mutationFn: (data: unknown) => client.putConfigStoreSection(section, data),
     onSuccess: () =>
-      qc.invalidateQueries({ queryKey: queryKeys.configStore.snapshot }),
+      qc.invalidateQueries({ queryKey: queryKeys.configStore.snapshot })
   });
 }
 
@@ -207,10 +206,9 @@ export function useDeleteConfigStoreSection() {
   const client = useClient();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (section: string) =>
-      client.deleteConfigStoreSection(section),
+    mutationFn: (section: string) => client.deleteConfigStoreSection(section),
     onSuccess: () =>
-      qc.invalidateQueries({ queryKey: queryKeys.configStore.snapshot }),
+      qc.invalidateQueries({ queryKey: queryKeys.configStore.snapshot })
   });
 }
 
@@ -220,11 +218,11 @@ export function useFetchProviderModels() {
     mutationFn: ({
       baseUrl,
       apiKey,
-      type,
+      type
     }: {
       baseUrl: string;
       apiKey: string;
       type?: string;
-    }) => client.fetchProviderModels(baseUrl, apiKey, type),
+    }) => client.fetchProviderModels(baseUrl, apiKey, type)
   });
 }

@@ -16,7 +16,7 @@ describe("workspace docs and scripts", () => {
       "README.md",
       "README.zh-CN.md",
       "docs/superpowers/implementations/2026-05-18-production-deployment-and-config.md",
-      "docs/superpowers/specs/control-plane-dashboard.md",
+      "docs/superpowers/specs/control-plane-dashboard.md"
     ];
 
     const offenders = files.filter((file) => {

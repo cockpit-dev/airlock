@@ -32,17 +32,16 @@ export default defineConfig({
       "use-sync-external-store/shim/with-selector.js":
         rechartsUseSyncExternalStore,
       "use-sync-external-store/with-selector": rechartsUseSyncExternalStore,
-      "use-sync-external-store/with-selector.js":
-        rechartsUseSyncExternalStore,
-    },
+      "use-sync-external-store/with-selector.js": rechartsUseSyncExternalStore
+    }
   },
   plugins: [
     TanStackRouterVite({
       routesDirectory: "./src/routes",
       generatedRouteTree: "./src/routeTree.gen.ts",
-      quoteStyle: "double",
+      quoteStyle: "double"
     }),
     react(),
-    tailwindcss(),
-  ],
+    tailwindcss()
+  ]
 });

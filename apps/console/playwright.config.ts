@@ -9,18 +9,18 @@ export default defineConfig({
   reporter: "html",
   use: {
     baseURL: "http://localhost:5174",
-    trace: "on-first-retry",
+    trace: "on-first-retry"
   },
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
-    },
+      use: { ...devices["Desktop Chrome"] }
+    }
   ],
   webServer: {
     command: "pnpm dev -- --host 127.0.0.1",
     url: "http://localhost:5174",
     reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
-  },
+    timeout: 30_000
+  }
 });

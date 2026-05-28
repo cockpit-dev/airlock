@@ -5,14 +5,14 @@ import { FiGlobe, FiKey, FiLock } from "react-icons/fi";
 import {
   getStoredCredentials,
   storeCredentials,
-  verifyCredentials,
+  verifyCredentials
 } from "../lib/auth";
 
 export const Route = createFileRoute("/login")({
   beforeLoad: () => {
     if (getStoredCredentials()) throw redirect({ to: "/" });
   },
-  component: LoginPage,
+  component: LoginPage
 });
 
 function LoginPage() {
@@ -36,7 +36,9 @@ function LoginPage() {
       }
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Connection failed. Please check the gateway URL."
+        err instanceof Error
+          ? err.message
+          : "Connection failed. Please check the gateway URL."
       );
     } finally {
       setLoading(false);
@@ -51,7 +53,9 @@ function LoginPage() {
             <FiLock size={22} />
           </div>
           <div className="flex flex-col items-center gap-1">
-            <h1 className="text-xl font-bold tracking-tight">Airlock Console</h1>
+            <h1 className="text-xl font-bold tracking-tight">
+              Airlock Console
+            </h1>
             <p className="text-sm text-muted">AI Gateway Management</p>
           </div>
         </Card.Header>

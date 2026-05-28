@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 const sourceModules = import.meta.glob("../{components,routes}/**/*.{ts,tsx}", {
   eager: true,
   query: "?raw",
-  import: "default",
+  import: "default"
 });
 
 function matchingFiles(pattern: RegExp): string[] {
@@ -15,7 +15,11 @@ function matchingFiles(pattern: RegExp): string[] {
 
 describe("HeroUI composition", () => {
   it("does not hand-apply HeroUI internal button classes", () => {
-    expect(matchingFiles(/button--(?:ghost|primary|secondary|tertiary|sm|md|lg|icon-only)/)).toEqual([]);
+    expect(
+      matchingFiles(
+        /button--(?:ghost|primary|secondary|tertiary|sm|md|lg|icon-only)/
+      )
+    ).toEqual([]);
   });
 
   it("uses HeroUI field labeling primitives instead of styled native labels", () => {

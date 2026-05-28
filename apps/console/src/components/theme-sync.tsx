@@ -15,7 +15,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     <ThemeContext.Provider
       value={{
         isDark: resolvedTheme === "dark",
-        setTheme: (theme) => setTheme(theme),
+        setTheme: (theme) => setTheme(theme)
       }}
     >
       {children}

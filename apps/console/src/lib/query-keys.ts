@@ -9,11 +9,11 @@ export const queryKeys = {
       ["keys", "list", params] as const,
     detail: (id: string) => ["keys", id] as const,
     status: (id: string) => ["keys", id, "status"] as const,
-    events: (id: string) => ["keys", id, "events"] as const,
+    events: (id: string) => ["keys", id, "events"] as const
   },
   configStore: {
     snapshot: ["configStore", "snapshot"] as const,
-    section: (section: string) => ["configStore", section] as const,
+    section: (section: string) => ["configStore", section] as const
   },
-  providerModels: ["providerModels"] as const,
+  providerModels: ["providerModels"] as const
 };

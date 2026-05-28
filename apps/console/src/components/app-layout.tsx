@@ -12,7 +12,7 @@ import {
   Switch,
   Tooltip,
   useMediaQuery,
-  useOverlayState,
+  useOverlayState
 } from "@heroui/react";
 import type { Selection } from "@heroui/react";
 import {
@@ -29,7 +29,7 @@ import {
   FiServer,
   FiSettings,
   FiSun,
-  FiUsers,
+  FiUsers
 } from "react-icons/fi";
 import { clearCredentials, getStoredCredentials } from "../lib/auth";
 import { useConsoleTheme } from "./theme-sync";
@@ -42,8 +42,8 @@ const platformNav = [
     id: "/playground",
     label: "Playground",
     icon: FiMessageSquare,
-    href: "/playground",
-  },
+    href: "/playground"
+  }
 ];
 
 const configNav = [
@@ -51,20 +51,20 @@ const configNav = [
     id: "/config/providers",
     label: "Providers",
     icon: FiServer,
-    href: "/config/providers",
+    href: "/config/providers"
   },
   {
     id: "/config/routes",
     label: "Routes",
     icon: FiSettings,
-    href: "/config/routes",
+    href: "/config/routes"
   },
   {
     id: "/config/accounts",
     label: "Accounts",
     icon: FiUsers,
-    href: "/config/accounts",
-  },
+    href: "/config/accounts"
+  }
 ];
 
 export function AppLayout({ children }: { children: ReactNode }) {
@@ -202,9 +202,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <div className="ml-auto flex items-center gap-1.5">
             <span
               className={`w-1.5 h-1.5 rounded-full ${
-                isOnline
-                  ? "bg-success animate-pulse-dot"
-                  : "bg-default"
+                isOnline ? "bg-success animate-pulse-dot" : "bg-default"
               }`}
             />
             <span className="text-[11px] text-muted">
@@ -254,7 +252,7 @@ function NavSection({
   collapsed,
   activeKey,
   isActive,
-  onNavigate,
+  onNavigate
 }: {
   label: string;
   items: readonly {
@@ -316,7 +314,9 @@ function NavSection({
           if (collapsed) {
             return (
               <Tooltip.Root key={item.href}>
-                <Tooltip.Trigger aria-label={item.label}>{inner}</Tooltip.Trigger>
+                <Tooltip.Trigger aria-label={item.label}>
+                  {inner}
+                </Tooltip.Trigger>
                 <Tooltip.Content placement="right" showArrow>
                   {item.label}
                 </Tooltip.Content>
@@ -336,7 +336,7 @@ function UserFooter({
   isOnline,
   isDark,
   onToggleTheme,
-  onLogout,
+  onLogout
 }: {
   collapsed: boolean;
   isOnline: boolean;

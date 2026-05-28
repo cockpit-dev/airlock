@@ -155,10 +155,13 @@
     overflow: auto;
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: color-mix(in oklab, var(--surface-secondary) 86%, var(--surface) 14%);
+    background: color-mix(
+      in oklab,
+      var(--surface-secondary) 86%,
+      var(--surface) 14%
+    );
     padding: 0.625rem;
     font-size: 0.71875rem;
     line-height: 1.25rem;
   }
-
 }

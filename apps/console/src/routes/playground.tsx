@@ -8,7 +8,7 @@ import {
   Select,
   Tabs,
   TextArea,
-  toast,
+  toast
 } from "@heroui/react";
 import { FiMessageSquare, FiSend, FiSquare } from "react-icons/fi";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -16,7 +16,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getStoredCredentials } from "../lib/auth";
 
 export const Route = createFileRoute("/playground")({
-  component: PlaygroundPage,
+  component: PlaygroundPage
 });
 
 type Protocol = "openai-chat" | "openai-responses" | "claude" | "gemini";
@@ -31,7 +31,7 @@ const PROTOCOL_LABELS: Record<Protocol, string> = {
   "openai-chat": "OpenAI Chat",
   "openai-responses": "OpenAI Responses",
   claude: "Claude Messages",
-  gemini: "Gemini Generate",
+  gemini: "Gemini Generate"
 };
 
 function PlaygroundPage() {
@@ -55,7 +55,7 @@ function PlaygroundPage() {
   useEffect(() => {
     if (!gatewayUrl || !gatewayToken) return;
     fetch(`${gatewayUrl}/v1/models`, {
-      headers: { Authorization: `Bearer ${gatewayToken}` },
+      headers: { Authorization: `Bearer ${gatewayToken}` }
     })
       .then((response) => response.json())
       .then((data) => {
@@ -87,7 +87,7 @@ function PlaygroundPage() {
     setStreaming(true);
     setMessages((prev) => [
       ...prev,
-      { role: "assistant", content: "", protocol },
+      { role: "assistant", content: "", protocol }
     ]);
 
     const controller = new AbortController();
@@ -99,7 +99,7 @@ function PlaygroundPage() {
         model,
         protocol,
         messages: [...messages, userMessage],
-        signal: controller.signal,
+        signal: controller.signal
       });
 
       if (!response.ok) {
@@ -107,7 +107,7 @@ function PlaygroundPage() {
         replaceLastMessage({
           role: "error",
           content: `Error: ${response.status} ${err}`,
-          protocol,
+          protocol
         });
         return;
       }
@@ -119,7 +119,7 @@ function PlaygroundPage() {
         replaceLastMessage({
           role: "assistant",
           content: extractProtocolText(protocol, data),
-          protocol,
+          protocol
         });
       }
     } catch (error) {
@@ -127,7 +127,7 @@ function PlaygroundPage() {
       replaceLastMessage({
         role: "error",
         content: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
-        protocol,
+        protocol
       });
     } finally {
       setStreaming(false);
@@ -141,7 +141,7 @@ function PlaygroundPage() {
       const last = updated[updated.length - 1];
       updated[updated.length - 1] = {
         ...last,
-        content: last.content + delta,
+        content: last.content + delta
       };
       return updated;
     });
@@ -239,15 +239,18 @@ function PlaygroundPage() {
         </div>
 
         <aside className="hidden min-h-0 border-l border-border bg-surface lg:block">
-          <Card.Root variant="transparent" className="h-full rounded-none border-0 shadow-none">
+          <Card.Root
+            variant="transparent"
+            className="h-full rounded-none border-0 shadow-none"
+          >
             <Card.Header className="px-3 pt-3">
               <Card.Title className="text-sm">Request Preview</Card.Title>
-              <Card.Description className="text-[11px]">{PROTOCOL_LABELS[protocol]}</Card.Description>
+              <Card.Description className="text-[11px]">
+                {PROTOCOL_LABELS[protocol]}
+              </Card.Description>
             </Card.Header>
             <Card.Content className="min-h-0 px-3 pb-3 pt-2">
-              <pre className="console-code h-full">
-                {requestPreview}
-              </pre>
+              <pre className="console-code h-full">{requestPreview}</pre>
             </Card.Content>
           </Card.Root>
         </aside>
@@ -300,7 +303,7 @@ function PlaygroundPage() {
 
 function MessageBubble({
   message,
-  isStreaming,
+  isStreaming
 }: {
   message: Message;
   isStreaming: boolean;
@@ -348,7 +351,7 @@ async function sendProtocolRequest({
   model,
   protocol,
   messages,
-  signal,
+  signal
 }: {
   creds: { url: string; token: string };
   model: string;
@@ -358,7 +361,7 @@ async function sendProtocolRequest({
 }): Promise<Response> {
   const headers = {
     Authorization: `Bearer ${creds.token}`,
-    "Content-Type": "application/json",
+    "Content-Type": "application/json"
   };
   const body = buildRequestBody(protocol, model, messages);
 
@@ -367,7 +370,7 @@ async function sendProtocolRequest({
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal,
+      signal
     });
   }
 
@@ -378,7 +381,7 @@ async function sendProtocolRequest({
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal,
+        signal
       }
     );
   }
@@ -388,7 +391,7 @@ async function sendProtocolRequest({
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal,
+      signal
     });
   }
 
@@ -396,7 +399,7 @@ async function sendProtocolRequest({
     method: "POST",
     headers,
     body: JSON.stringify(body),
-    signal,
+    signal
   });
 }
 
@@ -413,7 +416,7 @@ function buildRequestBody(
     .filter((message) => message.role !== "error")
     .map((message) => ({
       role: message.role === "assistant" ? "assistant" : "user",
-      content: message.content,
+      content: message.content
     }));
 
   if (protocol === "claude") {
@@ -422,8 +425,8 @@ function buildRequestBody(
       max_tokens: 1024,
       messages: promptMessages.map((message) => ({
         role: message.role === "assistant" ? "assistant" : "user",
-        content: message.content,
-      })),
+        content: message.content
+      }))
     };
   }
 
@@ -431,8 +434,8 @@ function buildRequestBody(
     return {
       contents: promptMessages.map((message) => ({
         role: message.role === "assistant" ? "model" : "user",
-        parts: [{ text: message.content }],
-      })),
+        parts: [{ text: message.content }]
+      }))
     };
   }
 
@@ -441,15 +444,15 @@ function buildRequestBody(
       model,
       input: promptMessages.map((message) => ({
         role: message.role,
-        content: [{ type: "input_text", text: message.content }],
-      })),
+        content: [{ type: "input_text", text: message.content }]
+      }))
     };
   }
 
   return {
     model,
     messages: promptMessages,
-    stream: true,
+    stream: true
   };
 }
 

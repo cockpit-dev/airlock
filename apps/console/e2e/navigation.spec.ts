@@ -9,8 +9,8 @@ const gatewayStatus = {
     {
       externalModel: "glm/glm-5.1",
       primaryTarget: { provider: "glm", providerModel: "glm-5.1" },
-      fallbackCount: 0,
-    },
+      fallbackCount: 0
+    }
   ],
   providers: [{ id: "glm", type: "openai", configured: true, routeCount: 1 }],
   keys: { total: 1, configured: 0, registryOwned: 1 },
@@ -23,8 +23,8 @@ const gatewayStatus = {
     routingLatencyFreshnessMs: 60000,
     routingCostFreshnessMs: 60000,
     routingFailureFreshnessMs: 60000,
-    routingRecoveryWindowMs: 60000,
-  },
+    routingRecoveryWindowMs: 60000
+  }
 };
 
 const gatewayMetrics = {
@@ -56,8 +56,8 @@ const gatewayMetrics = {
       usageRequestCount: 1284,
       cacheReadTokens: 15420,
       cacheWriteTokens: 8420,
-      cachedInputTokens: 15420,
-    },
+      cachedInputTokens: 15420
+    }
   },
   byProvider: {
     glm: {
@@ -71,8 +71,8 @@ const gatewayMetrics = {
       usageRequestCount: 1284,
       cacheReadTokens: 15420,
       cacheWriteTokens: 8420,
-      cachedInputTokens: 15420,
-    },
+      cachedInputTokens: 15420
+    }
   },
   byModel: {
     "glm-5.1": {
@@ -86,8 +86,8 @@ const gatewayMetrics = {
       usageRequestCount: 1284,
       cacheReadTokens: 15420,
       cacheWriteTokens: 8420,
-      cachedInputTokens: 15420,
-    },
+      cachedInputTokens: 15420
+    }
   },
   byProtocol: {
     openai_chat: {
@@ -101,7 +101,7 @@ const gatewayMetrics = {
       usageRequestCount: 806,
       cacheReadTokens: 12000,
       cacheWriteTokens: 4500,
-      cachedInputTokens: 12000,
+      cachedInputTokens: 12000
     },
     openai_responses: {
       requests: 312,
@@ -114,7 +114,7 @@ const gatewayMetrics = {
       usageRequestCount: 312,
       cacheReadTokens: 2800,
       cacheWriteTokens: 3920,
-      cachedInputTokens: 2800,
+      cachedInputTokens: 2800
     },
     anthropic_messages: {
       requests: 166,
@@ -127,8 +127,8 @@ const gatewayMetrics = {
       usageRequestCount: 166,
       cacheReadTokens: 620,
       cacheWriteTokens: 0,
-      cachedInputTokens: 620,
-    },
+      cachedInputTokens: 620
+    }
   },
   byKey: {
     [registryKeyId]: {
@@ -142,8 +142,8 @@ const gatewayMetrics = {
       usageRequestCount: 420,
       cacheReadTokens: 6400,
       cacheWriteTokens: 2300,
-      cachedInputTokens: 6400,
-    },
+      cachedInputTokens: 6400
+    }
   },
   byKeyModel: {
     [`${registryKeyId}::glm-5.1`]: {
@@ -159,9 +159,9 @@ const gatewayMetrics = {
       usageRequestCount: 420,
       cacheReadTokens: 6400,
       cacheWriteTokens: 2300,
-      cachedInputTokens: 6400,
-    },
-  },
+      cachedInputTokens: 6400
+    }
+  }
 };
 
 const routingHealth = {
@@ -172,8 +172,8 @@ const routingHealth = {
       targets: ["glm/glm-5.1"],
       healthStatus: "healthy",
       healthyTargetCount: 1,
-      totalTargetCount: 1,
-    },
+      totalTargetCount: 1
+    }
   },
   config: {
     circuitBreakerPolicy: { threshold: 5, cooldownMs: 30000 },
@@ -181,10 +181,10 @@ const routingHealth = {
       latencyFreshnessMs: 60000,
       costFreshnessMs: 60000,
       failureFreshnessMs: 60000,
-      recoveryWindowMs: 60000,
+      recoveryWindowMs: 60000
     },
-    persistentBackend: true,
-  },
+    persistentBackend: true
+  }
 };
 
 const registrySnapshot = {
@@ -205,7 +205,7 @@ const registrySnapshot = {
     overlayRevoked: false,
     overlayUpdatedAt: new Date(0).toISOString(),
     effectiveStatus: "active",
-    acceptedNow: true,
+    acceptedNow: true
   },
   runtime: {
     keyId: registryKeyId,
@@ -215,11 +215,11 @@ const registrySnapshot = {
     overlayRevoked: false,
     overlayUpdatedAt: new Date(0).toISOString(),
     effectiveStatus: "active",
-    acceptedNow: true,
+    acceptedNow: true
   },
   registryOverride: null,
   registryOverrideApplied: false,
-  registryUpdatedAt: new Date(0).toISOString(),
+  registryUpdatedAt: new Date(0).toISOString()
 };
 
 const registryKeyView = {
@@ -229,10 +229,10 @@ const registryKeyView = {
     id: registryKeyId,
     label: "Test key",
     status: "active",
-    policy: {},
+    policy: {}
   },
   createdAt: new Date(0).toISOString(),
-  updatedAt: new Date(0).toISOString(),
+  updatedAt: new Date(0).toISOString()
 };
 
 const adminConfig = {
@@ -247,15 +247,15 @@ const adminConfig = {
     ipRateLimit: false,
     telemetry: true,
     cors: true,
-    requestLogging: true,
+    requestLogging: true
   },
   limits: {
     providerTimeoutMs: 30000,
     maxRequestBodyBytes: 1048576,
     providerStreamIdleTimeoutMs: 30000,
     maxRetries: 1,
-    retryBackoffMs: 250,
-  },
+    retryBackoffMs: 250
+  }
 };
 
 const configSections = {
@@ -264,29 +264,33 @@ const configSections = {
       id: "glm",
       type: "openai",
       baseUrl: "https://api.example.test/v1",
-      defaultModel: "glm-5.1",
-    },
+      defaultModel: "glm-5.1"
+    }
   ],
   routes: [
     {
       externalModel: "glm/glm-5.1",
       target: { provider: "glm", providerModel: "glm-5.1" },
-      strategy: "priority",
-    },
+      strategy: "priority"
+    }
   ],
   accounts: [
     {
       email: "admin@example.test",
       role: "super_admin",
-      enabled: true,
-    },
-  ],
+      enabled: true
+    }
+  ]
 } as const;
 
 test("renders the login screen", async ({ page }) => {
   await page.goto("/login");
-  await expect(page.getByRole("heading", { name: "Airlock Console" })).toBeVisible();
-  await expect(page.getByPlaceholder("https://your-gateway.workers.dev")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Airlock Console" })
+  ).toBeVisible();
+  await expect(
+    page.getByPlaceholder("https://your-gateway.workers.dev")
+  ).toBeVisible();
   await expect(page.getByPlaceholder("Your admin token")).toBeVisible();
 });
 
@@ -295,7 +299,9 @@ test("redirects unauthenticated users to login", async ({ page }) => {
   await expect(page).toHaveURL(/\/login$/);
 });
 
-test("keeps the API client available after login navigation", async ({ page }) => {
+test("keeps the API client available after login navigation", async ({
+  page
+}) => {
   await page.route("https://mock-gateway.test/_airlock/status", (route) =>
     route.fulfill({ json: gatewayStatus })
   );
@@ -315,15 +321,16 @@ test("keeps the API client available after login navigation", async ({ page }) =
   await page.getByRole("button", { name: "Connect" }).click();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(
-    page.getByRole("heading", { name: "Dashboard" })
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await expect(page.getByText("Something went wrong!")).toHaveCount(0);
 });
 
 test("opens the user menu and toggles the theme", async ({ page }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("airlock_gateway_url", "https://mock-gateway.test/");
+    window.localStorage.setItem(
+      "airlock_gateway_url",
+      "https://mock-gateway.test/"
+    );
     window.localStorage.setItem("airlock_admin_token", "test-admin-token");
     window.localStorage.setItem("heroui-theme", "light");
   });
@@ -350,7 +357,9 @@ test("opens the user menu and toggles the theme", async ({ page }) => {
   await expect(page.getByText("Something went wrong!")).toHaveCount(0);
 });
 
-test("opens the mobile drawer user menu and toggles the theme", async ({ page }) => {
+test("opens the mobile drawer user menu and toggles the theme", async ({
+  page
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await seedAuthenticatedSession(page, "light");
   await mockConsoleApi(page);
@@ -368,7 +377,9 @@ test("opens the mobile drawer user menu and toggles the theme", async ({ page })
   await expect(page.getByText("Something went wrong!")).toHaveCount(0);
 });
 
-test("shows a full navigation drawer on mobile after desktop sidebar collapse", async ({ page }) => {
+test("shows a full navigation drawer on mobile after desktop sidebar collapse", async ({
+  page
+}) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await seedAuthenticatedSession(page, "light");
   await mockConsoleApi(page);
@@ -402,16 +413,18 @@ test("shows a full navigation drawer on mobile after desktop sidebar collapse", 
             left: rect.left,
             top: rect.top,
             width: rect.width,
-            height: rect.height,
+            height: rect.height
           }
-        : null,
+        : null
     };
   });
 
   expect(layout.dialog, JSON.stringify(layout)).not.toBeNull();
   expect(layout.dialog?.left, JSON.stringify(layout)).toBeLessThanOrEqual(1);
   expect(layout.dialog?.top, JSON.stringify(layout)).toBeLessThanOrEqual(1);
-  expect(layout.dialog?.width, JSON.stringify(layout)).toBeGreaterThanOrEqual(240);
+  expect(layout.dialog?.width, JSON.stringify(layout)).toBeGreaterThanOrEqual(
+    240
+  );
   expect(layout.dialog?.width, JSON.stringify(layout)).toBeLessThanOrEqual(
     layout.viewportWidth * 0.86
   );
@@ -423,7 +436,9 @@ test("shows a full navigation drawer on mobile after desktop sidebar collapse", 
   );
 });
 
-test("syncs desktop sidebar selection with the current route", async ({ page }) => {
+test("syncs desktop sidebar selection with the current route", async ({
+  page
+}) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await seedAuthenticatedSession(page, "light");
   await mockConsoleApi(page);
@@ -443,22 +458,27 @@ test("syncs desktop sidebar selection with the current route", async ({ page }) 
   await routesItem.click();
 
   await expect(page).toHaveURL(/\/routes$/);
-  await expect(page.getByRole("heading", { name: "Routes Health" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Routes Health" })
+  ).toBeVisible();
   await expect(routesItem).toHaveAttribute("data-selected", "true");
   await expect(keysItem).not.toHaveAttribute("data-selected", "true");
   await expect.poll(() => backgroundColor(routesItem)).toBe(activeBackground);
-  await expect
-    .poll(() => backgroundColor(keysItem))
-    .not.toBe(activeBackground);
+  await expect.poll(() => backgroundColor(keysItem)).not.toBe(activeBackground);
 });
 
 test("renders key detail child route under keys", async ({ page }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("airlock_gateway_url", "https://mock-gateway.test/");
+    window.localStorage.setItem(
+      "airlock_gateway_url",
+      "https://mock-gateway.test/"
+    );
     window.localStorage.setItem("airlock_admin_token", "test-admin-token");
   });
   await page.route("https://mock-gateway.test/_airlock/config", (route) =>
-    route.fulfill({ json: { ...gatewayStatus, modelGroups: {}, features: {}, limits: {} } })
+    route.fulfill({
+      json: { ...gatewayStatus, modelGroups: {}, features: {}, limits: {} }
+    })
   );
   await page.route(
     `https://mock-gateway.test/_airlock/keys/${registryKeyId}`,
@@ -479,10 +499,10 @@ test("renders key detail child route under keys", async ({ page }) => {
               kind: "key.updated",
               actor: "admin@example.test",
               reason: "test audit row",
-              timestamp: new Date(0).toISOString(),
-            },
-          ],
-        },
+              timestamp: new Date(0).toISOString()
+            }
+          ]
+        }
       })
   );
 
@@ -526,7 +546,7 @@ test("keeps the keys list edit action visible on mobile", async ({ page }) => {
     return {
       viewportWidth: window.innerWidth,
       left: rect.left,
-      right: rect.right,
+      right: rect.right
     };
   });
 
@@ -552,10 +572,10 @@ test("edits a key label and independent model access", async ({ page }) => {
             key: {
               ...registryKeyView.key,
               label: "Tenant A",
-              policy: { blockedExternalModels: ["glm/glm-5.1"] },
+              policy: { blockedExternalModels: ["glm/glm-5.1"] }
             },
-            updatedAt: new Date(1).toISOString(),
-          },
+            updatedAt: new Date(1).toISOString()
+          }
         });
         return;
       }
@@ -571,18 +591,20 @@ test("edits a key label and independent model access", async ({ page }) => {
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("Key name").fill("Tenant A");
   const modelSwitch = dialog.getByRole("switch", {
-    name: "glm/glm-5.1 model access",
+    name: "glm/glm-5.1 model access"
   });
   await modelSwitch.focus();
   await modelSwitch.press("Space");
   await dialog.getByRole("button", { name: "Save changes" }).click();
 
-  await expect.poll(() => updatePayload).toEqual({
-    label: "Tenant A",
-    status: "active",
-    policy: { blockedExternalModels: ["glm/glm-5.1"] },
-    reason: "updated from console",
-  });
+  await expect
+    .poll(() => updatePayload)
+    .toEqual({
+      label: "Tenant A",
+      status: "active",
+      policy: { blockedExternalModels: ["glm/glm-5.1"] },
+      reason: "updated from console"
+    });
 });
 
 test("keeps the key editor usable on mobile", async ({ page }) => {
@@ -595,7 +617,9 @@ test("keeps the key editor usable on mobile", async ({ page }) => {
 
   const dialog = page.getByRole("dialog", { name: "Edit key" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Save changes" })).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Save changes" })
+  ).toBeVisible();
 
   const layout = await dialog.evaluate((element) => {
     const rect = element.getBoundingClientRect();
@@ -608,9 +632,9 @@ test("keeps the key editor usable on mobile", async ({ page }) => {
         top: rect.top,
         bottom: rect.bottom,
         width: rect.width,
-        height: rect.height,
+        height: rect.height
       },
-      overflowing: document.documentElement.scrollWidth > window.innerWidth + 1,
+      overflowing: document.documentElement.scrollWidth > window.innerWidth + 1
     };
   });
 
@@ -625,17 +649,22 @@ test("keeps the key editor usable on mobile", async ({ page }) => {
   expect(layout.overflowing, JSON.stringify(layout)).toBe(false);
 });
 
-test("loads playground models from the gateway model list", async ({ page }) => {
+test("loads playground models from the gateway model list", async ({
+  page
+}) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("airlock_gateway_url", "https://mock-gateway.test/");
+    window.localStorage.setItem(
+      "airlock_gateway_url",
+      "https://mock-gateway.test/"
+    );
     window.localStorage.setItem("airlock_admin_token", "test-admin-token");
   });
   await page.route("https://mock-gateway.test/v1/models", (route) =>
     route.fulfill({
       json: {
         object: "list",
-        data: [{ id: "glm/glm-5.1", object: "model", owned_by: "airlock" }],
-      },
+        data: [{ id: "glm/glm-5.1", object: "model", owned_by: "airlock" }]
+      }
     })
   );
 
@@ -644,21 +673,24 @@ test("loads playground models from the gateway model list", async ({ page }) => 
   await expect(page.getByRole("heading", { name: "Playground" })).toBeVisible();
   await expect(page.getByRole("button", { name: "glm/glm-5.1" })).toBeVisible();
   await expect(page.getByText("Request Preview")).toBeVisible();
-  await expect(page.getByText("\"model\": \"glm/glm-5.1\"")).toBeVisible();
+  await expect(page.getByText('"model": "glm/glm-5.1"')).toBeVisible();
   await expect(page.getByText("Something went wrong!")).toHaveCount(0);
 });
 
 test("names playground icon-only controls", async ({ page }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("airlock_gateway_url", "https://mock-gateway.test/");
+    window.localStorage.setItem(
+      "airlock_gateway_url",
+      "https://mock-gateway.test/"
+    );
     window.localStorage.setItem("airlock_admin_token", "test-admin-token");
   });
   await page.route("https://mock-gateway.test/v1/models", (route) =>
     route.fulfill({
       json: {
         object: "list",
-        data: [{ id: "glm/glm-5.1", object: "model", owned_by: "airlock" }],
-      },
+        data: [{ id: "glm/glm-5.1", object: "model", owned_by: "airlock" }]
+      }
     })
   );
   await page.route("https://mock-gateway.test/v1/chat/completions", () => {
@@ -670,11 +702,15 @@ test("names playground icon-only controls", async ({ page }) => {
 
   await expectAllIconButtonsNamed(page);
   await page.getByRole("button", { name: "Send message" }).click();
-  await expect(page.getByRole("button", { name: "Stop streaming" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Stop streaming" })
+  ).toBeVisible();
   await expectAllIconButtonsNamed(page);
 });
 
-test("uses compact console surfaces and renders real dashboard charts", async ({ page }) => {
+test("uses compact console surfaces and renders real dashboard charts", async ({
+  page
+}) => {
   await seedAuthenticatedSession(page, "light");
   await mockConsoleApi(page);
 
@@ -687,7 +723,9 @@ test("uses compact console surfaces and renders real dashboard charts", async ({
   await expect(page.getByText("Usage Coverage")).toBeVisible();
 
   const radiusToken = await page.evaluate(() =>
-    getComputedStyle(document.documentElement).getPropertyValue("--radius").trim()
+    getComputedStyle(document.documentElement)
+      .getPropertyValue("--radius")
+      .trim()
   );
   expect(radiusToken).toBe("0.5rem");
 
@@ -727,16 +765,22 @@ test("uses HeroUI card surfaces instead of custom panels", async ({ page }) => {
         firstCardClass: cards[0]?.className ?? "",
         firstCardRadius: cards[0]
           ? Number.parseFloat(getComputedStyle(cards[0]).borderTopLeftRadius)
-          : 0,
+          : 0
       };
     });
 
-    expect(layout.cardCount, `${auditedPage.path} ${JSON.stringify(layout)}`)
-      .toBeGreaterThanOrEqual(1);
-    expect(layout.customPanels, `${auditedPage.path} ${JSON.stringify(layout)}`)
-      .toBe(0);
-    expect(layout.customStats, `${auditedPage.path} ${JSON.stringify(layout)}`)
-      .toBe(0);
+    expect(
+      layout.cardCount,
+      `${auditedPage.path} ${JSON.stringify(layout)}`
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      layout.customPanels,
+      `${auditedPage.path} ${JSON.stringify(layout)}`
+    ).toBe(0);
+    expect(
+      layout.customStats,
+      `${auditedPage.path} ${JSON.stringify(layout)}`
+    ).toBe(0);
     expect(layout.radiusToken).toBe("0.5rem");
     expect(layout.firstCardClass).toContain("card--default");
     expect(
@@ -771,7 +815,9 @@ test("does not emit HeroUI interaction or label warnings", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.getByRole("button", { name: "Open navigation" }).click();
-  await expect(page.getByRole("button", { name: "Open user menu" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open user menu" })
+  ).toBeVisible();
 
   expect(relevantHeroUiConsoleMessages(consoleMessages)).toEqual([]);
 });
@@ -784,13 +830,13 @@ const auditedPages = [
   { path: "/playground", heading: "Playground" },
   { path: "/config/providers", heading: "Providers" },
   { path: "/config/routes", heading: "Route Configuration" },
-  { path: "/config/accounts", heading: "Accounts" },
+  { path: "/config/accounts", heading: "Accounts" }
 ] as const;
 
 for (const theme of ["light", "dark"] as const) {
   for (const viewport of [
     { name: "desktop", width: 1366, height: 900 },
-    { name: "mobile", width: 390, height: 844 },
+    { name: "mobile", width: 390, height: 844 }
   ] as const) {
     test.describe(`layout audit ${theme} ${viewport.name}`, () => {
       test.beforeEach(async ({ page }) => {
@@ -800,7 +846,9 @@ for (const theme of ["light", "dark"] as const) {
       });
 
       for (const auditedPage of auditedPages) {
-        test(`${auditedPage.path} renders without broken layout`, async ({ page }) => {
+        test(`${auditedPage.path} renders without broken layout`, async ({
+          page
+        }) => {
           const warnings: string[] = [];
           page.on("console", (message) => {
             if (message.type() === "warning" || message.type() === "error") {
@@ -816,7 +864,9 @@ for (const theme of ["light", "dark"] as const) {
           await expect(page.getByText("Something went wrong!")).toHaveCount(0);
           await expectAllIconButtonsNamed(page);
           await expect
-            .poll(() => page.evaluate(() => document.documentElement.dataset.theme))
+            .poll(() =>
+              page.evaluate(() => document.documentElement.dataset.theme)
+            )
             .toBe(theme);
 
           const layout = await page.evaluate(() => {
@@ -824,7 +874,7 @@ for (const theme of ["light", "dark"] as const) {
             return {
               viewportWidth: window.innerWidth,
               scrollWidth: root.scrollWidth,
-              overflowing: root.scrollWidth > window.innerWidth + 1,
+              overflowing: root.scrollWidth > window.innerWidth + 1
             };
           });
 
@@ -838,7 +888,10 @@ for (const theme of ["light", "dark"] as const) {
 
 async function seedAuthenticatedSession(page: Page, theme = "light") {
   await page.addInitScript((selectedTheme) => {
-    window.localStorage.setItem("airlock_gateway_url", "https://mock-gateway.test/");
+    window.localStorage.setItem(
+      "airlock_gateway_url",
+      "https://mock-gateway.test/"
+    );
     window.localStorage.setItem("airlock_admin_token", "test-admin-token");
     window.localStorage.setItem("heroui-theme", selectedTheme);
   }, theme);
@@ -851,8 +904,9 @@ async function mockConsoleApi(page: Page) {
   await page.route("https://mock-gateway.test/_airlock/metrics", (route) =>
     route.fulfill({ json: gatewayMetrics })
   );
-  await page.route("https://mock-gateway.test/_airlock/routing/health", (route) =>
-    route.fulfill({ json: routingHealth })
+  await page.route(
+    "https://mock-gateway.test/_airlock/routing/health",
+    (route) => route.fulfill({ json: routingHealth })
   );
   await page.route("https://mock-gateway.test/_airlock/config", (route) =>
     route.fulfill({ json: adminConfig })
@@ -876,8 +930,8 @@ async function mockConsoleApi(page: Page) {
     route.fulfill({
       json: {
         object: "list",
-        data: [{ id: "glm/glm-5.1", object: "model", owned_by: "airlock" }],
-      },
+        data: [{ id: "glm/glm-5.1", object: "model", owned_by: "airlock" }]
+      }
     })
   );
 
@@ -890,24 +944,26 @@ async function mockConsoleApi(page: Page) {
             data,
             updatedAt: 0,
             updatedBy: "test",
-            version: 1,
-          },
+            version: 1
+          }
         })
     );
   }
 }
 
 async function expectAllIconButtonsNamed(page: Page) {
-  const unnamedIconButtons = await page.locator("button").evaluateAll((buttons) =>
-    buttons
-      .map((button) => ({
-        label: button.getAttribute("aria-label")?.trim() ?? "",
-        text: button.textContent?.trim() ?? "",
-        html: button.outerHTML,
-      }))
-      .filter((button) => !button.label && !button.text)
-      .map((button) => button.html)
-  );
+  const unnamedIconButtons = await page
+    .locator("button")
+    .evaluateAll((buttons) =>
+      buttons
+        .map((button) => ({
+          label: button.getAttribute("aria-label")?.trim() ?? "",
+          text: button.textContent?.trim() ?? "",
+          html: button.outerHTML
+        }))
+        .filter((button) => !button.label && !button.text)
+        .map((button) => button.html)
+    );
 
   expect(unnamedIconButtons).toEqual([]);
 }
@@ -920,17 +976,25 @@ function navItem(page: Page, name: string) {
 }
 
 async function backgroundColor(locator: ReturnType<Page["locator"]>) {
-  return locator.evaluate((element) => getComputedStyle(element).backgroundColor);
+  return locator.evaluate(
+    (element) => getComputedStyle(element).backgroundColor
+  );
 }
 
 function relevantHeroUiConsoleMessages(messages: string[]) {
   return messages.filter(
     (message) =>
-      message.includes("PressResponder was rendered without a pressable child") ||
+      message.includes(
+        "PressResponder was rendered without a pressable child"
+      ) ||
       message.includes("Focusable> child must forward its ref") ||
       message.includes("If you do not provide a visible label") ||
-      message.includes("If a Dialog does not contain a <Heading slot=\"title\">") ||
+      message.includes(
+        'If a Dialog does not contain a <Heading slot="title">'
+      ) ||
       message.includes("A dialog must have a title for accessibility") ||
-      message.includes("A table must have at least one Column with the isRowHeader prop")
+      message.includes(
+        "A table must have at least one Column with the isRowHeader prop"
+      )
   );
 }
