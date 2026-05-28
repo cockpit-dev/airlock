@@ -115,7 +115,8 @@ export function assertSupportedOpenAIChatToolsSemantics(
   if (!hasDeclaredTools) {
     if (
       "parallel_tool_calls" in payload &&
-      payload.parallel_tool_calls !== undefined
+      payload.parallel_tool_calls !== undefined &&
+      payload.parallel_tool_calls !== false
     ) {
       throw new GatewayError(
         "Unsupported OpenAI Chat tools semantics: parallel_tool_calls requires declared tools",
@@ -162,7 +163,8 @@ export function assertSupportedOpenAIResponsesToolsSemantics(
   if (!hasDeclaredTools) {
     if (
       "parallel_tool_calls" in payload &&
-      payload.parallel_tool_calls !== undefined
+      payload.parallel_tool_calls !== undefined &&
+      payload.parallel_tool_calls !== false
     ) {
       throw new GatewayError(
         "Unsupported OpenAI Responses tools semantics: parallel_tool_calls requires declared tools",
@@ -217,7 +219,11 @@ export function assertSupportedOpenAIResponsesSemantics(
     );
   }
 
-  if ("reasoning" in payload && payload.reasoning !== undefined) {
+  if (
+    "reasoning" in payload &&
+    payload.reasoning !== undefined &&
+    payload.reasoning !== null
+  ) {
     if (typeof payload.reasoning !== "object" || payload.reasoning === null) {
       throw new GatewayError("Unsupported OpenAI Responses reasoning config", {
         code: "request_unsupported_openai_semantics",

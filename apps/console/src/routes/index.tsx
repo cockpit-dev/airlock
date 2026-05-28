@@ -17,13 +17,18 @@ import {
   FiPieChart,
   FiBarChart2,
   FiClock,
+  FiCpu,
 } from "react-icons/fi";
 import { useStatus, useMetrics, useRoutingHealth } from "../hooks/use-queries";
 import { HealthChip } from "../components/health-chip";
 import {
+  CacheUsageByModelChart,
   StatusCodeChart,
   ProviderRequestsChart,
   RouteLatencyChart,
+  TokenUsageByKeyChart,
+  TokenUsageByModelChart,
+  TokenUsageByProtocolChart,
 } from "../components/dashboard-charts";
 import { DataTable, Table } from "../components/data-table";
 
@@ -144,7 +149,7 @@ function DashboardPage() {
         <Card.Header className="flex-row items-center justify-between">
           <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
             <FiActivity size={14} className="text-muted" />
-            <h2>Metrics</h2>
+            <h2>Request Health</h2>
           </div>
           <span className="text-[11px] text-muted">Live 10s</span>
         </Card.Header>
@@ -193,6 +198,57 @@ function DashboardPage() {
         </Card.Content>
       </Card.Root>
 
+      <Card.Root>
+        <Card.Header className="flex-row items-center justify-between">
+          <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
+            <FiCpu size={14} className="text-muted" />
+            <h2>Token Usage</h2>
+          </div>
+          <span className="text-[11px] text-muted">Live 10s</span>
+        </Card.Header>
+        <Card.Content>
+          {metrics.isLoading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="space-y-1.5">
+                  <Skeleton className="h-2.5 w-16 rounded" />
+                  <Skeleton className="h-5 w-20 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : metrics.data ? (
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+              <MetricItem
+                label="Input Tokens"
+                value={metrics.data.inputTokens.toLocaleString()}
+              />
+              <MetricItem
+                label="Output Tokens"
+                value={metrics.data.outputTokens.toLocaleString()}
+              />
+              <MetricItem
+                label="Total Tokens"
+                value={metrics.data.totalTokens.toLocaleString()}
+              />
+              <MetricItem
+                label="Usage Coverage"
+                value={`${(metrics.data.usageCoverage * 100).toFixed(0)}%`}
+              />
+              <MetricItem
+                label="Cache Read"
+                value={metrics.data.cacheReadTokens.toLocaleString()}
+              />
+              <MetricItem
+                label="Cache Write"
+                value={metrics.data.cacheWriteTokens.toLocaleString()}
+              />
+            </div>
+          ) : (
+            <p className="text-xs text-muted">No token usage available</p>
+          )}
+        </Card.Content>
+      </Card.Root>
+
       {metrics.data && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3">
           <Card.Root>
@@ -228,6 +284,56 @@ function DashboardPage() {
             </Card.Header>
             <Card.Content>
               <RouteLatencyChart byRoute={metrics.data.byRoute} />
+            </Card.Content>
+          </Card.Root>
+
+          <Card.Root>
+            <Card.Header>
+              <Card.Title className="flex items-center gap-2">
+                <FiCpu size={14} className="text-muted" />
+                Token Usage by Protocol
+              </Card.Title>
+            </Card.Header>
+            <Card.Content>
+              <TokenUsageByProtocolChart
+                byProtocol={metrics.data.byProtocol}
+              />
+            </Card.Content>
+          </Card.Root>
+
+          <Card.Root>
+            <Card.Header>
+              <Card.Title className="flex items-center gap-2">
+                <FiCpu size={14} className="text-muted" />
+                Token Usage by Model
+              </Card.Title>
+            </Card.Header>
+            <Card.Content>
+              <TokenUsageByModelChart byModel={metrics.data.byModel} />
+            </Card.Content>
+          </Card.Root>
+
+          <Card.Root>
+            <Card.Header>
+              <Card.Title className="flex items-center gap-2">
+                <FiKey size={14} className="text-muted" />
+                Token Usage by Key
+              </Card.Title>
+            </Card.Header>
+            <Card.Content>
+              <TokenUsageByKeyChart byKey={metrics.data.byKey} />
+            </Card.Content>
+          </Card.Root>
+
+          <Card.Root>
+            <Card.Header>
+              <Card.Title className="flex items-center gap-2">
+                <FiCpu size={14} className="text-muted" />
+                Cached Input by Model
+              </Card.Title>
+            </Card.Header>
+            <Card.Content>
+              <CacheUsageByModelChart byModel={metrics.data.byModel} />
             </Card.Content>
           </Card.Root>
         </div>

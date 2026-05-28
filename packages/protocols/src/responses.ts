@@ -19,6 +19,52 @@ const openAIResponsesFunctionToolSchema = z.object({
   parameters: z.record(z.string(), z.unknown())
 });
 
+const openAIResponsesWebSearchToolSchema = z
+  .object({
+    type: z.literal("web_search"),
+    external_web_access: z.boolean().optional(),
+    filters: z
+      .object({
+        allowed_domains: z.array(z.string().min(1)).min(1).optional()
+      })
+      .passthrough()
+      .optional(),
+    user_location: z
+      .object({
+        type: z.string().min(1),
+        country: z.string().min(1).optional(),
+        region: z.string().min(1).optional(),
+        city: z.string().min(1).optional(),
+        timezone: z.string().min(1).optional()
+      })
+      .passthrough()
+      .optional(),
+    search_context_size: z.string().min(1).optional(),
+    search_content_types: z.array(z.string().min(1)).min(1).optional()
+  })
+  .passthrough();
+
+const openAIResponsesImageGenerationToolSchema = z
+  .object({
+    type: z.literal("image_generation"),
+    output_format: z.string().min(1).optional()
+  })
+  .passthrough();
+
+const openAIResponsesCustomToolSchema = z
+  .object({
+    type: z.literal("custom"),
+    name: z.string().min(1),
+    description: z.string().min(1).optional(),
+    format: z
+      .object({
+        type: z.string().min(1)
+      })
+      .passthrough()
+      .optional()
+  })
+  .passthrough();
+
 const openAIResponsesForcedFunctionToolChoiceSchema = z.object({
   type: z.literal("function"),
   name: z.string().min(1)
@@ -113,7 +159,12 @@ const openAIResponsesStreamOptionsSchema = z.object({
 });
 
 const openAIResponsesIncludeSchema = z
-  .array(z.literal("message.output_text.logprobs"))
+  .array(
+    z.union([
+      z.literal("message.output_text.logprobs"),
+      z.literal("reasoning.encrypted_content")
+    ])
+  )
   .min(1);
 
 const openAIResponsesOutputTextContentBlockSchema = z.object({
@@ -164,12 +215,72 @@ const openAIResponsesReasoningItemSchema = z.object({
   summary: z.array(openAIResponsesReasoningSummaryTextSchema).optional()
 });
 
+const openAIResponsesLocalShellCallItemSchema = z
+  .object({
+    type: z.literal("local_shell_call"),
+    id: z.string().min(1).optional(),
+    call_id: z.string().min(1).nullable().optional(),
+    status: z.string().min(1),
+    action: z
+      .object({
+        type: z.string().min(1)
+      })
+      .passthrough()
+  })
+  .passthrough();
+
+const openAIResponsesToolSearchCallItemSchema = z
+  .object({
+    type: z.literal("tool_search_call"),
+    id: z.string().min(1).optional(),
+    call_id: z.string().min(1).nullable().optional(),
+    status: z.string().min(1).optional(),
+    execution: z.string().min(1),
+    arguments: z.unknown()
+  })
+  .passthrough();
+
+const openAIResponsesCustomToolCallItemSchema = z
+  .object({
+    type: z.literal("custom_tool_call"),
+    id: z.string().min(1).optional(),
+    status: z.string().min(1).optional(),
+    call_id: z.string().min(1),
+    name: z.string().min(1),
+    input: z.string()
+  })
+  .passthrough();
+
+const openAIResponsesCustomToolCallOutputItemSchema = z
+  .object({
+    type: z.literal("custom_tool_call_output"),
+    call_id: z.string().min(1),
+    name: z.string().min(1).optional(),
+    output: z.union([z.string(), z.array(z.unknown()).min(1)])
+  })
+  .passthrough();
+
+const openAIResponsesToolSearchOutputItemSchema = z
+  .object({
+    type: z.literal("tool_search_output"),
+    call_id: z.string().min(1).nullable().optional(),
+    status: z.string().min(1),
+    execution: z.string().min(1),
+    tools: z.array(z.unknown())
+  })
+  .passthrough();
+
 const openAIResponsesTypedInputItemSchema = z.union([
   openAIResponsesTopLevelInputItemSchema,
   openAIResponsesMessageItemSchema,
   openAIResponsesFunctionCallItemSchema,
   openAIResponsesFunctionCallOutputItemSchema,
-  openAIResponsesReasoningItemSchema
+  openAIResponsesReasoningItemSchema,
+  openAIResponsesLocalShellCallItemSchema,
+  openAIResponsesToolSearchCallItemSchema,
+  openAIResponsesCustomToolCallItemSchema,
+  openAIResponsesCustomToolCallOutputItemSchema,
+  openAIResponsesToolSearchOutputItemSchema
 ]);
 
 export const openAIResponsesRequestSchema = z
@@ -198,13 +309,23 @@ export const openAIResponsesRequestSchema = z
     temperature: z.number().min(0).max(2).optional(),
     top_p: z.number().min(0).max(1).optional(),
     instructions: z.string().min(1).optional(),
-    reasoning: openAIResponsesReasoningSchema.optional(),
+    reasoning: openAIResponsesReasoningSchema.nullable().optional(),
     text: openAIResponsesTextConfigSchema.optional(),
     include: openAIResponsesIncludeSchema.optional(),
     top_logprobs: z.number().int().min(0).max(20).optional(),
     stream_options: openAIResponsesStreamOptionsSchema.optional(),
     parallel_tool_calls: z.boolean().optional(),
-    tools: z.array(openAIResponsesFunctionToolSchema).min(1).optional(),
+    tools: z
+      .array(
+        z.union([
+          openAIResponsesFunctionToolSchema,
+          openAIResponsesWebSearchToolSchema,
+          openAIResponsesImageGenerationToolSchema,
+          openAIResponsesCustomToolSchema
+        ])
+      )
+      .min(1)
+      .optional(),
     tool_choice: z
       .union([
         z.literal("auto"),

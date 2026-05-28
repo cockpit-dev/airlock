@@ -3,7 +3,7 @@ import type { TelemetrySink } from "@airlock/telemetry";
 
 import { requireAdminScope } from "../admin-auth.js";
 import type { GatewayBindings } from "../env.js";
-import { getMetricsCollector } from "../metrics.js";
+import { fetchGatewayMetricsSnapshot } from "../metrics.js";
 
 type AppVariables = {
   requestId: string;
@@ -21,6 +21,6 @@ type GatewayApp = Hono<{
 export function registerAdminMetricsRoutes(app: GatewayApp): void {
   app.get("/_airlock/metrics", async (context) => {
     await requireAdminScope(context, "metrics.read");
-    return context.json(getMetricsCollector().snapshot());
+    return context.json(await fetchGatewayMetricsSnapshot(context.env));
   });
 }

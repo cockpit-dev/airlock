@@ -41,6 +41,7 @@ import {
   executeRoutedRequest,
   executeRoutedStreamRequest
 } from "../provider-execution.js";
+import { dispatchBackgroundTask, recordGatewayMetrics } from "../metrics.js";
 
 type GeminiRouteAction = "generateContent" | "streamGenerateContent";
 
@@ -104,9 +105,16 @@ export async function handleGeminiGenerateContent(
       requestStartedAt: number;
       telemetrySink?: TelemetrySink;
       telemetryErrorEmitted?: boolean;
+      _airlock_metrics_key_id?: string;
       _airlock_metrics_provider?: string;
       _airlock_metrics_model?: string;
       _airlock_metrics_stream?: boolean;
+      _airlock_metrics_protocol?: string;
+      _airlock_metrics_usage?: {
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+      };
     };
   }>
 ): Promise<Response> {
@@ -220,8 +228,10 @@ export async function handleGeminiGenerateContent(
   const now = context.get("now");
 
   context.set("_airlock_metrics_provider", route.target.provider);
+  context.set("_airlock_metrics_key_id", gatewayApiKey.id);
   context.set("_airlock_metrics_model", route.target.providerModel);
   context.set("_airlock_metrics_stream", stream);
+  context.set("_airlock_metrics_protocol", "gemini_generate_content");
 
   if (stream) {
     const encoder = new TextEncoder();
@@ -286,6 +296,24 @@ export async function handleGeminiGenerateContent(
             event.usage.totalTokens
           );
           streamUsage = event.usage;
+          dispatchBackgroundTask(
+            recordGatewayMetrics(
+              context.env,
+              {
+                routePath: "/v1beta/models",
+                statusCode: 200,
+                durationMs: 0,
+                providerId: route.target.provider,
+                modelId: route.target.providerModel,
+                isStream: true,
+                protocol: "gemini_generate_content",
+                usageOnly: true,
+                usage: event.usage
+              },
+              context.get("now")?.()
+            ),
+            context
+          );
         }
       }
 
@@ -452,6 +480,7 @@ export async function handleGeminiGenerateContent(
       quota.tokenReservation,
       canonicalResponse.usage.totalTokens
     );
+    context.set("_airlock_metrics_usage", canonicalResponse.usage);
   }
 
   emitSuccessTelemetry(telemetryBase, false, 200, canonicalResponse.usage);

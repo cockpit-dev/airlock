@@ -113,6 +113,69 @@ describe("AnthropicProviderAdapter", () => {
       outputTokens: 9,
       totalTokens: 23
     });
+    expect(response.nativeResponse?.anthropicMessages).toMatchObject({
+      id: "msg_123",
+      type: "message",
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "hello there"
+        }
+      ]
+    });
+  });
+
+  it("extracts cache read and write usage from buffered anthropic responses", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_cached",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ],
+          usage: {
+            input_tokens: 18,
+            output_tokens: 9,
+            cache_creation_input_tokens: 12,
+            cache_read_input_tokens: 6
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new AnthropicProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultMaxTokens: 256,
+      fetcher
+    });
+
+    const response = await adapter.complete(createCanonicalRequest(), {
+      requestId: "req_cached_anthropic"
+    });
+
+    expect(response.usage).toEqual({
+      inputTokens: 18,
+      outputTokens: 9,
+      totalTokens: 27,
+      cacheWriteTokens: 12,
+      cacheReadTokens: 6,
+      cachedInputTokens: 6
+    });
   });
 
   it("encodes canonical system messages as anthropic system text blocks", async () => {
@@ -1409,6 +1472,112 @@ describe("AnthropicProviderAdapter", () => {
     });
   });
 
+  it("preserves native anthropic message content blocks for Claude Code-compatible requests", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello there"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new AnthropicProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultMaxTokens: 256,
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        model: "claude-sonnet-4-5",
+        stream: false,
+        maxOutputTokens: 256,
+        messages: [
+          {
+            role: "assistant",
+            content: "Done."
+          },
+          {
+            role: "user",
+            content: "continue"
+          }
+        ],
+        passthrough: {
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "thinking",
+                  thinking: "Let me think through this.",
+                  signature: "sig_123"
+                },
+                {
+                  type: "redacted_thinking",
+                  data: "redacted"
+                },
+                {
+                  type: "text",
+                  text: "Done."
+                }
+              ]
+            },
+            {
+              role: "user",
+              content: "continue"
+            }
+          ]
+        }
+      },
+      {
+        requestId: "req_123"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "thinking",
+              thinking: "Let me think through this.",
+              signature: "sig_123"
+            },
+            {
+              type: "redacted_thinking",
+              data: "redacted"
+            },
+            {
+              type: "text",
+              text: "Done."
+            }
+          ]
+        },
+        {
+          role: "user",
+          content: "continue"
+        }
+      ]
+    });
+  });
+
   it("parses upstream anthropic SSE into canonical stream events", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
@@ -1477,6 +1646,87 @@ describe("AnthropicProviderAdapter", () => {
         responseId: "msg_123",
         model: "claude-sonnet-4-5",
         delta: "lo"
+      },
+      {
+        type: "response_completed",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        finishReason: "stop",
+        usage: {
+          inputTokens: 14,
+          outputTokens: 9,
+          totalTokens: 23
+        }
+      }
+    ]);
+  });
+
+  it("parses upstream anthropic thinking deltas for Claude Code compatibility", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-sonnet-4-5"}}\n\n',
+              'event: content_block_start\ndata: {"index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}\n\n',
+              'event: content_block_delta\ndata: {"index":0,"delta":{"type":"thinking_delta","thinking":"Let me think"}}\n\n',
+              'event: content_block_delta\ndata: {"index":0,"delta":{"type":"signature_delta","signature":"sig_123"}}\n\n',
+              'event: message_delta\ndata: {"delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":14,"output_tokens":9}}\n\n',
+              "event: message_stop\ndata: {}\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new AnthropicProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.anthropic.com/v1",
+      defaultMaxTokens: 256,
+      fetcher
+    });
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true
+      },
+      {
+        requestId: "req_stream_thinking_123"
+      }
+    )) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      {
+        type: "response_started",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5"
+      },
+      {
+        type: "thinking_delta",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        delta: "Let me think",
+        thinkingBlockIndex: 0
+      },
+      {
+        type: "thinking_signature_delta",
+        responseId: "msg_123",
+        model: "claude-sonnet-4-5",
+        signature: "sig_123",
+        thinkingBlockIndex: 0
       },
       {
         type: "response_completed",

@@ -238,6 +238,234 @@ describe("OpenAIProviderAdapter", () => {
         totalTokens: 20
       }
     });
+    expect(response.nativeResponse?.openaiResponses).toMatchObject({
+      id: "resp_123",
+      object: "response",
+      output: [
+        {
+          id: "msg_123",
+          type: "message",
+          role: "assistant"
+        }
+      ]
+    });
+  });
+
+  it("extracts cached token usage from buffered chat responses", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_cached",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "cached hello"
+              }
+            }
+          ],
+          usage: {
+            prompt_tokens: 20,
+            completion_tokens: 6,
+            total_tokens: 26,
+            prompt_tokens_details: {
+              cached_tokens: 14
+            }
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const response = await adapter.complete(createCanonicalRequest(), {
+      requestId: "req_cached_chat"
+    });
+
+    expect(response.usage).toEqual({
+      inputTokens: 20,
+      outputTokens: 6,
+      totalTokens: 26,
+      cacheReadTokens: 14,
+      cachedInputTokens: 14
+    });
+  });
+
+  it("extracts cached token usage from buffered responses api responses", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_cached",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_cached",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "cached response",
+                  annotations: []
+                }
+              ]
+            }
+          ],
+          usage: {
+            input_tokens: 22,
+            output_tokens: 7,
+            total_tokens: 29,
+            input_tokens_details: {
+              cached_tokens: 11
+            }
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    const response = await adapter.complete(createCanonicalRequest(), {
+      requestId: "req_cached_responses",
+      requestMode: "openai_responses"
+    });
+
+    expect(response.usage).toEqual({
+      inputTokens: 22,
+      outputTokens: 7,
+      totalTokens: 29,
+      cacheReadTokens: 11,
+      cachedInputTokens: 11
+    });
+  });
+
+  it("preserves native responses passthrough fields and payload shapes for Codex-compatible requests", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [],
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8,
+            total_tokens: 20
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+
+    await adapter.complete(
+      {
+        model: "gpt-4.1-mini",
+        stream: false,
+        messages: [{ role: "user", content: "hello" }],
+        passthrough: {
+          include: ["reasoning.encrypted_content"],
+          input: [
+            {
+              type: "message",
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: "hello"
+                }
+              ]
+            },
+            {
+              type: "custom_tool_call",
+              call_id: "custom_123",
+              name: "shell_command",
+              input: "{\"command\":\"pwd\"}"
+            }
+          ],
+          tools: [
+            {
+              type: "web_search",
+              external_web_access: true
+            }
+          ]
+        }
+      },
+      {
+        requestId: "req_123",
+        requestMode: "openai_responses"
+      }
+    );
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      include: ["reasoning.encrypted_content"],
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "hello"
+            }
+          ]
+        },
+        {
+          type: "custom_tool_call",
+          call_id: "custom_123",
+          name: "shell_command",
+          input: "{\"command\":\"pwd\"}"
+        }
+      ],
+      tools: [
+        {
+          type: "web_search",
+          external_web_access: true
+        }
+      ]
+    });
   });
 
   it("forwards canonical endUserId through OpenAI chat completions as safety_identifier", async () => {
@@ -1418,6 +1646,159 @@ describe("OpenAIProviderAdapter", () => {
         responseTextVerbosity: "high",
         conversationId: "conv_123"
       }
+    ]);
+  });
+
+  it("parses native responses reasoning raw-content deltas for Codex compatibility", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n',
+              'data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"reasoning","id":"rs_123","summary":[]}}\n\n',
+              'data: {"type":"response.reasoning_summary_part.added","sequence_number":2,"output_index":0,"summary_index":0,"part":{"type":"summary_text","text":""}}\n\n',
+              'data: {"type":"response.reasoning_text.delta","sequence_number":3,"output_index":0,"content_index":0,"delta":"raw detail"}\n\n',
+              'data: {"type":"response.completed","sequence_number":4,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"type":"reasoning","id":"rs_123","summary":[{"type":"summary_text","text":"checked"}],"content":[{"type":"reasoning_text","text":"raw detail"}]}],"tools":[]}}\n\n',
+              "data: [DONE]\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true
+      },
+      {
+        requestId: "req_reasoning_raw_123",
+        requestMode: "openai_responses"
+      }
+    )) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "response_started",
+        responseId: "resp_123"
+      }),
+      expect.objectContaining({
+        type: "reasoning_section_break",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        summaryIndex: 0
+      }),
+      expect.objectContaining({
+        type: "reasoning_raw_content_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        delta: "raw detail",
+        contentIndex: 0
+      }),
+      expect.objectContaining({
+        type: "reasoning_summary_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        delta: "checked"
+      }),
+      expect.objectContaining({
+        type: "response_completed",
+        responseId: "resp_123"
+      })
+    ]);
+  });
+
+  it("parses native responses custom tool input deltas for Codex compatibility", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            [
+              'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n',
+              'data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"custom_tool_call","call_id":"call_123","name":"apply_patch","input":""}}\n\n',
+              'data: {"type":"response.custom_tool_call_input.delta","sequence_number":2,"item_id":"call_123","call_id":"call_123","output_index":0,"delta":"*** Begin Patch\\n"}\n\n',
+              'data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"type":"custom_tool_call","call_id":"call_123","name":"apply_patch","input":"*** Begin Patch\\n"}],"tools":[]}}\n\n',
+              "data: [DONE]\n\n"
+            ].join("")
+          )
+        );
+        controller.close();
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream"
+        }
+      })
+    );
+    const adapter = new OpenAIProviderAdapter({
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      fetcher
+    });
+    const events: Array<unknown> = [];
+
+    for await (const event of adapter.stream(
+      {
+        ...createCanonicalRequest(),
+        stream: true
+      },
+      {
+        requestId: "req_custom_tool_123",
+        requestMode: "openai_responses"
+      }
+    )) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "response_started",
+        responseId: "resp_123"
+      }),
+      expect.objectContaining({
+        type: "tool_call_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        toolCallId: "call_123",
+        toolName: "apply_patch",
+        argumentsDelta: ""
+      }),
+      expect.objectContaining({
+        type: "tool_call_delta",
+        responseId: "resp_123",
+        model: "gpt-4.1-mini",
+        toolCallId: "call_123",
+        toolName: "apply_patch",
+        argumentsDelta: "*** Begin Patch\n"
+      }),
+      expect.objectContaining({
+        type: "response_completed",
+        responseId: "resp_123",
+        finishReason: "tool_calls"
+      })
     ]);
   });
 

@@ -122,6 +122,118 @@ export function RouteLatencyChart({
   );
 }
 
+export function TokenUsageByProtocolChart({
+  byProtocol,
+}: {
+  byProtocol: MetricsSnapshot["byProtocol"];
+}) {
+  const data = Object.entries(byProtocol ?? {})
+    .map(([protocol, info]) => ({
+      label: formatProtocolLabel(protocol),
+      tokens: info.totalTokens,
+      requests: info.requests,
+    }))
+    .sort((a, b) => b.tokens - a.tokens)
+    .slice(0, 6);
+
+  if (data.length === 0) {
+    return <EmptyChart message="No token usage data" />;
+  }
+
+  return (
+    <HorizontalMetricChart
+      data={data}
+      dataKey="tokens"
+      unit=""
+      color="var(--secondary)"
+    />
+  );
+}
+
+export function TokenUsageByModelChart({
+  byModel,
+}: {
+  byModel: MetricsSnapshot["byModel"];
+}) {
+  const data = Object.entries(byModel ?? {})
+    .map(([model, info]) => ({
+      label: model,
+      tokens: info.totalTokens,
+      requests: info.requests,
+    }))
+    .sort((a, b) => b.tokens - a.tokens)
+    .slice(0, 8);
+
+  if (data.length === 0) {
+    return <EmptyChart message="No model usage data" />;
+  }
+
+  return (
+    <HorizontalMetricChart
+      data={data}
+      dataKey="tokens"
+      unit=""
+      color="var(--success)"
+    />
+  );
+}
+
+export function TokenUsageByKeyChart({
+  byKey,
+}: {
+  byKey: MetricsSnapshot["byKey"];
+}) {
+  const data = Object.entries(byKey ?? {})
+    .map(([keyId, info]) => ({
+      label: keyId,
+      tokens: info.totalTokens,
+      requests: info.requests,
+    }))
+    .sort((a, b) => b.tokens - a.tokens)
+    .slice(0, 8);
+
+  if (data.length === 0) {
+    return <EmptyChart message="No key usage data" />;
+  }
+
+  return (
+    <HorizontalMetricChart
+      data={data}
+      dataKey="tokens"
+      unit=""
+      color="var(--primary)"
+    />
+  );
+}
+
+export function CacheUsageByModelChart({
+  byModel,
+}: {
+  byModel: MetricsSnapshot["byModel"];
+}) {
+  const data = Object.entries(byModel ?? {})
+    .map(([model, info]) => ({
+      label: model,
+      cached: info.cachedInputTokens,
+    }))
+    .filter((entry) => entry.cached > 0)
+    .sort((a, b) => b.cached - a.cached)
+    .slice(0, 8);
+
+  if (data.length === 0) {
+    return <EmptyChart message="No cache usage data" />;
+  }
+
+  return (
+    <HorizontalMetricChart
+      data={data}
+      dataKey="cached"
+      unit=""
+      color="var(--warning)"
+    />
+  );
+}
+
 function HorizontalMetricChart({
   data,
   dataKey,
@@ -198,4 +310,19 @@ function EmptyChart({ message }: { message: string }) {
       <p className="text-[13px] text-muted">{message}</p>
     </div>
   );
+}
+
+function formatProtocolLabel(protocol: string) {
+  switch (protocol) {
+    case "openai_chat":
+      return "OpenAI Chat";
+    case "openai_responses":
+      return "OpenAI Responses";
+    case "anthropic_messages":
+      return "Claude Messages";
+    case "gemini_generate_content":
+      return "Gemini";
+    default:
+      return protocol.replace(/_/g, " ");
+  }
 }

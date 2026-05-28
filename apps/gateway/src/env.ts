@@ -285,6 +285,16 @@ export const gatewayEnvSchema = z.object({
     }>()
     .optional(),
 
+  /** Durable Object binding for live gateway metrics aggregation. Optional; falls back to isolate-local metrics when absent. */
+  AIRLOCK_GATEWAY_METRICS: z
+    .custom<{
+      idFromName(name: string): unknown;
+      get(id: unknown): {
+        fetch(request: Request): Promise<Response>;
+      };
+    }>()
+    .optional(),
+
   /** Google email address for the super admin. Used during OAuth login to auto-assign the super_admin role. Optional. */
   AIRLOCK_GOOGLE_SUPER_ADMIN_EMAIL: z.string().min(1).optional()
 });

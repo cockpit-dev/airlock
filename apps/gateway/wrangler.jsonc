@@ -35,6 +35,10 @@
       {
         "name": "AIRLOCK_CONFIG_STORE",
         "class_name": "GatewayConfigStoreDurableObject"
+      },
+      {
+        "name": "AIRLOCK_GATEWAY_METRICS",
+        "class_name": "GatewayMetricsDurableObject"
       }
     ]
   },
@@ -70,6 +74,10 @@
     {
       "tag": "v8",
       "new_sqlite_classes": ["GatewayConfigStoreDurableObject"]
+    },
+    {
+      "tag": "v9",
+      "new_sqlite_classes": ["GatewayMetricsDurableObject"]
     }
   ],
   "queues": {

@@ -53,6 +53,21 @@ import type { DurableObjectStateLike } from "./durable-object-state.js";
 
 const REVOCATION_EVENTS_KEY = "revocation_events";
 const REVOCATION_OPERATION_EVENTS_PREFIX = "revocation_operation:";
+const REVOCATION_CACHE_TTL_MS = 5_000;
+
+let revocationStateCache = new Map<
+  string,
+  { revoked: boolean; updatedAt: string; fetchedAt: number }
+>();
+
+export function clearGatewayKeyRevocationStateCache(keyId?: string): void {
+  if (keyId) {
+    revocationStateCache.delete(keyId);
+    return;
+  }
+
+  revocationStateCache.clear();
+}
 
 function createRevocationOverlayReadPort(
   env: GatewayBindings,
@@ -177,6 +192,16 @@ export async function assertGatewayKeyNotRevoked(
     return;
   }
 
+  const cacheKey = gatewayApiKey.id;
+  const cached = revocationStateCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && now - cached.fetchedAt < REVOCATION_CACHE_TTL_MS) {
+    if (cached.revoked) {
+      throw createUnauthorizedError(requestId);
+    }
+    return;
+  }
+
   const state = await fetchParsedRevocationResponse(
     () => {
       return env.AIRLOCK_GATEWAY_KEY_REVOCATION!.get(
@@ -193,6 +218,12 @@ export async function assertGatewayKeyNotRevoked(
       }
     }
   );
+
+  revocationStateCache.set(cacheKey, {
+    revoked: state.revoked,
+    updatedAt: state.updatedAt,
+    fetchedAt: now
+  });
 
   if (state.revoked) {
     throw createUnauthorizedError(requestId);
@@ -319,12 +350,14 @@ export async function revokeGatewayKey(
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
-  return revokeGatewayKeyRuntimeUseCase(
+  const result = await revokeGatewayKeyRuntimeUseCase(
     gatewayApiKey,
     requestId,
     undefined,
     createGatewayKeyRevocationRuntimeWritePort(env, requestId)
   );
+  clearGatewayKeyRevocationStateCache(gatewayApiKey.id);
+  return result;
 }
 
 export async function revokeGatewayKeyById(
@@ -335,7 +368,7 @@ export async function revokeGatewayKeyById(
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
-  return revokeGatewayKeyByIdUseCase(
+  const result = await revokeGatewayKeyByIdUseCase(
     keyId,
     payload,
     "Gateway key revocation payload is invalid",
@@ -360,6 +393,8 @@ export async function revokeGatewayKeyById(
       }
     }
   );
+  clearGatewayKeyRevocationStateCache(keyId);
+  return result;
 }
 
 export async function clearGatewayKeyRevocation(
@@ -367,12 +402,14 @@ export async function clearGatewayKeyRevocation(
   gatewayApiKey: GatewayApiKeyRecord,
   requestId: string
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
-  return clearGatewayKeyRevocationRuntimeUseCase(
+  const result = await clearGatewayKeyRevocationRuntimeUseCase(
     gatewayApiKey,
     requestId,
     undefined,
     createGatewayKeyRevocationRuntimeWritePort(env, requestId)
   );
+  clearGatewayKeyRevocationStateCache(gatewayApiKey.id);
+  return result;
 }
 
 export async function clearGatewayKeyRevocationById(
@@ -383,7 +420,7 @@ export async function clearGatewayKeyRevocationById(
   requestId: string,
   actorContext?: GatewayKeyAuditActorContext
 ): Promise<{ keyId: string; revoked: boolean; updatedAt: string }> {
-  return clearGatewayKeyRevocationByIdUseCase(
+  const result = await clearGatewayKeyRevocationByIdUseCase(
     keyId,
     payload,
     "Gateway key revocation payload is invalid",
@@ -408,6 +445,8 @@ export async function clearGatewayKeyRevocationById(
       }
     }
   );
+  clearGatewayKeyRevocationStateCache(keyId);
+  return result;
 }
 
 export async function clearGatewayKeyRevocationOverlayState(
@@ -420,6 +459,7 @@ export async function clearGatewayKeyRevocationOverlayState(
     requestId,
     createGatewayKeyRevocationRuntimeWritePort(env, requestId)
   );
+  clearGatewayKeyRevocationStateCache(gatewayApiKey.id);
 }
 
 export async function getGatewayKeyRevocationEvents(

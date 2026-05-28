@@ -992,6 +992,57 @@ describe("resolveGatewayConfigWithOverlay", () => {
     expect(config.corsOrigins).toBe("https://admin.example.com");
   });
 
+  it("reuses cached overlay snapshot when config store version is unchanged", async () => {
+    let versionFetches = 0;
+    let fullFetches = 0;
+    const namespace = {
+      idFromName: () => "global",
+      get: () => ({
+        fetch: (request: Request) => {
+          const url = new URL(request.url);
+          if (url.pathname === "/version") {
+            versionFetches += 1;
+            return Promise.resolve(
+              Response.json({
+                version: 1
+              })
+            );
+          }
+
+          if (url.pathname === "/full") {
+            fullFetches += 1;
+            return Promise.resolve(
+              Response.json({
+                sections: {
+                  features: {
+                    data: {
+                      requestLogging: true
+                    },
+                    updatedAt: Date.now(),
+                    updatedBy: "admin",
+                    version: 1
+                  }
+                },
+                globalVersion: 1
+              })
+            );
+          }
+
+          return Promise.reject(new Error(`Unexpected path: ${url.pathname}`));
+        }
+      })
+    };
+
+    const bindings = createBindings({ AIRLOCK_CONFIG_STORE: namespace });
+    const first = await resolveGatewayConfigWithOverlay(bindings);
+    const second = await resolveGatewayConfigWithOverlay(bindings);
+
+    expect(first.requestLogging).toBe(true);
+    expect(second.requestLogging).toBe(true);
+    expect(versionFetches).toBeGreaterThanOrEqual(1);
+    expect(fullFetches).toBe(1);
+  });
+
   it("accepts dashboard IP rate limit format in limits overlay", async () => {
     const namespace = createConfigStoreNamespace({
       sections: {

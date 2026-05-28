@@ -4,7 +4,10 @@ import type { TelemetrySink } from "@airlock/telemetry";
 
 import { createApp } from "./app.js";
 import { resetProviderCircuitBreakerState } from "./circuit-breaker.js";
+import { GatewayMetricsDurableObject } from "./metrics.js";
 import { GatewayKeyRegistryDurableObject } from "./gateway-key-registry.js";
+import { resetMetricsCollector } from "./metrics.js";
+import type { DurableObjectStateLike } from "./durable-object-state.js";
 
 async function readJson(response: Response): Promise<unknown> {
   return response.json();
@@ -181,6 +184,79 @@ interface DurableObjectStubLike {
 interface DurableObjectNamespaceLike {
   get(id: { name: string }): DurableObjectStubLike;
   idFromName(name: string): { name: string };
+}
+
+interface ExecutionContextLike {
+  waitUntil(promise: Promise<void>): void;
+  passThroughOnException(): void;
+}
+
+function createMockExecutionContext(): {
+  executionCtx: ExecutionContextLike;
+  flush(): Promise<void>;
+} {
+  const pending = new Set<Promise<void>>();
+  return {
+    executionCtx: {
+      waitUntil(promise: Promise<void>) {
+        pending.add(promise);
+        void promise.finally(() => {
+          pending.delete(promise);
+        });
+      },
+      passThroughOnException() {}
+    },
+    async flush() {
+      while (pending.size > 0) {
+        await Promise.all([...pending]);
+      }
+    }
+  };
+}
+
+function createMockDoState(): {
+  state: DurableObjectStateLike;
+  storage: Map<string, unknown>;
+} {
+  const storage = new Map<string, unknown>();
+  return {
+    storage,
+    state: {
+      storage: {
+        get<T>(key: string): Promise<T | undefined> {
+          return Promise.resolve(storage.get(key) as T | undefined);
+        },
+        put<T>(key: string, value: T): Promise<void> {
+          storage.set(key, value);
+          return Promise.resolve();
+        },
+        delete(key: string): Promise<boolean | void> {
+          storage.delete(key);
+          return Promise.resolve(true);
+        }
+      }
+    }
+  };
+}
+
+function createMetricsNamespace() {
+  const { state } = createMockDoState();
+  const do_ = new GatewayMetricsDurableObject(state);
+
+  const namespace: DurableObjectNamespaceLike = {
+    idFromName(name: string) {
+      return { name };
+    },
+    get() {
+      return {
+        fetch(request: Request) {
+          return do_.fetch(request);
+        }
+      };
+    }
+  };
+
+  return namespace;
 }
 
 function createConfigStoreNamespace(snapshot: Record<string, unknown>) {
@@ -1030,6 +1106,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.restoreAllMocks();
   resetProviderCircuitBreakerState();
+  resetMetricsCollector();
 });
 
 describe("gateway app", () => {
@@ -1040,6 +1117,28 @@ describe("gateway app", () => {
       "http://localhost/healthz",
       undefined,
       createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    await expect(readJson(response)).resolves.toEqual({ ok: true });
+  });
+
+  it("does not require config store reads for /healthz even when overlay storage is bound", async () => {
+    const configStoreNamespace = {
+      idFromName: () => "global",
+      get: () => ({
+        fetch: vi.fn().mockRejectedValue(new Error("config store should not be read"))
+      })
+    };
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/healthz",
+      undefined,
+      {
+        ...createBindings(),
+        AIRLOCK_CONFIG_STORE: configStoreNamespace
+      }
     );
 
     expect(response.status).toBe(200);
@@ -26809,6 +26908,133 @@ describe("gateway app", () => {
     expect(body).toContain("data: [DONE]");
   });
 
+  it("streams Codex-compatible native responses reasoning raw-content events for /v1/responses", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n',
+                  'data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"reasoning","id":"rs_123","summary":[]}}\n\n',
+                  'data: {"type":"response.reasoning_summary_part.added","sequence_number":2,"output_index":0,"summary_index":0,"part":{"type":"summary_text","text":""}}\n\n',
+                  'data: {"type":"response.reasoning_text.delta","sequence_number":3,"output_index":0,"content_index":0,"delta":"raw detail"}\n\n',
+                  'data: {"type":"response.completed","sequence_number":4,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"type":"reasoning","id":"rs_123","summary":[{"type":"summary_text","text":"checked"}],"content":[{"type":"reasoning_text","text":"raw detail"}]}],"tools":[]}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi",
+          stream: true,
+          include: ["reasoning.encrypted_content"]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const body = await readText(response);
+
+    expect(body).toContain('"type":"response.reasoning_summary_part.added"');
+    expect(body).toContain('"type":"response.reasoning_text.delta"');
+    expect(body).toContain('"delta":"raw detail"');
+    expect(body).toContain('"content":[{"type":"reasoning_text","text":"raw detail"}]');
+    expect(body).toContain("data: [DONE]");
+  });
+
+  it("streams Codex-compatible native responses custom tool input deltas for /v1/responses", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"in_progress","output":[],"tools":[]}}\n\n',
+                  'data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"custom_tool_call","call_id":"call_123","name":"apply_patch","input":""}}\n\n',
+                  'data: {"type":"response.custom_tool_call_input.delta","sequence_number":2,"item_id":"call_123","call_id":"call_123","output_index":0,"delta":"*** Begin Patch\\n"}\n\n',
+                  'data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_123","object":"response","created_at":1,"model":"gpt-4.1-mini","status":"completed","output":[{"type":"custom_tool_call","call_id":"call_123","name":"apply_patch","input":"*** Begin Patch\\n"}],"tools":[]}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hi",
+          stream: true,
+          tools: [
+            {
+              type: "custom",
+              name: "apply_patch",
+              format: {
+                type: "text"
+              }
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const body = await readText(response);
+
+    expect(body).toContain('"type":"response.custom_tool_call_input.delta"');
+    expect(body).toContain('"call_id":"call_123"');
+    expect(body).toContain('"delta":"*** Begin Patch\\n"');
+    expect(body).toContain('"type":"custom_tool_call"');
+    expect(body).toContain("data: [DONE]");
+  });
+
   it("offsets tool output indexes after reasoning in native openai responses streaming", async () => {
     const encoder = new TextEncoder();
     const fetcher = vi.fn().mockResolvedValueOnce(
@@ -27876,6 +28102,104 @@ describe("gateway app", () => {
       }
     });
     expect(upstreamBody).not.toHaveProperty("safety_identifier");
+  });
+
+  it("preserves Codex-compatible native responses payload shapes when proxying /v1/responses", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: []
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          input: [
+            {
+              type: "message",
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: "hello"
+                }
+              ]
+            },
+            {
+              type: "custom_tool_call",
+              call_id: "custom_123",
+              name: "shell_command",
+              input: "{\"command\":\"pwd\"}"
+            }
+          ],
+          include: ["reasoning.encrypted_content"],
+          tools: [
+            {
+              type: "web_search",
+              external_web_access: true
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    const upstreamBody = JSON.parse(init.body as string) as Record<
+      string,
+      unknown
+    >;
+    expect(upstreamBody).toMatchObject({
+      include: ["reasoning.encrypted_content"],
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "hello"
+            }
+          ]
+        },
+        {
+          type: "custom_tool_call",
+          call_id: "custom_123",
+          name: "shell_command",
+          input: "{\"command\":\"pwd\"}"
+        }
+      ],
+      tools: [
+        {
+          type: "web_search",
+          external_web_access: true
+        }
+      ]
+    });
   });
 
   it("accepts responses OpenAI-native request metadata and forwards it upstream for OpenAI", async () => {
@@ -32552,6 +32876,63 @@ describe("gateway app", () => {
     });
   });
 
+  it("accepts responses reasoning=null and forwards the request without forcing local rejection", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "resp_123",
+          object: "response",
+          created_at: 1,
+          model: "gpt-4.1-mini",
+          status: "completed",
+          output: [
+            {
+              id: "msg_123",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: "hello there",
+                  annotations: []
+                }
+              ]
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: "hello",
+          reasoning: null
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).not.toHaveProperty("reasoning");
+  });
+
   it("accepts responses truncation and forwards it upstream for OpenAI", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -34451,6 +34832,71 @@ describe("gateway app", () => {
     expect(body).toContain('"partial_json":"{\\"city\\":\\"Shang"');
     expect(body).toContain('"partial_json":"hai\\"}"');
     expect(body).toContain('"stop_reason":"tool_use"');
+  });
+
+  it("streams Claude Code thinking deltas for /v1/messages", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'event: message_start\ndata: {"message":{"id":"msg_123","model":"claude-sonnet-4-5"}}\n\n',
+                  'event: content_block_start\ndata: {"index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}\n\n',
+                  'event: content_block_delta\ndata: {"index":0,"delta":{"type":"thinking_delta","thinking":"Let me think"}}\n\n',
+                  'event: content_block_delta\ndata: {"index":0,"delta":{"type":"signature_delta","signature":"sig_123"}}\n\n',
+                  'event: message_delta\ndata: {"delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":12,"output_tokens":8}}\n\n',
+                  "event: message_stop\ndata: {}\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 256,
+          stream: true,
+          thinking: { type: "enabled", budget_tokens: 10000 },
+          messages: [
+            {
+              role: "user",
+              content: "hi"
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const body = await readText(response);
+
+    expect(body).toContain('"type":"thinking"');
+    expect(body).toContain('"type":"thinking_delta","thinking":"Let me think"');
+    expect(body).toContain('"type":"signature_delta","signature":"sig_123"');
+    expect(body).toContain("event: message_stop");
   });
 
   it("streams gemini tool calls as anthropic messages tool_use events for /v1/messages", async () => {
@@ -38402,6 +38848,7 @@ describe("GET /_airlock/metrics", () => {
 
   it("returns request metrics snapshot", async () => {
     const app = createApp({ fetcher: vi.fn() });
+    const { executionCtx, flush } = createMockExecutionContext();
 
     const response = await app.request(
       "http://localhost/_airlock/metrics",
@@ -38410,10 +38857,13 @@ describe("GET /_airlock/metrics", () => {
       },
       {
         ...createBindings(),
+        AIRLOCK_GATEWAY_METRICS: createMetricsNamespace(),
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
-      }
+      },
+      executionCtx as ExecutionContext
     );
+    await flush();
 
     expect(response.status).toBe(200);
     const body = (await readJson(response)) as Record<string, unknown>;
@@ -38433,9 +38883,20 @@ describe("GET /_airlock/metrics", () => {
 
   it("records metrics from middleware", async () => {
     const app = createApp({ fetcher: vi.fn() });
+    const metricsNamespace = createMetricsNamespace();
+    const { executionCtx, flush } = createMockExecutionContext();
 
     // Make a request that will be recorded
-    await app.request("http://localhost/healthz", {}, createBindings());
+    await app.request(
+      "http://localhost/healthz",
+      {},
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_METRICS: metricsNamespace
+      },
+      executionCtx as ExecutionContext
+    );
+    await flush();
 
     const response = await app.request(
       "http://localhost/_airlock/metrics",
@@ -38444,16 +38905,265 @@ describe("GET /_airlock/metrics", () => {
       },
       {
         ...createBindings(),
+        AIRLOCK_GATEWAY_METRICS: metricsNamespace,
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
-      }
+      },
+      executionCtx as ExecutionContext
     );
+    await flush();
 
     expect(response.status).toBe(200);
     const body = (await readJson(response)) as Record<string, unknown>;
 
     // At least the metrics request itself should be recorded
     expect(body.requests).toBeGreaterThan(0);
+  });
+
+  it("includes usage breakdowns for buffered protocol requests", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ],
+          usage: {
+            prompt_tokens: 12,
+            completion_tokens: 8,
+            total_tokens: 20
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const metricsNamespace = createMetricsNamespace();
+    const { executionCtx, flush } = createMockExecutionContext();
+
+    const completion = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_METRICS: metricsNamespace
+      },
+      executionCtx as ExecutionContext
+    );
+
+    expect(completion.status).toBe(200);
+    await flush();
+
+    const metricsResponse = await app.request(
+      "http://localhost/_airlock/metrics",
+      {
+        headers: { authorization: "Bearer admin-secret" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_METRICS: metricsNamespace,
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      },
+      executionCtx as ExecutionContext
+    );
+    await flush();
+
+    expect(metricsResponse.status).toBe(200);
+    const body = (await readJson(metricsResponse)) as Record<string, any>;
+    expect(body.totalTokens).toBeGreaterThanOrEqual(20);
+    expect(body.byProtocol.openai_chat.totalTokens).toBe(20);
+    expect(body.byProvider.openai.totalTokens).toBe(20);
+    expect(body.byModel["gpt-4.1-mini"].totalTokens).toBe(20);
+    expect(body.byRoute["/v1/chat/completions"].totalTokens).toBe(20);
+  });
+
+  it("includes usage breakdowns for streaming protocol requests", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const metricsNamespace = createMetricsNamespace();
+    const { executionCtx, flush } = createMockExecutionContext();
+
+    const completion = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_METRICS: metricsNamespace
+      },
+      executionCtx as ExecutionContext
+    );
+
+    expect(completion.status).toBe(200);
+    await readText(completion);
+    await flush();
+
+    const metricsResponse = await app.request(
+      "http://localhost/_airlock/metrics",
+      {
+        headers: { authorization: "Bearer admin-secret" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_METRICS: metricsNamespace,
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      },
+      executionCtx as ExecutionContext
+    );
+    await flush();
+
+    expect(metricsResponse.status).toBe(200);
+    const body = (await readJson(metricsResponse)) as Record<string, any>;
+    expect(body.totalTokens).toBeGreaterThanOrEqual(20);
+    expect(body.byProtocol.openai_chat.totalTokens).toBe(20);
+    expect(body.byProvider.openai.totalTokens).toBe(20);
+    expect(body.byModel["gpt-4.1-mini"].totalTokens).toBe(20);
+    expect(body.byRoute["/v1/chat/completions"].totalTokens).toBe(20);
+    expect(body.byRoute["/v1/chat/completions"].streamCount).toBe(1);
+  });
+
+  it("aggregates metrics by key id for authenticated requests", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ],
+          usage: {
+            prompt_tokens: 12,
+            completion_tokens: 8,
+            total_tokens: 20
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const metricsNamespace = createMetricsNamespace();
+    const { executionCtx, flush } = createMockExecutionContext();
+
+    const completion = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_METRICS: metricsNamespace
+      },
+      executionCtx as ExecutionContext
+    );
+
+    expect(completion.status).toBe(200);
+    await flush();
+
+    const metricsResponse = await app.request(
+      "http://localhost/_airlock/metrics",
+      {
+        headers: { authorization: "Bearer admin-secret" }
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_METRICS: metricsNamespace,
+        AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+        AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+      },
+      executionCtx as ExecutionContext
+    );
+    await flush();
+
+    expect(metricsResponse.status).toBe(200);
+    const body = (await readJson(metricsResponse)) as Record<string, any>;
+    expect(body.byKey.gak_1.totalTokens).toBe(20);
+    expect(body.byKeyModel["gak_1::gpt-4.1-mini"].totalTokens).toBe(20);
   });
 });
 
@@ -39531,6 +40241,97 @@ describe("health_score target selection strategy", () => {
       type: "enabled",
       budget_tokens: 10000
     });
+  });
+
+  it("preserves Claude Code thinking blocks when proxying /v1/messages", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "text", text: "hello" }],
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          usage: { input_tokens: 5, output_tokens: 2 }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          stream: false,
+          max_tokens: 64,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "thinking",
+                  thinking: "Let me think through this.",
+                  signature: "sig_123"
+                },
+                {
+                  type: "redacted_thinking",
+                  data: "redacted"
+                },
+                {
+                  type: "text",
+                  text: "Done."
+                }
+              ]
+            },
+            {
+              role: "user",
+              content: "continue"
+            }
+          ],
+          thinking: { type: "enabled", budget_tokens: 10000 }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    const upstreamBody = JSON.parse(init.body as string) as Record<
+      string,
+      unknown
+    >;
+    expect(upstreamBody.messages).toEqual([
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "thinking",
+            thinking: "Let me think through this.",
+            signature: "sig_123"
+          },
+          {
+            type: "redacted_thinking",
+            data: "redacted"
+          },
+          {
+            type: "text",
+            text: "Done."
+          }
+        ]
+      },
+      {
+        role: "user",
+        content: "continue"
+      }
+    ]);
   });
 
   it("forwards custom client headers to the upstream provider", async () => {

@@ -6,6 +6,7 @@ overrides:
   "@sveltejs/kit>cookie": ^0.7.2
   ws: 8.20.1
   semver: 6.3.0
+  reselect: ^5.2.0
 
 minimumReleaseAge: 1440
 minimumReleaseAgeStrict: true

@@ -60,12 +60,22 @@ type OpenAIResponsesReasoningItemValue = {
     text: string;
   }>;
 };
+type OpenAIResponsesOpaqueTypedInputItemValue = {
+  type:
+    | "local_shell_call"
+    | "tool_search_call"
+    | "custom_tool_call"
+    | "custom_tool_call_output"
+    | "tool_search_output";
+  [key: string]: unknown;
+};
 type OpenAIResponsesTypedInputItemValue =
   | OpenAIResponsesTextInputBlockValue
   | OpenAIResponsesMessageItemTypedValue
   | OpenAIResponsesFunctionCallItemValue
   | OpenAIResponsesFunctionCallOutputItemValue
-  | OpenAIResponsesReasoningItemValue;
+  | OpenAIResponsesReasoningItemValue
+  | OpenAIResponsesOpaqueTypedInputItemValue;
 
 interface OpenAIResponsesEventEncodingState {
   sequenceNumber: number;
@@ -73,6 +83,7 @@ interface OpenAIResponsesEventEncodingState {
   contentIndex: number;
   outputText?: string;
   reasoningSummary?: string;
+  reasoningRawContent?: string;
   startedTextOutput?: boolean;
   startedReasoningOutput?: boolean;
   startedToolCallIds?: string[];
@@ -84,13 +95,16 @@ interface OpenAIResponsesEventEncodingState {
     toolCallName?: string;
     toolCallArguments: string;
     outputIndex: number;
+    toolType?: "function_call" | "custom_tool_call";
   }>;
+  toolCallType?: "function_call" | "custom_tool_call";
 }
 
 interface AnthropicMessagesStreamEncodingState {
   startedTextBlock: boolean;
   startedToolBlocks: number[];
   pendingToolStops: number[];
+  thinkingBlockIndexes?: number[];
 }
 
 interface GeminiGenerateContentStreamEncodingState {
@@ -319,6 +333,21 @@ function createOpenAIResponsesFunctionCallItem(
   };
 }
 
+function createOpenAIResponsesCustomToolCallItem(
+  responseId: string,
+  toolCallId?: string,
+  toolCallName?: string,
+  inputValue?: string
+) {
+  return {
+    type: "custom_tool_call" as const,
+    call_id: toolCallId ?? `${responseId}_tool_call_0`,
+    name: toolCallName ?? "custom_tool_call",
+    input: inputValue ?? "",
+    status: "completed" as const
+  };
+}
+
 function createOpenAIResponsesReasoningItem(summaryText?: string) {
   return {
     type: "reasoning" as const,
@@ -403,21 +432,104 @@ function isOpenAIResponsesTypedInputItems(
       input[0].type === "input_text" ||
       input[0].type === "function_call" ||
       input[0].type === "function_call_output" ||
-      input[0].type === "reasoning")
+      input[0].type === "reasoning" ||
+      input[0].type === "local_shell_call" ||
+      input[0].type === "tool_search_call" ||
+      input[0].type === "custom_tool_call" ||
+      input[0].type === "custom_tool_call_output" ||
+      input[0].type === "tool_search_output")
   );
 }
 
 function encodeOpenAIResponsesMessageContent(
   content:
     | string
-    | { type: "input_text"; text: string }[]
-    | { type: "output_text"; text: string }[]
+    | Array<{ type: string; text?: string }>
 ): string {
   if (typeof content === "string") {
     return content;
   }
 
-  return content.map((block) => block.text).join("\n");
+  return content
+    .flatMap((block) => (typeof block.text === "string" ? [block.text] : []))
+    .join("\n");
+}
+
+function hasOpenAIResponsesOpaqueMessageContent(
+  content:
+    | string
+    | Array<{
+        type: string;
+        text?: string;
+      }>
+) {
+  return (
+    Array.isArray(content) &&
+    content.some((block) => block.type !== "input_text" && block.type !== "output_text")
+  );
+}
+
+function shouldPreserveNativeOpenAIResponsesInput(
+  input: OpenAIResponsesRequest["input"]
+) {
+  if (input === undefined || typeof input === "string") {
+    return false;
+  }
+
+  if (!isOpenAIResponsesTypedInputItems(input)) {
+    return input.some((message) =>
+      hasOpenAIResponsesOpaqueMessageContent(
+        message.content as string | Array<{ type: string; text?: string }>
+      )
+    );
+  }
+
+  return input.some((item) => {
+    if (item.type === "message") {
+      return hasOpenAIResponsesOpaqueMessageContent(
+        item.content as string | Array<{ type: string; text?: string }>
+      );
+    }
+
+    return (
+      item.type === "local_shell_call" ||
+      item.type === "tool_search_call" ||
+      item.type === "custom_tool_call" ||
+      item.type === "custom_tool_call_output" ||
+      item.type === "tool_search_output"
+    );
+  });
+}
+
+function shouldPreserveNativeOpenAIResponsesTools(
+  tools: OpenAIResponsesRequest["tools"]
+) {
+  return (
+    tools !== undefined &&
+    tools.some((tool) => {
+      return tool.type !== "function";
+    })
+  );
+}
+
+function shouldPreserveNativeAnthropicMessages(
+  request: AnthropicMessagesRequest
+) {
+  const containsOpaqueBlock = request.messages.some((message) => {
+    if (!Array.isArray(message.content)) {
+      return false;
+    }
+
+    return message.content.some((block) => {
+      return (
+        block.type !== "text" &&
+        block.type !== "tool_use" &&
+        block.type !== "tool_result"
+      );
+    });
+  });
+
+  return containsOpaqueBlock;
 }
 
 function normalizeOpenAIToolChoice(
@@ -523,7 +635,7 @@ function normalizeOpenAIResponsesConversation(
 function normalizeOpenAIResponsesReasoning(
   reasoning: OpenAIResponsesRequest["reasoning"]
 ) {
-  if (reasoning === undefined) {
+  if (reasoning === undefined || reasoning === null) {
     return {};
   }
 
@@ -606,6 +718,17 @@ function normalizeOpenAIResponsesTypedInputItems(
         content: item.output,
         toolCallId: item.call_id
       });
+      continue;
+    }
+
+    if (
+      item.type === "local_shell_call" ||
+      item.type === "tool_search_call" ||
+      item.type === "custom_tool_call" ||
+      item.type === "custom_tool_call_output" ||
+      item.type === "tool_search_output"
+    ) {
+      flushPendingUserTextItems();
       continue;
     }
 
@@ -842,10 +965,38 @@ export function normalizeOpenAIResponsesRequest(
   const conversationId = normalizeOpenAIResponsesConversation(
     request.conversation
   );
+  const nativeOpenAIResponsesRequest =
+    shouldPreserveNativeOpenAIResponsesInput(request.input) ||
+    shouldPreserveNativeOpenAIResponsesTools(request.tools) ||
+    request.include?.includes("reasoning.encrypted_content")
+      ? {
+          ...(request.instructions !== undefined
+            ? { instructions: request.instructions }
+            : {}),
+          ...(shouldPreserveNativeOpenAIResponsesInput(request.input) &&
+          request.input !== undefined
+            ? { input: request.input }
+            : {}),
+          ...(shouldPreserveNativeOpenAIResponsesTools(request.tools) &&
+          request.tools !== undefined
+            ? { tools: request.tools }
+            : {}),
+          ...(request.include?.includes("reasoning.encrypted_content")
+            ? { include: request.include }
+            : {}),
+        }
+      : undefined;
 
   return {
     model: request.model,
     stream: request.stream,
+    ...(nativeOpenAIResponsesRequest !== undefined
+      ? {
+          nativeRequest: {
+            openaiResponses: nativeOpenAIResponsesRequest
+          }
+        }
+      : {}),
     ...(request.safety_identifier !== undefined
       ? { endUserId: request.safety_identifier }
       : {}),
@@ -1081,6 +1232,16 @@ export function normalizeAnthropicMessagesRequest(
   return {
     model: request.model,
     stream: request.stream,
+    ...(shouldPreserveNativeAnthropicMessages(request)
+      ? {
+          nativeRequest: {
+            anthropicMessages: {
+              ...(request.system !== undefined ? { system: request.system } : {}),
+              messages: request.messages
+            }
+          }
+        }
+      : {}),
     ...(request.metadata !== undefined
       ? { endUserId: request.metadata.user_id }
       : {}),
@@ -1522,6 +1683,47 @@ export function encodeCanonicalToOpenAIChatResponse(
 export function encodeCanonicalToOpenAIResponsesResponse(
   response: CanonicalResponse
 ) {
+  if (response.nativeResponse?.openaiResponses !== undefined) {
+    const nativeResponse = response.nativeResponse.openaiResponses as Record<
+      string,
+      unknown
+    >;
+
+    return {
+      ...nativeResponse,
+      ...(nativeResponse.output_text === undefined
+        ? { output_text: response.outputText }
+        : {}),
+      ...(nativeResponse.output === undefined
+        ? {
+            output: [
+              ...(response.reasoningSummary
+                ? [createOpenAIResponsesReasoningItem(response.reasoningSummary)]
+                : []),
+              ...(response.outputText.length > 0
+                ? [
+                    createOpenAIResponsesOutputMessage(
+                      response.id,
+                      response.outputText,
+                      "completed",
+                      true,
+                      response.outputTextLogprobs
+                    )
+                  ]
+                : []),
+              ...(response.toolCalls?.map((toolCall) => ({
+                type: "function_call" as const,
+                call_id: toolCall.id,
+                name: toolCall.name,
+                arguments: toolCall.arguments,
+                status: "completed" as const
+              })) ?? [])
+            ]
+          }
+        : {})
+    };
+  }
+
   const output = [
     ...(response.reasoningSummary
       ? [createOpenAIResponsesReasoningItem(response.reasoningSummary)]
@@ -1741,13 +1943,58 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
     };
   }
 
+  if (event.type === "reasoning_section_break") {
+    return {
+      events: [
+        {
+          type: "response.reasoning_summary_part.added" as const,
+          sequence_number: state.sequenceNumber,
+          output_index: 0,
+          summary_index: event.summaryIndex,
+          part: {
+            type: "summary_text" as const,
+            text: ""
+          }
+        }
+      ],
+      nextSequenceNumber: state.sequenceNumber + 1
+    };
+  }
+
+  if (event.type === "reasoning_raw_content_delta") {
+    return {
+      events: [
+        {
+          type: "response.reasoning_text.delta" as const,
+          sequence_number: state.sequenceNumber,
+          output_index: 0,
+          ...(event.contentIndex !== undefined
+            ? { content_index: event.contentIndex }
+            : {}),
+          delta: event.delta
+        }
+      ],
+      nextSequenceNumber: state.sequenceNumber + 1
+    };
+  }
+
   if (event.type === "tool_call_delta") {
-    const functionCallItem = createOpenAIResponsesFunctionCallItem(
-      event.responseId,
-      event.toolCallId,
-      event.toolName ?? state.toolCallName,
-      (state.toolCallArguments ?? "") + event.argumentsDelta
-    );
+    const toolType = state.toolCallType ?? "function_call";
+    const currentArguments = (state.toolCallArguments ?? "") + event.argumentsDelta;
+    const toolItem =
+      toolType === "custom_tool_call"
+        ? createOpenAIResponsesCustomToolCallItem(
+            event.responseId,
+            event.toolCallId,
+            event.toolName ?? state.toolCallName,
+            currentArguments
+          )
+        : createOpenAIResponsesFunctionCallItem(
+            event.responseId,
+            event.toolCallId,
+            event.toolName ?? state.toolCallName,
+            currentArguments
+          );
 
     const isFirstToolDeltaForCall = !state.startedToolCallIds?.includes(
       event.toolCallId
@@ -1760,15 +2007,28 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
             type: "response.output_item.added" as const,
             sequence_number: state.sequenceNumber,
             output_index: state.outputIndex,
-            item: functionCallItem
+            item: toolItem
           },
-          {
-            type: "response.function_call_arguments.delta" as const,
-            sequence_number: state.sequenceNumber + 1,
-            item_id: functionCallItem.call_id,
-            output_index: state.outputIndex,
-            delta: event.argumentsDelta
-          }
+          ...(toolType === "custom_tool_call"
+            ? [
+                {
+                  type: "response.custom_tool_call_input.delta" as const,
+                  sequence_number: state.sequenceNumber + 1,
+                  item_id: toolItem.call_id,
+                  call_id: toolItem.call_id,
+                  output_index: state.outputIndex,
+                  delta: event.argumentsDelta
+                }
+              ]
+            : [
+                {
+                  type: "response.function_call_arguments.delta" as const,
+                  sequence_number: state.sequenceNumber + 1,
+                  item_id: toolItem.call_id,
+                  output_index: state.outputIndex,
+                  delta: event.argumentsDelta
+                }
+              ])
         ],
         nextSequenceNumber: state.sequenceNumber + 2
       };
@@ -1776,13 +2036,26 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
 
     return {
       events: [
-        {
-          type: "response.function_call_arguments.delta" as const,
-          sequence_number: state.sequenceNumber,
-          item_id: functionCallItem.call_id,
-          output_index: state.outputIndex,
-          delta: event.argumentsDelta
-        }
+        ...(toolType === "custom_tool_call"
+          ? [
+              {
+                type: "response.custom_tool_call_input.delta" as const,
+                sequence_number: state.sequenceNumber,
+                item_id: toolItem.call_id,
+                call_id: toolItem.call_id,
+                output_index: state.outputIndex,
+                delta: event.argumentsDelta
+              }
+            ]
+          : [
+              {
+                type: "response.function_call_arguments.delta" as const,
+                sequence_number: state.sequenceNumber,
+                item_id: toolItem.call_id,
+                output_index: state.outputIndex,
+                delta: event.argumentsDelta
+              }
+            ])
       ],
       nextSequenceNumber: state.sequenceNumber + 1
     };
@@ -1791,6 +2064,7 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
   const outputText = state.outputText ?? "";
   const reasoningSummary =
     event.reasoningSummary ?? state.reasoningSummary ?? "";
+  const reasoningRawContent = state.reasoningRawContent ?? "";
   const responseStatus = encodeCanonicalResponsesStatus(event.finishReason);
   const isToolCallCompletion = event.finishReason === "tool_calls";
   const completedResponse = {
@@ -1903,7 +2177,19 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
               type: "response.output_item.done" as const,
               sequence_number: state.sequenceNumber + 2,
               output_index: 0,
-              item: createOpenAIResponsesReasoningItem(reasoningSummary)
+              item: {
+                ...createOpenAIResponsesReasoningItem(reasoningSummary),
+                ...(reasoningRawContent.length > 0
+                  ? {
+                      content: [
+                        {
+                          type: "reasoning_text" as const,
+                          text: reasoningRawContent
+                        }
+                      ]
+                    }
+                  : {})
+              }
             }
           ]
         : [];
@@ -1962,32 +2248,65 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
             toolCall.toolCallName,
             toolCall.toolCallArguments
           );
+          const customToolItem = createOpenAIResponsesCustomToolCallItem(
+            event.responseId,
+            toolCall.toolCallId,
+            toolCall.toolCallName,
+            toolCall.toolCallArguments
+          );
           const eventSequenceBase = toolSequenceStart + index * 2;
 
           return [
-            {
-              type: "response.function_call_arguments.done" as const,
-              sequence_number: eventSequenceBase,
-              item_id: functionCallItem.call_id,
-              output_index: toolCall.outputIndex,
-              arguments: functionCallItem.arguments
-            },
+            ...(toolCall.toolType === "custom_tool_call"
+              ? []
+              : [
+                  {
+                    type: "response.function_call_arguments.done" as const,
+                    sequence_number: eventSequenceBase,
+                    item_id: functionCallItem.call_id,
+                    output_index: toolCall.outputIndex,
+                    arguments: functionCallItem.arguments
+                  }
+                ]),
             {
               type: "response.output_item.done" as const,
-              sequence_number: eventSequenceBase + 1,
+              sequence_number:
+                eventSequenceBase +
+                (toolCall.toolType === "custom_tool_call" ? 0 : 1),
               output_index: toolCall.outputIndex,
-              item: functionCallItem
+              item:
+                toolCall.toolType === "custom_tool_call"
+                  ? customToolItem
+                  : functionCallItem
             }
           ];
         }),
         {
           type: "response.completed" as const,
-          sequence_number: toolSequenceStart + completedToolCalls.length * 2,
+          sequence_number:
+            toolSequenceStart +
+            completedToolCalls.reduce((count, toolCall) => {
+              return count + (toolCall.toolType === "custom_tool_call" ? 1 : 2);
+            }, 0),
           response: {
             ...completedResponse,
             output: [
               ...(reasoningSummary.length > 0
-                ? [createOpenAIResponsesReasoningItem(reasoningSummary)]
+                ? [
+                    {
+                      ...createOpenAIResponsesReasoningItem(reasoningSummary),
+                      ...(reasoningRawContent.length > 0
+                        ? {
+                            content: [
+                              {
+                                type: "reasoning_text" as const,
+                                text: reasoningRawContent
+                              }
+                            ]
+                          }
+                        : {})
+                    }
+                  ]
                 : []),
               ...(outputText.length > 0
                 ? [
@@ -2001,18 +2320,30 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
                   ]
                 : []),
               ...completedToolCalls.map((toolCall) => {
-                return createOpenAIResponsesFunctionCallItem(
-                  event.responseId,
-                  toolCall.toolCallId,
-                  toolCall.toolCallName,
-                  toolCall.toolCallArguments
-                );
+                return toolCall.toolType === "custom_tool_call"
+                  ? createOpenAIResponsesCustomToolCallItem(
+                      event.responseId,
+                      toolCall.toolCallId,
+                      toolCall.toolCallName,
+                      toolCall.toolCallArguments
+                    )
+                  : createOpenAIResponsesFunctionCallItem(
+                      event.responseId,
+                      toolCall.toolCallId,
+                      toolCall.toolCallName,
+                      toolCall.toolCallArguments
+                    );
               })
             ]
           }
         }
       ],
-      nextSequenceNumber: toolSequenceStart + completedToolCalls.length * 2 + 1
+      nextSequenceNumber:
+        toolSequenceStart +
+        completedToolCalls.reduce((count, toolCall) => {
+          return count + (toolCall.toolType === "custom_tool_call" ? 1 : 2);
+        }, 0) +
+        1
     };
   }
 
@@ -2040,7 +2371,19 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
             type: "response.output_item.done" as const,
             sequence_number: state.sequenceNumber + 2,
             output_index: 0,
-            item: createOpenAIResponsesReasoningItem(reasoningSummary)
+            item: {
+              ...createOpenAIResponsesReasoningItem(reasoningSummary),
+              ...(reasoningRawContent.length > 0
+                ? {
+                    content: [
+                      {
+                        type: "reasoning_text" as const,
+                        text: reasoningRawContent
+                      }
+                    ]
+                  }
+                : {})
+            }
           }
         ]
       : [];
@@ -2109,6 +2452,10 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
 export function encodeCanonicalToAnthropicMessagesResponse(
   response: CanonicalResponse
 ) {
+  if (response.nativeResponse?.anthropicMessages !== undefined) {
+    return response.nativeResponse.anthropicMessages;
+  }
+
   const toolUseContent =
     response.toolCalls?.map((toolCall) => ({
       type: "tool_use" as const,
@@ -2340,6 +2687,92 @@ export function encodeCanonicalToAnthropicMessagesStreamEvents(
 
   if (event.type === "reasoning_summary_delta") {
     return [];
+  }
+
+  if (event.type === "thinking_delta") {
+    const thinkingBlockIndex =
+      event.thinkingBlockIndex ?? (state.startedTextBlock ? 1 : 0);
+
+    if (!state.thinkingBlockIndexes?.includes(thinkingBlockIndex)) {
+      state.thinkingBlockIndexes = [
+        ...(state.thinkingBlockIndexes ?? []),
+        thinkingBlockIndex
+      ];
+
+      return [
+        {
+          type: "content_block_start" as const,
+          index: thinkingBlockIndex,
+          content_block: {
+            type: "thinking" as const,
+            thinking: "",
+            signature: ""
+          }
+        },
+        {
+          type: "content_block_delta" as const,
+          index: thinkingBlockIndex,
+          delta: {
+            type: "thinking_delta" as const,
+            thinking: event.delta
+          }
+        }
+      ];
+    }
+
+    return [
+      {
+        type: "content_block_delta" as const,
+        index: thinkingBlockIndex,
+        delta: {
+          type: "thinking_delta" as const,
+          thinking: event.delta
+        }
+      }
+    ];
+  }
+
+  if (event.type === "thinking_signature_delta") {
+    const thinkingBlockIndex =
+      event.thinkingBlockIndex ?? (state.startedTextBlock ? 1 : 0);
+
+    if (!state.thinkingBlockIndexes?.includes(thinkingBlockIndex)) {
+      state.thinkingBlockIndexes = [
+        ...(state.thinkingBlockIndexes ?? []),
+        thinkingBlockIndex
+      ];
+
+      return [
+        {
+          type: "content_block_start" as const,
+          index: thinkingBlockIndex,
+          content_block: {
+            type: "thinking" as const,
+            thinking: "",
+            signature: ""
+          }
+        },
+        {
+          type: "content_block_delta" as const,
+          index: thinkingBlockIndex,
+          delta: {
+            type: "signature_delta" as const,
+            signature: event.signature
+          }
+        }
+      ];
+    }
+
+    return [
+      {
+        type: "content_block_delta" as const,
+        index: thinkingBlockIndex,
+        delta: {
+          type: "signature_delta" as const,
+          signature: event.signature
+        }
+      }
+    ];
   }
 
   if (event.type === "tool_call_delta") {

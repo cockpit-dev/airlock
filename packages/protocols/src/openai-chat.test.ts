@@ -940,6 +940,104 @@ describe("openAIResponsesRequestSchema", () => {
     expect(Array.isArray(parsed.input)).toBe(true);
   });
 
+  it("accepts Codex reasoning include semantics", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: true,
+      input: "hello",
+      include: ["reasoning.encrypted_content"]
+    });
+
+    expect(parsed.include).toEqual(["reasoning.encrypted_content"]);
+  });
+
+  it("accepts Codex-style typed response input items", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "hello"
+            }
+          ]
+        },
+        {
+          type: "local_shell_call",
+          call_id: "shell_123",
+          status: "completed",
+          action: {
+            type: "exec",
+            command: ["pwd"],
+            cwd: "/workspace",
+            timeout_ms: 30000
+          }
+        },
+        {
+          type: "custom_tool_call",
+          call_id: "custom_123",
+          name: "shell_command",
+          input: "{\"command\":\"pwd\"}"
+        },
+        {
+          type: "custom_tool_call_output",
+          call_id: "custom_123",
+          output: "ok"
+        },
+        {
+          type: "tool_search_call",
+          call_id: "search_123",
+          execution: "sync",
+          arguments: {
+            query: "search tools"
+          }
+        },
+        {
+          type: "tool_search_output",
+          call_id: "search_123",
+          status: "completed",
+          execution: "sync",
+          tools: []
+        }
+      ]
+    });
+
+    expect(Array.isArray(parsed.input)).toBe(true);
+  });
+
+  it("accepts Codex/OpenAI native non-function responses tools", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: "hello",
+      tools: [
+        {
+          type: "web_search",
+          external_web_access: true
+        },
+        {
+          type: "image_generation",
+          output_format: "png"
+        },
+        {
+          type: "custom",
+          name: "shell_command",
+          description: "Run a shell command",
+          format: {
+            type: "grammar",
+            grammar: "start: /.*/"
+          }
+        }
+      ]
+    });
+
+    expect(parsed.tools).toHaveLength(3);
+  });
+
   it("accepts a streaming responses request", () => {
     const parsed = openAIResponsesRequestSchema.parse({
       model: "gpt-4.1-mini",
@@ -1050,6 +1148,17 @@ describe("openAIResponsesRequestSchema", () => {
     expect(xhighEffortParsed.reasoning).toEqual({
       effort: "xhigh"
     });
+  });
+
+  it("accepts responses reasoning=null so OpenAI-compatible payloads can pass through unchanged", () => {
+    const parsed = openAIResponsesRequestSchema.parse({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      reasoning: null
+    });
+
+    expect(parsed.reasoning).toBeNull();
   });
 
   it("rejects responses reasoning.summary when it conflicts with deprecated generate_summary", () => {
@@ -1877,6 +1986,39 @@ describe("anthropicMessagesRequestSchema", () => {
       type: "tool",
       name: "lookup_weather"
     });
+  });
+
+  it("accepts Claude Code thinking and redacted_thinking content blocks", () => {
+    const parsed = anthropicMessagesRequestSchema.parse({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "thinking",
+              thinking: "Let me think through this.",
+              signature: "sig_123"
+            },
+            {
+              type: "redacted_thinking",
+              data: "redacted"
+            },
+            {
+              type: "text",
+              text: "Done."
+            }
+          ]
+        },
+        {
+          role: "user",
+          content: "continue"
+        }
+      ]
+    });
+
+    expect(parsed.messages).toHaveLength(2);
   });
 
   it("accepts anthropic tool_use and tool_result replay content blocks", () => {

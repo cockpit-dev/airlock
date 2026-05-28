@@ -154,6 +154,25 @@ const DYNAMIC_KEY_AUDIT_EVENTS_PREFIX = "dynamic_events:";
 const DYNAMIC_KEY_OPERATION_INDEX_PREFIX = "dynamic_operation:";
 const CONFIGURED_KEY_AUDIT_EVENTS_PREFIX = "configured_events:";
 const CONFIGURED_KEY_OPERATION_INDEX_PREFIX = "configured_operation:";
+const RUNTIME_KEY_CACHE_TTL_MS = 5_000;
+
+let runtimeGatewayApiKeyCache = new Map<
+  string,
+  {
+    runtimeGatewayApiKey: GatewayApiKeyRecord;
+    registryOverride: GatewayKeyRegistryStoredOverride | null;
+    fetchedAt: number;
+  }
+>();
+
+export function clearRuntimeGatewayApiKeyCache(keyId?: string): void {
+  if (keyId) {
+    runtimeGatewayApiKeyCache.delete(keyId);
+    return;
+  }
+
+  runtimeGatewayApiKeyCache.clear();
+}
 
 interface GatewayKeyRegistryLookupRequest {
   bearerToken: string;
@@ -1349,7 +1368,7 @@ export async function upsertGatewayKeyRegistryOverride(
   }
 ): Promise<GatewayKeyRegistryOverrideMutationResult> {
   const namespace = requireGatewayKeyRegistryNamespace(env, requestId);
-  return fetchParsedRegistryResponse(
+  const result = await fetchParsedRegistryResponse(
     () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
     buildRegistryRequest(requestId, REGISTRY_KIND_OVERRIDE, {
       method: "PUT",
@@ -1404,6 +1423,8 @@ export async function upsertGatewayKeyRegistryOverride(
       }
     }
   );
+  clearRuntimeGatewayApiKeyCache(gatewayApiKey.id);
+  return result;
 }
 
 export async function clearGatewayKeyRegistryOverride(
@@ -1416,7 +1437,7 @@ export async function clearGatewayKeyRegistryOverride(
   }
 ): Promise<GatewayKeyRegistryOverrideClearMutationResult> {
   const namespace = requireGatewayKeyRegistryNamespace(env, requestId);
-  return fetchParsedRegistryResponse(
+  const result = await fetchParsedRegistryResponse(
     () => namespace.get(namespace.idFromName(REGISTRY_OBJECT_NAME)),
     buildRegistryRequest(requestId, REGISTRY_KIND_OVERRIDE, {
       method: "DELETE",
@@ -1465,6 +1486,8 @@ export async function clearGatewayKeyRegistryOverride(
       }
     }
   );
+  clearRuntimeGatewayApiKeyCache(gatewayApiKey.id);
+  return result;
 }
 
 export async function createGatewayRegistryApiKey(
@@ -2779,7 +2802,17 @@ export async function resolveGatewayRuntimeApiKey(
   runtimeGatewayApiKey: GatewayApiKeyRecord;
   registryOverride: GatewayKeyRegistryStoredOverride | null;
 }> {
-  return resolveConfiguredGatewayApiKeyRuntime(gatewayApiKey, {
+  const cacheKey = gatewayApiKey.id;
+  const cached = runtimeGatewayApiKeyCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && now - cached.fetchedAt < RUNTIME_KEY_CACHE_TTL_MS) {
+    return {
+      runtimeGatewayApiKey: cached.runtimeGatewayApiKey,
+      registryOverride: cached.registryOverride
+    };
+  }
+
+  const resolved = await resolveConfiguredGatewayApiKeyRuntime(gatewayApiKey, {
     readRegistryOverride: async (candidateGatewayApiKey) => {
       return getGatewayKeyRegistryOverride(
         env,
@@ -2788,6 +2821,14 @@ export async function resolveGatewayRuntimeApiKey(
       );
     }
   });
+
+  runtimeGatewayApiKeyCache.set(cacheKey, {
+    runtimeGatewayApiKey: resolved.runtimeGatewayApiKey,
+    registryOverride: resolved.registryOverride,
+    fetchedAt: now
+  });
+
+  return resolved;
 }
 
 async function readStoredOverride(

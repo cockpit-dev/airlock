@@ -1,5 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
+const registryKeyId = "key_123";
+
 const gatewayStatus = {
   configFingerprint: "test",
   mode: "test",
@@ -33,12 +35,132 @@ const gatewayMetrics = {
   avgDurationMs: 742,
   streamCount: 318,
   streamRatio: 0.247,
+  inputTokens: 184320,
+  outputTokens: 58210,
+  totalTokens: 242530,
+  usageRequestCount: 1284,
+  usageCoverage: 1,
+  cacheReadTokens: 15420,
+  cacheWriteTokens: 8420,
+  cachedInputTokens: 15420,
   statusCodes: { "200": 1198, "429": 12, "500": 5 },
   byRoute: {
-    "glm/glm-5.1": { requests: 1284, errors: 17, avgDurationMs: 742 },
+    "glm/glm-5.1": {
+      requests: 1284,
+      errors: 17,
+      avgDurationMs: 742,
+      streamCount: 318,
+      inputTokens: 184320,
+      outputTokens: 58210,
+      totalTokens: 242530,
+      usageRequestCount: 1284,
+      cacheReadTokens: 15420,
+      cacheWriteTokens: 8420,
+      cachedInputTokens: 15420,
+    },
   },
   byProvider: {
-    glm: { requests: 1284, errors: 17, avgDurationMs: 742 },
+    glm: {
+      requests: 1284,
+      errors: 17,
+      avgDurationMs: 742,
+      streamCount: 318,
+      inputTokens: 184320,
+      outputTokens: 58210,
+      totalTokens: 242530,
+      usageRequestCount: 1284,
+      cacheReadTokens: 15420,
+      cacheWriteTokens: 8420,
+      cachedInputTokens: 15420,
+    },
+  },
+  byModel: {
+    "glm-5.1": {
+      requests: 1284,
+      errors: 17,
+      avgDurationMs: 742,
+      streamCount: 318,
+      inputTokens: 184320,
+      outputTokens: 58210,
+      totalTokens: 242530,
+      usageRequestCount: 1284,
+      cacheReadTokens: 15420,
+      cacheWriteTokens: 8420,
+      cachedInputTokens: 15420,
+    },
+  },
+  byProtocol: {
+    openai_chat: {
+      requests: 806,
+      errors: 9,
+      avgDurationMs: 701,
+      streamCount: 241,
+      inputTokens: 121200,
+      outputTokens: 38020,
+      totalTokens: 159220,
+      usageRequestCount: 806,
+      cacheReadTokens: 12000,
+      cacheWriteTokens: 4500,
+      cachedInputTokens: 12000,
+    },
+    openai_responses: {
+      requests: 312,
+      errors: 5,
+      avgDurationMs: 824,
+      streamCount: 61,
+      inputTokens: 48120,
+      outputTokens: 15240,
+      totalTokens: 63360,
+      usageRequestCount: 312,
+      cacheReadTokens: 2800,
+      cacheWriteTokens: 3920,
+      cachedInputTokens: 2800,
+    },
+    anthropic_messages: {
+      requests: 166,
+      errors: 3,
+      avgDurationMs: 803,
+      streamCount: 16,
+      inputTokens: 15000,
+      outputTokens: 4950,
+      totalTokens: 19950,
+      usageRequestCount: 166,
+      cacheReadTokens: 620,
+      cacheWriteTokens: 0,
+      cachedInputTokens: 620,
+    },
+  },
+  byKey: {
+    [registryKeyId]: {
+      requests: 420,
+      errors: 4,
+      avgDurationMs: 612,
+      streamCount: 102,
+      inputTokens: 60210,
+      outputTokens: 19880,
+      totalTokens: 80090,
+      usageRequestCount: 420,
+      cacheReadTokens: 6400,
+      cacheWriteTokens: 2300,
+      cachedInputTokens: 6400,
+    },
+  },
+  byKeyModel: {
+    [`${registryKeyId}::glm-5.1`]: {
+      keyId: registryKeyId,
+      modelId: "glm-5.1",
+      requests: 420,
+      errors: 4,
+      avgDurationMs: 612,
+      streamCount: 102,
+      inputTokens: 60210,
+      outputTokens: 19880,
+      totalTokens: 80090,
+      usageRequestCount: 420,
+      cacheReadTokens: 6400,
+      cacheWriteTokens: 2300,
+      cachedInputTokens: 6400,
+    },
   },
 };
 
@@ -65,7 +187,6 @@ const routingHealth = {
   },
 };
 
-const registryKeyId = "key_123";
 const registrySnapshot = {
   keyId: registryKeyId,
   ownership: "registry",
@@ -369,6 +490,7 @@ test("renders key detail child route under keys", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Test key" })).toBeVisible();
   await expect(page.getByText("Runtime Status")).toBeVisible();
+  await expect(page.getByText("Usage Analytics")).toBeVisible();
   await expect(page.getByText("key.updated")).toBeVisible();
   await expect(page.getByText("Key Metadata")).toBeVisible();
   await expect(page.getByText("Something went wrong!")).toHaveCount(0);
@@ -560,6 +682,9 @@ test("uses compact console surfaces and renders real dashboard charts", async ({
 
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await expect(page.locator(".recharts-wrapper svg").first()).toBeVisible();
+  await expect(page.getByText("Total Tokens")).toBeVisible();
+  await expect(page.getByText("242,530")).toBeVisible();
+  await expect(page.getByText("Usage Coverage")).toBeVisible();
 
   const radiusToken = await page.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue("--radius").trim()

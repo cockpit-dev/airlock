@@ -77,15 +77,23 @@ export async function acquireQuotaResources(
   const { env, headers, config, gatewayApiKey, requestId, maxOutputTokens } =
     options;
 
-  const ipRateLimitDecision = await enforceIpRateLimit(
-    env,
-    config.ipRateLimitPolicy,
-    headers,
-    requestId
-  );
-
-  await enforceGatewayKeyTokenQuotaPrecheck(env, gatewayApiKey, requestId);
-
+  const [
+    ipRateLimitDecision,
+    requestQuotaDecision,
+    concurrencyResult,
+    tokenPrecheckResult
+  ] = await Promise.all([
+    enforceIpRateLimit(env, config.ipRateLimitPolicy, headers, requestId),
+    enforceGatewayKeyRequestQuota(env, gatewayApiKey, requestId),
+    acquireGatewayKeyConcurrencyLease(
+      env,
+      gatewayApiKey,
+      requestId,
+      config.providerTimeoutMs
+    ),
+    enforceGatewayKeyTokenQuotaPrecheck(env, gatewayApiKey, requestId)
+  ]);
+  void tokenPrecheckResult;
   const tokenReservationResult = await reserveGatewayKeyTokenQuota(
     env,
     gatewayApiKey,
@@ -94,19 +102,6 @@ export async function acquireQuotaResources(
     config.providerTimeoutMs + 5_000
   );
   const tokenReservation = tokenReservationResult?.handle;
-
-  const requestQuotaDecision = await enforceGatewayKeyRequestQuota(
-    env,
-    gatewayApiKey,
-    requestId
-  );
-
-  const concurrencyResult = await acquireGatewayKeyConcurrencyLease(
-    env,
-    gatewayApiKey,
-    requestId,
-    config.providerTimeoutMs
-  );
   const concurrencyLeaseId = concurrencyResult?.leaseId;
 
   const circuitBreakerBackend =

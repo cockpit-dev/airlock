@@ -48,6 +48,7 @@ import {
   executeRoutedRequest,
   executeRoutedStreamRequest
 } from "../provider-execution.js";
+import { dispatchBackgroundTask, recordGatewayMetrics } from "../metrics.js";
 
 export async function handleResponses(
   context: Context<{
@@ -59,9 +60,16 @@ export async function handleResponses(
       requestStartedAt: number;
       telemetrySink?: TelemetrySink;
       telemetryErrorEmitted?: boolean;
+      _airlock_metrics_key_id?: string;
       _airlock_metrics_provider?: string;
       _airlock_metrics_model?: string;
       _airlock_metrics_stream?: boolean;
+      _airlock_metrics_protocol?: string;
+      _airlock_metrics_usage?: {
+        inputTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+      };
     };
   }>
 ): Promise<Response> {
@@ -178,14 +186,17 @@ export async function handleResponses(
   const now = context.get("now");
 
   context.set("_airlock_metrics_provider", route.target.provider);
+  context.set("_airlock_metrics_key_id", gatewayApiKey.id);
   context.set("_airlock_metrics_model", route.target.providerModel);
   context.set("_airlock_metrics_stream", canonicalRequest.stream);
+  context.set("_airlock_metrics_protocol", "openai_responses");
 
   if (canonicalRequest.stream) {
     const encoder = new TextEncoder();
     let responsesSequenceNumber = 0;
     let accumulatedOutputText = "";
     let accumulatedReasoningSummary = "";
+    let accumulatedReasoningRawContent = "";
     let startedTextOutput = false;
     let startedReasoningOutput = false;
     let parallelToolCallsState: boolean | undefined;
@@ -197,6 +208,7 @@ export async function handleResponses(
         toolCallName?: string;
         toolCallArguments: string;
         outputIndex: number;
+        toolType?: "function_call" | "custom_tool_call";
       }
     >();
     let streamUsage:
@@ -257,6 +269,24 @@ export async function handleResponses(
             event.usage.totalTokens
           );
           streamUsage = event.usage;
+          dispatchBackgroundTask(
+            recordGatewayMetrics(
+              context.env,
+              {
+                routePath: "/v1/responses",
+                statusCode: 200,
+                durationMs: 0,
+                providerId: route.target.provider,
+                modelId: route.target.providerModel,
+                isStream: true,
+                protocol: "openai_responses",
+                usageOnly: true,
+                usage: event.usage
+              },
+              context.get("now")?.()
+            ),
+            context
+          );
         }
       }
 
@@ -268,6 +298,10 @@ export async function handleResponses(
         accumulatedReasoningSummary += event.delta;
       }
 
+      if (event.type === "reasoning_raw_content_delta") {
+        accumulatedReasoningRawContent += event.delta;
+      }
+
       if (event.type === "tool_call_delta") {
         const currentToolCall = streamedToolCalls.get(event.toolCallId) ?? {
           toolCallId: event.toolCallId,
@@ -277,6 +311,16 @@ export async function handleResponses(
         if (event.toolName !== undefined) {
           currentToolCall.toolCallName = event.toolName;
         }
+        currentToolCall.toolType =
+          event.nativeEvent?.openaiResponses &&
+          typeof event.nativeEvent.openaiResponses === "object" &&
+          event.nativeEvent.openaiResponses !== null &&
+          "type" in
+            (event.nativeEvent.openaiResponses as Record<string, unknown>) &&
+          (event.nativeEvent.openaiResponses as Record<string, unknown>).type ===
+            "response.custom_tool_call_input.delta"
+            ? "custom_tool_call"
+            : (currentToolCall.toolType ?? "function_call");
         currentToolCall.toolCallArguments += event.argumentsDelta;
         currentToolCall.outputIndex =
           event.toolIndex +
@@ -312,6 +356,12 @@ export async function handleResponses(
               ...(event.toolName !== undefined
                 ? { toolCallName: event.toolName }
                 : {}),
+              ...(streamedToolCalls.get(event.toolCallId)?.toolType !== undefined
+                ? {
+                    toolCallType:
+                      streamedToolCalls.get(event.toolCallId)!.toolType
+                  }
+                : {}),
               ...(startedToolCallIds.has(event.toolCallId) &&
               streamedToolCalls.get(event.toolCallId) !== undefined
                 ? {
@@ -335,6 +385,9 @@ export async function handleResponses(
           : {}),
         ...(accumulatedReasoningSummary.length > 0
           ? { reasoningSummary: accumulatedReasoningSummary }
+          : {}),
+        ...(accumulatedReasoningRawContent.length > 0
+          ? { reasoningRawContent: accumulatedReasoningRawContent }
           : {}),
         ...(event.type === "response_completed"
           ? { outputText: accumulatedOutputText }
@@ -495,6 +548,7 @@ export async function handleResponses(
       quota.tokenReservation,
       canonicalResponse.usage.totalTokens
     );
+    context.set("_airlock_metrics_usage", canonicalResponse.usage);
   }
 
   emitSuccessTelemetry(telemetryBase, false, 200, canonicalResponse.usage);

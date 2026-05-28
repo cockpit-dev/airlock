@@ -25,6 +25,7 @@ import type { GatewayBindings } from "./env.js";
 
 import { gatewayEnvSchema } from "./env.js";
 import {
+  fetchConfigStoreVersion,
   fetchConfigStoreSnapshot,
   type DashboardLimitsConfig,
   type DashboardProviderEntry,
@@ -904,12 +905,13 @@ export async function resolveGatewayConfigWithOverlay(
   return merged;
 }
 
-const DASHBOARD_OVERLAY_TTL_MS = 5_000;
+const DASHBOARD_OVERLAY_TTL_MS = 30_000;
 
 let overlayCache:
   | {
       snapshot: StoredConfigSnapshot;
       fetchedAt: number;
+      version: number;
     }
   | undefined;
 
@@ -931,8 +933,14 @@ export async function resolveDashboardOverlay(
   }
 
   try {
+    const version = await fetchConfigStoreVersion(namespace);
+    if (overlayCache && overlayCache.version === version) {
+      overlayCache.fetchedAt = now;
+      return overlayCache.snapshot;
+    }
+
     const snapshot = await fetchConfigStoreSnapshot(namespace);
-    overlayCache = { snapshot, fetchedAt: now };
+    overlayCache = { snapshot, fetchedAt: now, version };
     return snapshot;
   } catch {
     if (overlayCache) {

@@ -12,7 +12,7 @@
   "scripts": {
     "audit": "pnpm audit --prod --registry=https://registry.npmjs.org",
     "build": "pnpm -r --filter '@airlock/*' --if-present build",
-    "e2e": "pnpm --filter @airlock/dashboard exec playwright test",
+    "e2e": "pnpm --filter @airlock/console exec playwright test",
     "lint": "pnpm -r --filter '@airlock/*' --if-present lint",
     "test": "pnpm -r --filter '@airlock/*' --if-present test",
     "typecheck": "pnpm -r --filter '@airlock/*' --if-present typecheck",

@@ -205,10 +205,30 @@ export interface MetricsSnapshot {
   avgDurationMs: number;
   streamCount: number;
   streamRatio: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  usageRequestCount: number;
+  usageCoverage: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cachedInputTokens: number;
   statusCodes: Record<number, number>;
   byRoute: Record<
     string,
-    { requests: number; errors: number; avgDurationMs: number }
+    {
+      requests: number;
+      errors: number;
+      avgDurationMs: number;
+      streamCount: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      usageRequestCount: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      cachedInputTokens: number;
+    }
   >;
   byProvider: Record<
     string,
@@ -217,6 +237,79 @@ export interface MetricsSnapshot {
       errors: number;
       avgDurationMs: number;
       streamCount: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      usageRequestCount: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      cachedInputTokens: number;
+    }
+  >;
+  byModel: Record<
+    string,
+    {
+      requests: number;
+      errors: number;
+      avgDurationMs: number;
+      streamCount: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      usageRequestCount: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      cachedInputTokens: number;
+    }
+  >;
+  byProtocol: Record<
+    string,
+    {
+      requests: number;
+      errors: number;
+      avgDurationMs: number;
+      streamCount: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      usageRequestCount: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      cachedInputTokens: number;
+    }
+  >;
+  byKey: Record<
+    string,
+    {
+      requests: number;
+      errors: number;
+      avgDurationMs: number;
+      streamCount: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      usageRequestCount: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      cachedInputTokens: number;
+    }
+  >;
+  byKeyModel: Record<
+    string,
+    {
+      keyId: string;
+      modelId: string;
+      requests: number;
+      errors: number;
+      avgDurationMs: number;
+      streamCount: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      usageRequestCount: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      cachedInputTokens: number;
     }
   >;
 }

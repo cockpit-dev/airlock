@@ -149,6 +149,15 @@ describe("assertSupportedOpenAIChatToolsSemantics", () => {
     ).toThrow(GatewayError);
   });
 
+  it("allows parallel_tool_calls=false without declared tools", () => {
+    expect(() =>
+      assertSupportedOpenAIChatToolsSemantics(
+        { parallel_tool_calls: false },
+        REQ_ID
+      )
+    ).not.toThrow();
+  });
+
   it("rejects non-boolean parallel_tool_calls", () => {
     expect(() =>
       assertSupportedOpenAIChatToolsSemantics(
@@ -169,6 +178,15 @@ describe("assertSupportedOpenAIResponsesToolsSemantics", () => {
     ).toThrow(GatewayError);
   });
 
+  it("allows parallel_tool_calls=false without declared tools", () => {
+    expect(() =>
+      assertSupportedOpenAIResponsesToolsSemantics(
+        { parallel_tool_calls: false },
+        REQ_ID
+      )
+    ).not.toThrow();
+  });
+
   it("rejects non-boolean parallel_tool_calls with tools", () => {
     expect(() =>
       assertSupportedOpenAIResponsesToolsSemantics(
@@ -183,6 +201,15 @@ describe("assertSupportedOpenAIResponsesSemantics", () => {
   it("passes with empty payload", () => {
     expect(() =>
       assertSupportedOpenAIResponsesSemantics({}, REQ_ID)
+    ).not.toThrow();
+  });
+
+  it("passes with null reasoning so unsupported-but-forwardable payloads are not blocked", () => {
+    expect(() =>
+      assertSupportedOpenAIResponsesSemantics(
+        { reasoning: null },
+        REQ_ID
+      )
     ).not.toThrow();
   });
 

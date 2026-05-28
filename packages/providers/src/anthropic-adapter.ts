@@ -37,6 +37,37 @@ function normalizeAnthropicFinishReason(
   return stopReason === "max_tokens" ? "max_tokens" : "stop";
 }
 
+function mapAnthropicUsage(
+  usage:
+    | {
+        input_tokens?: number;
+        output_tokens?: number;
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+      }
+    | undefined
+) {
+  if (!usage) {
+    return undefined;
+  }
+
+  const cacheWriteTokens = usage.cache_creation_input_tokens ?? 0;
+  const cacheReadTokens = usage.cache_read_input_tokens ?? 0;
+
+  return {
+    inputTokens: usage.input_tokens ?? 0,
+    outputTokens: usage.output_tokens ?? 0,
+    totalTokens: (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0),
+    ...(cacheWriteTokens > 0 ? { cacheWriteTokens } : {}),
+    ...(cacheReadTokens > 0
+      ? {
+          cacheReadTokens,
+          cachedInputTokens: cacheReadTokens
+        }
+      : {})
+  };
+}
+
 function mapCanonicalToolChoiceToAnthropic(
   toolChoice: CanonicalRequest["toolChoice"]
 ) {
@@ -217,17 +248,21 @@ function buildAnthropicRequestBody(
   requestId: string,
   stream: boolean
 ) {
+  const nativeAnthropicRequest = request.nativeRequest?.anthropicMessages;
   const systemMessage = request.messages.find((message) => {
     return message.role === "system";
   });
-  const messages = buildAnthropicMessages(request, requestId);
+  const messages =
+    nativeAnthropicRequest?.messages ?? buildAnthropicMessages(request, requestId);
   const toolChoice = mapCanonicalToolChoiceToAnthropic(request.toolChoice);
 
   return {
     model: request.model,
     max_tokens: request.maxOutputTokens ?? defaultMaxTokens,
     ...(stream ? { stream: true } : {}),
-    ...(systemMessage
+    ...(nativeAnthropicRequest?.system !== undefined
+      ? { system: nativeAnthropicRequest.system }
+      : systemMessage
       ? {
           system: [
             {
@@ -446,6 +481,8 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
       usage?: {
         input_tokens?: number;
         output_tokens?: number;
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
       };
     };
 
@@ -472,17 +509,10 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
       finishReason: normalizeAnthropicFinishReason(
         payload.stop_reason ?? undefined
       ),
-      ...(payload.usage
-        ? {
-            usage: {
-              inputTokens: payload.usage.input_tokens ?? 0,
-              outputTokens: payload.usage.output_tokens ?? 0,
-              totalTokens:
-                (payload.usage.input_tokens ?? 0) +
-                (payload.usage.output_tokens ?? 0)
-            }
-          }
-        : {})
+      ...(payload.usage ? { usage: mapAnthropicUsage(payload.usage) } : {}),
+      nativeResponse: {
+        anthropicMessages: payload
+      }
     };
   }
 
@@ -664,6 +694,9 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
           inputTokens: number;
           outputTokens: number;
           totalTokens: number;
+          cacheReadTokens?: number;
+          cacheWriteTokens?: number;
+          cachedInputTokens?: number;
         }
       | undefined;
     const streamedToolCalls = new Map<
@@ -736,11 +769,21 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
 
           if (currentEventType === "message_start") {
             const message = payload.message as
-              | { id?: string; model?: string }
+              | {
+                  id?: string;
+                  model?: string;
+                  usage?: {
+                    input_tokens?: number;
+                    output_tokens?: number;
+                    cache_creation_input_tokens?: number;
+                    cache_read_input_tokens?: number;
+                  };
+                }
               | undefined;
 
             activeResponseId = message?.id ?? activeResponseId;
             activeModel = message?.model ?? activeModel;
+            usage = mapAnthropicUsage(message?.usage) ?? usage;
 
             yield {
               type: "response_started",
@@ -756,6 +799,8 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                   type?: string;
                   text?: string;
                   partial_json?: string;
+                  thinking?: string;
+                  signature?: string;
                 }
               | undefined;
             const index =
@@ -788,6 +833,32 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
                   argumentsDelta: delta.partial_json
                 };
               }
+            }
+
+            if (
+              delta?.type === "thinking_delta" &&
+              delta.thinking !== undefined
+            ) {
+              yield {
+                type: "thinking_delta",
+                responseId: activeResponseId,
+                model: activeModel,
+                delta: delta.thinking,
+                ...(index !== undefined ? { thinkingBlockIndex: index } : {})
+              };
+            }
+
+            if (
+              delta?.type === "signature_delta" &&
+              delta.signature !== undefined
+            ) {
+              yield {
+                type: "thinking_signature_delta",
+                responseId: activeResponseId,
+                model: activeModel,
+                signature: delta.signature,
+                ...(index !== undefined ? { thinkingBlockIndex: index } : {})
+              };
             }
             continue;
           }
@@ -837,6 +908,8 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
               | {
                   input_tokens?: number;
                   output_tokens?: number;
+                  cache_creation_input_tokens?: number;
+                  cache_read_input_tokens?: number;
                 }
               | undefined;
 
@@ -845,12 +918,20 @@ export class AnthropicProviderAdapter implements ProviderAdapter {
             }
 
             if (eventUsage) {
+              const previousUsage = usage;
               usage = {
-                inputTokens: eventUsage.input_tokens ?? 0,
-                outputTokens: eventUsage.output_tokens ?? 0,
-                totalTokens:
-                  (eventUsage.input_tokens ?? 0) +
-                  (eventUsage.output_tokens ?? 0)
+                ...(previousUsage ?? {
+                  inputTokens: 0,
+                  outputTokens: 0,
+                  totalTokens: 0
+                }),
+                ...mapAnthropicUsage({
+                  ...eventUsage,
+                  input_tokens:
+                    eventUsage.input_tokens ?? previousUsage?.inputTokens ?? 0,
+                  output_tokens:
+                    eventUsage.output_tokens ?? previousUsage?.outputTokens ?? 0
+                })
               };
             }
             continue;

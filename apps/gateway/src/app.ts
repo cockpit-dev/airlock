@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { TelemetrySink } from "@airlock/telemetry";
 import { GatewayError } from "@airlock/shared";
+import type { TokenUsage } from "@airlock/telemetry";
 
 import { AdminRateLimiter, extractIp } from "./admin-rate-limit.js";
 import {
@@ -16,7 +17,11 @@ import {
 import type { GatewayBindings } from "./env.js";
 import { createRequestId, resolveRequestId } from "./request-id.js";
 import { logRequest } from "./request-logger.js";
-import { getMetricsCollector, type MetricsRecord } from "./metrics.js";
+import {
+  dispatchBackgroundTask,
+  recordGatewayMetrics,
+  type MetricsRecord
+} from "./metrics.js";
 import { resolveDashboardOverlay } from "./config.js";
 import { registerAdminConfigRoutes } from "./routes/admin-config.js";
 import { registerAdminConfigManageRoutes } from "./routes/admin-config-manage.js";
@@ -51,13 +56,26 @@ type AppVariables = {
   requestStartedAt: number;
   telemetrySink?: TelemetrySink;
   telemetryErrorEmitted?: boolean;
+  _airlock_metrics_key_id?: string;
   _airlock_metrics_provider?: string;
   _airlock_metrics_model?: string;
   _airlock_metrics_stream?: boolean;
+  _airlock_metrics_protocol?: string;
+  _airlock_metrics_usage?: TokenUsage;
 };
 
 function getRequestStartTime(): number {
   return globalThis.performance?.now() ?? Date.now();
+}
+
+function resolveDefaultRuntimeFeatureConfig(env: GatewayBindings): {
+  corsOrigins?: string;
+  requestLogging: boolean;
+} {
+  return {
+    ...(env.AIRLOCK_CORS_ORIGINS ? { corsOrigins: env.AIRLOCK_CORS_ORIGINS } : {}),
+    requestLogging: env.AIRLOCK_REQUEST_LOGGING === true
+  };
 }
 
 async function resolveRuntimeFeatureConfig(
@@ -85,6 +103,15 @@ async function resolveRuntimeFeatureConfig(
     ...(corsOrigins ? { corsOrigins } : {}),
     requestLogging
   };
+}
+
+function shouldResolveCorsFeatures(context: {
+  req: { method: string; header(name: string): string | undefined };
+}) {
+  return (
+    context.req.method === "OPTIONS" ||
+    context.req.header("origin") !== undefined
+  );
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -165,7 +192,9 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   app.use("*", async (context, next) => {
-    const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
+    const defaultRuntimeFeatures = resolveDefaultRuntimeFeatureConfig(
+      context.env
+    );
     context.set(
       "requestId",
       resolveRequestId(context.req.header("x-request-id"))
@@ -195,15 +224,24 @@ export function createApp(options: CreateAppOptions = {}) {
       statusCode: context.res.status,
       durationMs
     };
+    const mk = context.get("_airlock_metrics_key_id");
     const mp = context.get("_airlock_metrics_provider");
     const mm = context.get("_airlock_metrics_model");
     const ms = context.get("_airlock_metrics_stream");
+    const mt = context.get("_airlock_metrics_protocol");
+    const mu = context.get("_airlock_metrics_usage");
+    if (mk) metricsRecord.keyId = mk;
     if (mp) metricsRecord.providerId = mp;
     if (mm) metricsRecord.modelId = mm;
     if (ms !== undefined) metricsRecord.isStream = ms;
-    getMetricsCollector().record(metricsRecord);
+    if (mt) metricsRecord.protocol = mt;
+    if (mu) metricsRecord.usage = mu;
+    dispatchBackgroundTask(
+      recordGatewayMetrics(context.env, metricsRecord, context.get("now")?.()),
+      context
+    );
 
-    if (runtimeFeatures.requestLogging) {
+    if (defaultRuntimeFeatures.requestLogging) {
       logRequest({
         msg: "gateway_request",
         requestId: context.get("requestId"),
@@ -229,8 +267,11 @@ export function createApp(options: CreateAppOptions = {}) {
     });
 
     app.use(publicApiPrefix, async (context, next) => {
-      const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
       await next();
+      if (!shouldResolveCorsFeatures(context)) {
+        return;
+      }
+      const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
       const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
       const headers = corsHeaders(context.req.header("Origin"), config);
       for (const [key, value] of Object.entries(headers)) {
@@ -253,8 +294,11 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   app.use("/_airlock/*", async (context, next) => {
-    const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
     await next();
+    if (!shouldResolveCorsFeatures(context)) {
+      return;
+    }
+    const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
     const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
     const headers = corsHeaders(context.req.header("Origin"), config, {
       allowAdminMethods: true

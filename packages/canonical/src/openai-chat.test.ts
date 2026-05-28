@@ -1665,6 +1665,69 @@ describe("normalizeOpenAIResponsesRequest", () => {
     });
   });
 
+  it("preserves Codex reasoning include semantics for native responses forwarding", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      stream: true,
+      input: "hello",
+      include: ["reasoning.encrypted_content"]
+    });
+
+    expect(canonical.nativeRequest?.openaiResponses).toMatchObject({
+      include: ["reasoning.encrypted_content"]
+    });
+  });
+
+  it("preserves Codex-specific typed response items for native responses forwarding", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      stream: false,
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "hello"
+            }
+          ]
+        },
+        {
+          type: "custom_tool_call",
+          call_id: "custom_123",
+          name: "shell_command",
+          input: "{\"command\":\"pwd\"}"
+        },
+        {
+          type: "custom_tool_call_output",
+          call_id: "custom_123",
+          output: "ok"
+        }
+      ]
+    });
+
+    expect(canonical.nativeRequest?.openaiResponses).toMatchObject({
+      input: [
+        {
+          type: "message",
+          role: "user"
+        },
+        {
+          type: "custom_tool_call",
+          call_id: "custom_123",
+          name: "shell_command",
+          input: "{\"command\":\"pwd\"}"
+        },
+        {
+          type: "custom_tool_call_output",
+          call_id: "custom_123",
+          output: "ok"
+        }
+      ]
+    });
+  });
+
   it("normalizes responses metadata into canonical OpenAI-native request fields", () => {
     const canonical = normalizeOpenAIResponsesRequest({
       model: "gpt-4.1-mini",
@@ -1761,6 +1824,19 @@ describe("normalizeOpenAIResponsesRequest", () => {
         }
       });
     }).toThrow("reasoning.summary must match reasoning.generate_summary");
+  });
+
+  it("treats responses reasoning=null as absent", () => {
+    const canonical = normalizeOpenAIResponsesRequest({
+      model: "gpt-4.1-mini",
+      input: "hello",
+      stream: false,
+      reasoning: null
+    });
+
+    expect(canonical.reasoningEffort).toBeUndefined();
+    expect(canonical.reasoningSummary).toBeUndefined();
+    expect(canonical.messages).toEqual([{ role: "user", content: "hello" }]);
   });
 
   it("normalizes deprecated responses reasoning.generate_summary into canonical reasoningSummary", () => {
@@ -2065,6 +2141,43 @@ describe("normalizeOpenAIResponsesRequest", () => {
 });
 
 describe("encodeCanonicalToOpenAIResponsesResponse", () => {
+  it("prefers preserved native OpenAI responses payloads when available", () => {
+    const nativeResponse = {
+      id: "resp_native",
+      object: "response",
+      created_at: 123,
+      model: "gpt-4.1-mini",
+      status: "completed",
+      output: [
+        {
+          type: "custom_tool_call",
+          call_id: "call_123",
+          name: "local_shell",
+          input: "ls"
+        }
+      ],
+      tools: [],
+      usage: {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15
+      }
+    };
+
+    const encoded = encodeCanonicalToOpenAIResponsesResponse({
+      id: "resp_123",
+      model: "gpt-4.1-mini",
+      outputText: "",
+      finishReason: "stop",
+      nativeResponse: {
+        openaiResponses: nativeResponse
+      }
+    });
+
+    expect(encoded).toMatchObject(nativeResponse);
+    expect(encoded.output_text).toBe("");
+  });
+
   it("encodes a canonical response into an OpenAI responses payload", () => {
     const encoded = encodeCanonicalToOpenAIResponsesResponse({
       id: "resp_123",
@@ -3920,9 +4033,106 @@ describe("normalizeAnthropicMessagesRequest", () => {
       }
     ]);
   });
+
+  it("preserves Claude Code thinking blocks for native anthropic forwarding", () => {
+    const canonical = normalizeAnthropicMessagesRequest({
+      model: "claude-sonnet-4-5",
+      max_tokens: 256,
+      stream: true,
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "thinking",
+              thinking: "Let me think through this.",
+              signature: "sig_123"
+            },
+            {
+              type: "redacted_thinking",
+              data: "redacted"
+            },
+            {
+              type: "text",
+              text: "Done."
+            }
+          ]
+        },
+        {
+          role: "user",
+          content: "continue"
+        }
+      ]
+    });
+
+    expect(canonical.nativeRequest?.anthropicMessages).toMatchObject({
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "thinking",
+              thinking: "Let me think through this.",
+              signature: "sig_123"
+            },
+            {
+              type: "redacted_thinking",
+              data: "redacted"
+            },
+            {
+              type: "text",
+              text: "Done."
+            }
+          ]
+        },
+        {
+          role: "user",
+          content: "continue"
+        }
+      ]
+    });
+  });
 });
 
 describe("encodeCanonicalToAnthropicMessagesResponse", () => {
+  it("prefers preserved native anthropic messages payloads when available", () => {
+    const nativeResponse = {
+      id: "msg_native",
+      type: "message",
+      role: "assistant",
+      model: "claude-sonnet-4-5",
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      usage: {
+        input_tokens: 10,
+        output_tokens: 5
+      },
+      content: [
+        {
+          type: "thinking",
+          thinking: "Need to check the route table.",
+          signature: "sig_123"
+        },
+        {
+          type: "text",
+          text: "Done."
+        }
+      ]
+    };
+
+    const encoded = encodeCanonicalToAnthropicMessagesResponse({
+      id: "msg_123",
+      model: "claude-sonnet-4-5",
+      outputText: "Done.",
+      finishReason: "stop",
+      nativeResponse: {
+        anthropicMessages: nativeResponse
+      }
+    });
+
+    expect(encoded).toBe(nativeResponse);
+  });
+
   it("encodes a canonical response into an Anthropic message payload", () => {
     const encoded = encodeCanonicalToAnthropicMessagesResponse({
       id: "msg_123",

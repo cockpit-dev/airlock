@@ -24,6 +24,21 @@ const anthropicToolResultContentBlockSchema = z.object({
   content: z.union([z.string(), anthropicTextBlockArraySchema])
 });
 
+const anthropicThinkingContentBlockSchema = z
+  .object({
+    type: z.literal("thinking"),
+    thinking: z.string().min(1),
+    signature: z.string().optional()
+  })
+  .passthrough();
+
+const anthropicRedactedThinkingContentBlockSchema = z
+  .object({
+    type: z.literal("redacted_thinking"),
+    data: z.string().min(1).optional()
+  })
+  .passthrough();
+
 const anthropicToolSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1).optional(),
@@ -58,6 +73,8 @@ const anthropicMessageInputSchema = z.object({
       .array(
         z.union([
           anthropicTextContentBlockSchema,
+          anthropicThinkingContentBlockSchema,
+          anthropicRedactedThinkingContentBlockSchema,
           anthropicToolUseContentBlockSchema,
           anthropicToolResultContentBlockSchema
         ])

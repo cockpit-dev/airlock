@@ -132,7 +132,6 @@ function canExecuteThroughOpenAIChat(request: CanonicalRequest): boolean {
     request.previousResponseId === undefined &&
     request.conversationId === undefined &&
     request.prompt === undefined &&
-    request.reasoningEffort === undefined &&
     request.reasoningSummary === undefined &&
     request.responseTruncation === undefined &&
     request.responseTextVerbosity === undefined &&

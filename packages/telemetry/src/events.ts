@@ -4,7 +4,10 @@ import { z } from "zod";
 export const tokenUsageSchema = z.object({
   inputTokens: z.number().int().min(0),
   outputTokens: z.number().int().min(0),
-  totalTokens: z.number().int().min(0)
+  totalTokens: z.number().int().min(0),
+  cacheReadTokens: z.number().int().min(0).optional(),
+  cacheWriteTokens: z.number().int().min(0).optional(),
+  cachedInputTokens: z.number().int().min(0).optional()
 });
 
 const gatewayRequestTelemetryBaseSchema = z.object({

@@ -40,6 +40,18 @@ export interface CanonicalRequest {
   model: string;
   messages: CanonicalMessage[];
   stream: boolean;
+  nativeRequest?: {
+    openaiResponses?: {
+      input?: unknown;
+      include?: string[];
+      tools?: unknown[];
+      text?: Record<string, unknown>;
+    };
+    anthropicMessages?: {
+      system?: unknown;
+      messages?: unknown;
+    };
+  };
   endUserId?: string;
   serviceTier?: "auto" | "default" | "flex" | "priority" | "scale";
   store?: boolean | null;
@@ -131,6 +143,9 @@ export interface CanonicalUsage {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  cachedInputTokens?: number;
 }
 
 export interface CanonicalTokenLogprob {
@@ -164,6 +179,10 @@ export interface CanonicalResponse {
   toolCalls?: CanonicalToolCall[];
   parallelToolCalls?: boolean;
   reasoningSummary?: string;
+  nativeResponse?: {
+    openaiResponses?: unknown;
+    anthropicMessages?: unknown;
+  };
 }
 
 export type CanonicalStreamEvent =
@@ -181,6 +200,10 @@ export type CanonicalStreamEvent =
       responseTruncation?: "auto" | "disabled";
       responseTextVerbosity?: "low" | "medium" | "high";
       conversationId?: string;
+      nativeEvent?: {
+        openaiResponses?: unknown;
+        anthropicMessages?: unknown;
+      };
     }
   | {
       type: "tool_call_delta";
@@ -192,6 +215,10 @@ export type CanonicalStreamEvent =
       toolIndex: number;
       toolName?: string;
       argumentsDelta: string;
+      nativeEvent?: {
+        openaiResponses?: unknown;
+        anthropicMessages?: unknown;
+      };
     }
   | {
       type: "output_text_delta";
@@ -201,6 +228,10 @@ export type CanonicalStreamEvent =
       systemFingerprint?: string;
       delta: string;
       outputTextLogprobs?: CanonicalOutputTextLogprobs;
+      nativeEvent?: {
+        openaiResponses?: unknown;
+        anthropicMessages?: unknown;
+      };
     }
   | {
       type: "reasoning_summary_delta";
@@ -209,6 +240,57 @@ export type CanonicalStreamEvent =
       createdAt?: number;
       systemFingerprint?: string;
       delta: string;
+      nativeEvent?: {
+        openaiResponses?: unknown;
+        anthropicMessages?: unknown;
+      };
+    }
+  | {
+      type: "reasoning_raw_content_delta";
+      responseId: string;
+      model: string;
+      createdAt?: number;
+      systemFingerprint?: string;
+      delta: string;
+      contentIndex?: number;
+      nativeEvent?: {
+        openaiResponses?: unknown;
+        anthropicMessages?: unknown;
+      };
+    }
+  | {
+      type: "reasoning_section_break";
+      responseId: string;
+      model: string;
+      createdAt?: number;
+      systemFingerprint?: string;
+      summaryIndex: number;
+      nativeEvent?: {
+        openaiResponses?: unknown;
+        anthropicMessages?: unknown;
+      };
+    }
+  | {
+      type: "thinking_delta";
+      responseId: string;
+      model: string;
+      createdAt?: number;
+      delta: string;
+      thinkingBlockIndex?: number;
+      nativeEvent?: {
+        anthropicMessages?: unknown;
+      };
+    }
+  | {
+      type: "thinking_signature_delta";
+      responseId: string;
+      model: string;
+      createdAt?: number;
+      signature: string;
+      thinkingBlockIndex?: number;
+      nativeEvent?: {
+        anthropicMessages?: unknown;
+      };
     }
   | {
       type: "response_completed";
@@ -228,4 +310,8 @@ export type CanonicalStreamEvent =
       responseTruncation?: "auto" | "disabled";
       responseTextVerbosity?: "low" | "medium" | "high";
       conversationId?: string;
+      nativeEvent?: {
+        openaiResponses?: unknown;
+        anthropicMessages?: unknown;
+      };
     };

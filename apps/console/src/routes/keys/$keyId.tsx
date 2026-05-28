@@ -33,6 +33,7 @@ import {
   useDeleteKey,
   useKey,
   useKeyEvents,
+  useMetrics,
   useKeyStatus,
   useRestoreKey,
   useRotateKey,
@@ -51,6 +52,10 @@ import {
   getConfiguredModels,
   hashGatewayKeyValue,
 } from "../../lib/key-policy";
+import {
+  CacheUsageByModelChart,
+  TokenUsageByModelChart,
+} from "../../components/dashboard-charts";
 import { DataTable, Table } from "../../components/data-table";
 
 export const Route = createFileRoute("/keys/$keyId")({
@@ -64,6 +69,7 @@ function KeyDetailPage() {
   const key = useKey(keyId);
   const keyStatus = useKeyStatus(keyId);
   const keyEvents = useKeyEvents(keyId);
+  const metrics = useMetrics(10_000);
   const config = useConfig();
   const deleteMut = useDeleteKey();
   const archiveMut = useArchiveKey();
@@ -99,6 +105,15 @@ function KeyDetailPage() {
     setEditBlockedModels(effectivePolicy.blocked ?? []);
   }, [snapshot, registryKey]);
 
+  const keyModelMetrics = useMemo(() => {
+    if (!metrics.data?.byKeyModel || !snapshot) return {};
+    return Object.fromEntries(
+      Object.entries(metrics.data.byKeyModel).filter(
+        ([, value]) => value.keyId === snapshot.keyId
+      )
+    );
+  }, [metrics.data?.byKeyModel, snapshot]);
+
   if (keyStatus.isLoading || key.isLoading) return <KeyDetailSkeleton />;
 
   if (!snapshot) {
@@ -121,6 +136,7 @@ function KeyDetailPage() {
   const effectivePolicy = getEffectivePolicy(snapshot, registryKey);
   const isAccepted = snapshot.runtime.acceptedNow;
   const disabledModelCount = effectivePolicy.blocked.length;
+  const keyMetrics = metrics.data?.byKey?.[snapshot.keyId];
 
   async function handleDelete() {
     setPending(true);
@@ -425,6 +441,84 @@ function KeyDetailPage() {
               </div>
             </Card.Content>
           </Card.Root>
+
+          <Card.Root>
+            <Card.Header>
+              <Card.Title className="text-sm">Usage Analytics</Card.Title>
+              <Card.Description className="text-[11px]">
+                Live key-level requests, tokens, and cache usage.
+              </Card.Description>
+            </Card.Header>
+            <Card.Content>
+              {metrics.isLoading ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {Array.from({ length: 8 }).map((_, index) => (
+                    <div key={index} className="space-y-1.5">
+                      <Skeleton className="h-2.5 w-16 rounded" />
+                      <Skeleton className="h-5 w-20 rounded" />
+                    </div>
+                  ))}
+                </div>
+              ) : keyMetrics ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <InfoItem label="Requests" value={keyMetrics.requests} />
+                  <InfoItem
+                    label="Avg latency"
+                    value={`${keyMetrics.avgDurationMs}ms`}
+                  />
+                  <InfoItem
+                    label="Input tokens"
+                    value={keyMetrics.inputTokens.toLocaleString()}
+                  />
+                  <InfoItem
+                    label="Output tokens"
+                    value={keyMetrics.outputTokens.toLocaleString()}
+                  />
+                  <InfoItem
+                    label="Total tokens"
+                    value={keyMetrics.totalTokens.toLocaleString()}
+                  />
+                  <InfoItem
+                    label="Cached input"
+                    value={keyMetrics.cachedInputTokens.toLocaleString()}
+                  />
+                  <InfoItem
+                    label="Cache read"
+                    value={keyMetrics.cacheReadTokens.toLocaleString()}
+                  />
+                  <InfoItem
+                    label="Cache write"
+                    value={keyMetrics.cacheWriteTokens.toLocaleString()}
+                  />
+                </div>
+              ) : (
+                <p className="text-xs text-muted">
+                  No usage has been recorded for this key in the current metrics window.
+                </p>
+              )}
+            </Card.Content>
+          </Card.Root>
+
+          {keyMetrics ? (
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <Card.Root>
+                <Card.Header>
+                  <Card.Title className="text-sm">Token Usage by Model</Card.Title>
+                </Card.Header>
+                <Card.Content>
+                  <TokenUsageByModelChart byModel={keyModelMetrics} />
+                </Card.Content>
+              </Card.Root>
+              <Card.Root>
+                <Card.Header>
+                  <Card.Title className="text-sm">Cached Input by Model</Card.Title>
+                </Card.Header>
+                <Card.Content>
+                  <CacheUsageByModelChart byModel={keyModelMetrics} />
+                </Card.Content>
+              </Card.Root>
+            </div>
+          ) : null}
 
           <Card.Root>
             <Card.Header>
