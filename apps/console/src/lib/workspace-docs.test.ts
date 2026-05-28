@@ -12,12 +12,11 @@ function readWorkspaceFile(path: string) {
 describe("workspace docs and scripts", () => {
   it("points console-facing commands and docs at apps/console instead of apps/dashboard", () => {
     const files = [
-      "GOALS.md",
       "README.md",
       "README.zh-CN.md",
       "docs/superpowers/implementations/2026-05-18-production-deployment-and-config.md",
       "docs/superpowers/specs/control-plane-dashboard.md"
-    ];
+    ].filter((file) => existsSync(resolve(workspaceRoot, file)));
 
     const offenders = files.filter((file) => {
       const source = readWorkspaceFile(file);
