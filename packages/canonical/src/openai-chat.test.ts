@@ -5,8 +5,10 @@ import { createOpenAIChatRequestFixture } from "@airlock/testing";
 
 import {
   encodeCanonicalToAnthropicMessagesResponse,
+  encodeCanonicalToGeminiGenerateContentResponse,
   encodeCanonicalToOpenAIResponsesResponse,
   encodeCanonicalToOpenAIChatResponse,
+  normalizeGeminiGenerateContentRequest,
   normalizeAnthropicMessagesRequest,
   normalizeOpenAIResponsesRequest,
   normalizeOpenAIChatRequest
@@ -546,6 +548,148 @@ describe("normalizeOpenAIChatRequest", () => {
         role: "tool",
         content: '{"temperature_c":26}',
         toolCallId: "call_123"
+      }
+    ]);
+  });
+});
+
+describe("normalizeGeminiGenerateContentRequest", () => {
+  it("normalizes Gemini text, tools, tool choice, and generation config", () => {
+    const canonical = normalizeGeminiGenerateContentRequest({
+      model: "gemini-2.5-flash",
+      stream: false,
+      system_instruction: {
+        parts: [{ text: "Be concise." }]
+      },
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: "Weather in Shanghai?" }]
+        }
+      ],
+      tools: [
+        {
+          functionDeclarations: [
+            {
+              name: "lookup_weather",
+              description: "Lookup weather",
+              parameters: {
+                type: "object"
+              }
+            }
+          ]
+        }
+      ],
+      toolConfig: {
+        functionCallingConfig: {
+          mode: "ANY",
+          allowedFunctionNames: ["lookup_weather"]
+        }
+      },
+      generationConfig: {
+        maxOutputTokens: 128,
+        temperature: 0.2,
+        topP: 0.9,
+        stopSequences: ["END"],
+        responseMimeType: "application/json"
+      }
+    });
+
+    expect(canonical).toMatchObject({
+      model: "gemini-2.5-flash",
+      stream: false,
+      maxOutputTokens: 128,
+      temperature: 0.2,
+      topP: 0.9,
+      stopSequences: ["END"],
+      outputFormat: {
+        type: "json_object"
+      },
+      toolChoice: {
+        type: "tool",
+        name: "lookup_weather"
+      },
+      tools: [
+        {
+          name: "lookup_weather",
+          description: "Lookup weather",
+          inputSchema: {
+            type: "object"
+          }
+        }
+      ],
+      messages: [
+        {
+          role: "system",
+          content: "Be concise."
+        },
+        {
+          role: "user",
+          content: "Weather in Shanghai?"
+        }
+      ]
+    });
+    expect(canonical.passthrough).toBeUndefined();
+  });
+
+  it("normalizes Gemini function call and response history", () => {
+    const canonical = normalizeGeminiGenerateContentRequest({
+      model: "gemini-2.5-flash",
+      stream: false,
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: "Weather in Shanghai?" }]
+        },
+        {
+          role: "model",
+          parts: [
+            {
+              functionCall: {
+                name: "lookup_weather",
+                args: {
+                  city: "Shanghai"
+                }
+              }
+            }
+          ]
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: "lookup_weather",
+                response: {
+                  temperature_c: 26
+                }
+              }
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(canonical.messages).toEqual([
+      {
+        role: "user",
+        content: "Weather in Shanghai?"
+      },
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: "gemini_call_1_0",
+            name: "lookup_weather",
+            arguments: '{"city":"Shanghai"}'
+          }
+        ]
+      },
+      {
+        role: "tool",
+        toolCallId: "gemini_call_1_0",
+        content: '{"temperature_c":26}'
       }
     ]);
   });
@@ -3875,6 +4019,60 @@ describe("encodeCanonicalToAnthropicMessagesResponse", () => {
     });
 
     expect(encoded.stop_reason).toBe("max_tokens");
+  });
+});
+
+describe("encodeCanonicalToGeminiGenerateContentResponse", () => {
+  it("encodes canonical text, tool calls, and usage into Gemini response shape", () => {
+    const encoded = encodeCanonicalToGeminiGenerateContentResponse({
+      id: "resp_123",
+      model: "gemini-2.5-flash",
+      outputText: "Let me check.",
+      finishReason: "tool_calls",
+      toolCalls: [
+        {
+          id: "call_123",
+          name: "lookup_weather",
+          arguments: '{"city":"Shanghai"}'
+        }
+      ],
+      usage: {
+        inputTokens: 12,
+        outputTokens: 8,
+        totalTokens: 20
+      }
+    });
+
+    expect(encoded).toEqual({
+      responseId: "resp_123",
+      modelVersion: "gemini-2.5-flash",
+      candidates: [
+        {
+          finishReason: "STOP",
+          content: {
+            role: "model",
+            parts: [
+              {
+                text: "Let me check."
+              },
+              {
+                functionCall: {
+                  name: "lookup_weather",
+                  args: {
+                    city: "Shanghai"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      usageMetadata: {
+        promptTokenCount: 12,
+        candidatesTokenCount: 8,
+        totalTokenCount: 20
+      }
+    });
   });
 });
 

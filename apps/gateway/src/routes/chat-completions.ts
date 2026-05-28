@@ -135,7 +135,7 @@ export async function handleChatCompletions(
   assertGatewayKeyAllowsRoute(gatewayApiKey, route, requestId);
   assertGatewayKeyAllowsModel(
     gatewayApiKey,
-    route.externalModel,
+    [route.externalModel, parsed.model],
     requestId,
     config.modelGroups
   );

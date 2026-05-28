@@ -112,6 +112,21 @@ describe("authorizeGatewayKeyAccess", () => {
 });
 
 describe("assertGatewayKeyAllowsModelAccess", () => {
+  it("allows models by default when no allow-list or block-list policy is configured", () => {
+    expect(() =>
+      assertGatewayKeyAllowsModelAccess(
+        {
+          id: "key_1",
+          label: "Gateway Key",
+          status: "active"
+        },
+        "newly-added-model",
+        "req_123",
+        {}
+      )
+    ).not.toThrow();
+  });
+
   it("allows explicit model matches", () => {
     expect(() =>
       assertGatewayKeyAllowsModelAccess(
@@ -148,6 +163,61 @@ describe("assertGatewayKeyAllowsModelAccess", () => {
         }
       )
     ).not.toThrow();
+  });
+
+  it("rejects blocked external model matches", () => {
+    expectGatewayErrorCode(() => {
+      assertGatewayKeyAllowsModelAccess(
+        {
+          id: "key_1",
+          label: "Gateway Key",
+          status: "active",
+          policy: {
+            blockedExternalModels: ["claude-sonnet-4-5"]
+          }
+        },
+        "claude-sonnet-4-5",
+        "req_123",
+        {}
+      );
+    }, "auth_model_not_allowed");
+  });
+
+  it("allows unblocked models when only a block-list policy is configured", () => {
+    expect(() =>
+      assertGatewayKeyAllowsModelAccess(
+        {
+          id: "key_1",
+          label: "Gateway Key",
+          status: "active",
+          policy: {
+            blockedExternalModels: ["claude-sonnet-4-5"]
+          }
+        },
+        "gpt-4.1-mini",
+        "req_123",
+        {}
+      )
+    ).not.toThrow();
+  });
+
+  it("lets blocked external models override explicit allow-list matches", () => {
+    expectGatewayErrorCode(() => {
+      assertGatewayKeyAllowsModelAccess(
+        {
+          id: "key_1",
+          label: "Gateway Key",
+          status: "active",
+          policy: {
+            allowedExternalModels: ["gpt-4.1-mini"],
+            blockedExternalModels: ["gpt-4.1-mini"]
+          }
+        },
+        "gpt-4.1-mini",
+        "req_123",
+        {}
+      );
+    }, "auth_model_not_allowed");
   });
 
   it("rejects when neither explicit models nor model groups match", () => {

@@ -578,7 +578,8 @@ describe("resolveGatewayConfigWithOverlay", () => {
               type: "openai",
               apiKey: "do-openai-key",
               baseUrl: "https://custom.openai.com/v1",
-              defaultModel: "gpt-4.1-mini"
+              defaultModel: "gpt-4.1-mini",
+              protocols: ["openai_chat"]
             }
           ],
           updatedAt: Date.now(),
@@ -598,6 +599,9 @@ describe("resolveGatewayConfigWithOverlay", () => {
     expect(getProviderById(config, "openai")?.defaultModel).toBe(
       "gpt-4.1-mini"
     );
+    expect(getProviderById(config, "openai")?.protocols).toEqual([
+      "openai_chat"
+    ]);
   });
 
   it("resolves provider config from DO overlay when env catalog is absent", async () => {

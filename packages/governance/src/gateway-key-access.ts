@@ -72,20 +72,57 @@ export async function authorizeGatewayKeyAccess(
 
 export function assertGatewayKeyAllowsModelAccess(
   gatewayApiKey: GatewayApiKeyRecord,
-  externalModel: string,
+  externalModel: string | readonly string[],
   requestId: string,
   modelGroups: Record<string, string[]>
 ) {
+  const externalModelValues: readonly string[] =
+    typeof externalModel === "string" ? [externalModel] : externalModel;
+  const externalModels = [...new Set<string>(externalModelValues)];
+  const canonicalExternalModel = externalModels[0];
+  const blockedExternalModels = gatewayApiKey.policy?.blockedExternalModels;
   const allowedExternalModels = gatewayApiKey.policy?.allowedExternalModels;
   const allowedModelGroups = gatewayApiKey.policy?.allowedModelGroups;
+
+  if (!canonicalExternalModel) {
+    throw new GatewayError(
+      "Gateway API key is not allowed to access this model",
+      {
+        code: "auth_model_not_allowed",
+        category: "authorization",
+        httpStatus: 403,
+        retryable: false,
+        requestId
+      }
+    );
+  }
+
+  if (
+    blockedExternalModels?.some((blockedModel) => {
+      return externalModels.includes(blockedModel);
+    })
+  ) {
+    throw new GatewayError(
+      "Gateway API key is not allowed to access this model",
+      {
+        code: "auth_model_not_allowed",
+        category: "authorization",
+        httpStatus: 403,
+        retryable: false,
+        requestId
+      }
+    );
+  }
 
   if (!allowedExternalModels && !allowedModelGroups) {
     return;
   }
 
-  const isExplicitlyAllowed = allowedExternalModels?.includes(externalModel);
+  const isExplicitlyAllowed = allowedExternalModels?.some((allowedModel) => {
+    return externalModels.includes(allowedModel);
+  });
   const isAllowedByGroup = allowedModelGroups?.some((groupName) => {
-    return modelGroups[groupName]?.includes(externalModel);
+    return modelGroups[groupName]?.includes(canonicalExternalModel);
   });
 
   if (!isExplicitlyAllowed && !isAllowedByGroup) {

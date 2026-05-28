@@ -491,6 +491,18 @@ export function updateStoredGatewayRegistryDynamicKey(
     updatedAt: now
   };
 
+  if (gatewayApiKey.notBefore === undefined) {
+    delete next.notBefore;
+  }
+
+  if (gatewayApiKey.expiresAt === undefined) {
+    delete next.expiresAt;
+  }
+
+  if (gatewayApiKey.policy === undefined) {
+    delete next.policy;
+  }
+
   if (
     options?.clearPreviousValueHash !== true &&
     gatewayApiKey.valueHash === existing.valueHash &&

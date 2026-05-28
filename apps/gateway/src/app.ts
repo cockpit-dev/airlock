@@ -26,6 +26,7 @@ import { registerAdminMetricsRoutes } from "./routes/admin-metrics.js";
 import { registerAdminProviderModelsRoutes } from "./routes/admin-provider-models.js";
 import { registerAdminRoutingHealthRoutes } from "./routes/admin-routing-health.js";
 import { handleChatCompletions } from "./routes/chat-completions.js";
+import { handleGeminiGenerateContent } from "./routes/gemini.js";
 import { handleHealth } from "./routes/health.js";
 import { handleMessages } from "./routes/messages.js";
 import { handleModelById, handleModels } from "./routes/models.js";
@@ -214,26 +215,29 @@ export function createApp(options: CreateAppOptions = {}) {
     }
   });
 
-  // CORS preflight for /v1/* public API endpoints
-  app.options("/v1/*", async (context) => {
-    const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
-    const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
-    const requestHeaders = context.req.header("Access-Control-Request-Headers");
-    return createPreflightResponse(context.req.header("Origin"), config, {
-      ...(requestHeaders ? { requestHeaders } : {})
+  // CORS preflight for public API endpoints
+  for (const publicApiPrefix of ["/v1/*", "/v1beta/*"]) {
+    app.options(publicApiPrefix, async (context) => {
+      const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
+      const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
+      const requestHeaders = context.req.header(
+        "Access-Control-Request-Headers"
+      );
+      return createPreflightResponse(context.req.header("Origin"), config, {
+        ...(requestHeaders ? { requestHeaders } : {})
+      });
     });
-  });
 
-  // CORS headers on all /v1/* responses
-  app.use("/v1/*", async (context, next) => {
-    const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
-    await next();
-    const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
-    const headers = corsHeaders(context.req.header("Origin"), config);
-    for (const [key, value] of Object.entries(headers)) {
-      context.header(key, value);
-    }
-  });
+    app.use(publicApiPrefix, async (context, next) => {
+      const runtimeFeatures = await resolveRuntimeFeatureConfig(context.env);
+      await next();
+      const config = parseCorsOrigins(runtimeFeatures.corsOrigins);
+      const headers = corsHeaders(context.req.header("Origin"), config);
+      for (const [key, value] of Object.entries(headers)) {
+        context.header(key, value);
+      }
+    });
+  }
 
   // CORS preflight for browser-based admin dashboard requests
   app.options("/_airlock/*", async (context) => {
@@ -300,12 +304,14 @@ export function createApp(options: CreateAppOptions = {}) {
   app.post("/v1/chat/completions", handleChatCompletions);
   app.post("/v1/messages", handleMessages);
   app.post("/v1/responses", handleResponses);
+  app.post("/v1beta/models/:rest{.+}", handleGeminiGenerateContent);
 
   // Return 405 for non-POST methods on write endpoints (excluding OPTIONS — handled by CORS)
   for (const path of [
     "/v1/chat/completions",
     "/v1/messages",
-    "/v1/responses"
+    "/v1/responses",
+    "/v1beta/models/:rest{.+}"
   ]) {
     app.on(["GET", "PUT", "PATCH", "DELETE", "HEAD"], path, (c) => {
       const requestId = c.get("requestId");

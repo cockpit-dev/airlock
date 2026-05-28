@@ -259,6 +259,41 @@ describe("stored registry key transitions", () => {
     expect(next.updatedAt).toBe("2026-05-14T02:00:00.000Z");
   });
 
+  it("clears optional metadata fields when the updated key omits them", () => {
+    const existing = parseGatewayKeyRegistryStoredDynamicKey({
+      id: "key_dynamic",
+      label: "Policy Key",
+      valueHash:
+        "1e0baae50a6e2006d894f9e64c53a1317e6032f4ba67df08199d5378c5948ce6",
+      status: "active",
+      notBefore: "2026-05-13T00:00:00.000Z",
+      expiresAt: "2026-05-20T00:00:00.000Z",
+      policy: {
+        blockedExternalModels: ["claude-sonnet-4-5"]
+      },
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: "2026-05-13T01:00:00.000Z"
+    });
+
+    const next = updateStoredGatewayRegistryDynamicKey(
+      existing,
+      {
+        id: existing.id,
+        label: existing.label,
+        valueHash: existing.valueHash,
+        status: existing.status
+      },
+      [],
+      undefined,
+      "2026-05-14T02:00:00.000Z"
+    );
+
+    expect(next.notBefore).toBeUndefined();
+    expect(next.expiresAt).toBeUndefined();
+    expect(next.policy).toBeUndefined();
+    expect(next.updatedAt).toBe("2026-05-14T02:00:00.000Z");
+  });
+
   it("projects stable field-level diffs from stored state transitions", () => {
     const before = parseGatewayKeyRegistryStoredDynamicKey({
       id: "key_dynamic",
@@ -551,7 +586,8 @@ describe("registry payload parsers", () => {
             keyId: "key_dynamic_b",
             label: "Tenant B Key",
             policy: {
-              tier: "pro"
+              tier: "pro",
+              blockedExternalModels: ["claude-sonnet-4-5"]
             }
           }
         ],
@@ -572,7 +608,8 @@ describe("registry payload parsers", () => {
           update: {
             label: "Tenant B Key",
             policy: {
-              tier: "pro"
+              tier: "pro",
+              blockedExternalModels: ["claude-sonnet-4-5"]
             }
           }
         }

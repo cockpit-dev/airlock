@@ -254,6 +254,7 @@ describe("parseGatewayApiKeys", () => {
               tier: "prod",
               tags: ["internal", "critical"],
               allowedExternalModels: ["gpt-4.1-mini", "claude-sonnet-4-5"],
+              blockedExternalModels: ["expensive-model"],
               allowedProviders: ["openai", "anthropic"],
               allowedModelGroups: ["default-chat"],
               requestQuota: {
@@ -289,6 +290,7 @@ describe("parseGatewayApiKeys", () => {
           tier: "prod",
           tags: ["internal", "critical"],
           allowedExternalModels: ["gpt-4.1-mini", "claude-sonnet-4-5"],
+          blockedExternalModels: ["expensive-model"],
           allowedProviders: ["openai", "anthropic"],
           allowedModelGroups: ["default-chat"],
           requestQuota: {
@@ -641,6 +643,42 @@ describe("parseGatewayApiKeys", () => {
     ).toThrow(GatewayError);
   });
 
+  it("rejects invalid blocked external model policy values", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              blockedExternalModels: ["gpt-4.1-mini", ""]
+            }
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
+  it("rejects duplicate blocked external model policy values", () => {
+    expect(() =>
+      parseGatewayApiKeys(
+        JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              blockedExternalModels: ["gpt-4.1-mini", "gpt-4.1-mini"]
+            }
+          }
+        ])
+      )
+    ).toThrow(GatewayError);
+  });
+
   it("allows arbitrary non-empty provider instance ids in provider policy", () => {
     const keys = parseGatewayApiKeys(
       JSON.stringify([
@@ -728,6 +766,7 @@ describe("parseGatewayApiKeyMetadataOverride", () => {
         policy: {
           tier: "prod",
           tags: ["internal"],
+          blockedExternalModels: ["claude-sonnet-4-5"],
           allowedProviders: ["openai"],
           requestQuota: {
             limit: 100,
@@ -743,6 +782,7 @@ describe("parseGatewayApiKeyMetadataOverride", () => {
       policy: {
         tier: "prod",
         tags: ["internal"],
+        blockedExternalModels: ["claude-sonnet-4-5"],
         allowedProviders: ["openai"],
         requestQuota: {
           limit: 100,
@@ -787,6 +827,7 @@ describe("parseGatewayDynamicApiKeyRecord", () => {
         expiresAt: "2026-06-13T00:00:00.000Z",
         policy: {
           tier: "runtime",
+          blockedExternalModels: ["claude-sonnet-4-5"],
           allowedProviders: ["openai"],
           requestQuota: {
             limit: 10,
@@ -803,6 +844,7 @@ describe("parseGatewayDynamicApiKeyRecord", () => {
       expiresAt: "2026-06-13T00:00:00.000Z",
       policy: {
         tier: "runtime",
+        blockedExternalModels: ["claude-sonnet-4-5"],
         allowedProviders: ["openai"],
         requestQuota: {
           limit: 10,

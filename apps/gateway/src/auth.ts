@@ -73,6 +73,14 @@ function resolveAuthorizationHeader(
   if (authorization) return authorization;
   const apiKey = context.req.header("x-api-key");
   if (apiKey) return `Bearer ${apiKey}`;
+  const geminiApiKey = context.req.header("x-goog-api-key");
+  if (geminiApiKey) return `Bearer ${geminiApiKey}`;
+  try {
+    const queryKey = new URL(context.req.url).searchParams.get("key");
+    if (queryKey) return `Bearer ${queryKey}`;
+  } catch {
+    // Ignore malformed request URLs; request routing will handle them later.
+  }
   return undefined;
 }
 
@@ -137,7 +145,7 @@ export async function requireGatewayAuthorization(
 
 export function assertGatewayKeyAllowsModel(
   gatewayApiKey: GatewayApiKeyRecord,
-  externalModel: string,
+  externalModel: string | readonly string[],
   requestId: string,
   modelGroups: Record<string, string[]>
 ) {

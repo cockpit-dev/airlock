@@ -72,18 +72,74 @@ function resolveEffectiveRequestMode(
     | "anthropic_messages"
     | undefined,
   targetProviderType: ProviderId,
-  targetProviderBaseUrl: string,
-  getDescriptor: ProviderCapabilityDescriptorResolver
+  providerProtocols: readonly string[] | undefined,
+  getDescriptor: ProviderCapabilityDescriptorResolver,
+  request: CanonicalRequest,
+  requestId: string
 ): "openai_chat" | "openai_responses" | "anthropic_messages" {
-  if (targetProviderType === "anthropic") return "anthropic_messages";
-  if (baseRequestMode === "openai_chat") return "openai_chat";
-  try {
-    const descriptor = getDescriptor(targetProviderType);
-    if (descriptor.supportsOpenAIResponsesEndpoint) return "openai_responses";
-  } catch {
-    /* fall through */
+  const configuredProtocols = providerProtocols
+    ? new Set(providerProtocols)
+    : undefined;
+
+  if (targetProviderType === "anthropic") {
+    if (configuredProtocols && !configuredProtocols.has("anthropic_messages")) {
+      throw createProviderProtocolUnsupportedError(
+        targetProviderType,
+        "anthropic_messages",
+        requestId
+      );
+    }
+    return "anthropic_messages";
   }
+
+  const descriptor = getDescriptor(targetProviderType);
+  const supportsResponses = descriptor.supportsOpenAIResponsesEndpoint;
+
+  if (configuredProtocols) {
+    if (
+      baseRequestMode === "openai_chat" &&
+      configuredProtocols.has("openai_chat")
+    ) {
+      return "openai_chat";
+    }
+
+    if (configuredProtocols.has("openai_responses") && supportsResponses) {
+      return "openai_responses";
+    }
+
+    if (
+      configuredProtocols.has("openai_chat") &&
+      canExecuteThroughOpenAIChat(request)
+    ) {
+      return "openai_chat";
+    }
+
+    throw createProviderProtocolUnsupportedError(
+      targetProviderType,
+      baseRequestMode ?? "openai_chat",
+      requestId
+    );
+  }
+
+  if (baseRequestMode === "openai_chat") return "openai_chat";
+  if (supportsResponses) return "openai_responses";
   return "openai_chat";
+}
+
+function canExecuteThroughOpenAIChat(request: CanonicalRequest): boolean {
+  const openaiMetadata = request.providerMetadata?.openai;
+  return (
+    request.previousResponseId === undefined &&
+    request.conversationId === undefined &&
+    request.prompt === undefined &&
+    request.reasoningEffort === undefined &&
+    request.reasoningSummary === undefined &&
+    request.responseTruncation === undefined &&
+    request.responseTextVerbosity === undefined &&
+    openaiMetadata?.responsesOutputTextLogprobs !== true &&
+    openaiMetadata?.responsesTopLogprobs === undefined &&
+    openaiMetadata?.responsesIncludeObfuscation === undefined
+  );
 }
 
 const DEFAULT_LATENCY_FRESHNESS_MS = 30_000;
@@ -145,6 +201,24 @@ function createProviderCircuitOpenError(requestId: string): GatewayError {
       category: "routing",
       httpStatus: 503,
       retryable: true,
+      requestId
+    }
+  );
+}
+
+function createProviderProtocolUnsupportedError(
+  provider: string,
+  protocol: string,
+  requestId: string
+): GatewayError {
+  return new GatewayError(
+    `Provider ${provider} does not support requested upstream protocol: ${protocol}`,
+    {
+      code: "provider_protocol_not_supported",
+      category: "routing",
+      httpStatus: 400,
+      retryable: false,
+      provider,
       requestId
     }
   );
@@ -379,6 +453,7 @@ interface ResolvedProviderConfig {
   apiKey: string;
   baseUrl: string;
   defaultMaxTokens?: number;
+  protocols?: string[];
 }
 
 function resolveProviderConfig(
@@ -401,6 +476,9 @@ function resolveProviderConfig(
     baseUrl: provider.baseUrl,
     ...(provider.defaultMaxTokens !== undefined
       ? { defaultMaxTokens: provider.defaultMaxTokens }
+      : {}),
+    ...(provider.protocols !== undefined
+      ? { protocols: provider.protocols }
       : {})
   };
 }
@@ -844,8 +922,10 @@ export async function executeRoutedRequest(
           const effectiveRequestMode = resolveEffectiveRequestMode(
             requestMode,
             providerConfig.type,
-            providerConfig.baseUrl,
-            getProviderDescriptor
+            providerConfig.protocols,
+            getProviderDescriptor,
+            currentAttemptRequest,
+            requestId
           );
           const targetRequestShaping = resolvePerRequestShapingForTarget(
             requestShaping,
@@ -1082,8 +1162,10 @@ export async function* executeRoutedStreamRequest(
           const streamEffectiveRequestMode = resolveEffectiveRequestMode(
             requestMode,
             streamProviderConfig.type,
-            streamProviderConfig.baseUrl,
-            getProviderDescriptor
+            streamProviderConfig.protocols,
+            getProviderDescriptor,
+            currentStreamAttemptRequest,
+            requestId
           );
           const streamContext = {
             requestId,

@@ -1,10 +1,12 @@
 import type {
   AnthropicMessagesRequest,
+  GeminiGenerateContentRequest,
   OpenAIChatCompletionRequest,
   OpenAIResponsesRequest
 } from "@airlock/protocols";
 
 import type {
+  CanonicalToolCall,
   CanonicalRequest,
   CanonicalResponse,
   CanonicalStreamEvent
@@ -91,6 +93,16 @@ interface AnthropicMessagesStreamEncodingState {
   pendingToolStops: number[];
 }
 
+interface GeminiGenerateContentStreamEncodingState {
+  toolCalls: Map<
+    string,
+    {
+      name?: string;
+      arguments: string;
+    }
+  >;
+}
+
 interface OpenAIResponsesEncodedEventBatch {
   events: unknown[];
   nextSequenceNumber: number;
@@ -150,6 +162,14 @@ function encodeCanonicalAnthropicStopReason(
   return finishReason === "max_tokens" ? "max_tokens" : "end_turn";
 }
 
+function encodeCanonicalGeminiFinishReason(
+  finishReason: CanonicalResponse["finishReason"]
+) {
+  if (finishReason === "max_tokens") return "MAX_TOKENS";
+  if (finishReason === "safety") return "SAFETY";
+  return "STOP";
+}
+
 function encodeCanonicalUsage(usage: CanonicalUsageValue) {
   if (!usage) {
     return undefined;
@@ -182,6 +202,18 @@ function encodeCanonicalAnthropicUsage(usage: CanonicalUsageValue) {
   return {
     input_tokens: usage.inputTokens,
     output_tokens: usage.outputTokens
+  };
+}
+
+function encodeCanonicalGeminiUsage(usage: CanonicalUsageValue) {
+  if (!usage) {
+    return undefined;
+  }
+
+  return {
+    promptTokenCount: usage.inputTokens,
+    candidatesTokenCount: usage.outputTokens,
+    totalTokenCount: usage.totalTokens
   };
 }
 
@@ -1089,6 +1121,217 @@ export function normalizeAnthropicMessagesRequest(
   };
 }
 
+const GEMINI_GENERATE_CONTENT_KNOWN_FIELDS = new Set([
+  "model",
+  "stream",
+  "system_instruction",
+  "contents",
+  "tools",
+  "toolConfig",
+  "generationConfig",
+  "airlock"
+]);
+
+function stringifyGeminiFunctionPayload(value: unknown): string {
+  if (value === undefined) return "";
+  return JSON.stringify(value);
+}
+
+function normalizeGeminiTextParts(
+  parts: GeminiGenerateContentRequest["contents"][number]["parts"]
+) {
+  return parts
+    .filter((part) => "text" in part)
+    .map((part) => ("text" in part ? part.text : ""))
+    .join("\n");
+}
+
+function normalizeGeminiToolChoice(
+  request: GeminiGenerateContentRequest
+): CanonicalRequest["toolChoice"] | undefined {
+  const functionCallingConfig = request.toolConfig?.functionCallingConfig;
+  const mode = functionCallingConfig?.mode;
+
+  if (mode === "NONE") return "none";
+  if (mode === "ANY") {
+    const allowedFunctionName = functionCallingConfig.allowedFunctionNames?.[0];
+    return allowedFunctionName
+      ? { type: "tool", name: allowedFunctionName }
+      : "required";
+  }
+  if (mode === "AUTO") return "auto";
+  return undefined;
+}
+
+function normalizeGeminiOutputFormat(
+  generationConfig: GeminiGenerateContentRequest["generationConfig"]
+): CanonicalRequest["outputFormat"] | undefined {
+  if (generationConfig?.responseMimeType !== "application/json") {
+    return undefined;
+  }
+
+  if (generationConfig.responseJsonSchema) {
+    return {
+      type: "json_schema",
+      name: "gemini_response",
+      schema: generationConfig.responseJsonSchema
+    };
+  }
+
+  return {
+    type: "json_object"
+  };
+}
+
+function findLastGeminiToolCallByName(
+  messages: CanonicalRequest["messages"],
+  toolName: string
+): CanonicalToolCall | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== "assistant") {
+      continue;
+    }
+
+    const matchingToolCall = message.toolCalls?.find((toolCall) => {
+      return toolCall.name === toolName;
+    });
+
+    if (matchingToolCall) {
+      return matchingToolCall;
+    }
+  }
+
+  return undefined;
+}
+
+export function normalizeGeminiGenerateContentRequest(
+  request: GeminiGenerateContentRequest & { model: string; stream?: boolean }
+): CanonicalRequest {
+  const passthrough = extractPassthrough(
+    request,
+    GEMINI_GENERATE_CONTENT_KNOWN_FIELDS
+  );
+  const systemText = request.system_instruction
+    ? normalizeGeminiTextParts(request.system_instruction.parts)
+    : "";
+  const messages: CanonicalRequest["messages"] =
+    systemText.length > 0
+      ? [
+          {
+            role: "system",
+            content: systemText
+          }
+        ]
+      : [];
+
+  for (const content of request.contents) {
+    const textParts = normalizeGeminiTextParts(content.parts);
+    const functionCallParts = content.parts.filter(
+      (
+        part
+      ): part is Extract<
+        (typeof content.parts)[number],
+        { functionCall: unknown }
+      > => {
+        return "functionCall" in part;
+      }
+    );
+    const functionResponseParts = content.parts.filter(
+      (
+        part
+      ): part is Extract<
+        (typeof content.parts)[number],
+        { functionResponse: unknown }
+      > => {
+        return "functionResponse" in part;
+      }
+    );
+
+    if (content.role === "model" || functionCallParts.length > 0) {
+      messages.push({
+        role: "assistant",
+        content: textParts,
+        ...(functionCallParts.length > 0
+          ? {
+              toolCalls: functionCallParts.map((part, index) => ({
+                id: `gemini_call_${messages.length}_${index}`,
+                name: part.functionCall.name,
+                arguments: stringifyGeminiFunctionPayload(
+                  part.functionCall.args
+                )
+              }))
+            }
+          : {})
+      });
+      continue;
+    }
+
+    if (functionResponseParts.length > 0) {
+      for (const part of functionResponseParts) {
+        const matchingToolCall = findLastGeminiToolCallByName(
+          messages,
+          part.functionResponse.name
+        );
+        messages.push({
+          role: "tool",
+          toolCallId: matchingToolCall?.id ?? `gemini_tool_${messages.length}`,
+          content: stringifyGeminiFunctionPayload(
+            part.functionResponse.response ?? {}
+          )
+        });
+      }
+    }
+
+    if (textParts.length > 0) {
+      messages.push({
+        role: "user",
+        content: textParts
+      });
+    }
+  }
+
+  const generationConfig = request.generationConfig;
+  const outputFormat = normalizeGeminiOutputFormat(generationConfig);
+  const toolChoice = normalizeGeminiToolChoice(request);
+
+  return {
+    model: request.model,
+    stream: request.stream ?? false,
+    messages,
+    ...(generationConfig?.maxOutputTokens !== undefined
+      ? { maxOutputTokens: generationConfig.maxOutputTokens }
+      : {}),
+    ...(generationConfig?.temperature !== undefined
+      ? { temperature: generationConfig.temperature }
+      : {}),
+    ...(generationConfig?.topP !== undefined
+      ? { topP: generationConfig.topP }
+      : {}),
+    ...(generationConfig?.stopSequences !== undefined
+      ? { stopSequences: generationConfig.stopSequences }
+      : {}),
+    ...(outputFormat !== undefined ? { outputFormat } : {}),
+    ...(request.tools !== undefined
+      ? {
+          tools: request.tools.flatMap((tool) => {
+            return tool.functionDeclarations.map((declaration) => ({
+              name: declaration.name,
+              ...(declaration.description
+                ? { description: declaration.description }
+                : {}),
+              inputSchema: declaration.parameters ?? {
+                type: "object"
+              }
+            }));
+          })
+        }
+      : {}),
+    ...(toolChoice !== undefined ? { toolChoice } : {}),
+    ...(passthrough ? { passthrough } : {})
+  };
+}
+
 export function encodeCanonicalToOpenAIChatStreamChunk(
   event: CanonicalStreamEvent,
   streamId: string,
@@ -1898,6 +2141,144 @@ export function encodeCanonicalToAnthropicMessagesResponse(
       : {}),
     content
   };
+}
+
+export function encodeCanonicalToGeminiGenerateContentResponse(
+  response: CanonicalResponse
+) {
+  const parts = [
+    ...(response.outputText.length > 0 ? [{ text: response.outputText }] : []),
+    ...(response.toolCalls?.map((toolCall) => ({
+      functionCall: {
+        name: toolCall.name,
+        ...(toolCall.arguments.length > 0
+          ? { args: parseToolCallArguments(toolCall.arguments) }
+          : {})
+      }
+    })) ?? [])
+  ];
+
+  return {
+    responseId: response.id,
+    modelVersion: response.model,
+    candidates: [
+      {
+        finishReason: encodeCanonicalGeminiFinishReason(response.finishReason),
+        content: {
+          role: "model" as const,
+          parts
+        }
+      }
+    ],
+    ...(response.usage
+      ? { usageMetadata: encodeCanonicalGeminiUsage(response.usage) }
+      : {})
+  };
+}
+
+export function encodeCanonicalToGeminiGenerateContentStreamEvents(
+  event: CanonicalStreamEvent,
+  state: GeminiGenerateContentStreamEncodingState = {
+    toolCalls: new Map()
+  }
+) {
+  if (event.type === "response_started") {
+    return [
+      {
+        responseId: event.responseId,
+        modelVersion: event.model,
+        candidates: [
+          {
+            content: {
+              role: "model" as const,
+              parts: []
+            }
+          }
+        ]
+      }
+    ];
+  }
+
+  if (event.type === "output_text_delta") {
+    return [
+      {
+        responseId: event.responseId,
+        modelVersion: event.model,
+        candidates: [
+          {
+            content: {
+              role: "model" as const,
+              parts: [
+                {
+                  text: event.delta
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ];
+  }
+
+  if (event.type === "tool_call_delta") {
+    const current = state.toolCalls.get(event.toolCallId) ?? {
+      arguments: ""
+    };
+    current.arguments += event.argumentsDelta;
+    if (event.toolName !== undefined) {
+      current.name = event.toolName;
+    }
+    state.toolCalls.set(event.toolCallId, current);
+
+    return [
+      {
+        responseId: event.responseId,
+        modelVersion: event.model,
+        candidates: [
+          {
+            content: {
+              role: "model" as const,
+              parts: [
+                {
+                  functionCall: {
+                    name: current.name ?? event.toolCallId,
+                    ...(current.arguments.length > 0
+                      ? {
+                          args: parseToolCallArguments(current.arguments)
+                        }
+                      : {})
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ];
+  }
+
+  if (event.type === "response_completed") {
+    return [
+      {
+        responseId: event.responseId,
+        modelVersion: event.model,
+        candidates: [
+          {
+            finishReason: encodeCanonicalGeminiFinishReason(event.finishReason),
+            content: {
+              role: "model" as const,
+              parts: []
+            }
+          }
+        ],
+        ...(event.usage
+          ? { usageMetadata: encodeCanonicalGeminiUsage(event.usage) }
+          : {})
+      }
+    ];
+  }
+
+  return [];
 }
 
 export function encodeCanonicalToAnthropicMessagesStreamEvents(

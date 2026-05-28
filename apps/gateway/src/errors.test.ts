@@ -56,6 +56,24 @@ describe("toMethodNotAllowedResponse", () => {
       "method_not_allowed"
     );
   });
+
+  it("returns Gemini-style 405 for /v1beta paths", async () => {
+    const response = toMethodNotAllowedResponse(
+      "req-4",
+      "/v1beta/models/gemini-2.5-flash:generateContent"
+    );
+    expect(response.status).toBe(405);
+    expect(response.headers.get("x-request-id")).toBe("req-4");
+    expect(response.headers.get("allow")).toBe("POST");
+    const body = (await readJson(response)) as Record<string, unknown>;
+    expect(body).toEqual({
+      error: {
+        code: 405,
+        message: "Method not allowed",
+        status: "METHOD_NOT_ALLOWED"
+      }
+    });
+  });
 });
 
 describe("toNotFoundResponse", () => {
@@ -85,6 +103,20 @@ describe("toNotFoundResponse", () => {
         message: "Not found"
       },
       request_id: "req-2"
+    });
+  });
+
+  it("returns Gemini-style 404 for /v1beta paths", async () => {
+    const response = toNotFoundResponse("req-3", "/v1beta/unknown");
+    expect(response.status).toBe(404);
+    expect(response.headers.get("x-request-id")).toBe("req-3");
+    const body = (await readJson(response)) as Record<string, unknown>;
+    expect(body).toEqual({
+      error: {
+        code: 404,
+        message: "Not found",
+        status: "NOT_FOUND"
+      }
     });
   });
 });
@@ -128,6 +160,38 @@ describe("toErrorResponse", () => {
         message: "Rate limited"
       },
       request_id: "req-2"
+    });
+  });
+
+  it("returns Gemini-style error for GatewayError on /v1beta paths", async () => {
+    const error = new GatewayError("Blocked model", {
+      code: "auth_model_not_allowed",
+      category: "authorization",
+      httpStatus: 403,
+      retryable: false,
+      requestId: "req-gemini"
+    });
+    const response = toErrorResponse(
+      error,
+      "req-gemini",
+      "/v1beta/models/gemini-2.5-flash:generateContent"
+    );
+    expect(response.status).toBe(403);
+    expect(response.headers.get("x-request-id")).toBe("req-gemini");
+    const body = (await readJson(response)) as Record<string, unknown>;
+    expect(body).toEqual({
+      error: {
+        code: 403,
+        message: "Blocked model",
+        status: "PERMISSION_DENIED",
+        details: [
+          {
+            "@type": "type.googleapis.com/airlock.gateway.ErrorInfo",
+            reason: "auth_model_not_allowed",
+            domain: "airlock.gateway"
+          }
+        ]
+      }
     });
   });
 

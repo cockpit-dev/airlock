@@ -3,12 +3,11 @@ import type { Context } from "hono";
 import {
   type CanonicalStreamEvent,
   createStreamReassemblyIterable,
-  encodeCanonicalToAnthropicMessagesStreamEvents,
-  encodeCanonicalToAnthropicMessagesResponse,
-  encodeAnthropicMessagesStreamError,
-  normalizeAnthropicMessagesRequest
+  encodeCanonicalToGeminiGenerateContentResponse,
+  encodeCanonicalToGeminiGenerateContentStreamEvents,
+  normalizeGeminiGenerateContentRequest
 } from "@airlock/canonical";
-import { anthropicMessagesRequestSchema } from "@airlock/protocols";
+import { geminiGenerateContentRequestSchema } from "@airlock/protocols";
 import { resolveModelRoute } from "@airlock/routing";
 import { GatewayError } from "@airlock/shared";
 import type { TelemetrySink } from "@airlock/telemetry";
@@ -20,18 +19,13 @@ import {
 } from "../auth.js";
 import { resolveGatewayConfigWithOverlay } from "../config.js";
 import type { GatewayBindings } from "../env.js";
+import { parseGeminiRequestSchema } from "../gemini-request-validation.js";
 import {
   extractForwardedHeaders,
   extractForwardedQuery,
   parseRequestShapingExtension
 } from "../request-extensions.js";
 import type { CreateAppOptions } from "../app.js";
-import {
-  assertAnthropicForcedToolChoiceMatchesDeclaredTools,
-  assertSupportedAnthropicMetadataSemantics,
-  assertSupportedAnthropicToolsSemantics,
-  parseAnthropicRequestSchema
-} from "../anthropic-request-validation.js";
 import {
   acquireQuotaResources,
   assertGatewayKeyTokenUsageAvailable,
@@ -48,7 +42,59 @@ import {
   executeRoutedStreamRequest
 } from "../provider-execution.js";
 
-export async function handleMessages(
+type GeminiRouteAction = "generateContent" | "streamGenerateContent";
+
+function parseGeminiRouteTarget(
+  rest: string | undefined,
+  requestId: string
+): { model: string; action: GeminiRouteAction } {
+  if (!rest) {
+    throw new GatewayError("Invalid Gemini route", {
+      code: "request_invalid_gemini_route",
+      category: "request",
+      httpStatus: 404,
+      retryable: false,
+      requestId
+    });
+  }
+
+  const separatorIndex = rest.lastIndexOf(":");
+
+  if (separatorIndex <= 0 || separatorIndex === rest.length - 1) {
+    throw new GatewayError("Invalid Gemini route", {
+      code: "request_invalid_gemini_route",
+      category: "request",
+      httpStatus: 404,
+      retryable: false,
+      requestId
+    });
+  }
+
+  const model = rest.slice(0, separatorIndex);
+  const action = rest.slice(separatorIndex + 1);
+
+  if (action !== "generateContent" && action !== "streamGenerateContent") {
+    throw new GatewayError("Invalid Gemini route", {
+      code: "request_invalid_gemini_route",
+      category: "request",
+      httpStatus: 404,
+      retryable: false,
+      requestId
+    });
+  }
+
+  return { model, action };
+}
+
+function stripGeminiControlQuery(
+  query: Record<string, string> | undefined
+): Record<string, string> | undefined {
+  if (!query) return undefined;
+  const { alt: _alt, ...forwarded } = query;
+  return Object.keys(forwarded).length > 0 ? forwarded : undefined;
+}
+
+export async function handleGeminiGenerateContent(
   context: Context<{
     Bindings: GatewayBindings;
     Variables: {
@@ -65,6 +111,10 @@ export async function handleMessages(
   }>
 ): Promise<Response> {
   const requestId = context.get("requestId");
+  const { model, action } = parseGeminiRouteTarget(
+    context.req.param("rest"),
+    requestId
+  );
   const config = await resolveGatewayConfigWithOverlay(context.env);
   const requestStartedAt = context.get("requestStartedAt");
   const telemetrySink = context.get("telemetrySink");
@@ -85,9 +135,6 @@ export async function handleMessages(
     });
   }
 
-  // Advisory body size check via Content-Length header.
-  // Chunked transfer encoding (no Content-Length) relies on the
-  // Cloudflare Workers platform body size limit as a safety net.
   const contentLength = Number(context.req.header("content-length"));
   if (
     Number.isFinite(contentLength) &&
@@ -114,32 +161,34 @@ export async function handleMessages(
       requestId
     });
   }
-  assertSupportedAnthropicMetadataSemantics(json, requestId);
-  assertSupportedAnthropicToolsSemantics(json, requestId);
-  assertAnthropicForcedToolChoiceMatchesDeclaredTools(json, requestId);
-  const parsed = parseAnthropicRequestSchema(
-    anthropicMessagesRequestSchema,
+
+  const parsed = parseGeminiRequestSchema(
+    geminiGenerateContentRequestSchema,
     json,
     requestId
   );
-  const route = resolveModelRoute(parsed.model, config.modelAliases, requestId);
+  const stream = action === "streamGenerateContent";
+  const route = resolveModelRoute(model, config.modelAliases, requestId);
   assertGatewayKeyAllowsRoute(gatewayApiKey, route, requestId);
   assertGatewayKeyAllowsModel(
     gatewayApiKey,
-    [route.externalModel, parsed.model],
+    [route.externalModel, model],
     requestId,
     config.modelGroups
   );
-  const canonicalRequest = normalizeAnthropicMessagesRequest({
+
+  const canonicalRequest = normalizeGeminiGenerateContentRequest({
     ...parsed,
-    model: route.target.providerModel
+    model: route.target.providerModel,
+    stream
   });
   const requestShaping = parseRequestShapingExtension(
     parsed.airlock?.requestShaping
   );
   const forwardedHeaders = extractForwardedHeaders(context.req.raw.headers);
-  const forwardedQuery = extractForwardedQuery(context.req.url);
-  const requestMode = "anthropic_messages" as const;
+  const forwardedQuery = stripGeminiControlQuery(
+    extractForwardedQuery(context.req.url)
+  );
 
   const quota = await acquireQuotaResources({
     env: context.env,
@@ -157,7 +206,7 @@ export async function handleMessages(
   const telemetryBase = {
     telemetrySink,
     requestId,
-    routePath: "/v1/messages",
+    routePath: `/v1beta/models/:model:${action}`,
     mode: config.mode,
     startedAt: requestStartedAt,
     gatewayApiKey,
@@ -172,15 +221,10 @@ export async function handleMessages(
 
   context.set("_airlock_metrics_provider", route.target.provider);
   context.set("_airlock_metrics_model", route.target.providerModel);
-  context.set("_airlock_metrics_stream", canonicalRequest.stream);
+  context.set("_airlock_metrics_stream", stream);
 
-  if (canonicalRequest.stream) {
+  if (stream) {
     const encoder = new TextEncoder();
-    const anthropicStreamEncodingState = {
-      startedTextBlock: false,
-      startedToolBlocks: [] as number[],
-      pendingToolStops: [] as number[]
-    };
     let streamUsage:
       | { inputTokens: number; outputTokens: number; totalTokens: number }
       | undefined;
@@ -191,7 +235,7 @@ export async function handleMessages(
         config,
         gatewayApiKey,
         requestId,
-        requestMode,
+        requestMode: "openai_chat",
         signal: context.req.raw.signal,
         ...(quota.circuitBreakerBackend
           ? { circuitBreakerBackend: quota.circuitBreakerBackend }
@@ -209,7 +253,7 @@ export async function handleMessages(
     );
     const reassembledStream = createStreamReassemblyIterable(
       streamExecution,
-      `msg_${requestId}`,
+      `gemini_${requestId}`,
       route.target.providerModel
     );
     const streamIterator = reassembledStream[Symbol.asyncIterator]();
@@ -221,6 +265,9 @@ export async function handleMessages(
 
     const writeStreamEvent = async (
       event: CanonicalStreamEvent,
+      state: Parameters<
+        typeof encodeCanonicalToGeminiGenerateContentStreamEvents
+      >[1],
       controller: ReadableStreamDefaultController<Uint8Array>
     ) => {
       if (event.type === "response_completed") {
@@ -242,16 +289,12 @@ export async function handleMessages(
         }
       }
 
-      for (const anthropicEvent of encodeCanonicalToAnthropicMessagesStreamEvents(
+      for (const geminiEvent of encodeCanonicalToGeminiGenerateContentStreamEvents(
         event,
-        anthropicStreamEncodingState
+        state
       )) {
         controller.enqueue(
-          encoder.encode(
-            `event: ${anthropicEvent.type}\ndata: ${JSON.stringify(
-              anthropicEvent
-            )}\n\n`
-          )
+          encoder.encode(`data: ${JSON.stringify(geminiEvent)}\n\n`)
         );
       }
     };
@@ -279,9 +322,17 @@ export async function handleMessages(
 
     const responseStream = new ReadableStream<Uint8Array>({
       async start(controller) {
+        const geminiStreamEncodingState = {
+          toolCalls: new Map()
+        };
+
         try {
           if (firstEvent) {
-            await writeStreamEvent(firstEvent, controller);
+            await writeStreamEvent(
+              firstEvent,
+              geminiStreamEncodingState,
+              controller
+            );
           }
 
           while (true) {
@@ -291,7 +342,11 @@ export async function handleMessages(
               break;
             }
 
-            await writeStreamEvent(nextChunk.value, controller);
+            await writeStreamEvent(
+              nextChunk.value,
+              geminiStreamEncodingState,
+              controller
+            );
           }
 
           emitSuccessTelemetry(telemetryBase, true, 200, streamUsage);
@@ -300,11 +355,20 @@ export async function handleMessages(
           await handleStreamingError(error);
           try {
             controller.enqueue(
-              encoder.encode(encodeAnthropicMessagesStreamError(error))
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  error: {
+                    message:
+                      error instanceof Error
+                        ? error.message
+                        : "Internal server error"
+                  }
+                })}\n\n`
+              )
             );
             controller.close();
           } catch {
-            // Controller may already be closed or errored
+            // Controller may already be closed or errored.
           }
         } finally {
           releaseStreamResources(
@@ -334,7 +398,6 @@ export async function handleMessages(
         "cache-control": "no-cache",
         connection: "keep-alive",
         "x-accel-buffering": "no",
-        "request-id": requestId,
         "x-request-id": requestId,
         ...quotaRateLimitHeaders(quota)
       }
@@ -348,7 +411,7 @@ export async function handleMessages(
       config,
       gatewayApiKey,
       requestId,
-      requestMode,
+      requestMode: "openai_chat",
       signal: context.req.raw.signal,
       ...(quota.circuitBreakerBackend
         ? { circuitBreakerBackend: quota.circuitBreakerBackend }
@@ -394,7 +457,7 @@ export async function handleMessages(
   emitSuccessTelemetry(telemetryBase, false, 200, canonicalResponse.usage);
 
   return context.json(
-    encodeCanonicalToAnthropicMessagesResponse(canonicalResponse),
+    encodeCanonicalToGeminiGenerateContentResponse(canonicalResponse),
     200,
     {
       "x-request-id": requestId,

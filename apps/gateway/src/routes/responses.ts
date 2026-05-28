@@ -133,7 +133,7 @@ export async function handleResponses(
   assertGatewayKeyAllowsRoute(gatewayApiKey, route, requestId);
   assertGatewayKeyAllowsModel(
     gatewayApiKey,
-    route.externalModel,
+    [route.externalModel, parsed.model],
     requestId,
     config.modelGroups
   );

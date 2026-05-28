@@ -26,6 +26,7 @@ export interface GatewayApiKeyPolicy {
   tier?: string;
   tags?: string[];
   allowedExternalModels?: string[];
+  blockedExternalModels?: string[];
   allowedProviders?: string[];
   allowedModelGroups?: string[];
   requestQuota?: GatewayApiKeyRequestQuotaPolicy;
@@ -425,6 +426,32 @@ function parseGatewayApiKeyPolicy(
     }
 
     policy.allowedExternalModels = allowedExternalModels;
+  }
+
+  if (value.blockedExternalModels !== undefined) {
+    if (!Array.isArray(value.blockedExternalModels)) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy blockedExternalModels must be an array"
+      );
+    }
+
+    const blockedExternalModels = value.blockedExternalModels.map((model) => {
+      if (typeof model !== "string" || model.trim().length === 0) {
+        throw createInvalidGatewayKeyConfigError(
+          "Gateway API key policy blockedExternalModels must contain non-empty strings"
+        );
+      }
+
+      return model.trim();
+    });
+
+    if (new Set(blockedExternalModels).size !== blockedExternalModels.length) {
+      throw createInvalidGatewayKeyConfigError(
+        "Gateway API key policy blockedExternalModels must be unique"
+      );
+    }
+
+    policy.blockedExternalModels = blockedExternalModels;
   }
 
   if (value.allowedProviders !== undefined) {

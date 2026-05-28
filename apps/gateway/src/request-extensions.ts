@@ -8,6 +8,7 @@ const GATEWAY_RESERVED_HEADERS = new Set([
   "content-type",
   "content-length",
   "host",
+  "x-goog-api-key",
   "connection",
   "accept",
   "accept-encoding",
@@ -49,6 +50,9 @@ export function extractForwardedQuery(
   const searchParams = new URLSearchParams(url.slice(queryIndex + 1));
   const result: Record<string, string> = {};
   searchParams.forEach((value, key) => {
+    if (key === "key") {
+      return;
+    }
     result[key] = value;
   });
   return Object.keys(result).length > 0 ? result : undefined;

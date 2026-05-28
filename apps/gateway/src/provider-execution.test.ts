@@ -885,6 +885,160 @@ describe("executeRoutedRequest", () => {
     expect(response.outputText).toBe("hello from anthropic");
   });
 
+  it("uses OpenAI chat mode when a provider explicitly supports only chat completions", async () => {
+    const route: ModelRoute = {
+      externalModel: "glm-5.1",
+      target: {
+        provider: "glm",
+        providerModel: "glm-5.1"
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "glm-5.1",
+      stream: false,
+      maxOutputTokens: 256,
+      messages: [
+        {
+          role: "user",
+          content: "Say OK."
+        }
+      ]
+    };
+    const fetcher = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "glm-5.1",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "OK"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const response = await executeRoutedRequest(route, request, {
+      config: normalizeTestGatewayConfig({
+        mode: "free",
+        providerTimeoutMs: 1000,
+        providerMaxRetries: 0,
+        providerRetryBackoffMs: 0,
+        providerStreamIdleTimeoutMs: 15_000,
+        maxRequestBodyBytes: 10_485_760,
+        modelGroups: {},
+        gatewayApiKeys: [],
+        routingLatencyFreshnessMs: 30_000,
+        routingCostFreshnessMs: 30_000,
+        routingFailureFreshnessMs: 30_000,
+        routingRecoveryWindowMs: 30_000,
+        modelAliases: [],
+        providers: [
+          {
+            id: "glm",
+            type: "openai",
+            apiKey: "glm-secret",
+            baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+            protocols: ["openai_chat"]
+          }
+        ]
+      }),
+      requestId: "req_glm_chat_only",
+      requestMode: "anthropic_messages",
+      gatewayApiKey: {
+        id: "key_any",
+        label: "Any Provider",
+        value: "gateway-secret",
+        status: "active"
+      },
+      fetcher
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions"
+    );
+    expect(response.outputText).toBe("OK");
+  });
+
+  it("fails closed instead of downgrading Responses-only request semantics to OpenAI chat", async () => {
+    const route: ModelRoute = {
+      externalModel: "glm-5.1",
+      target: {
+        provider: "glm",
+        providerModel: "glm-5.1"
+      }
+    };
+    const request: CanonicalRequest = {
+      model: "glm-5.1",
+      stream: false,
+      previousResponseId: "resp_previous",
+      messages: [
+        {
+          role: "user",
+          content: "Continue."
+        }
+      ]
+    };
+    const fetcher = vi.fn();
+
+    await expect(
+      executeRoutedRequest(route, request, {
+        config: normalizeTestGatewayConfig({
+          mode: "free",
+          providerTimeoutMs: 1000,
+          providerMaxRetries: 0,
+          providerRetryBackoffMs: 0,
+          providerStreamIdleTimeoutMs: 15_000,
+          maxRequestBodyBytes: 10_485_760,
+          modelGroups: {},
+          gatewayApiKeys: [],
+          routingLatencyFreshnessMs: 30_000,
+          routingCostFreshnessMs: 30_000,
+          routingFailureFreshnessMs: 30_000,
+          routingRecoveryWindowMs: 30_000,
+          modelAliases: [],
+          providers: [
+            {
+              id: "glm",
+              type: "openai",
+              apiKey: "glm-secret",
+              baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+              protocols: ["openai_chat"]
+            }
+          ]
+        }),
+        requestId: "req_glm_chat_only_responses_feature",
+        requestMode: "openai_responses",
+        gatewayApiKey: {
+          id: "key_any",
+          label: "Any Provider",
+          value: "gateway-secret",
+          status: "active"
+        },
+        fetcher
+      })
+    ).rejects.toMatchObject({
+      code: "provider_protocol_not_supported",
+      category: "routing",
+      httpStatus: 400
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("returns the primary provider error when later fallback targets are filtered out by key policy", async () => {
     const route: ModelRoute = {
       externalModel: "assistant-default",

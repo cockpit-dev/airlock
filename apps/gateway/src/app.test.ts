@@ -13100,6 +13100,272 @@ describe("gateway app", () => {
     );
   });
 
+  it("can update registry-owned keys to block and unblock specific models", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "claude-sonnet-4-5",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello runtime"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    const bulkCreateResponse = await app.request(
+      "http://localhost/_airlock/keys/bulk-create",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          keys: [
+            {
+              id: "key_dynamic_policy_update",
+              label: "Dynamic Policy Update Key",
+              valueHash:
+                "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+              status: "active"
+            }
+          ]
+        })
+      },
+      bindings
+    );
+
+    expect(bulkCreateResponse.status).toBe(200);
+
+    const blockedUpdateResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic_policy_update",
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          policy: {
+            blockedExternalModels: ["claude-sonnet-4-5"]
+          },
+          reason: "disable expensive model"
+        })
+      },
+      bindings
+    );
+
+    expect(blockedUpdateResponse.status).toBe(200);
+    await expect(readJson(blockedUpdateResponse)).resolves.toMatchObject({
+      key: {
+        policy: {
+          blockedExternalModels: ["claude-sonnet-4-5"]
+        }
+      }
+    });
+
+    const blockedModelResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer runtime-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          stream: false,
+          messages: [{ role: "user", content: "hi key a" }]
+        })
+      },
+      bindings
+    );
+
+    expect(blockedModelResponse.status).toBe(403);
+
+    const unblockedUpdateResponse = await app.request(
+      "http://localhost/_airlock/keys/key_dynamic_policy_update",
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          policy: null,
+          reason: "reenable all models"
+        })
+      },
+      bindings
+    );
+
+    expect(unblockedUpdateResponse.status).toBe(200);
+
+    const unblockedModelResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer runtime-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          stream: false,
+          messages: [{ role: "user", content: "hi key a" }]
+        })
+      },
+      bindings
+    );
+
+    expect(unblockedModelResponse.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("can bulk create registry-owned keys with blocked model policy and enforce it immediately", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello runtime"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const bindings = {
+      ...createBindings(),
+      AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
+      AIRLOCK_GATEWAY_KEY_REGISTRY: createRegistryNamespace(),
+      AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
+    };
+
+    const bulkCreateResponse = await app.request(
+      "http://localhost/_airlock/keys/bulk-create",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer admin-secret"
+        },
+        body: JSON.stringify({
+          keys: [
+            {
+              id: "key_dynamic_blocked_model",
+              label: "Dynamic Blocked Model Key",
+              valueHash:
+                "2443a92e70e0b308401944a08a07bf32219e468942304770f9e63cc06fed5f16",
+              status: "active",
+              policy: {
+                blockedExternalModels: ["claude-sonnet-4-5"]
+              }
+            }
+          ],
+          actor: "ops@example.com"
+        })
+      },
+      bindings
+    );
+
+    expect(bulkCreateResponse.status).toBe(200);
+    await expect(readJson(bulkCreateResponse)).resolves.toMatchObject({
+      keys: [
+        {
+          keyId: "key_dynamic_blocked_model",
+          key: {
+            policy: {
+              blockedExternalModels: ["claude-sonnet-4-5"]
+            }
+          }
+        }
+      ]
+    });
+
+    const unblockedResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer runtime-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi key a" }]
+        })
+      },
+      bindings
+    );
+
+    expect(unblockedResponse.status).toBe(200);
+
+    const blockedResponse = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer runtime-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          stream: false,
+          messages: [{ role: "user", content: "hi key a" }]
+        })
+      },
+      bindings
+    );
+
+    expect(blockedResponse.status).toBe(403);
+    await expect(readJson(blockedResponse)).resolves.toMatchObject({
+      error: {
+        code: "auth_model_not_allowed",
+        type: "authorization"
+      }
+    });
+  });
+
   it("records explicit reason metadata on bulk create audit events", async () => {
     const app = createApp({ fetcher: vi.fn() });
     const bindings = {
@@ -15806,6 +16072,112 @@ describe("gateway app", () => {
     });
   });
 
+  it("rejects authenticated keys whose policy blocks the requested external model", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              blockedExternalModels: ["claude-sonnet-4-5"]
+            }
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(403);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_model_not_allowed",
+        type: "authorization"
+      }
+    });
+  });
+
+  it("allows authenticated keys to access unblocked external models by default", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "hello there"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              blockedExternalModels: ["claude-sonnet-4-5"]
+            }
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("allows authenticated keys to access explicitly allowed external models", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
@@ -16071,6 +16443,127 @@ describe("gateway app", () => {
       }
     });
     expect(response.headers.get("request-id")).toBeTruthy();
+  });
+
+  it("returns a Gemini-compatible authorization error for blocked generateContent model access", async () => {
+    const app = createApp({ fetcher: vi.fn() });
+
+    const response = await app.request(
+      "http://localhost/v1beta/models/claude-sonnet-4-5:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: "hi" }]
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              blockedExternalModels: ["claude-sonnet-4-5"]
+            }
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(403);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: 403,
+        status: "PERMISSION_DENIED",
+        details: [
+          {
+            reason: "auth_model_not_allowed"
+          }
+        ]
+      }
+    });
+    expect(response.headers.get("request-id")).toBeTruthy();
+  });
+
+  it("rejects provider-addressed model requests when the key policy blocks the requested model id", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello"
+            }
+          ],
+          usage: {
+            input_tokens: 5,
+            output_tokens: 2
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "anthropic/claude-sonnet-4-5",
+          stream: false,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_GATEWAY_API_KEYS: JSON.stringify([
+          {
+            id: "key_1",
+            label: "Gateway Key 1",
+            value: "gateway-secret",
+            status: "active",
+            policy: {
+              blockedExternalModels: ["anthropic/claude-sonnet-4-5"]
+            }
+          }
+        ])
+      }
+    );
+
+    expect(response.status).toBe(403);
+    await expect(readJson(response)).resolves.toMatchObject({
+      error: {
+        code: "auth_model_not_allowed",
+        type: "authorization"
+      }
+    });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("returns an OpenAI-compatible authorization error for denied primary provider access", async () => {
@@ -25172,6 +25665,380 @@ describe("gateway app", () => {
       object: "chat.completion",
       model: "gemini-2.5-flash"
     });
+  });
+
+  it("routes Gemini generateContent ingress to Anthropic and returns a Gemini-compatible payload", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "msg_123",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5",
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: "hello from anthropic"
+            }
+          ],
+          usage: {
+            input_tokens: 7,
+            output_tokens: 3
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1beta/models/claude-sonnet-4-5:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: "hello"
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            maxOutputTokens: 64,
+            temperature: 0.2,
+            topP: 0.9,
+            stopSequences: ["END"]
+          }
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe("https://api.anthropic.com/v1/messages");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      model: "claude-sonnet-4-5",
+      max_tokens: 64,
+      temperature: 0.2,
+      top_p: 0.9,
+      stop_sequences: ["END"],
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      responseId: "msg_123",
+      modelVersion: "claude-sonnet-4-5",
+      candidates: [
+        {
+          finishReason: "STOP",
+          content: {
+            role: "model",
+            parts: [
+              {
+                text: "hello from anthropic"
+              }
+            ]
+          }
+        }
+      ],
+      usageMetadata: {
+        promptTokenCount: 7,
+        candidatesTokenCount: 3,
+        totalTokenCount: 10
+      }
+    });
+  });
+
+  it("routes Gemini generateContent ingress to Gemini upstream when configured", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          responseId: "gemini-response-123",
+          modelVersion: "gemini-2.5-flash",
+          candidates: [
+            {
+              finishReason: "STOP",
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "hello from gemini"
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1beta/models/gemini-2.5-flash:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-goog-api-key": "gateway-secret"
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: "hello"
+                }
+              ]
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_MODEL_ALIASES:
+          "gpt-4.1-mini=openai:gpt-4.1-mini,claude-sonnet-4-5=anthropic:claude-sonnet-4-5,gemini-2.5-flash=gemini:gemini-2.5-flash"
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    );
+    expect(init.headers).toMatchObject({
+      "x-goog-api-key": "gemini-secret"
+    });
+    expect(JSON.parse(init.body as string)).toEqual({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: "hello"
+            }
+          ]
+        }
+      ]
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      responseId: "gemini-response-123",
+      modelVersion: "gemini-2.5-flash",
+      candidates: [
+        {
+          finishReason: "STOP",
+          content: {
+            role: "model",
+            parts: [
+              {
+                text: "hello from gemini"
+              }
+            ]
+          }
+        }
+      ]
+    });
+  });
+
+  it("authenticates Gemini generateContent ingress with the key query parameter", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "OK"
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1beta/models/gpt-4.1-mini:generateContent?key=gateway-secret&alt=json",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: "hello" }]
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    const [url] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe("https://api.openai.com/v1/chat/completions");
+    await expect(readJson(response)).resolves.toMatchObject({
+      responseId: "chatcmpl_123",
+      modelVersion: "gpt-4.1-mini",
+      candidates: [
+        {
+          content: {
+            role: "model",
+            parts: [
+              {
+                text: "OK"
+              }
+            ]
+          }
+        }
+      ]
+    });
+  });
+
+  it("streams Gemini streamGenerateContent ingress through OpenAI and returns Gemini SSE", async () => {
+    const encoder = new TextEncoder();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                [
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}\n\n',
+                  'data: {"id":"chatcmpl_123","object":"chat.completion.chunk","created":1,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}\n\n',
+                  "data: [DONE]\n\n"
+                ].join("")
+              )
+            );
+            controller.close();
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+
+    const response = await app.request(
+      "http://localhost/v1beta/models/gpt-4.1-mini:streamGenerateContent?alt=sse",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: "hello"
+                }
+              ]
+            }
+          ]
+        })
+      },
+      createBindings()
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe("https://api.openai.com/v1/chat/completions");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      model: "gpt-4.1-mini",
+      stream: true,
+      messages: [
+        {
+          role: "user",
+          content: "hello"
+        }
+      ]
+    });
+    const body = await readText(response);
+    const events = parseSseDataEvents(body);
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          modelVersion: "gpt-4.1-mini",
+          candidates: [
+            expect.objectContaining({
+              content: {
+                role: "model",
+                parts: [
+                  {
+                    text: "hello"
+                  }
+                ]
+              }
+            })
+          ]
+        }),
+        expect.objectContaining({
+          candidates: [
+            expect.objectContaining({
+              finishReason: "STOP"
+            })
+          ],
+          usageMetadata: {
+            promptTokenCount: 5,
+            candidatesTokenCount: 2,
+            totalTokenCount: 7
+          }
+        })
+      ])
+    );
   });
 
   it("applies route-level signing to live Gemini chat completions requests", async () => {
@@ -35346,6 +36213,128 @@ describe("gateway app", () => {
     });
   });
 
+  it("routes anthropic messages to OpenAI chat when the target provider only supports chat completions", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl_123",
+          object: "chat.completion",
+          created: 1,
+          model: "glm-5.1",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "OK"
+              }
+            }
+          ],
+          usage: {
+            prompt_tokens: 7,
+            completion_tokens: 2,
+            total_tokens: 9
+          }
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        }
+      )
+    );
+    const app = createApp({ fetcher });
+    const configStoreNamespace = createConfigStoreNamespace({
+      sections: {
+        providers: {
+          data: [
+            {
+              id: "glm",
+              type: "openai",
+              apiKey: "glm-secret",
+              baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+              protocols: ["openai_chat"],
+              models: ["glm-5.1"]
+            }
+          ],
+          updatedAt: 1,
+          updatedBy: "system",
+          version: 1
+        },
+        routes: {
+          data: [
+            {
+              externalModel: "glm-5.1",
+              target: {
+                provider: "glm",
+                providerModel: "glm-5.1"
+              }
+            }
+          ],
+          updatedAt: 1,
+          updatedBy: "system",
+          version: 1
+        }
+      },
+      globalVersion: 2
+    });
+
+    const response = await app.request(
+      "http://localhost/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer gateway-secret"
+        },
+        body: JSON.stringify({
+          model: "glm-5.1",
+          max_tokens: 256,
+          messages: [
+            {
+              role: "user",
+              content: "Say OK"
+            }
+          ]
+        })
+      },
+      {
+        ...createBindings(),
+        AIRLOCK_PROVIDERS: undefined,
+        AIRLOCK_MODEL_ALIASES: undefined,
+        AIRLOCK_CONFIG_STORE: configStoreNamespace
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe(
+      "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions"
+    );
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      model: "glm-5.1",
+      messages: [
+        {
+          role: "user",
+          content: "Say OK"
+        }
+      ]
+    });
+    await expect(readJson(response)).resolves.toMatchObject({
+      type: "message",
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "OK"
+        }
+      ]
+    });
+  });
+
   it("rejects anthropic any tool_choice when no tools are declared", async () => {
     const app = createApp({ fetcher: vi.fn() });
 
@@ -37090,6 +38079,73 @@ describe("GET /_airlock/routing/health", () => {
         { ...createBindings(), AIRLOCK_CORS_ORIGINS: "*" }
       );
 
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    });
+
+    it("adds CORS headers to Gemini-compatible /v1beta/* responses", async () => {
+      const fetcher = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl_123",
+            object: "chat.completion",
+            created: 1,
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "stop",
+                message: {
+                  role: "assistant",
+                  content: "hello"
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json"
+            }
+          }
+        )
+      );
+      const app = createApp({ fetcher });
+      const response = await app.request(
+        "http://localhost/v1beta/models/gpt-4.1-mini:generateContent",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://example.com",
+            "x-goog-api-key": "gateway-secret"
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [{ text: "hello" }]
+              }
+            ]
+          })
+        },
+        { ...createBindings(), AIRLOCK_CORS_ORIGINS: "*" }
+      );
+
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    });
+
+    it("handles preflight OPTIONS for Gemini-compatible /v1beta/* routes", async () => {
+      const app = createApp({ fetcher: vi.fn() });
+      const response = await app.request(
+        "http://localhost/v1beta/models/gpt-4.1-mini:generateContent",
+        {
+          method: "OPTIONS",
+          headers: { origin: "https://example.com" }
+        },
+        { ...createBindings(), AIRLOCK_CORS_ORIGINS: "*" }
+      );
+
+      expect(response.status).toBe(204);
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
     });
 

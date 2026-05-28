@@ -77,6 +77,7 @@ export interface GatewayProviderEntry {
   defaultModel?: string;
   defaultMaxTokens?: number;
   models?: string[];
+  protocols?: string[];
 }
 
 interface ParsedBusinessConfigInput {
@@ -424,6 +425,7 @@ function normalizeProviderCatalog(data: unknown): GatewayProviderEntry[] {
     }
 
     const models = normalizeOptionalStringList(entry.models);
+    const protocols = normalizeOptionalStringList(entry.protocols);
 
     providers.push({
       id,
@@ -438,7 +440,8 @@ function normalizeProviderCatalog(data: unknown): GatewayProviderEntry[] {
       entry.defaultMaxTokens > 0
         ? { defaultMaxTokens: entry.defaultMaxTokens }
         : {}),
-      ...(models ? { models } : {})
+      ...(models ? { models } : {}),
+      ...(protocols ? { protocols } : {})
     });
   }
 
@@ -1037,6 +1040,7 @@ function validateProviderEntry(data: unknown): DashboardProviderEntry {
     );
   }
   const models = normalizeOptionalStringList(entry.models);
+  const protocols = normalizeOptionalStringList(entry.protocols);
 
   return {
     id: entry.id.trim(),
@@ -1049,7 +1053,8 @@ function validateProviderEntry(data: unknown): DashboardProviderEntry {
     ...(typeof entry.defaultMaxTokens === "number" && entry.defaultMaxTokens > 0
       ? { defaultMaxTokens: entry.defaultMaxTokens }
       : {}),
-    ...(models ? { models } : {})
+    ...(models ? { models } : {}),
+    ...(protocols ? { protocols } : {})
   };
 }
 
