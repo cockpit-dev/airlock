@@ -4,7 +4,7 @@ A production-grade AI gateway built on [Cloudflare Workers](https://workers.clou
 
 Airlock normalizes OpenAI, Anthropic, and Google Gemini APIs behind a unified
 request pipeline with first-class support for streaming, intelligent routing,
-key governance, and a built-in admin dashboard.
+key governance, and a built-in admin console.
 
 **[中文文档](./README.zh-CN.md)**
 
@@ -40,9 +40,9 @@ key governance, and a built-in admin dashboard.
 - **Admin API** — Authenticated admin surface covering status, metrics,
   redacted config, raw config-store management, provider model discovery,
   routing health, and full key lifecycle management.
-- **Dashboard** — SvelteKit 5 control plane UI with token login, optional
-  Google OAuth, metrics, key management, providers, routes, accounts, routing
-  health, and an OpenAI Responses playground.
+- **Console** — React + HeroUI control plane UI with token login, metrics, key
+  management, providers, routes, accounts, routing health, and an OpenAI
+  Responses playground.
 - **Production hardening** — Request body size limits, Content-Type validation,
   CORS, timing-safe admin auth, per-IP rate limiting, client abort signal
   forwarding, empty stream detection, SSE buffer limits, and centralized error
@@ -82,7 +82,7 @@ key governance, and a built-in admin dashboard.
 | Package                    | Purpose                                                                                  |
 | -------------------------- | ---------------------------------------------------------------------------------------- |
 | `apps/gateway`             | Cloudflare Worker entry point, HTTP routing, admin API                                   |
-| `apps/dashboard`           | SvelteKit 5 admin dashboard (Cloudflare Pages)                                           |
+| `apps/console`             | React admin console (Cloudflare Pages)                                                   |
 | `packages/protocols`       | External protocol schemas and codecs (OpenAI Chat, OpenAI Responses, Anthropic Messages) |
 | `packages/canonical`       | Canonical request/response model, cross-protocol normalization, stream reassembly        |
 | `packages/providers`       | Provider adapters (OpenAI, Anthropic, Gemini) with capability descriptors                |
@@ -118,18 +118,18 @@ cp apps/gateway/.dev.vars.example apps/gateway/.dev.vars
 ```
 
 2. Edit `apps/gateway/.dev.vars`.
-   Minimal dashboard-managed startup:
+   Minimal console-managed startup:
 
 ```bash
 AIRLOCK_INTERNAL_ADMIN_TOKEN=dev-admin-token
 ```
 
 With the Durable Object bindings from `apps/gateway/wrangler.jsonc`, this is
-enough to boot the gateway, connect from the dashboard, and then configure
+enough to boot the gateway, connect from the console, and then configure
 providers, routes, caller keys, CORS, logging, limits, and policies in the UI.
 
 Env-only fallback is still supported for deployments that intentionally avoid
-dashboard-managed business config:
+console-managed business config:
 
 ```bash
 AIRLOCK_GATEWAY_API_KEYS=your-secret-key-here
@@ -143,10 +143,10 @@ AIRLOCK_MODEL_ALIASES='gpt-4.1-mini=openai-prod:gpt-4.1-mini'
 pnpm --filter @airlock/gateway dev
 ```
 
-4. In a separate terminal, start the dashboard:
+4. In a separate terminal, start the console:
 
 ```bash
-pnpm --filter @airlock/dashboard dev
+pnpm --filter @airlock/console dev
 ```
 
 ### Verify
@@ -161,7 +161,7 @@ pnpm lint          # ESLint across all packages
 pnpm typecheck     # TypeScript type checking
 pnpm test          # Vitest across all packages
 pnpm build         # Build all packages and apps
-pnpm e2e           # Playwright dashboard E2E tests
+pnpm e2e           # Playwright console E2E tests
 pnpm run audit     # Production dependency audit
 ```
 
@@ -170,10 +170,10 @@ pnpm run audit     # Production dependency audit
 ## Configuration
 
 Airlock supports two configuration layers. The default production path is a
-minimal bootstrap plus dashboard-managed business config:
+minimal bootstrap plus console-managed business config:
 
 - Bootstrap env config for runtime bindings, admin auth, and safe fallbacks
-- Dashboard overlay config from `AIRLOCK_CONFIG_STORE` for providers, routes,
+- Console overlay config from `AIRLOCK_CONFIG_STORE` for providers, routes,
   key policies, shaping, signing, model groups, limits, and feature flags
 - The dynamic key registry is enabled automatically when the
   `AIRLOCK_GATEWAY_KEY_REGISTRY` Durable Object binding exists
@@ -212,19 +212,8 @@ defaults.
 | `AIRLOCK_CORS_ORIGINS`             | Env fallback CORS origins                          | —       |
 | `AIRLOCK_REQUEST_LOGGING`          | Env fallback structured logging                    | `false` |
 | `AIRLOCK_IP_RATE_LIMIT_POLICY`     | Env fallback IP rate limit policy (JSON)           | —       |
-| `AIRLOCK_CONFIG_STORE`             | Dashboard overlay config store binding             | —       |
+| `AIRLOCK_CONFIG_STORE`             | Console overlay config store binding               | —       |
 | `AIRLOCK_GOOGLE_SUPER_ADMIN_EMAIL` | Map matching Google OAuth user to super admin      | —       |
-
-### Dashboard Optional OAuth Variables
-
-Google OAuth is exposed on the dashboard login page only when all three values
-are configured:
-
-| Variable               | Description                        |
-| ---------------------- | ---------------------------------- |
-| `AUTH_SECRET`          | Auth.js session secret (32+ chars) |
-| `GOOGLE_CLIENT_ID`     | Google OAuth client ID             |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret         |
 
 ---
 
@@ -319,11 +308,11 @@ cd apps/gateway && pnpm wrangler deploy
 # Or use the CI pipeline (pushes to main trigger automatic deployment)
 ```
 
-### Dashboard (Cloudflare Pages)
+### Console (Cloudflare Pages)
 
 ```bash
-cd apps/dashboard && pnpm build
-# Deploy the `.svelte-kit/cloudflare/` directory to Cloudflare Pages
+cd apps/console && pnpm build
+# Deploy the `dist/` directory to Cloudflare Pages
 ```
 
 ### CI/CD
@@ -358,14 +347,14 @@ Provider-addressed model IDs like `openai-prod/gpt-4.1-mini` are also accepted.
 pnpm test           # Run all test suites
 pnpm typecheck      # Type checking (tsgo)
 pnpm build          # Build all packages
-pnpm e2e            # Run dashboard Playwright E2E tests
+pnpm e2e            # Run console Playwright E2E tests
 pnpm run audit      # Production dependency audit
 ```
 
 The current verification suite covers 2000+ Vitest unit/integration tests plus
-Playwright E2E coverage for the dashboard. Coverage spans protocols, canonical
+Playwright E2E coverage for the console. Coverage spans protocols, canonical
 pipeline, providers, routing, governance, request shaping, telemetry, gateway
-integration, and dashboard workflows.
+integration, and console workflows.
 
 ---
 
@@ -376,8 +365,8 @@ integration, and dashboard workflows.
 - **Validation**: Zod
 - **Language**: TypeScript (strict, `exactOptionalPropertyTypes`,
   `noUncheckedIndexedAccess`)
-- **Build**: tsdown (libraries), wrangler (Worker), Vite (Dashboard)
-- **Frontend**: SvelteKit 5, TailwindCSS 4, adapter-cloudflare
+- **Build**: tsdown (libraries), wrangler (Worker), Vite (Console)
+- **Frontend**: React 19, TanStack Router, HeroUI, TailwindCSS 4
 - **Testing**: Vitest
 - **Tooling**: pnpm workspaces, ESLint, Prettier
 

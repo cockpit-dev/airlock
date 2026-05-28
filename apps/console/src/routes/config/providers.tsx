@@ -3,11 +3,13 @@ import {
   Button,
   Card,
   Chip,
-  EmptyState,
+  Description,
   Input,
+  Label,
   Modal,
   Select,
   Skeleton,
+  TextField,
   toast,
   useOverlayState,
   ListBox,
@@ -20,6 +22,8 @@ import {
   usePutConfigStoreSection,
   useFetchProviderModels,
 } from "../../hooks/use-queries";
+import { DataTable, Table } from "../../components/data-table";
+import { EmptyContent } from "../../components/empty-content";
 
 export const Route = createFileRoute("/config/providers")({
   component: ProvidersPage,
@@ -123,108 +127,135 @@ function ProvidersPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+    <div className="console-page console-stack animate-fade-in">
+      <div className="console-header">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Providers</h1>
-          <p className="text-sm text-default-400">Configure AI model providers</p>
+          <h1 className="console-title">Providers</h1>
+          <p className="console-subtitle">Configure AI model providers</p>
         </div>
-        <Button variant="primary" onPress={() => openEdit()}>
-          <FiPlus size={16} /> Add Provider
+        <Button size="sm" variant="primary" onPress={() => openEdit()}>
+          <FiPlus size={14} /> Add Provider
         </Button>
       </div>
 
       {section.isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Card.Root key={i}>
-              <Card.Content className="gap-3">
+              <Card.Content className="gap-2 p-3">
                 <div className="flex items-center justify-between">
-                  <Skeleton animationType="pulse" className="h-5 w-28 rounded" />
-                  <Skeleton animationType="pulse" className="h-6 w-16 rounded-full" />
+                  <Skeleton animationType="pulse" className="h-4 w-24 rounded" />
+                  <Skeleton animationType="pulse" className="h-5 w-14 rounded-full" />
                 </div>
-                <Skeleton animationType="pulse" className="h-4 w-full rounded" />
-                <Skeleton animationType="pulse" className="h-4 w-2/3 rounded" />
-                <div className="flex gap-2 mt-2">
-                  <Skeleton animationType="pulse" className="h-8 w-24 rounded" />
-                  <Skeleton animationType="pulse" className="h-8 w-14 rounded" />
-                  <Skeleton animationType="pulse" className="h-8 w-16 rounded" />
+                <Skeleton animationType="pulse" className="h-3 w-full rounded" />
+                <div className="flex gap-1.5 mt-1">
+                  <Skeleton animationType="pulse" className="h-6 w-20 rounded" />
+                  <Skeleton animationType="pulse" className="h-6 w-10 rounded" />
+                  <Skeleton animationType="pulse" className="h-6 w-12 rounded" />
                 </div>
               </Card.Content>
             </Card.Root>
           ))}
         </div>
       ) : providers.length === 0 ? (
-        <Card.Root className="border-dashed border-2 border-default-200">
-          <Card.Content className="py-12">
-            <EmptyState.Root>
-              <div className="flex flex-col items-center gap-3 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-default-100">
-                  <FiServer size={24} className="text-default-400" />
-                </div>
-                <div>
-                  <p className="text-lg font-medium text-default-700">No providers configured</p>
-                  <p className="text-sm text-default-400 mt-1">Add your first provider to get started</p>
-                </div>
-                <Button variant="primary" onPress={() => openEdit()} className="mt-2">
-                  <FiPlus size={16} /> Add Provider
+        <Card.Root>
+          <Card.Content>
+            <EmptyContent
+              icon={<FiServer />}
+              title="No providers configured"
+              description="Add your first provider to get started."
+              action={
+                <Button size="sm" variant="primary" onPress={() => openEdit()}>
+                  <FiPlus size={14} /> Add Provider
                 </Button>
-              </div>
-            </EmptyState.Root>
+              }
+            />
           </Card.Content>
         </Card.Root>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {providers.map((provider) => (
-            <Card.Root key={provider.id} className="hover:shadow-md transition-shadow">
-              <Card.Content className="gap-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold truncate">{provider.id}</h3>
-                  <Chip size="sm" variant="soft" color="accent">
-                    {provider.type}
-                  </Chip>
-                </div>
-                <p className="text-xs text-default-400 font-mono truncate">
-                  {provider.baseUrl}
-                </p>
-                {provider.defaultModel && (
-                  <p className="text-sm text-default-500">
-                    Default: <span className="font-mono text-xs">{provider.defaultModel}</span>
-                  </p>
-                )}
-                <div className="flex gap-2 mt-3 pt-3 border-t border-default-100">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    isDisabled={fetchModels.isPending}
-                    onPress={() => handleFetchModels(provider)}
-                  >
-                    <FiRefreshCw size={14} className={fetchModels.isPending ? "animate-spin" : ""} />
-                    Fetch Models
-                  </Button>
-                  <Button size="sm" variant="ghost" onPress={() => openEdit(provider)}>
-                    Edit
-                  </Button>
-                  <Button size="sm" variant="danger-soft" onPress={() => confirmDelete(provider.id)}>
-                    Delete
-                  </Button>
-                </div>
-              </Card.Content>
-            </Card.Root>
-          ))}
-        </div>
+        <Card.Root>
+          <Card.Header className="flex-row items-center justify-between">
+            <Card.Title>Provider Registry</Card.Title>
+            <span className="text-xs text-muted">
+              {providers.length} total
+            </span>
+          </Card.Header>
+          <Card.Content className="p-0">
+          <DataTable aria-label="Providers">
+            <Table.Header>
+              <Table.Column id="provider" isRowHeader>
+                Provider
+              </Table.Column>
+              <Table.Column id="type">Type</Table.Column>
+              <Table.Column id="baseUrl">Base URL</Table.Column>
+              <Table.Column id="defaultModel">Default Model</Table.Column>
+              <Table.Column id="actions">Actions</Table.Column>
+            </Table.Header>
+            <Table.Body>
+              {providers.map((provider) => (
+                <Table.Row key={provider.id} className="hover:bg-default/50">
+                  <Table.Cell>
+                    <span className="font-semibold text-[13px]">{provider.id}</span>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Chip size="sm" variant="soft" color="accent">
+                      {provider.type}
+                    </Chip>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <span className="font-mono text-[11px] text-muted">
+                      {provider.baseUrl}
+                    </span>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <span className="font-mono text-[11px] text-muted">
+                      {provider.defaultModel ?? "-"}
+                    </span>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <div className="flex flex-wrap gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        isDisabled={fetchModels.isPending}
+                        onPress={() => handleFetchModels(provider)}
+                      >
+                        <FiRefreshCw
+                          size={12}
+                          className={fetchModels.isPending ? "animate-spin" : ""}
+                        />
+                        Models
+                      </Button>
+                      <Button size="sm" variant="ghost" onPress={() => openEdit(provider)}>
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger-soft"
+                        onPress={() => confirmDelete(provider.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </DataTable>
+          </Card.Content>
+        </Card.Root>
       )}
 
       {fetchModels.data && fetchModels.data.models.length > 0 && (
         <Card.Root>
-          <Card.Header>
-            <h3 className="font-semibold">Available Models</h3>
-            <span className="text-sm text-default-400 ml-2">
-              ({fetchModels.data.models.length} models)
+          <Card.Header className="px-2.5 pt-2 pb-0">
+            <h3 className="text-sm font-semibold">Available Models</h3>
+            <span className="text-xs text-muted ml-1.5">
+              ({fetchModels.data.models.length})
             </span>
           </Card.Header>
-          <Card.Content>
-            <div className="flex gap-1.5 flex-wrap">
+          <Card.Content className="px-2.5 pb-2.5">
+            <div className="flex gap-1 flex-wrap">
               {fetchModels.data.models.map((m) => (
                 <Chip key={m} size="sm" variant="soft">
                   {m}
@@ -235,83 +266,81 @@ function ProvidersPage() {
         </Card.Root>
       )}
 
-      {/* Add/Edit Modal */}
-      <Modal.Root state={modalState}>
-        <Modal.Backdrop>
+      <Modal.Backdrop
+        isOpen={modalState.isOpen}
+        onOpenChange={modalState.setOpen}
+      >
           <Modal.Container>
             <Modal.Dialog>
               <Modal.Header>
-                {isEditing ? "Edit Provider" : "Add Provider"}
+                <Modal.Heading>
+                  {isEditing ? "Edit Provider" : "Add Provider"}
+                </Modal.Heading>
               </Modal.Header>
-              <Modal.Body className="gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">Provider ID</label>
+              <Modal.Body className="gap-3">
+                <TextField value={editId} onChange={setEditId}>
+                  <Label>Provider ID</Label>
                   <Input
                     placeholder="e.g. openai-primary"
-                    value={editId}
-                    onChange={(e) => setEditId(e.target.value)}
                     readOnly={isEditing}
                   />
                   {isEditing && (
-                    <span className="text-xs text-default-400">Provider ID cannot be changed after creation</span>
+                    <Description>Provider ID cannot be changed after creation</Description>
                   )}
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">Type</label>
-                  <Select.Root
-                    selectedKey={editType}
-                    onSelectionChange={(key) => setEditType(key as string | null)}
-                  >
-                    <Select.Trigger />
-                    <Select.Value>
-                      {({ isPlaceholder }) =>
-                        isPlaceholder ? "Select type" : undefined
-                      }
-                    </Select.Value>
+                </TextField>
+                <Select.Root
+                  aria-label="Provider type"
+                  selectedKey={editType}
+                  onSelectionChange={(key) => setEditType(key as string | null)}
+                >
+                  <Label>Type</Label>
+                  <Select.Trigger>
+                    <Select.Value />
                     <Select.Indicator />
-                    <Select.Popover>
-                      <ListBox>
-                        <ListBoxItem key="openai" textValue="OpenAI">
-                          OpenAI
-                        </ListBoxItem>
-                        <ListBoxItem key="anthropic" textValue="Anthropic">
-                          Anthropic
-                        </ListBoxItem>
-                        <ListBoxItem key="gemini" textValue="Gemini">
-                          Gemini
-                        </ListBoxItem>
-                      </ListBox>
-                    </Select.Popover>
-                  </Select.Root>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">Base URL</label>
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox>
+                      <ListBoxItem id="openai" key="openai" textValue="OpenAI">
+                        OpenAI
+                      </ListBoxItem>
+                      <ListBoxItem
+                        id="anthropic"
+                        key="anthropic"
+                        textValue="Anthropic"
+                      >
+                        Anthropic
+                      </ListBoxItem>
+                      <ListBoxItem id="gemini" key="gemini" textValue="Gemini">
+                        Gemini
+                      </ListBoxItem>
+                    </ListBox>
+                  </Select.Popover>
+                </Select.Root>
+                <TextField value={editBaseUrl} onChange={setEditBaseUrl}>
+                  <Label>Base URL</Label>
                   <Input
                     placeholder="https://api.openai.com/v1"
-                    value={editBaseUrl}
-                    onChange={(e) => setEditBaseUrl(e.target.value)}
                   />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">API Key</label>
+                </TextField>
+                <TextField value={editApiKey} onChange={setEditApiKey}>
+                  <Label>API Key</Label>
                   <Input
                     type="password"
                     placeholder="sk-..."
-                    value={editApiKey}
-                    onChange={(e) => setEditApiKey(e.target.value)}
                   />
-                  <span className="text-xs text-default-400">
+                  <Description>
                     {isEditing
                       ? "Leave empty to keep existing key"
                       : "Required for new providers"}
-                  </span>
-                </div>
+                  </Description>
+                </TextField>
               </Modal.Body>
               <Modal.Footer>
-                <Button variant="ghost" onPress={modalState.close}>
+                <Button size="sm" variant="ghost" onPress={modalState.close}>
                   Cancel
                 </Button>
                 <Button
+                  size="sm"
                   variant="primary"
                   onPress={handleSave}
                   isPending={putSection.isPending}
@@ -321,26 +350,29 @@ function ProvidersPage() {
               </Modal.Footer>
             </Modal.Dialog>
           </Modal.Container>
-        </Modal.Backdrop>
-      </Modal.Root>
+      </Modal.Backdrop>
 
-      {/* Delete Confirmation Modal */}
-      <Modal.Root state={deleteModalState}>
-        <Modal.Backdrop>
+      <Modal.Backdrop
+        isOpen={deleteModalState.isOpen}
+        onOpenChange={deleteModalState.setOpen}
+      >
           <Modal.Container>
             <Modal.Dialog>
-              <Modal.Header>Delete Provider</Modal.Header>
+              <Modal.Header>
+                <Modal.Heading>Delete Provider</Modal.Heading>
+              </Modal.Header>
               <Modal.Body>
-                <p className="text-sm text-default-500">
+                <p className="text-sm text-muted">
                   Are you sure you want to delete provider{" "}
                   <span className="font-semibold text-foreground">{deleteTarget}</span>? This action cannot be undone.
                 </p>
               </Modal.Body>
               <Modal.Footer>
-                <Button variant="ghost" onPress={deleteModalState.close}>
+                <Button size="sm" variant="ghost" onPress={deleteModalState.close}>
                   Cancel
                 </Button>
                 <Button
+                  size="sm"
                   variant="danger"
                   onPress={handleDelete}
                   isPending={putSection.isPending}
@@ -350,8 +382,7 @@ function ProvidersPage() {
               </Modal.Footer>
             </Modal.Dialog>
           </Modal.Container>
-        </Modal.Backdrop>
-      </Modal.Root>
+      </Modal.Backdrop>
     </div>
   );
 }

@@ -3,13 +3,13 @@ import {
   Button,
   Card,
   Chip,
-  EmptyState,
   Input,
+  Label,
   Modal,
   Select,
   Skeleton,
   Switch,
-  Table,
+  TextField,
   toast,
   useOverlayState,
   ListBox,
@@ -21,6 +21,8 @@ import {
   useConfigStoreSection,
   usePutConfigStoreSection,
 } from "../../hooks/use-queries";
+import { DataTable, Table } from "../../components/data-table";
+import { EmptyContent } from "../../components/empty-content";
 
 export const Route = createFileRoute("/config/accounts")({
   component: AccountsPage,
@@ -125,72 +127,72 @@ function AccountsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+    <div className="console-page console-stack animate-fade-in">
+      <div className="console-header">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Accounts</h1>
-          <p className="text-sm text-default-400">Manage admin access</p>
+          <h1 className="console-title">Accounts</h1>
+          <p className="console-subtitle">Manage admin access</p>
         </div>
-        <Button variant="primary" onPress={() => openEdit()}>
-          <FiPlus size={16} /> Add Account
+        <Button size="sm" variant="primary" onPress={() => openEdit()}>
+          <FiPlus size={14} /> Add Account
         </Button>
       </div>
 
       {section.isLoading ? (
         <Card.Root>
           <Card.Content className="p-0">
-            <div className="p-4 space-y-3">
-              <div className="flex gap-4">
-                <Skeleton animationType="pulse" className="h-4 w-40 rounded" />
-                <Skeleton animationType="pulse" className="h-4 w-24 rounded" />
-                <Skeleton animationType="pulse" className="h-4 w-20 rounded" />
-                <Skeleton animationType="pulse" className="h-4 w-24 rounded" />
+            <div className="p-3 space-y-2.5">
+              <div className="flex gap-3">
+                <Skeleton animationType="pulse" className="h-3.5 w-32 rounded" />
+                <Skeleton animationType="pulse" className="h-3.5 w-20 rounded" />
+                <Skeleton animationType="pulse" className="h-3.5 w-16 rounded" />
               </div>
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="flex gap-4">
-                  <Skeleton animationType="pulse" className="h-8 w-40 rounded" />
-                  <Skeleton animationType="pulse" className="h-6 w-24 rounded-full" />
-                  <Skeleton animationType="pulse" className="h-6 w-10 rounded" />
-                  <Skeleton animationType="pulse" className="h-8 w-24 rounded" />
+                <div key={i} className="flex gap-3">
+                  <Skeleton animationType="pulse" className="h-7 w-32 rounded" />
+                  <Skeleton animationType="pulse" className="h-5 w-20 rounded-full" />
+                  <Skeleton animationType="pulse" className="h-5 w-8 rounded" />
                 </div>
               ))}
             </div>
           </Card.Content>
         </Card.Root>
       ) : accounts.length === 0 ? (
-        <Card.Root className="border-dashed border-2 border-default-200">
-          <Card.Content className="py-12">
-            <EmptyState.Root>
-              <div className="flex flex-col items-center gap-3 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-default-100">
-                  <FiUsers size={24} className="text-default-400" />
-                </div>
-                <div>
-                  <p className="text-lg font-medium text-default-700">No accounts configured</p>
-                  <p className="text-sm text-default-400 mt-1">Add an account to manage admin access</p>
-                </div>
-                <Button variant="primary" onPress={() => openEdit()} className="mt-2">
-                  <FiPlus size={16} /> Add Account
+        <Card.Root>
+          <Card.Content>
+            <EmptyContent
+              icon={<FiUsers />}
+              title="No accounts configured"
+              description="Add an account to manage admin access."
+              action={
+                <Button size="sm" variant="primary" onPress={() => openEdit()}>
+                  <FiPlus size={14} /> Add Account
                 </Button>
-              </div>
-            </EmptyState.Root>
+              }
+            />
           </Card.Content>
         </Card.Root>
       ) : (
         <Card.Root>
+          <Card.Header className="flex-row items-center justify-between">
+            <Card.Title>Access Directory</Card.Title>
+            <span className="text-xs text-muted">{accounts.length} total</span>
+          </Card.Header>
           <Card.Content className="p-0">
-            <Table.Root aria-label="Accounts">
+            <DataTable aria-label="Accounts">
               <Table.Header>
-                <Table.Column isRowHeader>Email</Table.Column>
-                <Table.Column>Role</Table.Column>
-                <Table.Column>Status</Table.Column>
-                <Table.Column>Actions</Table.Column>
+                <Table.Column id="email" isRowHeader>
+                  Email
+                </Table.Column>
+                <Table.Column id="role">Role</Table.Column>
+                <Table.Column id="status">Status</Table.Column>
+                <Table.Column id="actions">Actions</Table.Column>
               </Table.Header>
               <Table.Body>
                 {accounts.map((account) => (
-                  <Table.Row key={account.email} className="hover:bg-default-50">
+                  <Table.Row key={account.email} className="hover:bg-default/50">
                     <Table.Cell>
-                      <span className="font-mono text-sm">{account.email}</span>
+                      <span className="font-mono text-xs">{account.email}</span>
                     </Table.Cell>
                     <Table.Cell>
                       <Chip
@@ -202,7 +204,7 @@ function AccountsPage() {
                       </Chip>
                     </Table.Cell>
                     <Table.Cell>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <Switch.Root
                           size="sm"
                           isSelected={account.enabled}
@@ -212,7 +214,7 @@ function AccountsPage() {
                             <Switch.Thumb />
                           </Switch.Control>
                         </Switch.Root>
-                        <span className="text-xs text-default-400">
+                        <span className="text-[11px] text-muted">
                           {account.enabled ? "Enabled" : "Disabled"}
                         </span>
                       </div>
@@ -238,65 +240,63 @@ function AccountsPage() {
                   </Table.Row>
                 ))}
               </Table.Body>
-            </Table.Root>
+            </DataTable>
           </Card.Content>
         </Card.Root>
       )}
 
-      {/* Add/Edit Modal */}
-      <Modal.Root state={modalState}>
-        <Modal.Backdrop>
+      <Modal.Backdrop
+        isOpen={modalState.isOpen}
+        onOpenChange={modalState.setOpen}
+      >
           <Modal.Container>
             <Modal.Dialog>
               <Modal.Header>
-                {isEditing ? "Edit Account" : "Add Account"}
+                <Modal.Heading>
+                  {isEditing ? "Edit Account" : "Add Account"}
+                </Modal.Heading>
               </Modal.Header>
-              <Modal.Body className="gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">Email</label>
+              <Modal.Body className="gap-3">
+                <TextField value={editEmail} onChange={setEditEmail}>
+                  <Label>Email</Label>
                   <Input
                     type="email"
                     placeholder="user@example.com"
-                    value={editEmail}
-                    onChange={(e) => setEditEmail(e.target.value)}
                   />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">Role</label>
-                  <Select.Root
-                    selectedKey={editRole}
-                    onSelectionChange={(key) =>
-                      setEditRole(key as string | null)
-                    }
-                  >
-                    <Select.Trigger />
-                    <Select.Value>
-                      {({ isPlaceholder }) =>
-                        isPlaceholder ? "Select role" : undefined
-                      }
-                    </Select.Value>
+                </TextField>
+                <Select.Root
+                  aria-label="Role"
+                  selectedKey={editRole}
+                  onSelectionChange={(key) =>
+                    setEditRole(key as string | null)
+                  }
+                >
+                  <Label>Role</Label>
+                  <Select.Trigger>
+                    <Select.Value />
                     <Select.Indicator />
-                    <Select.Popover>
-                      <ListBox>
-                        {ROLES.map((r) => (
-                          <ListBoxItem key={r} textValue={r}>
-                            <div className="flex items-center gap-2">
-                              <Chip size="sm" variant="soft" color={ROLE_COLORS[r] ?? "default"}>
-                                {r}
-                              </Chip>
-                            </div>
-                          </ListBoxItem>
-                        ))}
-                      </ListBox>
-                    </Select.Popover>
-                  </Select.Root>
-                </div>
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox>
+                      {ROLES.map((r) => (
+                        <ListBoxItem id={r} key={r} textValue={r}>
+                          <div className="flex items-center gap-1.5">
+                            <Chip size="sm" variant="soft" color={ROLE_COLORS[r] ?? "default"}>
+                              {r}
+                            </Chip>
+                          </div>
+                        </ListBoxItem>
+                      ))}
+                    </ListBox>
+                  </Select.Popover>
+                </Select.Root>
               </Modal.Body>
               <Modal.Footer>
-                <Button variant="ghost" onPress={modalState.close}>
+                <Button size="sm" variant="ghost" onPress={modalState.close}>
                   Cancel
                 </Button>
                 <Button
+                  size="sm"
                   variant="primary"
                   onPress={handleSave}
                   isPending={putSection.isPending}
@@ -306,26 +306,29 @@ function AccountsPage() {
               </Modal.Footer>
             </Modal.Dialog>
           </Modal.Container>
-        </Modal.Backdrop>
-      </Modal.Root>
+      </Modal.Backdrop>
 
-      {/* Delete Confirmation Modal */}
-      <Modal.Root state={deleteModalState}>
-        <Modal.Backdrop>
+      <Modal.Backdrop
+        isOpen={deleteModalState.isOpen}
+        onOpenChange={deleteModalState.setOpen}
+      >
           <Modal.Container>
             <Modal.Dialog>
-              <Modal.Header>Delete Account</Modal.Header>
+              <Modal.Header>
+                <Modal.Heading>Delete Account</Modal.Heading>
+              </Modal.Header>
               <Modal.Body>
-                <p className="text-sm text-default-500">
+                <p className="text-sm text-muted">
                   Are you sure you want to delete account{" "}
                   <span className="font-mono font-semibold text-foreground">{deleteTarget}</span>? This action cannot be undone.
                 </p>
               </Modal.Body>
               <Modal.Footer>
-                <Button variant="ghost" onPress={deleteModalState.close}>
+                <Button size="sm" variant="ghost" onPress={deleteModalState.close}>
                   Cancel
                 </Button>
                 <Button
+                  size="sm"
                   variant="danger"
                   onPress={handleDelete}
                   isPending={putSection.isPending}
@@ -335,8 +338,7 @@ function AccountsPage() {
               </Modal.Footer>
             </Modal.Dialog>
           </Modal.Container>
-        </Modal.Backdrop>
-      </Modal.Root>
+      </Modal.Backdrop>
     </div>
   );
 }

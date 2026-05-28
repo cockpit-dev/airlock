@@ -55,11 +55,26 @@ export class AirlockClient {
       `/_airlock/keys/${encodeURIComponent(keyId)}`
     );
   }
-  createKey(payload: unknown) {
-    return this.request<KeyDetailResponse>("/_airlock/keys", {
+  createKey(payload: GatewayKeyCreateRequest) {
+    return this.request<RegistryKeyView>("/_airlock/keys", {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  }
+  updateKey(keyId: string, payload: GatewayKeyUpdateRequest) {
+    return this.request<RegistryKeyView>(
+      `/_airlock/keys/${encodeURIComponent(keyId)}`,
+      { method: "PUT", body: JSON.stringify(payload) }
+    );
+  }
+  updateKeyRegistryOverride(
+    keyId: string,
+    payload: GatewayKeyRegistryOverrideRequest
+  ) {
+    return this.request<KeyRegistryOverrideResponse>(
+      `/_airlock/keys/${encodeURIComponent(keyId)}/registry`,
+      { method: "PUT", body: JSON.stringify(payload) }
+    );
   }
   deleteKey(keyId: string, payload?: unknown) {
     return this.request<void>(`/_airlock/keys/${encodeURIComponent(keyId)}`, {
@@ -309,57 +324,135 @@ export interface ConfigStoreSectionWriteResult extends ConfigStoreSection {
 }
 
 export interface KeyListResponse {
-  keys: Array<{
-    id: string;
-    name?: string;
-    status: string;
-    createdAt: number;
-    scopes?: string[];
-    tier?: string;
-    tags?: string[];
-    allowedProviders?: string[];
-    allowedModels?: string[];
-  }>;
-  total: number;
+  keys: GatewayApiKeyRegistrySnapshot[];
 }
 
-export interface KeyDetailResponse {
-  key: {
-    id: string;
-    name?: string;
-    status: string;
-    createdAt: number;
-    scopes?: string[];
-    tier?: string;
-    tags?: string[];
-    allowedProviders?: string[];
-    allowedModels?: string[];
-    notBefore?: number;
-    expiresAt?: number;
-    quotas?: {
-      requestQuota?: { limit: number; used: number; windowMs: number };
-      tokenQuota?: { limit: number; used: number; windowMs: number };
-      concurrency?: { limit: number; current: number };
-    };
-  };
+export type GatewayApiKeyStatus = "active" | "revoked";
+export type GatewayApiKeyLifecycleStatus =
+  | "active"
+  | "revoked"
+  | "not_yet_active"
+  | "expired"
+  | "archived";
+
+export interface GatewayApiKeyPolicy {
+  tier?: string;
+  tags?: string[];
+  allowedExternalModels?: string[];
+  blockedExternalModels?: string[];
+  allowedProviders?: string[];
+  allowedModelGroups?: string[];
+  requestQuota?: { limit: number; windowSeconds: number };
+  tokenQuota?: { limit: number; windowSeconds: number };
+  concurrencyQuota?: { limit: number };
 }
 
-export interface KeyStatusResponse {
-  status: string;
-  quotas?: {
-    requestQuota?: { limit: number; used: number; windowMs: number };
-    tokenQuota?: { limit: number; used: number; windowMs: number };
-    concurrency?: { limit: number; current: number };
-  };
+export interface GatewayApiKeyRecord {
+  id: string;
+  label: string;
+  valueHash?: string;
+  status: GatewayApiKeyStatus;
+  notBefore?: string;
+  expiresAt?: string;
+  archivedAt?: string;
+  policy?: GatewayApiKeyPolicy;
 }
+
+export interface GatewayApiKeyStatusView {
+  keyId: string;
+  label: string;
+  configuredStatus: GatewayApiKeyStatus;
+  notBefore?: string;
+  expiresAt?: string;
+  lifecycleStatus: GatewayApiKeyLifecycleStatus;
+  overlayRevoked: boolean;
+  overlayUpdatedAt: string;
+  effectiveStatus: GatewayApiKeyLifecycleStatus;
+  acceptedNow: boolean;
+}
+
+export interface GatewayApiKeyRegistrySnapshot {
+  keyId: string;
+  ownership: "configured" | "registry";
+  label: string;
+  configuredStatus: GatewayApiKeyStatus;
+  notBefore?: string;
+  expiresAt?: string;
+  lifecycleStatus: GatewayApiKeyLifecycleStatus;
+  overlayRevoked: boolean;
+  overlayUpdatedAt: string;
+  effectiveStatus: GatewayApiKeyLifecycleStatus;
+  acceptedNow: boolean;
+  configured: GatewayApiKeyStatusView;
+  runtime: GatewayApiKeyStatusView;
+  registryOverride: GatewayKeyRegistryOverride | null;
+  registryOverrideApplied: boolean;
+  registryUpdatedAt?: string;
+}
+
+export interface GatewayKeyRegistryOverride {
+  label?: string;
+  status?: GatewayApiKeyStatus;
+  notBefore?: string | null;
+  expiresAt?: string | null;
+  policy?: GatewayApiKeyPolicy | null;
+  updatedAt: string;
+}
+
+export interface RegistryKeyView {
+  keyId: string;
+  ownership: "registry";
+  key: GatewayApiKeyRecord;
+  previousValueHash?: string;
+  previousValueHashExpiresAt?: string;
+  archivedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type KeyDetailResponse = RegistryKeyView;
+
+export interface GatewayKeyCreateRequest {
+  id: string;
+  label: string;
+  valueHash: string;
+  status: GatewayApiKeyStatus;
+  notBefore?: string;
+  expiresAt?: string;
+  policy?: GatewayApiKeyPolicy;
+  reason?: string;
+}
+
+export interface GatewayKeyUpdateRequest {
+  label?: string;
+  status?: GatewayApiKeyStatus;
+  notBefore?: string | null;
+  expiresAt?: string | null;
+  policy?: GatewayApiKeyPolicy | null;
+  reason?: string;
+}
+
+export type GatewayKeyRegistryOverrideRequest = GatewayKeyUpdateRequest;
+
+export interface KeyRegistryOverrideResponse {
+  keyId: string;
+  override: GatewayKeyRegistryOverride | null;
+  auditEvent?: object;
+}
+
+export type KeyStatusResponse = GatewayApiKeyRegistrySnapshot;
 
 export interface KeyEventsResponse {
   events: Array<{
-    id: string;
-    type: string;
-    timestamp: number;
+    id?: string;
+    keyId: string;
+    kind: string;
+    timestamp: string;
     actor?: string;
-    details?: Record<string, unknown>;
+    actorSource?: string;
+    reason?: string;
+    operationId?: string;
+    changes?: Array<{ field: string; before?: unknown; after?: unknown }>;
   }>;
 }
 

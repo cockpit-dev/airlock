@@ -71,8 +71,52 @@ export function useCreateKey() {
   const client = useClient();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: unknown) => client.createKey(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.keys.all }),
+    mutationFn: (payload: Parameters<typeof client.createKey>[0]) =>
+      client.createKey(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.keys.all });
+      qc.invalidateQueries({ queryKey: queryKeys.status });
+      qc.invalidateQueries({ queryKey: queryKeys.config });
+    },
+  });
+}
+
+export function useUpdateKey() {
+  const client = useClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      keyId,
+      payload,
+    }: {
+      keyId: string;
+      payload: Parameters<typeof client.updateKey>[1];
+    }) => client.updateKey(keyId, payload),
+    onSuccess: (_, { keyId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.keys.detail(keyId) });
+      qc.invalidateQueries({ queryKey: queryKeys.keys.status(keyId) });
+      qc.invalidateQueries({ queryKey: queryKeys.keys.events(keyId) });
+      qc.invalidateQueries({ queryKey: queryKeys.keys.all });
+    },
+  });
+}
+
+export function useUpdateKeyRegistryOverride() {
+  const client = useClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      keyId,
+      payload,
+    }: {
+      keyId: string;
+      payload: Parameters<typeof client.updateKeyRegistryOverride>[1];
+    }) => client.updateKeyRegistryOverride(keyId, payload),
+    onSuccess: (_, { keyId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.keys.status(keyId) });
+      qc.invalidateQueries({ queryKey: queryKeys.keys.events(keyId) });
+      qc.invalidateQueries({ queryKey: queryKeys.keys.all });
+    },
   });
 }
 

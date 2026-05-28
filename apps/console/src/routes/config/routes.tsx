@@ -3,12 +3,12 @@ import {
   Button,
   Card,
   Chip,
-  EmptyState,
   Input,
+  Label,
   Modal,
   Select,
   Skeleton,
-  Table,
+  TextField,
   toast,
   useOverlayState,
   ListBox,
@@ -20,6 +20,8 @@ import {
   useConfigStoreSection,
   usePutConfigStoreSection,
 } from "../../hooks/use-queries";
+import { DataTable, Table } from "../../components/data-table";
+import { EmptyContent } from "../../components/empty-content";
 
 export const Route = createFileRoute("/config/routes")({
   component: ConfigRoutesPage,
@@ -118,78 +120,76 @@ function ConfigRoutesPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+    <div className="console-page console-stack animate-fade-in">
+      <div className="console-header">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Route Configuration</h1>
-          <p className="text-sm text-default-400">Map external models to providers</p>
+          <h1 className="console-title">Route Configuration</h1>
+          <p className="console-subtitle">Map external models to providers</p>
         </div>
-        <Button variant="primary" onPress={() => openEdit()}>
-          <FiPlus size={16} /> Add Route
+        <Button size="sm" variant="primary" onPress={() => openEdit()}>
+          <FiPlus size={14} /> Add Route
         </Button>
       </div>
 
       {section.isLoading ? (
         <Card.Root>
           <Card.Content className="p-0">
-            <div className="p-4 space-y-3">
-              <div className="flex gap-4">
-                <Skeleton animationType="pulse" className="h-4 w-32 rounded" />
-                <Skeleton animationType="pulse" className="h-4 w-28 rounded" />
-                <Skeleton animationType="pulse" className="h-4 w-20 rounded" />
-                <Skeleton animationType="pulse" className="h-4 w-24 rounded" />
-                <Skeleton animationType="pulse" className="h-4 w-20 rounded" />
+            <div className="p-3 space-y-2.5">
+              <div className="flex gap-3">
+                <Skeleton animationType="pulse" className="h-3.5 w-28 rounded" />
+                <Skeleton animationType="pulse" className="h-3.5 w-24 rounded" />
+                <Skeleton animationType="pulse" className="h-3.5 w-16 rounded" />
               </div>
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="flex gap-4">
-                  <Skeleton animationType="pulse" className="h-8 w-32 rounded" />
-                  <Skeleton animationType="pulse" className="h-8 w-28 rounded" />
-                  <Skeleton animationType="pulse" className="h-8 w-20 rounded" />
-                  <Skeleton animationType="pulse" className="h-6 w-24 rounded-full" />
-                  <Skeleton animationType="pulse" className="h-8 w-20 rounded" />
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex gap-3">
+                  <Skeleton animationType="pulse" className="h-7 w-28 rounded" />
+                  <Skeleton animationType="pulse" className="h-7 w-24 rounded" />
+                  <Skeleton animationType="pulse" className="h-7 w-16 rounded" />
                 </div>
               ))}
             </div>
           </Card.Content>
         </Card.Root>
       ) : routes.length === 0 ? (
-        <Card.Root className="border-dashed border-2 border-default-200">
-          <Card.Content className="py-12">
-            <EmptyState.Root>
-              <div className="flex flex-col items-center gap-3 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-default-100">
-                  <FiGitBranch size={24} className="text-default-400" />
-                </div>
-                <div>
-                  <p className="text-lg font-medium text-default-700">No routes configured</p>
-                  <p className="text-sm text-default-400 mt-1">Add a route to map models to providers</p>
-                </div>
-                <Button variant="primary" onPress={() => openEdit()} className="mt-2">
-                  <FiPlus size={16} /> Add Route
+        <Card.Root>
+          <Card.Content>
+            <EmptyContent
+              icon={<FiGitBranch />}
+              title="No routes configured"
+              description="Add a route to map models to providers."
+              action={
+                <Button size="sm" variant="primary" onPress={() => openEdit()}>
+                  <FiPlus size={14} /> Add Route
                 </Button>
-              </div>
-            </EmptyState.Root>
+              }
+            />
           </Card.Content>
         </Card.Root>
       ) : (
         <Card.Root>
+          <Card.Header className="flex-row items-center justify-between">
+            <Card.Title>Model Routes</Card.Title>
+            <span className="text-xs text-muted">{routes.length} total</span>
+          </Card.Header>
           <Card.Content className="p-0">
-            <Table.Root aria-label="Routes configuration">
+            <DataTable aria-label="Routes configuration">
               <Table.Header>
-                <Table.Column isRowHeader>External Model</Table.Column>
-                <Table.Column>Target</Table.Column>
-                <Table.Column>Fallbacks</Table.Column>
-                <Table.Column>Strategy</Table.Column>
-                <Table.Column>Actions</Table.Column>
+                <Table.Column id="externalModel" isRowHeader>
+                  External Model
+                </Table.Column>
+                <Table.Column id="target">Target</Table.Column>
+                <Table.Column id="fallbacks">Fallbacks</Table.Column>
+                <Table.Column id="strategy">Strategy</Table.Column>
+                <Table.Column id="actions">Actions</Table.Column>
               </Table.Header>
               <Table.Body>
                 {routes.map((route) => (
-                  <Table.Row key={route.externalModel} className="hover:bg-default-50">
+                  <Table.Row key={route.externalModel} className="hover:bg-default/50">
                     <Table.Cell>
-                      <span className="font-mono text-sm">{route.externalModel}</span>
+                      <span className="font-mono text-xs">{route.externalModel}</span>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="text-sm">
+                      <span className="text-xs">
                         {route.target.provider}/{route.target.providerModel}
                       </span>
                     </Table.Cell>
@@ -202,7 +202,7 @@ function ConfigRoutesPage() {
                             </Chip>
                           ))
                         ) : (
-                          <span className="text-default-400">{"—"}</span>
+                          <span className="text-muted text-xs">{"—"}</span>
                         )}
                       </div>
                     </Table.Cell>
@@ -232,76 +232,70 @@ function ConfigRoutesPage() {
                   </Table.Row>
                 ))}
               </Table.Body>
-            </Table.Root>
+            </DataTable>
           </Card.Content>
         </Card.Root>
       )}
 
-      {/* Add/Edit Modal */}
-      <Modal.Root state={modalState}>
-        <Modal.Backdrop>
+      <Modal.Backdrop
+        isOpen={modalState.isOpen}
+        onOpenChange={modalState.setOpen}
+      >
           <Modal.Container>
             <Modal.Dialog>
               <Modal.Header>
-                {isEditing ? "Edit Route" : "Add Route"}
+                <Modal.Heading>
+                  {isEditing ? "Edit Route" : "Add Route"}
+                </Modal.Heading>
               </Modal.Header>
-              <Modal.Body className="gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">External Model</label>
+              <Modal.Body className="gap-3">
+                <TextField value={editModel} onChange={setEditModel}>
+                  <Label>External Model</Label>
                   <Input
                     placeholder="e.g. gpt-4o"
-                    value={editModel}
-                    onChange={(e) => setEditModel(e.target.value)}
                   />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">Target Provider</label>
+                </TextField>
+                <TextField value={editProvider} onChange={setEditProvider}>
+                  <Label>Target Provider</Label>
                   <Input
                     placeholder="e.g. openai-primary"
-                    value={editProvider}
-                    onChange={(e) => setEditProvider(e.target.value)}
                   />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">Target Model</label>
+                </TextField>
+                <TextField value={editProviderModel} onChange={setEditProviderModel}>
+                  <Label>Target Model</Label>
                   <Input
                     placeholder="e.g. gpt-4o"
-                    value={editProviderModel}
-                    onChange={(e) => setEditProviderModel(e.target.value)}
                   />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">Strategy</label>
-                  <Select.Root
-                    selectedKey={editStrategy}
-                    onSelectionChange={(key) =>
-                      setEditStrategy(key as string | null)
-                    }
-                  >
-                    <Select.Trigger />
-                    <Select.Value>
-                      {({ isPlaceholder }) =>
-                        isPlaceholder ? "Select strategy" : undefined
-                      }
-                    </Select.Value>
+                </TextField>
+                <Select.Root
+                  aria-label="Strategy"
+                  selectedKey={editStrategy}
+                  onSelectionChange={(key) =>
+                    setEditStrategy(key as string | null)
+                  }
+                >
+                  <Label>Strategy</Label>
+                  <Select.Trigger>
+                    <Select.Value />
                     <Select.Indicator />
-                    <Select.Popover>
-                      <ListBox>
-                        {STRATEGIES.map((s) => (
-                          <ListBoxItem key={s} textValue={s}>
-                            {s}
-                          </ListBoxItem>
-                        ))}
-                      </ListBox>
-                    </Select.Popover>
-                  </Select.Root>
-                </div>
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox>
+                      {STRATEGIES.map((s) => (
+                        <ListBoxItem id={s} key={s} textValue={s}>
+                          {s}
+                        </ListBoxItem>
+                      ))}
+                    </ListBox>
+                  </Select.Popover>
+                </Select.Root>
               </Modal.Body>
               <Modal.Footer>
-                <Button variant="ghost" onPress={modalState.close}>
+                <Button size="sm" variant="ghost" onPress={modalState.close}>
                   Cancel
                 </Button>
                 <Button
+                  size="sm"
                   variant="primary"
                   onPress={handleSave}
                   isPending={putSection.isPending}
@@ -311,26 +305,29 @@ function ConfigRoutesPage() {
               </Modal.Footer>
             </Modal.Dialog>
           </Modal.Container>
-        </Modal.Backdrop>
-      </Modal.Root>
+      </Modal.Backdrop>
 
-      {/* Delete Confirmation Modal */}
-      <Modal.Root state={deleteModalState}>
-        <Modal.Backdrop>
+      <Modal.Backdrop
+        isOpen={deleteModalState.isOpen}
+        onOpenChange={deleteModalState.setOpen}
+      >
           <Modal.Container>
             <Modal.Dialog>
-              <Modal.Header>Delete Route</Modal.Header>
+              <Modal.Header>
+                <Modal.Heading>Delete Route</Modal.Heading>
+              </Modal.Header>
               <Modal.Body>
-                <p className="text-sm text-default-500">
+                <p className="text-sm text-muted">
                   Are you sure you want to delete route{" "}
                   <span className="font-mono font-semibold text-foreground">{deleteTarget}</span>? This action cannot be undone.
                 </p>
               </Modal.Body>
               <Modal.Footer>
-                <Button variant="ghost" onPress={deleteModalState.close}>
+                <Button size="sm" variant="ghost" onPress={deleteModalState.close}>
                   Cancel
                 </Button>
                 <Button
+                  size="sm"
                   variant="danger"
                   onPress={handleDelete}
                   isPending={putSection.isPending}
@@ -340,8 +337,7 @@ function ConfigRoutesPage() {
               </Modal.Footer>
             </Modal.Dialog>
           </Modal.Container>
-        </Modal.Backdrop>
-      </Modal.Root>
+      </Modal.Backdrop>
     </div>
   );
 }

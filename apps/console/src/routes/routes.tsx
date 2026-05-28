@@ -6,7 +6,6 @@ import {
   Chip,
   ProgressBar,
   Skeleton,
-  Table,
 } from "@heroui/react";
 import {
   FiAlertCircle,
@@ -18,6 +17,7 @@ import {
 } from "react-icons/fi";
 import { useRoutingHealth } from "../hooks/use-queries";
 import { HealthChip } from "../components/health-chip";
+import { DataTable, Table } from "../components/data-table";
 
 export const Route = createFileRoute("/routes")({
   component: RoutesPage,
@@ -41,21 +41,21 @@ function RoutesPage() {
 
   if (health.error) {
     return (
-      <div className="p-6 space-y-6 animate-fade-in">
-        <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 flex items-start gap-3">
-          <FiAlertCircle className="text-danger mt-0.5 shrink-0" size={20} />
-          <div>
-            <p className="font-semibold text-danger">
+      <div className="console-page console-stack animate-fade-in">
+        <div className="rounded-lg border border-danger/30 bg-danger/5 p-3 flex items-start gap-2">
+          <FiAlertCircle className="text-danger mt-0.5 shrink-0" size={16} />
+          <div className="min-w-0">
+            <p className="font-medium text-sm text-danger">
               Failed to load routes health
             </p>
-            <p className="text-sm text-default-400 mt-1">
+            <p className="text-xs text-muted mt-0.5">
               {health.error.message}
             </p>
           </div>
           <Button
             size="sm"
             variant="ghost"
-            className="ml-auto"
+            className="ml-auto shrink-0"
             onPress={() => health.refetch()}
           >
             <FiRefreshCw size={14} />
@@ -74,46 +74,42 @@ function RoutesPage() {
       : `${config.circuitBreakerPolicy.cooldownMs}ms`;
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Routes Health</h1>
-        <p className="text-sm text-default-400">
-          Circuit breaker and target monitoring
-        </p>
+    <div className="console-page console-stack animate-fade-in">
+      <div className="console-header">
+        <div>
+          <h1 className="console-title">Routes Health</h1>
+          <p className="console-subtitle">
+            Circuit breaker and target monitoring
+          </p>
+        </div>
       </div>
 
-      {/* Summary Cards */}
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <SummaryCard
-            icon={<FiCheckCircle size={18} />}
+            icon={<FiCheckCircle size={15} />}
             iconBg="bg-success/10 text-success"
-            borderClass="border-l-success"
             label="Healthy"
             value={summary.healthy}
             valueClass="text-success"
           />
           <SummaryCard
-            icon={<FiAlertTriangle size={18} />}
+            icon={<FiAlertTriangle size={15} />}
             iconBg="bg-warning/10 text-warning"
-            borderClass="border-l-warning"
             label="Degraded"
             value={summary.degraded}
             valueClass="text-warning"
           />
           <SummaryCard
-            icon={<FiXCircle size={18} />}
+            icon={<FiXCircle size={15} />}
             iconBg="bg-danger/10 text-danger"
-            borderClass="border-l-danger"
             label="Down"
             value={summary.down}
             valueClass="text-danger"
           />
           <SummaryCard
-            icon={<FiTarget size={18} />}
-            iconBg="bg-default/10 text-default-500"
-            borderClass="border-l-default"
+            icon={<FiTarget size={15} />}
+            iconBg="bg-default-soft text-default-soft-foreground"
             label="Total Targets"
             value={summary.totalTargets}
             valueClass=""
@@ -121,15 +117,12 @@ function RoutesPage() {
         </div>
       )}
 
-      {/* Circuit Breaker Config */}
       <Card.Root>
-        <Card.Header className="px-5 pt-5 pb-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-default-400 mb-3">
-            Circuit Breaker Configuration
-          </p>
+        <Card.Header>
+          <Card.Title>Circuit Breaker Configuration</Card.Title>
         </Card.Header>
-        <Card.Content className="p-5">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card.Content>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <ConfigItem label="Threshold" value={String(config.circuitBreakerPolicy.threshold)} />
             <ConfigItem label="Cooldown" value={cooldownLabel} />
             <ConfigItem
@@ -144,20 +137,19 @@ function RoutesPage() {
         </Card.Content>
       </Card.Root>
 
-      {/* Routes Table */}
       <Card.Root>
-        <Card.Header className="px-5 pt-5 pb-0">
-          <h2 className="text-lg font-semibold">Routes</h2>
+        <Card.Header>
+          <Card.Title>Routes</Card.Title>
         </Card.Header>
-        <Card.Content className="p-5">
-          <Table.Root>
+        <Card.Content className="p-0">
+          <DataTable aria-label="Route health">
             <Table.Header>
-              <Table.Column>Route</Table.Column>
-              <Table.Column>Status</Table.Column>
-              <Table.Column>Strategy</Table.Column>
-              <Table.Column>Targets</Table.Column>
-              <Table.Column>Healthy</Table.Column>
-              <Table.Column>Error Rate</Table.Column>
+              <Table.Column id="route" isRowHeader>Route</Table.Column>
+              <Table.Column id="status">Status</Table.Column>
+              <Table.Column id="strategy">Strategy</Table.Column>
+              <Table.Column id="targets">Targets</Table.Column>
+              <Table.Column id="healthy">Healthy</Table.Column>
+              <Table.Column id="errorRate">Error Rate</Table.Column>
             </Table.Header>
             <Table.Body>
               {Object.entries(health.data.routes).map(([route, info]) => {
@@ -173,28 +165,29 @@ function RoutesPage() {
                 return (
                   <Table.Row key={route}>
                     <Table.Cell>
-                      <span className="font-mono text-xs">{route}</span>
+                      <span className="font-mono text-[11px]">{route}</span>
                     </Table.Cell>
                     <Table.Cell>
                       <HealthChip status={info.healthStatus} />
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="text-sm capitalize">
+                      <span className="text-xs capitalize">
                         {info.strategy.replace(/_/g, " ")}
                       </span>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="text-sm font-mono">
+                      <span className="text-xs font-mono">
                         {info.targets.join(", ")}
                       </span>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="text-sm">
+                      <span className="text-xs">
                         {info.healthyTargetCount}/{info.totalTargetCount}
                       </span>
                     </Table.Cell>
                     <Table.Cell>
                       <ProgressBar.Root
+                        aria-label={`${route} average error rate`}
                         value={avgErrorRate * 100}
                         color={
                           avgErrorRate > 0.5
@@ -203,35 +196,34 @@ function RoutesPage() {
                               ? "warning"
                               : "success"
                         }
-                        className="w-24"
+                        className="w-20"
                       />
                     </Table.Cell>
                   </Table.Row>
                 );
               })}
             </Table.Body>
-          </Table.Root>
+          </DataTable>
         </Card.Content>
       </Card.Root>
 
-      {/* Targets Detail Table */}
       <Card.Root>
-        <Card.Header className="px-5 pt-5 pb-0">
-          <h2 className="text-lg font-semibold">Targets</h2>
+        <Card.Header>
+          <Card.Title>Targets</Card.Title>
         </Card.Header>
-        <Card.Content className="p-5">
-          <Table.Root>
+        <Card.Content className="p-0">
+          <DataTable aria-label="Target health">
             <Table.Header>
-              <Table.Column>Target</Table.Column>
-              <Table.Column>Error Rate</Table.Column>
-              <Table.Column>Recovery Score</Table.Column>
-              <Table.Column>Latency</Table.Column>
+              <Table.Column id="target" isRowHeader>Target</Table.Column>
+              <Table.Column id="errorRate">Error Rate</Table.Column>
+              <Table.Column id="recoveryScore">Recovery Score</Table.Column>
+              <Table.Column id="latency">Latency</Table.Column>
             </Table.Header>
             <Table.Body>
               {Object.entries(health.data.targets).map(([target, info]) => (
                 <Table.Row key={target}>
                   <Table.Cell>
-                    <span className="font-mono text-xs">{target}</span>
+                    <span className="font-mono text-[11px]">{target}</span>
                   </Table.Cell>
                   <Table.Cell>
                     <Chip
@@ -250,12 +242,13 @@ function RoutesPage() {
                   </Table.Cell>
                   <Table.Cell>
                     <ProgressBar.Root
+                      aria-label={`${target} recovery score`}
                       value={info.metrics.recoveryScore * 100}
-                      className="w-24"
+                      className="w-20"
                     />
                   </Table.Cell>
                   <Table.Cell>
-                    <span className="text-sm">
+                    <span className="text-xs">
                       {info.metrics.freshness.latencyFreshMs != null
                         ? `${info.metrics.freshness.latencyFreshMs}ms`
                         : "—"}
@@ -264,80 +257,74 @@ function RoutesPage() {
                 </Table.Row>
               ))}
             </Table.Body>
-          </Table.Root>
+          </DataTable>
         </Card.Content>
       </Card.Root>
     </div>
   );
 }
 
-/* ── Summary Card ───────────────────────────────────────────────────── */
-
 function SummaryCard({
   icon,
   iconBg,
-  borderClass,
   label,
   value,
   valueClass,
 }: {
   icon: React.ReactNode;
   iconBg: string;
-  borderClass: string;
   label: string;
   value: number;
   valueClass: string;
 }) {
   return (
-    <Card.Root className={`border-l-4 ${borderClass}`}>
-      <Card.Content className="flex items-start gap-3">
+    <Card.Root>
+      <Card.Content className="flex-row items-center gap-2.5 p-3">
         <div
-          className={`flex items-center justify-center w-9 h-9 rounded-full shrink-0 ${iconBg}`}
+          className={`flex size-8 shrink-0 items-center justify-center rounded-xl ${iconBg}`}
         >
           {icon}
         </div>
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-default-400">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted leading-tight">
             {label}
           </p>
-          <p className={`text-2xl font-bold ${valueClass}`}>{value}</p>
+          <p className={`text-lg font-bold leading-tight ${valueClass}`}>
+            {value}
+          </p>
         </div>
       </Card.Content>
     </Card.Root>
   );
 }
 
-/* ── Config Item ────────────────────────────────────────────────────── */
-
 function ConfigItem({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-wider text-default-400">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
         {label}
       </p>
-      <p className="text-lg font-semibold mt-0.5">{value}</p>
+      <p className="text-sm font-semibold mt-0.5">{value}</p>
     </div>
   );
 }
 
-/* ── Skeleton Loading State ─────────────────────────────────────────── */
-
 function RoutesSkeleton() {
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
-      <div className="space-y-2">
-        <Skeleton className="h-8 w-48 rounded" />
-        <Skeleton className="h-4 w-64 rounded" />
+    <div className="p-4 space-y-4 animate-fade-in">
+      <div className="space-y-1.5">
+        <Skeleton className="h-6 w-36 rounded" />
+        <Skeleton className="h-3 w-52 rounded" />
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {Array.from({ length: 4 }).map((_, i) => (
           <Card.Root key={i}>
-            <Card.Content className="flex items-start gap-3">
-              <Skeleton className="h-9 w-9 rounded-full shrink-0" />
-              <div className="space-y-2 flex-1">
-                <Skeleton className="h-3 w-16 rounded" />
-                <Skeleton className="h-7 w-8 rounded" />
+            <Card.Content className="flex items-center gap-2 py-1.5 px-2.5">
+              <Skeleton className="h-7 w-7 rounded-full shrink-0" />
+              <div className="space-y-1.5 flex-1">
+                <Skeleton className="h-2.5 w-12 rounded" />
+                <Skeleton className="h-5 w-6 rounded" />
               </div>
             </Card.Content>
           </Card.Root>
@@ -345,13 +332,13 @@ function RoutesSkeleton() {
       </div>
 
       <Card.Root>
-        <Card.Content className="p-5">
-          <Skeleton className="h-4 w-48 rounded mb-4" />
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card.Content className="p-2.5 sm:p-3">
+          <Skeleton className="h-3 w-36 rounded mb-3" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="space-y-2">
-                <Skeleton className="h-3 w-16 rounded" />
-                <Skeleton className="h-5 w-12 rounded" />
+              <div key={i} className="space-y-1.5">
+                <Skeleton className="h-2.5 w-12 rounded" />
+                <Skeleton className="h-4 w-10 rounded" />
               </div>
             ))}
           </div>
@@ -359,10 +346,10 @@ function RoutesSkeleton() {
       </Card.Root>
 
       <Card.Root>
-        <Card.Content className="p-5 space-y-3">
-          <Skeleton className="h-5 w-24 rounded mb-2" />
+        <Card.Content className="p-0 space-y-2 p-3">
+          <Skeleton className="h-4 w-20 rounded mb-1" />
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-10 w-full rounded" />
+            <Skeleton key={i} className="h-8 w-full rounded" />
           ))}
         </Card.Content>
       </Card.Root>

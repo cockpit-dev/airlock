@@ -5,7 +5,6 @@ import {
   Chip,
   ProgressBar,
   Skeleton,
-  Table,
 } from "@heroui/react";
 import {
   FiServer,
@@ -15,9 +14,18 @@ import {
   FiActivity,
   FiAlertCircle,
   FiRefreshCw,
+  FiPieChart,
+  FiBarChart2,
+  FiClock,
 } from "react-icons/fi";
 import { useStatus, useMetrics, useRoutingHealth } from "../hooks/use-queries";
 import { HealthChip } from "../components/health-chip";
+import {
+  StatusCodeChart,
+  ProviderRequestsChart,
+  RouteLatencyChart,
+} from "../components/dashboard-charts";
+import { DataTable, Table } from "../components/data-table";
 
 export const Route = createFileRoute("/")({
   component: DashboardPage,
@@ -32,21 +40,21 @@ function DashboardPage() {
 
   if (status.error) {
     return (
-      <div className="p-6 space-y-6 animate-fade-in">
-        <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 flex items-start gap-3">
-          <FiAlertCircle className="text-danger mt-0.5 shrink-0" size={20} />
-          <div>
-            <p className="font-semibold text-danger">
+      <div className="console-page console-stack animate-fade-in">
+        <div className="rounded-lg border border-danger/30 bg-danger/5 p-3 flex items-start gap-2">
+          <FiAlertCircle className="text-danger mt-0.5 shrink-0" size={16} />
+          <div className="min-w-0">
+            <p className="font-medium text-sm text-danger">
               Failed to load dashboard
             </p>
-            <p className="text-sm text-default-400 mt-1">
+            <p className="text-xs text-muted mt-0.5">
               {status.error.message}
             </p>
           </div>
           <Button
             size="sm"
             variant="ghost"
-            className="ml-auto"
+            className="ml-auto shrink-0"
             onPress={() => status.refetch()}
           >
             <FiRefreshCw size={14} />
@@ -63,103 +71,95 @@ function DashboardPage() {
     data.circuitBreaker.openTargets.length > 0 ? "danger" : "warning";
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="console-page console-stack animate-fade-in">
+      <div className="console-header">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-default-400">
+          <h1 className="console-title">Dashboard</h1>
+          <p className="console-subtitle">
             System overview and real-time metrics
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-default-400">
-          <span className="relative flex h-2.5 w-2.5">
+        <div className="flex items-center gap-1.5 text-xs text-muted">
+          <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
           </span>
           <span>Live</span>
-          <span className="text-default-300">|</span>
-          <span>10s refresh</span>
+          <span className="text-muted/50 mx-0.5">|</span>
+          <span>10s</span>
         </div>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
         <StatCard
-          icon={<FiServer size={18} />}
-          iconBg="bg-primary/10 text-primary"
-          borderClass="border-l-primary"
+          icon={<FiServer size={15} />}
+          iconBg="bg-accent-soft text-accent-soft-foreground"
           label="Providers"
           value={data.providers.length}
           subtitle={
-            <Chip size="sm" variant="soft" color="accent">
+            <span className="text-[11px] text-muted">
               {data.providers.filter((p) => p.configured).length} configured
-            </Chip>
+            </span>
           }
         />
         <StatCard
-          icon={<FiGitBranch size={18} />}
+          icon={<FiGitBranch size={15} />}
           iconBg="bg-accent/10 text-accent"
-          borderClass="border-l-accent"
           label="Routes"
           value={data.routes.length}
           subtitle={
-            <Chip size="sm" variant="soft" color="accent">
+            <span className="text-[11px] text-muted">
               {data.routes.reduce((sum, r) => sum + 1 + r.fallbackCount, 0)}{" "}
               targets
-            </Chip>
+            </span>
           }
         />
         <StatCard
-          icon={<FiKey size={18} />}
+          icon={<FiKey size={15} />}
           iconBg="bg-success/10 text-success"
-          borderClass="border-l-success"
           label="Keys"
           value={data.keys.total}
           subtitle={
-            <Chip size="sm" variant="soft" color="success">
-              registry
-            </Chip>
+            <span className="text-[11px] text-muted">registry</span>
           }
         />
         <StatCard
-          icon={<FiAlertTriangle size={18} />}
+          icon={<FiAlertTriangle size={15} />}
           iconBg={
             circuitBreakerColor === "danger"
               ? "bg-danger/10 text-danger"
               : "bg-warning/10 text-warning"
           }
-          borderClass={`border-l-${circuitBreakerColor}`}
-          label="Circuit Breakers"
+          label="Breakers"
           value={data.circuitBreaker.openTargets.length}
           subtitle={
-            <Chip size="sm" variant="soft" color={circuitBreakerColor}>
+            <span className="text-[11px] text-muted">
               {data.circuitBreaker.halfOpenTargets.length} half-open
-            </Chip>
+            </span>
           }
         />
       </div>
 
-      {/* Metrics Card */}
       <Card.Root>
-        <Card.Header className="px-5 pt-5 pb-0">
-          <div className="flex items-center gap-2">
-            <FiActivity size={16} className="text-default-400" />
-            <h2 className="text-lg font-semibold">Metrics (live)</h2>
+        <Card.Header className="flex-row items-center justify-between">
+          <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
+            <FiActivity size={14} className="text-muted" />
+            <h2>Metrics</h2>
           </div>
+          <span className="text-[11px] text-muted">Live 10s</span>
         </Card.Header>
-        <Card.Content className="p-5">
+        <Card.Content>
           {metrics.isLoading ? (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="space-y-2">
-                  <Skeleton className="h-3 w-16 rounded" />
-                  <Skeleton className="h-7 w-20 rounded" />
+                <div key={i} className="space-y-1.5">
+                  <Skeleton className="h-2.5 w-12 rounded" />
+                  <Skeleton className="h-5 w-16 rounded" />
                 </div>
               ))}
             </div>
           ) : metrics.data ? (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
               <MetricItem
                 label="Requests"
                 value={metrics.data.requests.toLocaleString()}
@@ -188,47 +188,87 @@ function DashboardPage() {
               />
             </div>
           ) : (
-            <p className="text-sm text-default-400">No metrics available</p>
+            <p className="text-xs text-muted">No metrics available</p>
           )}
         </Card.Content>
       </Card.Root>
 
-      {/* Route Health Table */}
+      {metrics.data && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3">
+          <Card.Root>
+            <Card.Header>
+              <Card.Title className="flex items-center gap-2">
+                <FiPieChart size={14} className="text-muted" />
+                Status Codes
+              </Card.Title>
+            </Card.Header>
+            <Card.Content>
+              <StatusCodeChart statusCodes={metrics.data.statusCodes} />
+            </Card.Content>
+          </Card.Root>
+
+          <Card.Root>
+            <Card.Header>
+              <Card.Title className="flex items-center gap-2">
+                <FiBarChart2 size={14} className="text-muted" />
+                Requests by Provider
+              </Card.Title>
+            </Card.Header>
+            <Card.Content>
+              <ProviderRequestsChart byProvider={metrics.data.byProvider} />
+            </Card.Content>
+          </Card.Root>
+
+          <Card.Root className="lg:col-span-2">
+            <Card.Header>
+              <Card.Title className="flex items-center gap-2">
+                <FiClock size={14} className="text-muted" />
+                Latency by Route
+              </Card.Title>
+            </Card.Header>
+            <Card.Content>
+              <RouteLatencyChart byRoute={metrics.data.byRoute} />
+            </Card.Content>
+          </Card.Root>
+        </div>
+      )}
+
       {health.data && (
         <Card.Root>
-          <Card.Header className="px-5 pt-5 pb-0">
-            <h2 className="text-lg font-semibold">Route Health</h2>
+          <Card.Header>
+            <Card.Title>Route Health</Card.Title>
           </Card.Header>
-          <Card.Content className="p-5">
-            <Table.Root>
+          <Card.Content className="p-0">
+            <DataTable aria-label="Route health">
               <Table.Header>
-                <Table.Column>Route</Table.Column>
-                <Table.Column>Status</Table.Column>
-                <Table.Column>Strategy</Table.Column>
-                <Table.Column>Targets</Table.Column>
-                <Table.Column>Health</Table.Column>
+                <Table.Column id="route" isRowHeader>Route</Table.Column>
+                <Table.Column id="status">Status</Table.Column>
+                <Table.Column id="strategy">Strategy</Table.Column>
+                <Table.Column id="targets">Targets</Table.Column>
+                <Table.Column id="health">Health</Table.Column>
               </Table.Header>
               <Table.Body>
                 {Object.entries(health.data.routes).map(([route, info]) => (
                   <Table.Row key={route}>
                     <Table.Cell>
-                      <span className="font-mono text-xs">{route}</span>
+                      <span className="font-mono text-[11px]">{route}</span>
                     </Table.Cell>
                     <Table.Cell>
                       <HealthChip status={info.healthStatus} />
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="text-sm capitalize">
+                      <span className="text-xs capitalize">
                         {info.strategy.replace(/_/g, " ")}
                       </span>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="text-sm">
+                      <span className="text-xs">
                         {info.healthyTargetCount}/{info.totalTargetCount}
                       </span>
                     </Table.Cell>
                     <Table.Cell>
                       <ProgressBar.Root
+                        aria-label={`${route} healthy target coverage`}
                         value={
                           info.totalTargetCount > 0
                             ? (info.healthyTargetCount /
@@ -243,13 +283,13 @@ function DashboardPage() {
                               ? "warning"
                               : "danger"
                         }
-                        className="w-24"
+                        className="w-20"
                       />
                     </Table.Cell>
                   </Table.Row>
                 ))}
               </Table.Body>
-            </Table.Root>
+            </DataTable>
           </Card.Content>
         </Card.Root>
       )}
@@ -257,44 +297,38 @@ function DashboardPage() {
   );
 }
 
-/* ── Stat Card ──────────────────────────────────────────────────────── */
-
 function StatCard({
   icon,
   iconBg,
-  borderClass,
   label,
   value,
   subtitle,
 }: {
   icon: React.ReactNode;
   iconBg: string;
-  borderClass: string;
   label: string;
   value: number;
   subtitle: React.ReactNode;
 }) {
   return (
-    <Card.Root className={`border-l-4 ${borderClass}`}>
-      <Card.Content className="flex items-start gap-3">
+    <Card.Root>
+      <Card.Content className="flex-row items-center gap-2.5 p-3">
         <div
-          className={`flex items-center justify-center w-9 h-9 rounded-full shrink-0 ${iconBg}`}
+          className={`flex size-8 shrink-0 items-center justify-center rounded-xl ${iconBg}`}
         >
           {icon}
         </div>
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-default-400">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted leading-tight">
             {label}
           </p>
-          <p className="text-2xl font-bold">{value}</p>
-          <div className="mt-1">{subtitle}</div>
+          <p className="text-lg font-bold leading-tight">{value}</p>
+          <div className="mt-0.5">{subtitle}</div>
         </div>
       </Card.Content>
     </Card.Root>
   );
 }
-
-/* ── Metric Item ────────────────────────────────────────────────────── */
 
 function MetricItem({
   label,
@@ -307,36 +341,35 @@ function MetricItem({
 }) {
   return (
     <div>
-      <p className="text-xs uppercase tracking-wider text-default-400">
+      <p className="text-[10px] uppercase tracking-wider text-muted">
         {label}
       </p>
-      <p className={`text-xl font-semibold ${valueClass ?? ""}`}>{value}</p>
+      <p className={`text-base font-semibold ${valueClass ?? ""}`}>
+        {value}
+      </p>
     </div>
   );
 }
 
-/* ── Skeleton Loading State ─────────────────────────────────────────── */
-
 function DashboardSkeleton() {
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div className="space-y-2">
-          <Skeleton className="h-8 w-40 rounded" />
-          <Skeleton className="h-4 w-60 rounded" />
+    <div className="console-page console-stack animate-fade-in">
+      <div className="console-header">
+        <div className="space-y-1.5">
+          <Skeleton className="h-6 w-32 rounded" />
+          <Skeleton className="h-3 w-48 rounded" />
         </div>
-        <Skeleton className="h-5 w-28 rounded" />
+        <Skeleton className="h-4 w-20 rounded" />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <Card.Root key={i}>
-            <Card.Content className="flex items-start gap-3">
-              <Skeleton className="h-9 w-9 rounded-full shrink-0" />
-              <div className="space-y-2 flex-1">
-                <Skeleton className="h-3 w-16 rounded" />
-                <Skeleton className="h-7 w-12 rounded" />
-                <Skeleton className="h-5 w-20 rounded-full" />
+            <Card.Content className="flex items-center gap-2 py-1.5 px-2.5">
+              <Skeleton className="h-7 w-7 rounded-full shrink-0" />
+              <div className="space-y-1.5 flex-1">
+                <Skeleton className="h-2.5 w-12 rounded" />
+                <Skeleton className="h-5 w-8 rounded" />
               </div>
             </Card.Content>
           </Card.Root>
@@ -344,13 +377,13 @@ function DashboardSkeleton() {
       </div>
 
       <Card.Root>
-        <Card.Content className="p-5">
-          <Skeleton className="h-5 w-32 rounded mb-4" />
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <Card.Content className="p-2.5 sm:p-3">
+          <Skeleton className="h-4 w-24 rounded mb-3" />
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="space-y-2">
-                <Skeleton className="h-3 w-16 rounded" />
-                <Skeleton className="h-7 w-20 rounded" />
+              <div key={i} className="space-y-1.5">
+                <Skeleton className="h-2.5 w-12 rounded" />
+                <Skeleton className="h-5 w-16 rounded" />
               </div>
             ))}
           </div>

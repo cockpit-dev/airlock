@@ -3,6 +3,7 @@ import {
   Outlet,
   createRootRouteWithContext,
   redirect,
+  useRouterState,
 } from "@tanstack/react-router";
 import { ClientProvider } from "../lib/client";
 import { createClientFromStorage, getStoredCredentials } from "../lib/auth";
@@ -19,7 +20,10 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 function RootLayout() {
-  const client = useMemo(() => createClientFromStorage(), []);
+  const locationKey = useRouterState({
+    select: (state) => state.location.href,
+  });
+  const client = useMemo(() => createClientFromStorage(), [locationKey]);
 
   if (!client) {
     return <Outlet />;

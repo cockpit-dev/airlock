@@ -12,6 +12,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "ignoreDeprecations": "6.0",
+    "types": ["node", "vitest/globals"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "baseUrl": ".",
     "paths": {

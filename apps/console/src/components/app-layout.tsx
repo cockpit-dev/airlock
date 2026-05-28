@@ -5,6 +5,7 @@ import {
   Button,
   Drawer,
   Dropdown,
+  Label,
   ListBox,
   ListBoxItem,
   Separator,
@@ -12,8 +13,8 @@ import {
   Tooltip,
   useMediaQuery,
   useOverlayState,
-  useTheme,
 } from "@heroui/react";
+import type { Selection } from "@heroui/react";
 import {
   FiChevronLeft,
   FiChevronRight,
@@ -22,6 +23,7 @@ import {
   FiKey,
   FiLock,
   FiLogOut,
+  FiMenu,
   FiMessageSquare,
   FiMoon,
   FiServer,
@@ -30,18 +32,39 @@ import {
   FiUsers,
 } from "react-icons/fi";
 import { clearCredentials, getStoredCredentials } from "../lib/auth";
+import { useConsoleTheme } from "./theme-sync";
 
 const platformNav = [
-  { label: "Dashboard", icon: FiHome, href: "/" },
-  { label: "Keys", icon: FiKey, href: "/keys" },
-  { label: "Routes", icon: FiGitBranch, href: "/routes" },
-  { label: "Playground", icon: FiMessageSquare, href: "/playground" },
+  { id: "/", label: "Dashboard", icon: FiHome, href: "/" },
+  { id: "/keys", label: "Keys", icon: FiKey, href: "/keys" },
+  { id: "/routes", label: "Routes", icon: FiGitBranch, href: "/routes" },
+  {
+    id: "/playground",
+    label: "Playground",
+    icon: FiMessageSquare,
+    href: "/playground",
+  },
 ];
 
 const configNav = [
-  { label: "Providers", icon: FiServer, href: "/config/providers" },
-  { label: "Routes", icon: FiSettings, href: "/config/routes" },
-  { label: "Accounts", icon: FiUsers, href: "/config/accounts" },
+  {
+    id: "/config/providers",
+    label: "Providers",
+    icon: FiServer,
+    href: "/config/providers",
+  },
+  {
+    id: "/config/routes",
+    label: "Routes",
+    icon: FiSettings,
+    href: "/config/routes",
+  },
+  {
+    id: "/config/accounts",
+    label: "Accounts",
+    icon: FiUsers,
+    href: "/config/accounts",
+  },
 ];
 
 export function AppLayout({ children }: { children: ReactNode }) {
@@ -51,8 +74,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const creds = getStoredCredentials();
   const isOnline = !!creds?.url;
 
-  const { theme, setTheme } = useTheme();
-  const isDark = theme === "dark" || theme === "system";
+  const { isDark, setTheme } = useConsoleTheme();
   const isDesktop = useMediaQuery("(min-width: 768px)");
 
   const [collapsed, setCollapsed] = useState(false);
@@ -61,9 +83,19 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const isActive = useCallback(
     (href: string) => {
       if (href === "/") return currentPath === "/";
-      return currentPath.startsWith(href);
+      return currentPath === href || currentPath.startsWith(`${href}/`);
     },
     [currentPath]
+  );
+
+  const getActiveKey = useCallback(
+    (
+      items: readonly {
+        readonly id: string;
+        readonly href: string;
+      }[]
+    ) => items.find((item) => isActive(item.href))?.id,
+    [isActive]
   );
 
   const handleNavigate = useCallback(
@@ -77,23 +109,23 @@ export function AppLayout({ children }: { children: ReactNode }) {
   );
 
   const toggleTheme = useCallback(() => {
-    const next = theme === "dark" ? "light" : "dark";
+    const next = isDark ? "light" : "dark";
     setTheme(next);
-  }, [theme, setTheme]);
+  }, [isDark, setTheme]);
 
   const handleLogout = useCallback(() => {
     clearCredentials();
     navigate({ to: "/login" });
   }, [navigate]);
 
-  const sidebarContent = (
+  const renderSidebarContent = (isCollapsed: boolean) => (
     <>
-      <div className="flex items-center gap-3 px-4 h-14 border-b border-divider shrink-0">
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground shrink-0">
-          <FiLock size={16} />
+      <div className="flex items-center gap-2.5 px-3 h-12 border-b border-border shrink-0">
+        <div className="flex items-center justify-center w-7 h-7 rounded-2xl bg-accent text-accent-foreground shrink-0">
+          <FiLock size={14} />
         </div>
-        {!collapsed && (
-          <span className="font-bold text-lg tracking-tight animate-fade-in">
+        {!isCollapsed && (
+          <span className="font-bold text-base tracking-tight animate-fade-in">
             Airlock
           </span>
         )}
@@ -102,41 +134,44 @@ export function AppLayout({ children }: { children: ReactNode }) {
             isIconOnly
             variant="ghost"
             size="sm"
-            className="ml-auto text-default-400 hover:text-default-600"
+            aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+            className="ml-auto text-muted hover:text-foreground h-6 w-6 min-w-6"
             onPress={() => setCollapsed((prev) => !prev)}
           >
             {collapsed ? (
-              <FiChevronRight size={16} />
+              <FiChevronRight size={14} />
             ) : (
-              <FiChevronLeft size={16} />
+              <FiChevronLeft size={14} />
             )}
           </Button>
         )}
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-2 px-2">
+      <nav className="flex-1 overflow-y-auto py-1.5 px-1.5">
         <NavSection
           label="PLATFORM"
           items={platformNav}
-          collapsed={collapsed}
+          collapsed={isCollapsed}
+          activeKey={getActiveKey(platformNav)}
           isActive={isActive}
           onNavigate={handleNavigate}
         />
 
-        <Separator className="my-3" />
+        <Separator className="my-2" />
 
         <NavSection
           label="CONFIG"
           items={configNav}
-          collapsed={collapsed}
+          collapsed={isCollapsed}
+          activeKey={getActiveKey(configNav)}
           isActive={isActive}
           onNavigate={handleNavigate}
         />
       </nav>
 
-      <div className="border-t border-divider p-2 shrink-0">
+      <div className="border-t border-border p-1.5 shrink-0">
         <UserFooter
-          collapsed={collapsed}
+          collapsed={isCollapsed}
           isOnline={isOnline}
           isDark={isDark}
           onToggleTheme={toggleTheme}
@@ -148,71 +183,65 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   if (!isDesktop) {
     return (
-      <div className="flex h-screen bg-content1">
-        <header className="fixed top-0 left-0 right-0 z-30 flex items-center gap-3 h-14 px-4 border-b border-divider bg-content2/80 backdrop-blur-md">
+      <div className="flex h-screen bg-background">
+        <header className="fixed top-0 left-0 right-0 z-30 flex items-center gap-2 h-12 px-3 border-b border-border bg-surface-secondary/80 backdrop-blur-md">
           <Button
             isIconOnly
             variant="ghost"
             size="sm"
+            aria-label="Open navigation"
             onPress={drawerState.open}
-            className="text-default-400 hover:text-default-600"
+            className="text-muted hover:text-foreground"
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            >
-              <line x1="3" y1="5" x2="17" y2="5" />
-              <line x1="3" y1="10" x2="17" y2="10" />
-              <line x1="3" y1="15" x2="17" y2="15" />
-            </svg>
+            <FiMenu size={18} />
           </Button>
-          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary text-primary-foreground">
-            <FiLock size={14} />
+          <div className="flex items-center justify-center w-6 h-6 rounded-2xl bg-accent text-accent-foreground">
+            <FiLock size={12} />
           </div>
-          <span className="font-bold text-base tracking-tight">Airlock</span>
+          <span className="font-bold text-sm tracking-tight">Airlock</span>
           <div className="ml-auto flex items-center gap-1.5">
             <span
-              className={`w-2 h-2 rounded-full ${
+              className={`w-1.5 h-1.5 rounded-full ${
                 isOnline
                   ? "bg-success animate-pulse-dot"
-                  : "bg-default-300"
+                  : "bg-default"
               }`}
             />
-            <span className="text-xs text-default-400">
+            <span className="text-[11px] text-muted">
               {isOnline ? "Online" : "Offline"}
             </span>
           </div>
         </header>
 
-        <Drawer.Root state={drawerState}>
-          <Drawer.Backdrop />
-          <Drawer.Content placement="left" className="w-72">
-            <Drawer.Header className="p-0 h-full">
-              <div className="flex flex-col w-full h-full bg-content2">
-                {sidebarContent}
+        <Drawer.Backdrop
+          isOpen={drawerState.isOpen}
+          onOpenChange={drawerState.setOpen}
+        >
+          <Drawer.Content placement="left" className="w-64">
+            <Drawer.Dialog
+              aria-label="Navigation"
+              className="w-64 max-w-[80vw] p-0"
+            >
+              <div className="flex h-full w-full flex-col bg-surface-secondary">
+                {renderSidebarContent(false)}
               </div>
-            </Drawer.Header>
+            </Drawer.Dialog>
           </Drawer.Content>
-        </Drawer.Root>
+        </Drawer.Backdrop>
 
-        <main className="flex-1 overflow-auto pt-14">{children}</main>
+        <main className="flex-1 overflow-auto pt-12">{children}</main>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen bg-content1">
+    <div className="flex h-screen bg-background">
       <aside
-        className={`flex flex-col border-r border-divider bg-content2 shrink-0 transition-all duration-300 ${
-          collapsed ? "w-16" : "w-60"
+        className={`flex flex-col border-r border-border bg-surface-secondary shrink-0 transition-all duration-300 ${
+          collapsed ? "w-14" : "w-52"
         }`}
       >
-        {sidebarContent}
+        {renderSidebarContent(collapsed)}
       </aside>
       <main className="flex-1 overflow-auto">{children}</main>
     </div>
@@ -223,52 +252,71 @@ function NavSection({
   label,
   items,
   collapsed,
+  activeKey,
   isActive,
   onNavigate,
 }: {
   label: string;
-  items: readonly { readonly label: string; readonly icon: typeof FiHome; readonly href: string }[];
+  items: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly icon: typeof FiHome;
+    readonly href: string;
+  }[];
   collapsed: boolean;
+  activeKey?: string;
   isActive: (href: string) => boolean;
   onNavigate: (key: string) => void;
 }) {
+  const selectedKeys = activeKey ? [activeKey] : [];
+
+  const handleSelectionChange = useCallback(
+    (selection: Selection) => {
+      if (selection === "all") return;
+
+      const [key] = Array.from(selection);
+      if (typeof key === "string") {
+        onNavigate(key);
+      }
+    },
+    [onNavigate]
+  );
+
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-0.5">
       {!collapsed && (
-        <span className="px-2 pt-2 pb-1 text-[10px] font-semibold text-default-400 uppercase tracking-wider">
+        <span className="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold text-muted uppercase tracking-wider">
           {label}
         </span>
       )}
       <ListBox
         variant="default"
         aria-label={`${label} navigation`}
-        onAction={(key) => onNavigate(key as string)}
+        selectionMode="single"
+        selectedKeys={selectedKeys}
+        onSelectionChange={handleSelectionChange}
         items={items}
-        className="gap-0.5"
+        className="gap-0"
       >
         {(item) => {
           const active = isActive(item.href);
           const inner = (
             <ListBoxItem
-              key={item.href}
+              id={item.id}
+              key={item.id}
               textValue={item.label}
-              className={`flex items-center gap-3 rounded-lg px-2 py-1.5 text-sm transition-colors ${
-                active
-                  ? "bg-primary/10 text-primary border-l-2 border-primary"
-                  : "hover:bg-default-100 text-default-600 border-l-2 border-transparent"
-              }`}
+              aria-current={active ? "page" : undefined}
+              className="text-muted data-[selected=true]:bg-accent-soft data-[selected=true]:text-accent-soft-foreground"
             >
-              <item.icon size={18} className="shrink-0" />
-              {!collapsed && (
-                <span className="truncate animate-fade-in">{item.label}</span>
-              )}
+              <item.icon size={16} className="shrink-0" />
+              {!collapsed && <Label className="truncate">{item.label}</Label>}
             </ListBoxItem>
           );
 
           if (collapsed) {
             return (
               <Tooltip.Root key={item.href}>
-                <Tooltip.Trigger>{inner}</Tooltip.Trigger>
+                <Tooltip.Trigger aria-label={item.label}>{inner}</Tooltip.Trigger>
                 <Tooltip.Content placement="right" showArrow>
                   {item.label}
                 </Tooltip.Content>
@@ -298,35 +346,32 @@ function UserFooter({
 }) {
   return (
     <Dropdown.Root>
-      <Dropdown.Trigger>
-        <Button
-          variant="ghost"
-          className={`w-full justify-start gap-2 px-2 h-auto py-2 ${
-            collapsed ? "justify-center" : ""
-          }`}
-        >
-          <div className="relative shrink-0">
-            <Avatar.Root size="sm" color="accent">
-              <Avatar.Fallback>A</Avatar.Fallback>
-            </Avatar.Root>
-            <span
-              className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-content2 ${
-                isOnline
-                  ? "bg-success animate-pulse-dot"
-                  : "bg-default-300"
-              }`}
-            />
-          </div>
-          {!collapsed && (
-            <div className="flex flex-col items-start text-left animate-fade-in">
-              <span className="text-sm font-medium">Admin</span>
-              <span className="text-xs text-default-400">
-                {isOnline ? "Online" : "Offline"}
-              </span>
-            </div>
-          )}
-        </Button>
-      </Dropdown.Trigger>
+      <Button
+        aria-label="Open user menu"
+        fullWidth
+        variant="ghost"
+        size="sm"
+        className={collapsed ? "px-0" : "justify-start px-2"}
+      >
+        <div className="relative shrink-0">
+          <Avatar.Root size="sm" color="accent">
+            <Avatar.Fallback className="text-xs">A</Avatar.Fallback>
+          </Avatar.Root>
+          <span
+            className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-2 border-surface-secondary ${
+              isOnline ? "bg-success animate-pulse-dot" : "bg-default"
+            }`}
+          />
+        </div>
+        {!collapsed && (
+          <span className="flex min-w-0 flex-col items-start text-left">
+            <span className="text-[13px] font-medium leading-tight">Admin</span>
+            <span className="text-[11px] text-muted leading-tight">
+              {isOnline ? "Online" : "Offline"}
+            </span>
+          </span>
+        )}
+      </Button>
       <Dropdown.Popover>
         <Dropdown.Menu
           onAction={(key) => {
@@ -334,12 +379,12 @@ function UserFooter({
             else if (key === "logout") onLogout();
           }}
         >
-          <Dropdown.Item key="theme" textValue="Toggle theme">
+          <Dropdown.Item id="theme" key="theme" textValue="Toggle theme">
             <div className="flex items-center justify-between w-full">
-              <span className="flex items-center gap-2">
-                {isDark ? <FiSun size={16} /> : <FiMoon size={16} />}
+              <Label className="flex items-center gap-2 text-[13px]">
+                {isDark ? <FiSun size={14} /> : <FiMoon size={14} />}
                 {isDark ? "Light Mode" : "Dark Mode"}
-              </span>
+              </Label>
               <Switch.Root isSelected={isDark} size="sm">
                 <Switch.Control>
                   <Switch.Thumb />
@@ -347,15 +392,14 @@ function UserFooter({
               </Switch.Root>
             </div>
           </Dropdown.Item>
-          <Dropdown.Item key="logout" textValue="Log out">
-            <span className="flex items-center gap-2 text-danger">
-              <FiLogOut size={16} />
+          <Dropdown.Item id="logout" key="logout" textValue="Log out">
+            <Label className="flex items-center gap-2 text-danger text-[13px]">
+              <FiLogOut size={14} />
               Log out
-            </span>
+            </Label>
           </Dropdown.Item>
         </Dropdown.Menu>
       </Dropdown.Popover>
     </Dropdown.Root>
   );
 }
-
