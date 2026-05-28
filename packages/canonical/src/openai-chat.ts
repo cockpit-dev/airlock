@@ -486,9 +486,7 @@ function shouldPreserveNativeOpenAIResponsesInput(
 
   return input.some((item) => {
     if (item.type === "message") {
-      return hasOpenAIResponsesOpaqueMessageContent(
-        item.content as string | Array<{ type: string; text?: string }>
-      );
+      return hasOpenAIResponsesOpaqueMessageContent(item.content);
     }
 
     return (
@@ -2058,6 +2056,20 @@ export function encodeCanonicalToOpenAIResponsesStreamEvent(
             ])
       ],
       nextSequenceNumber: state.sequenceNumber + 1
+    };
+  }
+
+  if (event.type === "thinking_delta") {
+    return {
+      events: [],
+      nextSequenceNumber: state.sequenceNumber
+    };
+  }
+
+  if (event.type === "thinking_signature_delta") {
+    return {
+      events: [],
+      nextSequenceNumber: state.sequenceNumber
     };
   }
 

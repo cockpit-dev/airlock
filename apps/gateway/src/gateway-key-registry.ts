@@ -156,7 +156,7 @@ const CONFIGURED_KEY_AUDIT_EVENTS_PREFIX = "configured_events:";
 const CONFIGURED_KEY_OPERATION_INDEX_PREFIX = "configured_operation:";
 const RUNTIME_KEY_CACHE_TTL_MS = 5_000;
 
-let runtimeGatewayApiKeyCache = new Map<
+const runtimeGatewayApiKeyCache = new Map<
   string,
   {
     runtimeGatewayApiKey: GatewayApiKeyRecord;

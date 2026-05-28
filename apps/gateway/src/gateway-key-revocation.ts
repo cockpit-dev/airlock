@@ -55,7 +55,7 @@ const REVOCATION_EVENTS_KEY = "revocation_events";
 const REVOCATION_OPERATION_EVENTS_PREFIX = "revocation_operation:";
 const REVOCATION_CACHE_TTL_MS = 5_000;
 
-let revocationStateCache = new Map<
+const revocationStateCache = new Map<
   string,
   { revoked: boolean; updatedAt: string; fetchedAt: number }
 >();

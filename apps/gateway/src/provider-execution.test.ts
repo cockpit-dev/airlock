@@ -1125,7 +1125,8 @@ describe("executeRoutedRequest", () => {
     expect(fetcher.mock.calls[0]?.[0]).toBe(
       "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions"
     );
-    expect(JSON.parse(fetcher.mock.calls[0]?.[1].body as string)).toMatchObject({
+    const init = fetcher.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(JSON.parse((init?.body as string | undefined) ?? "{}")).toMatchObject({
       reasoning_effort: "low"
     });
     expect(response.outputText).toBe("OK");

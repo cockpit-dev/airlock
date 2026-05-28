@@ -191,6 +191,31 @@ interface ExecutionContextLike {
   passThroughOnException(): void;
 }
 
+interface MetricsResponseBody {
+  window: {
+    durationMs: number;
+    collectedSince: string;
+  };
+  requests: number;
+  errors: number;
+  errorRate: number;
+  avgDurationMs: number;
+  statusCodes: Record<string, number>;
+  byRoute: Record<
+    string,
+    {
+      totalTokens: number;
+      streamCount: number;
+    }
+  >;
+  byProvider: Record<string, { totalTokens: number }>;
+  byModel: Record<string, { totalTokens: number }>;
+  byProtocol: Record<string, { totalTokens: number }>;
+  byKey: Record<string, { totalTokens: number }>;
+  byKeyModel: Record<string, { totalTokens: number }>;
+  totalTokens: number;
+}
+
 function createMockExecutionContext(): {
   executionCtx: ExecutionContextLike;
   flush(): Promise<void>;
@@ -38848,7 +38873,7 @@ describe("GET /_airlock/metrics", () => {
 
   it("returns request metrics snapshot", async () => {
     const app = createApp({ fetcher: vi.fn() });
-    const { executionCtx, flush } = createMockExecutionContext();
+    const execution = createMockExecutionContext();
 
     const response = await app.request(
       "http://localhost/_airlock/metrics",
@@ -38861,9 +38886,9 @@ describe("GET /_airlock/metrics", () => {
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       },
-      executionCtx as ExecutionContext
+      execution.executionCtx
     );
-    await flush();
+    await execution.flush();
 
     expect(response.status).toBe(200);
     const body = (await readJson(response)) as Record<string, unknown>;
@@ -38884,7 +38909,7 @@ describe("GET /_airlock/metrics", () => {
   it("records metrics from middleware", async () => {
     const app = createApp({ fetcher: vi.fn() });
     const metricsNamespace = createMetricsNamespace();
-    const { executionCtx, flush } = createMockExecutionContext();
+    const execution = createMockExecutionContext();
 
     // Make a request that will be recorded
     await app.request(
@@ -38894,9 +38919,9 @@ describe("GET /_airlock/metrics", () => {
         ...createBindings(),
         AIRLOCK_GATEWAY_METRICS: metricsNamespace
       },
-      executionCtx as ExecutionContext
+      execution.executionCtx
     );
-    await flush();
+    await execution.flush();
 
     const response = await app.request(
       "http://localhost/_airlock/metrics",
@@ -38909,9 +38934,9 @@ describe("GET /_airlock/metrics", () => {
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       },
-      executionCtx as ExecutionContext
+      execution.executionCtx
     );
-    await flush();
+    await execution.flush();
 
     expect(response.status).toBe(200);
     const body = (await readJson(response)) as Record<string, unknown>;
@@ -38954,7 +38979,7 @@ describe("GET /_airlock/metrics", () => {
     );
     const app = createApp({ fetcher });
     const metricsNamespace = createMetricsNamespace();
-    const { executionCtx, flush } = createMockExecutionContext();
+    const execution = createMockExecutionContext();
 
     const completion = await app.request(
       "http://localhost/v1/chat/completions",
@@ -38974,11 +38999,11 @@ describe("GET /_airlock/metrics", () => {
         ...createBindings(),
         AIRLOCK_GATEWAY_METRICS: metricsNamespace
       },
-      executionCtx as ExecutionContext
+      execution.executionCtx
     );
 
     expect(completion.status).toBe(200);
-    await flush();
+    await execution.flush();
 
     const metricsResponse = await app.request(
       "http://localhost/_airlock/metrics",
@@ -38991,12 +39016,12 @@ describe("GET /_airlock/metrics", () => {
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       },
-      executionCtx as ExecutionContext
+      execution.executionCtx
     );
-    await flush();
+    await execution.flush();
 
     expect(metricsResponse.status).toBe(200);
-    const body = (await readJson(metricsResponse)) as Record<string, any>;
+    const body = (await readJson(metricsResponse)) as MetricsResponseBody;
     expect(body.totalTokens).toBeGreaterThanOrEqual(20);
     expect(body.byProtocol.openai_chat.totalTokens).toBe(20);
     expect(body.byProvider.openai.totalTokens).toBe(20);
@@ -39033,7 +39058,7 @@ describe("GET /_airlock/metrics", () => {
     );
     const app = createApp({ fetcher });
     const metricsNamespace = createMetricsNamespace();
-    const { executionCtx, flush } = createMockExecutionContext();
+    const execution = createMockExecutionContext();
 
     const completion = await app.request(
       "http://localhost/v1/chat/completions",
@@ -39053,12 +39078,12 @@ describe("GET /_airlock/metrics", () => {
         ...createBindings(),
         AIRLOCK_GATEWAY_METRICS: metricsNamespace
       },
-      executionCtx as ExecutionContext
+      execution.executionCtx
     );
 
     expect(completion.status).toBe(200);
     await readText(completion);
-    await flush();
+    await execution.flush();
 
     const metricsResponse = await app.request(
       "http://localhost/_airlock/metrics",
@@ -39071,12 +39096,12 @@ describe("GET /_airlock/metrics", () => {
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       },
-      executionCtx as ExecutionContext
+      execution.executionCtx
     );
-    await flush();
+    await execution.flush();
 
     expect(metricsResponse.status).toBe(200);
-    const body = (await readJson(metricsResponse)) as Record<string, any>;
+    const body = (await readJson(metricsResponse)) as MetricsResponseBody;
     expect(body.totalTokens).toBeGreaterThanOrEqual(20);
     expect(body.byProtocol.openai_chat.totalTokens).toBe(20);
     expect(body.byProvider.openai.totalTokens).toBe(20);
@@ -39119,7 +39144,7 @@ describe("GET /_airlock/metrics", () => {
     );
     const app = createApp({ fetcher });
     const metricsNamespace = createMetricsNamespace();
-    const { executionCtx, flush } = createMockExecutionContext();
+    const execution = createMockExecutionContext();
 
     const completion = await app.request(
       "http://localhost/v1/chat/completions",
@@ -39139,11 +39164,11 @@ describe("GET /_airlock/metrics", () => {
         ...createBindings(),
         AIRLOCK_GATEWAY_METRICS: metricsNamespace
       },
-      executionCtx as ExecutionContext
+      execution.executionCtx
     );
 
     expect(completion.status).toBe(200);
-    await flush();
+    await execution.flush();
 
     const metricsResponse = await app.request(
       "http://localhost/_airlock/metrics",
@@ -39156,12 +39181,12 @@ describe("GET /_airlock/metrics", () => {
         AIRLOCK_INTERNAL_ADMIN_TOKEN: "admin-secret",
         AIRLOCK_GATEWAY_KEY_REVOCATION: createRevocationNamespace()
       },
-      executionCtx as ExecutionContext
+      execution.executionCtx
     );
-    await flush();
+    await execution.flush();
 
     expect(metricsResponse.status).toBe(200);
-    const body = (await readJson(metricsResponse)) as Record<string, any>;
+    const body = (await readJson(metricsResponse)) as MetricsResponseBody;
     expect(body.byKey.gak_1.totalTokens).toBe(20);
     expect(body.byKeyModel["gak_1::gpt-4.1-mini"].totalTokens).toBe(20);
   });

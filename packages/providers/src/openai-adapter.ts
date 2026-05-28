@@ -2231,6 +2231,8 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
               };
               item_id?: string;
               output_index?: number;
+              summary_index?: number;
+              content_index?: number;
               delta?: string;
               logprobs?: Array<{
                 token?: string;
@@ -2504,7 +2506,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
 
             if (
               payload.type === "response.reasoning_summary_part.added" &&
-              payload.summary_index !== undefined
+              typeof payload.summary_index === "number"
             ) {
               const [responseId, model] = Array.from(
                 responseIdToModel.entries()
@@ -2550,7 +2552,7 @@ export class OpenAIProviderAdapter implements ProviderAdapter {
                 responseId,
                 model,
                 delta: payload.delta,
-                ...(payload.content_index !== undefined
+                ...(typeof payload.content_index === "number"
                   ? { contentIndex: payload.content_index }
                   : {})
               };
